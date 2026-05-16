@@ -67,6 +67,27 @@ The structural harness calls installed `sci workflow` against this repo to:
 
 This makes the CLI path a real self-hosted maintenance loop rather than only a protocol smoke test.
 
+## Safe-write dogfood
+
+For repo-local changes that are ready to apply, use `safe_write` as the preferred write path instead of raw patch application:
+
+```bash
+sci workflow safe_write --args '{
+  "patch": "<unified diff>",
+  "commands": ["true"],
+  "apply": false,
+  "brief": true
+}' --json
+```
+
+Default posture is preview/check only. To intentionally apply after review, rerun with `apply:true` and an explicit guard:
+
+```bash
+ALLOW_SNAPSHOT_APPLY=1 sci workflow safe_write --args-file /tmp/sci-safe-write.json --json
+```
+
+Use `brief:true` when the harnessed LLM only needs the risk class, snapshot id, check status, apply status, and next action. Use full output or `extract_snapshot_artifacts` only when the diff/check details are needed.
+
 ## Operator rule
 
 For SCI maintenance work, prefer SCI CLI workflow calls before raw shell probing when the question is about:
@@ -76,7 +97,8 @@ For SCI maintenance work, prefer SCI CLI workflow calls before raw shell probing
 - definition/reference discovery;
 - graph/fallback context;
 - preview-first patch checks;
-- deterministic structural matching and rewrite planning through ast-grep-backed workflows.
+- deterministic structural matching and rewrite planning through ast-grep-backed workflows;
+- guarded safe writes through `safe_write` when a reviewed patch is ready to validate or apply.
 
 Raw shell tools are still appropriate for git status, deterministic validation commands, AK operations, and cases where SCI does not yet expose the needed primitive.
 
