@@ -10,7 +10,7 @@
  * All actual analysis work is delegated to the unified core analyzer.
  */
 
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { CoreError } from '../core/errors.js';
@@ -1359,6 +1359,48 @@ export class MCPAdapter {
         return out.length ? out : ['.'];
     }
 
+    private async runStructuralProcess(
+        command: string,
+        args: string[],
+        options: { timeoutMs: number; maxBuffer: number }
+    ): Promise<{ status: number | null; stdout: string; stderr: string; timedOut: boolean }> {
+        return await new Promise((resolve) => {
+            const proc = spawn(command, args, { cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe'] });
+            let stdout = '';
+            let stderr = '';
+            let settled = false;
+            const finish = (status: number | null, timedOut: boolean) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                resolve({ status, stdout, stderr, timedOut });
+            };
+            const append = (kind: 'stdout' | 'stderr', chunk: unknown) => {
+                const next = kind === 'stdout' ? stdout + String(chunk) : stderr + String(chunk);
+                if (Buffer.byteLength(next, 'utf8') > options.maxBuffer) {
+                    stderr += `\nprocess output exceeded ${options.maxBuffer} bytes`;
+                    proc.kill('SIGTERM');
+                    finish(null, false);
+                    return;
+                }
+                if (kind === 'stdout') stdout = next;
+                else stderr = next;
+            };
+            const timer = setTimeout(() => {
+                stderr += `\nprocess timed out after ${options.timeoutMs}ms`;
+                proc.kill('SIGTERM');
+                finish(null, true);
+            }, options.timeoutMs);
+            proc.stdout?.on('data', (chunk) => append('stdout', chunk));
+            proc.stderr?.on('data', (chunk) => append('stderr', chunk));
+            proc.on('error', (error) => {
+                stderr += error instanceof Error ? error.message : String(error);
+                finish(null, false);
+            });
+            proc.on('close', (code) => finish(code, false));
+        });
+    }
+
     private parseAstGrepJsonLines(stdout: string): any[] {
         const trimmed = String(stdout || '').trim();
         if (!trimmed) return [];
@@ -1395,12 +1437,9 @@ export class MCPAdapter {
             return handleAdapterError(error, 'mcp');
         }
         const maxResults = Math.max(1, Math.min(1000, Number(args?.maxResults || 50)));
-        const proc = spawnSync(bin, ['run', '--pattern', pattern, '--lang', language, '--json=stream', ...paths], {
-            cwd: process.cwd(),
-            stdio: 'pipe',
-            encoding: 'utf8',
+        const proc = await this.runStructuralProcess(bin, ['run', '--pattern', pattern, '--lang', language, '--json=stream', ...paths], {
             maxBuffer: 8 * 1024 * 1024,
-            timeout: 30_000,
+            timeoutMs: 30_000,
         });
         if (proc.status !== 0 && String(proc.stderr || '').trim()) {
             const payload = {
@@ -1524,10 +1563,10 @@ export class MCPAdapter {
         const maxResults = Math.max(1, Math.min(2000, Number(args?.maxResults || 200)));
         const commands = Array.isArray(args?.commands) ? (args.commands as string[]) : ['bun run build:tsc'];
         const timeoutSec = typeof args?.timeoutSec === 'number' ? args.timeoutSec : 240;
-        const proc = spawnSync(
+        const proc = await this.runStructuralProcess(
             bin,
             ['run', '--pattern', pattern, '--rewrite', rewrite, '--lang', language, '--json=stream', ...paths],
-            { cwd: process.cwd(), stdio: 'pipe', encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: 30_000 }
+            { maxBuffer: 16 * 1024 * 1024, timeoutMs: 30_000 }
         );
         if (proc.status !== 0 && String(proc.stderr || '').trim()) {
             const payload = { ok: false, code: 'ast_grep_failed', message: String(proc.stderr || '').trim().slice(0, 4000) };

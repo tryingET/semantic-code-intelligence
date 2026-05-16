@@ -19,7 +19,7 @@ function runCli(args: string[]): Promise<CliResult> {
     const bun = process.env.BUN_PATH || `${process.env.HOME}/.bun/bin/bun`;
     return new Promise((resolve) => {
         const proc = spawn(bun, ['run', 'src/servers/cli.ts', ...args], {
-            env: { ...process.env, SILENT_MODE: 'true', STDIO_MODE: 'true' },
+            env: { ...process.env, SILENT_MODE: 'true', STDIO_MODE: 'true', ALLOW_SNAPSHOT_APPLY: '' },
             stdio: ['ignore', 'pipe', 'pipe'],
         });
         let stdout = '';
@@ -100,6 +100,15 @@ describe('Alpha MVP CLI fallback parity', () => {
         expect(search.payload.matches.length).toBeGreaterThan(0);
         expect(search.payload.matches.length).toBeLessThanOrEqual(5);
 
+        const defaultPathSearch = await workflow('structural_search', {
+            language: 'typescript',
+            pattern: 'workflow($NAME, $ARGS)',
+            maxResults: 1,
+        });
+        expect(defaultPathSearch.payload.ok).toBe(true);
+        expect(defaultPathSearch.payload.paths).toEqual(['.']);
+        expect(defaultPathSearch.payload.matches.length).toBeLessThanOrEqual(1);
+
         const checked = await workflow('structural_patch_checks', {
             language: 'typescript',
             pattern: 'const patchPlanningTarget = $VALUE',
@@ -116,6 +125,19 @@ describe('Alpha MVP CLI fallback parity', () => {
         expect(checked.payload.checks?.ok).toBe(true);
         expect(checked.payload.applied).toBe(false);
         expect(checked.payload.patch?.replacementCount).toBeGreaterThan(0);
+
+        const refusedApply = await workflow('structural_patch_checks', {
+            language: 'typescript',
+            pattern: 'const patchPlanningTarget = $VALUE',
+            rewrite: 'const structuralPatchTarget = $VALUE',
+            paths: [target],
+            commands: ['true'],
+            timeoutSec: 30,
+            apply: true,
+        });
+        expect(refusedApply.payload.ok).toBe(false);
+        expect(refusedApply.payload.applied).toBe(false);
+        expect(refusedApply.payload.applyResult?.message).toBe('ALLOW_SNAPSHOT_APPLY=1 required');
 
         const after = await Bun.file(target).text();
         expect(after).toBe(before);
