@@ -174,6 +174,7 @@ export class MCPAdapter {
                     name === 'patch_checks_in_snapshot' ||
                     name === 'structural_patch_checks' ||
                     name === 'apply_after_checks' ||
+                    name === 'safe_write' ||
                     name === 'apply_snapshot' ||
                     name === 'rename_safely' ||
                     name === 'workflow_safe_rename' ||
@@ -226,6 +227,8 @@ export class MCPAdapter {
                         return this.handleExtractSnapshotArtifacts(arguments_);
                     case 'apply_after_checks':
                         return this.handleApplyAfterChecks(arguments_);
+                    case 'safe_write':
+                        return this.handleSafeWrite(arguments_);
                     case 'workflow_explore_symbol':
                         return this.handleWorkflowExploreSymbol(arguments_);
                     case 'explore_symbol_impact':
@@ -760,6 +763,113 @@ export class MCPAdapter {
         }
         const payload = { snapshot, links, status, contents };
         return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: !status.exists };
+    }
+
+    private classifyPatchRisk(patch: string) {
+        const files = new Set<string>();
+        let deletions = 0;
+        for (const line of patch.split(/\r?\n/)) {
+            let m = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
+            if (m) {
+                files.add(m[1]);
+                files.add(m[2]);
+            }
+            m = line.match(/^\+\+\+\s+b\/(.+)$/) || line.match(/^---\s+a\/(.+)$/);
+            if (m) files.add(m[1]);
+            if (line.startsWith('deleted file mode') || line.startsWith('*** Delete File:')) deletions += 1;
+        }
+        const list = Array.from(files).filter((file) => file !== '/dev/null');
+        const docsOnly = list.length > 0 && list.every((file) => /(^docs\/|\.md$)/.test(file));
+        const testsOnly = list.length > 0 && list.every((file) => /(^tests\/|\.test\.|\.spec\.)/.test(file));
+        const source = list.some((file) => /^src\//.test(file));
+        const level = deletions > 0 || list.length > 10 ? 'high' : source ? 'medium' : 'low';
+        return {
+            level,
+            category: docsOnly ? 'docs_only' : testsOnly ? 'tests_only' : source ? 'source_change' : 'mixed_change',
+            files: list,
+            fileCount: list.length,
+            deletions,
+        };
+    }
+
+
+    private async handleSafeWrite(args: Record<string, any>) {
+        const patch = String(args?.patch || '').trim();
+        if (!patch) return { content: [{ type: 'text', text: 'patch required' }], isError: true };
+        const commands = Array.isArray(args?.commands) ? (args.commands as string[]) : ['bun run typecheck'];
+        const timeoutSec = typeof args?.timeoutSec === 'number' ? args.timeoutSec : 240;
+        const apply = args?.apply === true;
+        const brief = args?.brief === true;
+        const risk = this.classifyPatchRisk(patch);
+        const requested = typeof args?.snapshot === 'string' ? String(args.snapshot).trim() : '';
+        let snapshot: string | undefined = requested || undefined;
+        if (!snapshot) {
+            const snapRes = await this.handleGetSnapshot({ preferExisting: false });
+            const snapTxt = this.safeParseContent(snapRes);
+            snapshot = (snapTxt?.snapshot || snapTxt?.id) as string | undefined;
+        }
+        if (!snapshot) return { content: [{ type: 'text', text: 'failed to create snapshot' }], isError: true };
+
+        const stage = await this.handleProposePatch({ snapshot, patch });
+        const stageOut = this.safeParseContent(stage) || {};
+        const checks = await this.handleRunChecks({ snapshot, commands, timeoutSec });
+        const checksOut = this.safeParseContent(checks) || {};
+        let applied = false;
+        let applyResult: any = null;
+        if (apply) {
+            if (process.env.ALLOW_SNAPSHOT_APPLY === '1' && checksOut?.ok) {
+                const app = await this.handleApplySnapshot({ snapshot, check: false });
+                applyResult = this.safeParseContent(app) || {};
+                applied = !!applyResult?.ok;
+            } else {
+                applyResult = {
+                    ok: false,
+                    message: process.env.ALLOW_SNAPSHOT_APPLY === '1' ? 'checks_failed' : 'ALLOW_SNAPSHOT_APPLY=1 required',
+                };
+            }
+        }
+        const snapshotArtifacts = this.structuralSnapshotLinks(snapshot);
+        const ok = !!stageOut?.accepted && !!checksOut?.ok && (apply ? applied : true);
+        const rollback = {
+            available: !!snapshot,
+            strategy: 'reverse_patch',
+            command: `git apply -R .ontology/snapshots/${snapshot}/overlay.diff`,
+            artifact: snapshotArtifacts.overlayDiff,
+        };
+        const verification = {
+            staged: !!stageOut?.accepted,
+            checksPassed: !!checksOut?.ok,
+            applyGuardSatisfied: !apply || process.env.ALLOW_SNAPSHOT_APPLY === '1',
+            applied,
+        };
+        const summary = {
+            ok,
+            workflow: 'safe_write',
+            mode: apply ? 'apply_after_checks' : 'preview_validate',
+            risk,
+            snapshot,
+            checks: { ok: !!checksOut?.ok, commands, elapsedMs: checksOut?.elapsedMs || null },
+            applied,
+            next: applied ? 'review git diff; rollback artifact available' : 'inspect snapshot artifact; set apply:true with ALLOW_SNAPSHOT_APPLY=1 only when ready',
+        };
+        const payload = brief
+            ? summary
+            : {
+                  ...summary,
+                  stage: stageOut,
+                  verification,
+                  snapshotArtifacts,
+                  rollback,
+                  applyResult,
+                  checks: { ...summary.checks, output: String(checksOut?.output || '').slice(-4000) },
+                  next_actions: applied
+                      ? ['Review working tree diff', `Rollback if needed: ${rollback.command}`]
+                      : [
+                            `Open snapshot diff: ${snapshotArtifacts.overlayDiff}`,
+                            'Re-run safe_write with apply:true only after review and with ALLOW_SNAPSHOT_APPLY=1',
+                        ],
+              };
+        return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: false };
     }
 
     private async handleApplyAfterChecks(args: Record<string, any>) {

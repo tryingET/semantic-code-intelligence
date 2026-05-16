@@ -33,6 +33,7 @@ const alphaMvpTools = [
     'run_checks',
     'structural_search',
     'structural_patch_checks',
+    'safe_write',
 ];
 
 async function callTool(base: string, name: string, args: Record<string, unknown>) {
@@ -69,6 +70,8 @@ describe('Alpha MVP tool contract', () => {
         expect(specs.get('structural_patch_checks')?.inputSchema?.properties?.apply?.type).toBe('boolean');
         expect(specs.get('structural_patch_checks')?.inputSchema?.properties?.timeoutMs?.type).toBe('number');
         expect(specs.get('structural_patch_checks')?.inputSchema?.properties?.maxBuffer?.type).toBe('number');
+        expect(specs.get('safe_write')?.inputSchema?.properties?.apply?.type).toBe('boolean');
+        expect(specs.get('safe_write')?.inputSchema?.properties?.brief?.type).toBe('boolean');
     });
 });
 

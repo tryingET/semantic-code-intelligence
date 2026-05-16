@@ -65,7 +65,7 @@ describe('Alpha MVP CLI fallback parity', () => {
         expect(search.payload.results.length).toBeLessThanOrEqual(5);
     }, 60000);
 
-    test('generic workflow command executes preview-first patch checks without mutating workspace', async () => {
+    test('generic workflow command executes preview-first patch checks and safe_write without mutating workspace', async () => {
         const before = await Bun.file(patchPlanningTarget).text();
         expect(before).not.toContain(patchPlanningMarker);
 
@@ -78,6 +78,30 @@ describe('Alpha MVP CLI fallback parity', () => {
         expect(checked.payload.ok).toBe(true);
         expect(checked.payload.stage?.accepted).toBe(true);
         expect(checked.payload.checks?.ok).toBe(true);
+
+        const safePreview = await workflow('safe_write', {
+            patch: patchPlanningDiff,
+            commands: ['true'],
+            timeoutSec: 30,
+            brief: true,
+        });
+        expect(safePreview.payload.workflow).toBe('safe_write');
+        expect(safePreview.payload.ok).toBe(true);
+        expect(safePreview.payload.mode).toBe('preview_validate');
+        expect(safePreview.payload.applied).toBe(false);
+        expect(safePreview.payload.risk.category).toBe('docs_only');
+
+        const refusedApply = await workflow('safe_write', {
+            patch: patchPlanningDiff,
+            commands: ['true'],
+            timeoutSec: 30,
+            apply: true,
+        });
+        expect(refusedApply.payload.workflow).toBe('safe_write');
+        expect(refusedApply.payload.ok).toBe(false);
+        expect(refusedApply.payload.applied).toBe(false);
+        expect(refusedApply.payload.applyResult?.message).toBe('ALLOW_SNAPSHOT_APPLY=1 required');
+        expect(refusedApply.payload.rollback?.command).toContain('git apply -R');
 
         const after = await Bun.file(patchPlanningTarget).text();
         expect(after).toBe(before);

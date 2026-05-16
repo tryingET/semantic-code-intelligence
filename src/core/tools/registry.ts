@@ -592,6 +592,25 @@ export class ToolRegistry {
             },
         },
         {
+            name: 'safe_write',
+            title: 'Safe Write (Preview → Checks → Guarded Apply)',
+            description:
+                'Use for: autonomous-safe write path. Stages a patch, runs checks, optionally applies only with apply:true and ALLOW_SNAPSHOT_APPLY=1, and returns risk/rollback/artifact evidence.',
+            category: 'workflow',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    patch: { type: 'string' },
+                    snapshot: { type: 'string' },
+                    commands: { type: 'array', items: { type: 'string' }, default: ['bun run typecheck'] },
+                    timeoutSec: { type: 'number', default: 240 },
+                    apply: { type: 'boolean', default: false },
+                    brief: { type: 'boolean', default: false },
+                },
+                required: ['patch'],
+            },
+        },
+        {
             name: 'apply_after_checks',
             title: 'Apply After Checks',
             description:
