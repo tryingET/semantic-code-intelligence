@@ -26,6 +26,14 @@ type CliCallEvidence = {
 };
 
 const calls: CliCallEvidence[] = [];
+const sciFirstDiscoveryTools = [
+    'read_file',
+    'text_search',
+    'symbol_search',
+    'find_definition',
+    'find_references',
+    'graph_expand',
+] as const;
 
 function compactSample(value: unknown): unknown {
     const cloned = JSON.parse(JSON.stringify(value));
@@ -117,6 +125,9 @@ callCliWorkflow(
     'Use SCI CLI graph expansion/fallback shape for the dogfood script.'
 );
 
+const discoveryCallNames = calls.map((call) => call.name);
+const sciFirstDiscoveryComplete = sciFirstDiscoveryTools.every((tool, index) => discoveryCallNames[index] === tool);
+
 const patchCheck = callCliWorkflow(
     'patch_checks_in_snapshot',
     { patch, commands: ['true'], timeoutSec: 30 },
@@ -130,6 +141,7 @@ const evidence = {
     schema: 'semantic-code-intelligence.self_hosted_cli_dogfood.v1',
     ok:
         calls.every((call) => call.success) &&
+        sciFirstDiscoveryComplete &&
         workspaceUnchanged &&
         typeof productPosture?.content === 'string' &&
         productPosture.content.includes('Current alpha evidence') &&
@@ -149,13 +161,21 @@ const evidence = {
     calls,
     selfHosting: {
         primarySurface: 'semantic-code-intelligence workflow <tool> --args <json> --json',
+        sciFirstDiscovery: {
+            complete: sciFirstDiscoveryComplete,
+            expectedFirstTools: [...sciFirstDiscoveryTools],
+            actualFirstTools: discoveryCallNames.slice(0, sciFirstDiscoveryTools.length),
+            rule: 'Use SCI workflow discovery/navigation before raw shell reads/searches when SCI exposes the primitive.',
+        },
         workspaceUnchanged,
         rawShellAvoidedFor: ['file read', 'text search', 'symbol search', 'definition lookup', 'reference lookup', 'graph expansion', 'patch check'],
+        rawShellStillAllowedFor: ['git status/diff hygiene', 'AK task/evidence/direction operations', 'deterministic validation commands'],
         limitation: 'CLI workflow invocations are process-local; use composite workflow tools for multi-step snapshot state.',
     },
     interpretation: {
         proves: [
             'SCI CLI can be used as a practical self-hosted navigation and patch-planning loop on the SCI repo.',
+            'The self-hosted loop starts with SCI discovery/navigation before snapshot patch planning.',
             'CLI workflow stdout remains machine-readable JSON for harness consumption.',
             'Preview-first patch checks can validate a proposed change without mutating the working tree.',
         ],

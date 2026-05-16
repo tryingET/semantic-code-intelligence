@@ -22,7 +22,7 @@ The Phase 1 Alpha MVP validation bundle proves the first-user path for harnessed
 - CLI fallback can execute machine-readable tool calls through `semantic-code-intelligence workflow <tool> --args <json> --json`;
 - CLI fallback covers ast-grep-backed `structural_search` and preview-first `structural_patch_checks` for deterministic structural edits;
 - HTTP, direct MCP, and MCP HTTP now include structural search parity coverage when `ast-grep` is available;
-- self-hosted CLI dogfood uses SCI's own CLI workflow surface against this repo for navigation and preview-first patch planning;
+- self-hosted CLI dogfood uses SCI's own CLI workflow surface against this repo for SCI-first navigation/discovery and preview-first patch planning;
 - self-hosted structural dogfood records machine-readable evidence for structural search, snapshot patch artifacts, default tsgo checks, apply-guard refusal, and unchanged working tree posture;
 - target-repo CLI usage is documented as an installed/global command invoked from the repository being inspected;
 - repeatable dogfood evidence can be emitted as machine-readable JSON;
@@ -109,7 +109,7 @@ Patch-planning parity currently means `propose_patch` accepts a reviewable diff 
 
 CLI fallback parity currently means local command-line execution can call the same tool registry through the generic `workflow` command with JSON arguments and machine-readable stdout. Snapshot ids are now backed by narrow metadata/artifacts under `.ontology/snapshots/<id>/`, so a later CLI process can use `extract_snapshot_artifacts` to inspect status and bounded `overlay.diff`/progress content. Multi-step mutation planning should still prefer composite workflow tools such as `patch_checks_in_snapshot` or `structural_patch_checks`; SCI has not added a large cross-process session state layer.
 
-Self-hosted CLI dogfood currently means SCI CLI is used as a practical work loop on the SCI repo itself, not only as a protocol smoke test. Structural dogfood extends that with `scripts/dogfood-structural-workflow.ts`, which writes `.test-results/structural-workflow-dogfood.json` and proves preview-first ast-grep structural workflows without adding external target-repo assumptions. CLI parity tests also prove a later CLI process can read snapshot artifacts produced by `structural_patch_checks`. See `docs/project/self-hosted-cli-dogfood.md`.
+Self-hosted CLI dogfood currently means SCI CLI is used as a practical work loop on the SCI repo itself, not only as a protocol smoke test. The self-hosted loop records `selfHosting.sciFirstDiscovery` evidence that bounded reads, text search, symbol search, definition/reference lookup, and graph context happen through SCI workflow calls before snapshot patch planning. Structural dogfood extends that with `scripts/dogfood-structural-workflow.ts`, which writes `.test-results/structural-workflow-dogfood.json` and proves preview-first ast-grep structural workflows without adding external target-repo assumptions. CLI parity tests also prove a later CLI process can read snapshot artifacts produced by `structural_patch_checks`. See `docs/project/self-hosted-cli-dogfood.md`.
 
 Target-repo CLI usage means an installed/global `semantic-code-intelligence` command is invoked from the repository being inspected, with target-repo-relative paths. SCI should not commit machine-local paths for external repositories. See `docs/project/target-repo-cli-usage.md`.
 

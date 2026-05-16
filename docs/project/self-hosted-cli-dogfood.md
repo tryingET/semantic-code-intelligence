@@ -12,6 +12,8 @@ type: "evidence"
 
 Semantic Code Intelligence should be useful for maintaining Semantic Code Intelligence itself.
 
+For harnessed LLM maintenance work, the intended loop is **SCI-first for discovery/navigation**: use SCI workflow calls for bounded reads, search, symbol lookup, definition/reference lookup, graph context, patch checks, and safe writes before falling back to raw shell reads/searches. Raw shell remains appropriate for git hygiene, AK operations, and deterministic validation commands.
+
 The self-hosted CLI dogfood loop uses the local CLI workflow surface as the primary harnessed-LLM substrate:
 
 ```bash
@@ -72,7 +74,7 @@ The structural harness calls installed `sci workflow` against this repo to:
 4. verify `apply:true` is refused without `ALLOW_SNAPSHOT_APPLY=1`;
 5. verify the working tree remains unchanged.
 
-This makes the CLI path a real self-hosted maintenance loop rather than only a protocol smoke test.
+This makes the CLI path a real self-hosted maintenance loop rather than only a protocol smoke test. The emitted evidence includes a `selfHosting.sciFirstDiscovery` block that verifies the loop starts with SCI discovery/navigation tools before patch planning.
 
 ## Safe-write dogfood
 
@@ -109,7 +111,7 @@ For SCI maintenance work, prefer SCI CLI workflow calls before raw shell probing
 - deterministic structural matching and rewrite planning through ast-grep-backed workflows;
 - guarded safe writes through `safe_write` when a reviewed patch is ready to validate, exactly verify after apply, or roll back.
 
-Raw shell tools are still appropriate for git status, deterministic validation commands, AK operations, and cases where SCI does not yet expose the needed primitive.
+Raw shell tools are still appropriate for git status/diff hygiene, deterministic validation commands, AK operations, and cases where SCI does not yet expose the needed primitive. If a session bypasses SCI for file reading or search while SCI is available, treat that as a dogfood gap to correct in the next wave.
 
 ## Known limitation
 
