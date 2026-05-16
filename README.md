@@ -47,15 +47,14 @@ Read first:
 
 ## Choosing a Tool
 
-- Ontology‑LSP: IDE navigation (definitions/references), cross‑file rename planning with preview, ontology/knowledge graph, metrics, and multi‑protocol (LSP/MCP/HTTP/CLI).
-- ast‑grep: Fast, rule‑driven structural search and codemods via CLI/editor rules; great for migrations and policy checks without project‑wide semantics.
+- Semantic Code Intelligence: harnessed-LLM and developer code navigation, definitions/references, cross-file rename planning with preview, ontology/knowledge graph enrichment, metrics, and multi-protocol MCP/HTTP/CLI/LSP adapters.
+- ast-grep: fast, rule-driven structural search and codemods via CLI/editor rules; great for migrations and policy checks without project-wide semantics.
 - Detailed comparison and interoperability tips: [docs/comparison-ast_grep.md](docs/comparison-ast_grep.md)
 
-### ⚡ **Production Performance**
-- **Response Time**: <100ms for 95% of requests (validated)
-- **Memory Usage**: ~500MB typical usage with intelligent caching
-- **Concurrent Handling**: 100+ simultaneous requests
-- **Cache Efficiency**: >90% hit rate with smart invalidation
+### ⚡ **Alpha validation status**
+- One-command Phase 1 validation: `just alpha-mvp-check`
+- Current validated first-user surface: harnessed-LLM navigation and patch-planning primitives over MCP/HTTP/CLI
+- Later-phase surfaces such as production deployment, dashboards, marketplace, analytics, and AI-training remain roadmap until promoted by evidence.
 
 ## Architecture
 
@@ -66,7 +65,7 @@ Read first:
          │ LSP Protocol
          ↓
 ┌─────────────────────────────┐
-│   ONTOLOGY LSP PROXY        │
+│   SEMANTIC CODE INTELLIGENCE        │
 │ ┌─────────────────────────┐ │
 │ │ Layer 1: Fast Search    │ │ ← Grep, Glob, LS (5ms)
 │ │ Layer 2: Tree-sitter    │ │ ← AST Analysis (50ms)
@@ -629,9 +628,9 @@ curl http://localhost:7000/concepts
 curl http://localhost:7000/patterns
 ```
 
-## ⚡ Performance Benchmarks (Production Validated)
+## ⚡ Performance Notes (Alpha Evidence)
 
-### Layer Performance (Actual Results)
+### Layer Performance (historical benchmark notes)
 
 | Layer | Target | Achieved | Performance |
 |-------|--------|----------|-------------|
@@ -653,7 +652,7 @@ curl http://localhost:7000/patterns
 | Cache Hit Rate | **>90%** | Smart invalidation | ✅ Operational |
 | Initial Indexing | **<20s** | 10K files | ✅ Optimized |
 
-### Production Resource Usage
+### Resource Usage Notes
 
 | Component | Memory | CPU | Status |
 |-----------|--------|-----|--------|
@@ -661,15 +660,15 @@ curl http://localhost:7000/patterns
 | Smart Cache | ~150MB | 2-5% | ✅ Efficient |
 | Learning System | ~75MB | 5-10% | ✅ Active |
 | Database | ~25MB | 1-3% | ✅ Optimized |
-| **Production Total** | **~500MB** | **18-38%** | ✅ **Validated** |
+| **Observed Total** | **~500MB** | **18-38%** | historical benchmark note |
 
 ### Concurrent Performance
 - **Simultaneous Requests**: 100+ (tested)
-- **Response Time P95**: <100ms (validated)
+- **Response Time P95**: <100ms (historical benchmark note; revalidate per release)
 - **Cache Efficiency**: >90% hit rate
 - **Memory Growth**: <10MB per 10K operations
 
-### Production Optimization
+### Optimization Notes
 
 #### Smart Cache Configuration
 ```yaml
@@ -867,7 +866,7 @@ tail -n 50 .ontology/logs/*.log | grep ERROR
 
 ## 🤝 Contributing
 
-We welcome contributions! The project is production-ready with comprehensive testing infrastructure.
+We welcome contributions. The project is currently alpha; start with the Phase 1 validation path before treating broader surfaces as supported.
 
 ### Quick Development Setup
 ```bash
@@ -913,47 +912,33 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## 🗓️ Roadmap
 
-### ✅ v2.0 - Unified Architecture (COMPLETE)
-- Protocol-agnostic core with thin adapters
-- 5-layer processing pipeline with performance validation
-- Learning system with team knowledge sharing
-- Production deployment with monitoring
-- **Status**: PRODUCTION READY
+### ✅ Phase 1 slice landed — Harnessed LLM Alpha MVP
+- Product posture and Alpha MVP contract documented
+- `read_file` added to the tool registry and MCP/HTTP path
+- HTTP, direct MCP adapter, and MCP HTTP protocol coverage for `read_file`
+- Repeatable dogfood harness: `bun run scripts/dogfood-alpha-mvp.ts --json`
+- One-command validation: `just alpha-mvp-check`
 
-### 🚧 v2.1 - Enhanced Ecosystem (Next)
-- Advanced plugin system for community extensions
-- Pattern marketplace for sharing team learnings
-- Multi-language support (Python, Java, Go, Rust)
-- Cross-project pattern correlation
+### 🚧 Next — Phase 1 hardening
+- Broaden direct parity coverage beyond `read_file`
+- Make dogfood evidence easier to compare across runs
+- Tighten structured error envelopes and recovery hints for harnessed LLM sessions
+- Revalidate performance claims with committed evidence rather than inherited migration notes
 
-### 🔮 v3.0 - AI-Powered Intelligence
-- LLM-powered semantic analysis and code understanding
-- Natural language refactoring commands
-- Automated code explanation generation
-- Intent-based coding interface
-
-### 🚀 v4.0 - Collaborative Intelligence
-- Organization-wide pattern libraries
-- Predictive refactoring based on team patterns
-- Real-time collaborative concept management
-- Code health scoring and recommendations
+### Later phases
+- Developer workbench / VS Code polish
+- CI and review automation
+- Productized deployment and dashboards
+- Marketplace, analytics, and AI-training features
 
 ---
 
-## 🎉 Production Status
+## Alpha Status
 
-**Semantic Code Intelligence is now production-ready** with:
-- ✅ **Unified architecture** with zero code duplication
-- ✅ **All performance targets exceeded** (86% under target times)
-- ✅ **Comprehensive testing** (100% adapter tests passing)
-- ✅ **Production deployment** validated with Docker and Kubernetes
-- ✅ **Web UI monitoring** with real-time metrics
-- ✅ **Team learning system** operational
-- ✅ **Smart caching** with file change detection
-- ✅ **CI/CD pipeline** configured and tested
+Semantic Code Intelligence is **not yet ready for production use**. It has a credible Phase 1 harnessed-LLM Alpha MVP validation path:
 
-**Built with precision for developers who demand intelligent code navigation and collaborative programming intelligence.**
+```bash
+just alpha-mvp-check
+```
 
----
-
-*Ready to deploy. Ready to learn. Ready to transform how your team writes code.*
+Treat production deployment, dashboard, marketplace, analytics, and AI-training material as roadmap unless a later AK direction/wave promotes it with evidence.
