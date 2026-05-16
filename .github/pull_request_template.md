@@ -84,7 +84,7 @@ just build-prod
 ### Code Quality
 - [ ] Code follows project coding standards
 - [ ] Biome linting passes (`bun run lint`)
-- [ ] TypeScript compilation passes (`bun run build:tsc`)
+- [ ] TypeScript compilation passes (`bun run typecheck`)
 - [ ] No console.log statements left in code
 - [ ] Error handling implemented appropriately
 

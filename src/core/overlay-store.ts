@@ -346,12 +346,12 @@ export class OverlayStore {
             const touched = Array.from(snap.touchedFiles || []);
             const tsFiles = touched.filter((f) => /\.(ts|tsx)$/.test(f));
             if (onlyTouched && touched.length > 0 && tsFiles.length > 0 && this.which('bunx')) {
-                // Prefer a quick typecheck against touched TS files
+                // Prefer a quick tsgo typecheck against touched TS files
                 const limited = tsFiles
                     .slice(0, 50) // cap to avoid overly long cmdlines
                     .map((f) => JSON.stringify(f))
                     .join(' ');
-                const quick = `bunx tsc --noEmit --pretty false ${limited}`;
+                const quick = `bunx tsgo --noEmit --pretty false ${limited}`;
                 // Prepend quick check if no explicit commands were provided
                 if (!(commands && commands.length)) {
                     cmdList = [quick];

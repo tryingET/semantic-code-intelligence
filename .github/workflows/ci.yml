@@ -62,7 +62,7 @@ jobs:
       - name: Type checking
         run: |
           echo "🔍 Type checking main project..."
-          bun run build:tsc
+          bun run typecheck
           echo "🔍 Type checking VS Code extension..."
           cd vscode-client && npm run compile
 
@@ -292,7 +292,7 @@ jobs:
       - name: Build production artifacts
         run: |
           echo "🔨 Building production artifacts..."
-          bun run build:tsc
+          bun run typecheck
           bun run build:all
 
       - name: Build VS Code extension

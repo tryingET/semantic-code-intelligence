@@ -23,7 +23,7 @@ layer mapping, safety rules, and delivery expectations.
 1) Fix bugs first
 - Prioritize broken builds, failing tests, and type errors before
   features or refactors.
-- Make CI/`tsc` green for core + adapters before expanding scope.
+- Make CI/`tsgo` primary typecheck green for core + adapters before expanding scope; keep `tsc` as fallback during rollout.
 
 2) High-signal, scoped changes
 - Target the smallest sufficient context; avoid broad churn.
@@ -82,7 +82,7 @@ At a glance (local testing quick path): use `just test` for fast, sliced + batch
 
 3) Validate
 - Build: `bun run build:all`.
-- Type‑check: `bun run build:tsc` (or `tsc`).
+- Type‑check: `bun run typecheck` (`tsgo` primary). Use `bun run typecheck:fallback` (`tsc`) only for incident recovery or compatibility diagnosis.
 - Tests (fast path): `just test` (sliced + batched). For a single slice use `just test-sliced <N> <K>`; for CI‑like locally use `just test-ci-like`. Tune with `SLICES`, `BATCH_SIZE`, `TIMEOUT`, and prefer `BUN_JOBS=1` for stability.
 - Avoid running perf/e2e unless explicitly requested.
 
@@ -240,7 +240,7 @@ curl -sS -X POST -H "content-type: application/json" -H "Mcp-Session-Id: $MCP_SE
 
 ### Quick helpers
 - `just dogfood` (stdio MCP fast path; bounded workspace)
-- `just dogfood_full` (includes quick checks via build:tsc)
+- `just dogfood_full` (includes quick checks via `bun run typecheck`)
 - `just sync-ports` to align `.env` ports (if using MCP HTTP locally)
 
 ### Optional CLI helpers (local dogfooding)

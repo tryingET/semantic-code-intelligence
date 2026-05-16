@@ -730,7 +730,7 @@ export class MCPAdapter {
     private async handleApplyAfterChecks(args: Record<string, any>) {
         const patch = String(args?.patch || '').trim();
         if (!patch) return { content: [{ type: 'text', text: 'patch required' }], isError: true };
-        const commands = Array.isArray(args?.commands) ? (args.commands as string[]) : ['bun run build:tsc'];
+        const commands = Array.isArray(args?.commands) ? (args.commands as string[]) : ['bun run typecheck'];
         const timeoutSec = typeof args?.timeoutSec === 'number' ? args.timeoutSec : 240;
         const reverse = !!args?.reverse;
         // Ensure/derive snapshot
@@ -819,7 +819,7 @@ export class MCPAdapter {
     private async handleWorkflowQuickPatchChecks(args: Record<string, any>) {
         const patch = String(args?.patch || '');
         if (!patch) return { content: [{ type: 'text', text: 'patch required' }], isError: true };
-        const commands = Array.isArray(args?.commands) ? (args.commands as string[]) : ['bun run build:tsc'];
+        const commands = Array.isArray(args?.commands) ? (args.commands as string[]) : ['bun run typecheck'];
         const timeoutSec = typeof args?.timeoutSec === 'number' ? args.timeoutSec : 240;
 
         const requested = typeof args?.snapshot === 'string' ? String(args.snapshot).trim() : '';
@@ -858,7 +858,7 @@ export class MCPAdapter {
         if (!file) {
             file = (await this.pickOntologySeedFile(oldName)) || undefined;
         }
-        const commands = Array.isArray(args?.commands) ? (args.commands as string[]) : ['bun run build:tsc'];
+        const commands = Array.isArray(args?.commands) ? (args.commands as string[]) : ['bun run typecheck'];
         const timeoutSec = typeof args?.timeoutSec === 'number' ? args.timeoutSec : 240;
         const runChecksFlag: boolean = args?.runChecks !== false;
 
@@ -1561,7 +1561,7 @@ export class MCPAdapter {
             return handleAdapterError(error, 'mcp');
         }
         const maxResults = Math.max(1, Math.min(2000, Number(args?.maxResults || 200)));
-        const commands = Array.isArray(args?.commands) ? (args.commands as string[]) : ['bun run build:tsc'];
+        const commands = Array.isArray(args?.commands) ? (args.commands as string[]) : ['bun run typecheck'];
         const timeoutSec = typeof args?.timeoutSec === 'number' ? args.timeoutSec : 240;
         const proc = await this.runStructuralProcess(
             bin,

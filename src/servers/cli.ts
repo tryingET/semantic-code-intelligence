@@ -586,7 +586,7 @@ class CLI {
             .description('Plan a safe rename, stage diff, optionally run checks inside a snapshot')
             .option('-f, --file <path>', 'Optional context file')
             .option('--no-checks', 'Skip running checks')
-            .option('--cmd <command...>', 'Commands to run (e.g., "bun run build:tsc")')
+            .option('--cmd <command...>', 'Commands to run (e.g., "bun run typecheck")')
             .option('-t, --timeout <sec>', 'Timeout seconds for checks', '240')
             .option('-j, --json', 'Print raw JSON response')
             .action(async (oldName, newName, options) => {
@@ -604,7 +604,7 @@ class CLI {
                         ? options.cmd
                         : options.cmd
                           ? [options.cmd]
-                          : ['bun run build:tsc'],
+                          : ['bun run typecheck'],
                     timeoutSec: parseInt(String(options.timeout) || '240', 10),
                 };
                 const mcp = new MCPAdapter(this.coreAnalyzer);
@@ -622,7 +622,7 @@ class CLI {
             .description('Stage a unified diff and run checks inside a snapshot (safe)')
             .option('-s, --snapshot <id>', 'Snapshot id (optional)')
             .option('-p, --patch-file <path>', 'Path to unified diff file (default: stdin)')
-            .option('--cmd <command...>', 'Commands to run (default: bun run build:tsc)')
+            .option('--cmd <command...>', 'Commands to run (default: bun run typecheck)')
             .option('-t, --timeout <sec>', 'Timeout seconds for checks', '240')
             .option('--only-touched', 'Prefer quick checks for touched files only')
             .option('-j, --json', 'Print raw JSON response')
@@ -645,7 +645,7 @@ class CLI {
                         ? options.cmd
                         : options.cmd
                           ? [options.cmd]
-                          : ['bun run build:tsc'],
+                          : ['bun run typecheck'],
                     timeoutSec: parseInt(String(options.timeout) || '240', 10),
                     onlyTouched: !!options.onlyTouched,
                 };
@@ -691,7 +691,7 @@ class CLI {
             .command('structural-patch-checks <language> <pattern> <rewrite>')
             .description('Generate an ast-grep rewrite diff, stage it in a snapshot, and run checks')
             .option('--paths <paths...>', 'Repo-relative files or directories')
-            .option('--cmd <command...>', 'Commands to run (default: bun run build:tsc)')
+            .option('--cmd <command...>', 'Commands to run (default: bun run typecheck)')
             .option('-t, --timeout <sec>', 'Timeout seconds for checks', '240')
             .option('--apply', 'Apply only when checks pass and ALLOW_SNAPSHOT_APPLY=1')
             .option('-j, --json', 'Print raw JSON response')
@@ -710,7 +710,7 @@ class CLI {
                         ? options.cmd
                         : options.cmd
                           ? [options.cmd]
-                          : ['bun run build:tsc'],
+                          : ['bun run typecheck'],
                     timeoutSec: parseInt(String(options.timeout) || '240', 10),
                     apply: !!options.apply,
                 };

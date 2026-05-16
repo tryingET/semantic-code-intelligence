@@ -243,10 +243,11 @@ This is the complete lifecycle, from project creation to daily work.
     "test": "bun test",
     "test:watch": "bun test --watch",
     "test:coverage": "bun test --coverage",
-    "typecheck": "tsc",
+    "typecheck": "tsgo --noEmit",
+    "typecheck:fallback": "tsc --noEmit",
     "lint": "biome check --write .",
     "format": "biome format --write .",
-    "check": "biome check . && tsc",
+    "check": "biome check . && tsgo --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun run src/db/migrate.ts",
     "db:studio": "drizzle-kit studio",
@@ -266,6 +267,7 @@ This is the complete lifecycle, from project creation to daily work.
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@typescript/native-preview": "latest",
     "@biomejs/biome": "^1.9.3",
     "drizzle-kit": "^0.23.0",
     "fast-check": "^3.19.0",
@@ -564,7 +566,7 @@ jobs:
 - **SLI latency**: p95 `< 100ms` on `/api/*` (Bun is fast!)
 - **Availability**: `99.9%`
 - **Error budget policy**: Freeze feature deploys if budget < 25% until recovered
-- **Type coverage**: Minimum 95% type coverage (measured by `tsc --noEmit`)
+- **Type coverage**: Minimum 95% type coverage (measured by `tsgo --noEmit`)
 - **Test coverage**: Minimum 80% line coverage
 
 ---

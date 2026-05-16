@@ -380,7 +380,7 @@
       symbol_search: `symbol_search({\n  query: "PlannerLayer",\n  lang: "typescript",\n  path_hint: "src/layers",\n  snapshot\n})`,
       ast_query: `ast_query({\n  language: "typescript",\n  query: "(class_declaration name: (type_identifier) @name)",\n  glob: "src/**/*.ts",\n  snapshot\n})`,
       graph_expand: `graph_expand({\n  symbol: "UnifiedAnalyzer",\n  edges: ["imports", "callers", "callees"],\n  depth: 2,\n  limit: 80,\n  snapshot\n})`,
-      propose_patch: `propose_patch({\n  diff: "--- a/src/...",\n  run_checks: ["bun test", "bun run build:tsc"],\n  snapshot\n})\n→ preview + validation evidence, not hidden mutation`
+      propose_patch: `propose_patch({\n  diff: "--- a/src/...",\n  run_checks: ["bun test", "bun run typecheck"],\n  snapshot\n})\n→ preview + validation evidence, not hidden mutation`
     };
 
     const layerList = document.querySelector('#layerList');

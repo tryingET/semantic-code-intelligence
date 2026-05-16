@@ -5,7 +5,7 @@
  *  - explore_codebase (off/on)
  *  - plan_rename (preview)
  *  - get_snapshot + propose_patch (no run_checks by default)
- * Optional (--full): run workflow_quick_patch_checks with build:tsc.
+ * Optional (--full): run workflow_quick_patch_checks with typecheck.
  */
 
 import { MCPAdapter } from '../src/adapters/mcp-adapter.js';
@@ -97,9 +97,9 @@ async function main() {
 
   // Optional full checks (fast default)
   if (full) {
-    log('workflow_quick_patch_checks (build:tsc) ...');
+    log('workflow_quick_patch_checks (typecheck) ...');
     t0(times, 'quick_checks');
-    const quick = await mcp.handleToolCall('workflow_quick_patch_checks', { patch, commands: ['bun run build:tsc'], timeoutSec: 180 });
+    const quick = await mcp.handleToolCall('workflow_quick_patch_checks', { patch, commands: ['bun run typecheck'], timeoutSec: 180 });
     t1(times, 'quick_checks');
     const quickParsed = await parse(quick);
     log(`done in ${ms(times['quick_checks'])}: ok=${!!quickParsed?.ok}, snapshot=${quickParsed?.snapshot}`);

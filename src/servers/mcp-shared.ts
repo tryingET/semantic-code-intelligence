@@ -20,7 +20,7 @@ export function registerCommonPrompts(server: Server): void {
             p.toLowerCase().includes((value || '').toLowerCase())
         );
     const suggestCommands = (value: string) =>
-        ['bun run build:all', 'bun test -q', 'bun run build:tsc'].filter((c) =>
+        ['bun run build:all', 'bun test -q', 'bun run typecheck'].filter((c) =>
             c.toLowerCase().startsWith((value || '').toLowerCase())
         );
 

@@ -58,7 +58,7 @@ export class ToolRegistry {
                     oldName: { type: 'string', description: 'Original symbol name' },
                     newName: { type: 'string', description: 'New symbol name' },
                     file: { type: 'string', description: 'Optional context file URI' },
-                    commands: { type: 'array', items: { type: 'string' }, default: ['bun run build:tsc'] },
+                    commands: { type: 'array', items: { type: 'string' }, default: ['bun run typecheck'] },
                     timeoutSec: {
                         type: 'number',
                         default: 240,
@@ -98,7 +98,7 @@ export class ToolRegistry {
                 properties: {
                     patch: { type: 'string', description: 'Unified diff (git format) to stage' },
                     snapshot: { type: 'string', description: 'Optional snapshot id; if absent a snapshot is created' },
-                    commands: { type: 'array', items: { type: 'string' }, default: ['bun run build:tsc'] },
+                    commands: { type: 'array', items: { type: 'string' }, default: ['bun run typecheck'] },
                     onlyTouched: {
                         type: 'boolean',
                         description: 'Restrict checks to touched files when possible',
@@ -160,7 +160,7 @@ export class ToolRegistry {
                     pattern: { type: 'string', description: 'ast-grep pattern' },
                     rewrite: { type: 'string', description: 'ast-grep rewrite template' },
                     paths: { type: 'array', items: { type: 'string' }, description: 'Repo-relative files or directories' },
-                    commands: { type: 'array', items: { type: 'string' }, default: ['bun run build:tsc'] },
+                    commands: { type: 'array', items: { type: 'string' }, default: ['bun run typecheck'] },
                     timeoutSec: { type: 'number', default: 240 },
                     apply: { type: 'boolean', default: false },
                     maxResults: { type: 'number', default: 200 },
@@ -504,7 +504,7 @@ export class ToolRegistry {
                     oldName: { type: 'string' },
                     newName: { type: 'string' },
                     file: { type: 'string' },
-                    commands: { type: 'array', items: { type: 'string' }, default: ['bun run build:tsc'] },
+                    commands: { type: 'array', items: { type: 'string' }, default: ['bun run typecheck'] },
                     timeoutSec: {
                         type: 'number',
                         default: 240,
@@ -544,7 +544,7 @@ export class ToolRegistry {
                 properties: {
                     patch: { type: 'string' },
                     snapshot: { type: 'string' },
-                    commands: { type: 'array', items: { type: 'string' }, default: ['bun run build:tsc'] },
+                    commands: { type: 'array', items: { type: 'string' }, default: ['bun run typecheck'] },
                     timeoutSec: {
                         type: 'number',
                         default: 240,
@@ -596,7 +596,7 @@ export class ToolRegistry {
                 properties: {
                     patch: { type: 'string' },
                     snapshot: { type: 'string' },
-                    commands: { type: 'array', items: { type: 'string' }, default: ['bun run build:tsc'] },
+                    commands: { type: 'array', items: { type: 'string' }, default: ['bun run typecheck'] },
                     timeoutSec: { type: 'number', default: 240 },
                     reverse: { type: 'boolean', default: false },
                 },

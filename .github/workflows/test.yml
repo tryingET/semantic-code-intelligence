@@ -37,7 +37,7 @@ jobs:
       run: bun install --frozen-lockfile
     
     - name: Type checking
-      run: bun run build:tsc
+      run: bun run typecheck
     
     - name: Run core tests
       run: |

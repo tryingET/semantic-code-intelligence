@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Dogfood: Harden uriToPath() to support file://workspace and subpaths.
- * Flow: compute diff -> get_snapshot -> propose_patch -> run_checks (tsc) -> apply_snapshot.
+ * Flow: compute diff -> get_snapshot -> propose_patch -> run_checks (tsgo/typecheck) -> apply_snapshot.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -81,7 +81,7 @@ async function main() {
   const stageParsed = await parse(stage);
   if (!stageParsed?.accepted) throw new Error('propose_patch was not accepted');
 
-  let checks = await mcp.handleToolCall('run_checks', { snapshot: snapshotId, commands: ['bun run build:tsc'], timeoutSec: 180 });
+  let checks = await mcp.handleToolCall('run_checks', { snapshot: snapshotId, commands: ['bun run typecheck'], timeoutSec: 180 });
   let checksParsed = await parse(checks);
   if (!checksParsed?.ok) {
     // Add a quick fix for fs promises misuse in MCP adapter (existsSync/readFileSync -> async)
@@ -101,7 +101,7 @@ async function main() {
     const stage2Parsed = await parse(stage2);
     if (!stage2Parsed?.accepted) throw new Error('mcp adapter patch not accepted');
     // Re-run checks
-    checks = await mcp.handleToolCall('run_checks', { snapshot: snapshotId, commands: ['bun run build:tsc'], timeoutSec: 180 });
+    checks = await mcp.handleToolCall('run_checks', { snapshot: snapshotId, commands: ['bun run typecheck'], timeoutSec: 180 });
     checksParsed = await parse(checks);
     if (!checksParsed?.ok) {
       console.error(checksParsed?.output || 'checks failed');

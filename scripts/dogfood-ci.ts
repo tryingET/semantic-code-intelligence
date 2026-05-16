@@ -92,7 +92,7 @@ async function main() {
   t0('patch_checks');
   const patchResult = await callTool(base, {
     name: 'patch_checks_in_snapshot',
-    arguments: { patch, commands: ['bun run build:tsc'], timeoutSec: 120 },
+    arguments: { patch, commands: ['bun run typecheck'], timeoutSec: 120 },
   });
   t1('patch_checks');
 
