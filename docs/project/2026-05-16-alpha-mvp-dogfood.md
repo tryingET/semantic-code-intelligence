@@ -83,3 +83,9 @@ bun run scripts/dogfood-alpha-mvp.ts --json
 Use `--pretty` with `--json` for human-readable JSON formatting.
 
 The harness starts the local HTTP server, executes the Phase 1 navigation loop through `/api/v1/tools/call`, emits machine-readable evidence, and exits non-zero when any required call fails.
+
+The broader one-command Phase 1 validation path is:
+
+```bash
+just alpha-mvp-check
+```

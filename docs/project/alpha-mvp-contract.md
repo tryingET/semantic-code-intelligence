@@ -66,6 +66,16 @@ Alpha mutation posture is **preview first**.
 - Failed checks must preserve diagnostics and avoid claiming success.
 - Learned patterns can suggest; they do not silently enforce policy.
 
+## One-command validation
+
+Run the current Phase 1 validation bundle with:
+
+```bash
+just alpha-mvp-check
+```
+
+This command runs TypeScript typecheck, Alpha MVP HTTP/direct-MCP/MCP-HTTP tests, the repeatable dogfood harness, and migration hygiene.
+
 ## Done criteria for Phase 1
 
 Phase 1 is credible when:

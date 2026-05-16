@@ -50,6 +50,7 @@ default:
     @echo "  just symbol-map-graph <symbol> - Symbol: Mermaid graph output"
     @echo "  just plan-rename <old> <new>   - Refactor: plan rename (preview)"
     @echo "  just safe-apply [file] [-- <cmd...>] - Stage diff safely in snapshot + checks"
+    @echo "  just alpha-mvp-check     - Validate Phase 1 harnessed-LLM Alpha MVP surface"
     @echo "  just migration-hygiene   - Check migrated repo identity/local artifact hygiene"
     @echo ""
     @echo "Run 'just --list' for complete command list"
@@ -2024,6 +2025,14 @@ test-tail:
 test-stop-async:
     @echo "🛑 Stopping async test run..."
     @if [ -f .test-results/async.pid ]; then kill `cat .test-results/async.pid` 2>/dev/null || true; rm -f .test-results/async.pid; else echo "No async pid"; fi
+
+# Validate Phase 1 harnessed-LLM Alpha MVP surface
+alpha-mvp-check:
+    bun run build:tsc
+    bun test tests/alpha-mvp-tool-contract.test.ts tests/alpha-mvp-mcp-parity.test.ts tests/alpha-mvp-mcp-http-protocol.test.ts
+    mkdir -p .test-results
+    bun run scripts/dogfood-alpha-mvp.ts --json > .test-results/alpha-mvp-dogfood.json
+    ./scripts/migration-hygiene.sh
 
 # Check migrated repo identity/local artifact hygiene
 migration-hygiene:
