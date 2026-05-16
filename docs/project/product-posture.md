@@ -63,8 +63,8 @@ Phase 1 has moved from posture to a repeatable Alpha MVP validation bundle. The 
 - CLI fallback can execute machine-readable workflow calls for local verification;
 - self-hosted CLI dogfood uses SCI's own CLI workflow surface against this repo for navigation and preview-first patch planning;
 - dogfood evidence is emitted as JSON and verifies that preview-first patch planning does not mutate the working tree;
-- external dogfood now exercises the `pi-extensions` monorepo while preserving its source-owner boundary;
-- migration hygiene continues to reject pre-rename identity drift and unsafe local artifacts.
+- target-repo CLI usage is now framed as an installed/global command invoked from the repository being inspected, not as SCI knowing target repo paths;
+- migration hygiene continues to reject pre-rename identity drift, machine-local path coupling, and unsafe local artifacts.
 
 The current one-command validation paths are:
 
@@ -79,7 +79,7 @@ This is credible Alpha MVP evidence for the first-user substrate. It is not yet 
 
 Before treating Phase 1 as broadly proven, keep pressure on:
 
-- expanding external dogfood beyond the first `pi-extensions` package to additional repos/packages;
+- proving the installed/global CLI path from at least one target repo cwd without baking that target into SCI;
 - richer semantic graph behavior beyond stable fallback shapes;
 - evidence comparison across runs so regressions are easier to spot;
 - clearer performance budgets for harnessed-LLM interactive use;

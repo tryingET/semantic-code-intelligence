@@ -8,7 +8,7 @@ type: "reference"
 
 # AGENTS.md — Guidelines for Agentic Changes in this Repo
 
-This document defines how agents (and humans automating work) should
+This document defines how harnessed LLM coding sessions (and humans automating work) should
 operate in this repository. It encodes our “fix‑bugs‑first” mindset,
 layer mapping, safety rules, and delivery expectations.
 
@@ -65,20 +65,20 @@ At a glance (local testing quick path): use `just test` for fast, sliced + batch
 
 1) Triage & prepare
 - Reproduce issue locally. Capture exact commands.
-- Read VISION.md, PROJECT_STATUS.md, NEXT_STEPS.md for context.
+- For current product direction, prefer `docs/project/product-posture.md`, `docs/project/alpha-mvp-contract.md`, and `docs/project/alpha-mvp-validation.md` over older roadmap/status files.
 
 2) Implement
 - Start with the narrowest fix that restores correctness.
 - Add or adjust tests narrowly around the fix (when applicable).
 - Keep public types stable unless a breaking change is approved.
 
-### Tool‑First Editing Policy (mandatory)
+### SCI‑First Editing Policy
 
-- Stage edits via Ontology‑LSP tools (snapshots + checks), not direct file writes.
-- **Exception: markdown docs (`*.md`) should be edited directly without snapshot tooling.**
-- Use `patch_checks_in_snapshot` to propose diffs and run checks inside the snapshot; apply only when allowed.
-- Prefer HTTP tools in CI; MCP (HTTP or stdio) is fine for local dev (keep stdout clean in stdio).
-- Helpers: `just dogfood[_full]`, `just snap_diff_cli <SNAP_ID>`.
+- Prefer Semantic Code Intelligence workflows for navigation, patch planning, and validation evidence when they are practical for the change.
+- **Exception: markdown docs (`*.md`) may be edited directly when the change is textual and low risk.**
+- Use `patch_checks_in_snapshot` for preview-first diffs and checks when exercising SCI mutation planning; apply only when separately authorized.
+- Prefer MCP HTTP/stdio for client-contract validation; use the CLI as the target-repo fallback/global command surface.
+- For external repos, invoke an installed/global `semantic-code-intelligence` from the target repo cwd. Do not bake target repo paths into SCI source or docs.
 
 3) Validate
 - Build: `bun run build:all`.
@@ -130,18 +130,18 @@ Tip: for a quick workspace overview, use `eza -T -L 3 --git-ignore --only-dirs` 
 ## Incident Response
 
 - If a change breaks build/test, prioritize a `revert` or minimal hotfix
-  over new features. Follow with a post‑mortem in PROJECT_STATUS.md.
+  over new features. Capture follow-up in AK/task evidence or the relevant `docs/project/` surface.
 
 ---
 
-For additional context, read VISION.md (system concept and roadmap),
-PROJECT_STATUS.md (current state), and NEXT_STEPS.md (near‑term work).
+For current Phase 1 direction, read `docs/project/product-posture.md`,
+`docs/project/alpha-mvp-contract.md`, and `docs/project/alpha-mvp-validation.md`.
 
 
 
 ## Dogfooding (MCP‑first)
 
-Prefer dogfooding through the MCP HTTP server (Streamable HTTP) so flows match how real clients integrate. The CLI is available for convenience but MCP should be primary. When building features or fixes, validate via the registered MCP tools and prompts (workflows), not by calling internals directly.
+Prefer dogfooding through the MCP HTTP server (Streamable HTTP) when validating client integration contracts. Use the CLI for local fallback and for target-repo/global command workflows. When building features or fixes, validate via registered SCI tools and workflows rather than by calling internals directly.
 
 ### Start servers
 
