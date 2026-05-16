@@ -72,6 +72,14 @@ Overall result: **pass**.
 - It does not prove graph expansion has rich semantic edges for this repo yet.
 - It does not promote VS Code, dashboard, CI, Kubernetes, marketplace, analytics, or AI-training surfaces into Phase 1 support.
 
-## Follow-up
+## Repeatable harness
 
-The next useful hardening target is to make the dogfood workflow itself a committed repeatable test/script rather than an ad-hoc temporary script.
+The ad-hoc workflow has been promoted into a committed harness:
+
+```bash
+bun run scripts/dogfood-alpha-mvp.ts --json
+```
+
+Use `--pretty` with `--json` for human-readable JSON formatting.
+
+The harness starts the local HTTP server, executes the Phase 1 navigation loop through `/api/v1/tools/call`, emits machine-readable evidence, and exits non-zero when any required call fails.
