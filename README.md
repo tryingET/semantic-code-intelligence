@@ -16,7 +16,16 @@ Read first:
 
 - Product posture: [docs/project/product-posture.md](docs/project/product-posture.md)
 - Alpha MVP contract: [docs/project/alpha-mvp-contract.md](docs/project/alpha-mvp-contract.md)
+- Alpha MVP validation: [docs/project/alpha-mvp-validation.md](docs/project/alpha-mvp-validation.md)
 - Identity policy: [docs/project/identity-policy.md](docs/project/identity-policy.md)
+
+Validate the Phase 1 surface locally:
+
+```bash
+bun run alpha:mvp:check
+# or
+just alpha-mvp-check
+```
 
 ## 🚀 Alpha Capabilities
 

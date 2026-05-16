@@ -77,6 +77,7 @@ See `CONFIG.md` for env defaults like `FAST_STDIO_CHECKS=touched` and `SNAPSHOT_
 
 - Product posture: ./project/product-posture.md
 - Alpha MVP contract: ./project/alpha-mvp-contract.md
+- Alpha MVP validation: ./project/alpha-mvp-validation.md
 - Identity policy: ./project/identity-policy.md
 
 ## Additional Docs

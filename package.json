@@ -40,7 +40,10 @@
     "format": "bunx @biomejs/biome format --write .",
     "clean": "rimraf dist",
     "build:mcp-http": "bun build ./src/servers/mcp-http.ts --target=bun --outdir=dist/mcp-http --format=esm --external tree-sitter --external tree-sitter-typescript --external tree-sitter-javascript --external tree-sitter-python --external pg --external bun:sqlite --external express --external cors",
-    "prepack": "bun run build:all"
+    "prepack": "bun run build:all",
+    "alpha:mvp:test": "bun test tests/alpha-mvp-tool-contract.test.ts tests/alpha-mvp-mcp-parity.test.ts tests/alpha-mvp-mcp-http-protocol.test.ts",
+    "alpha:mvp:dogfood": "bun run scripts/dogfood-alpha-mvp.ts --json",
+    "alpha:mvp:check": "bun run build:tsc && bun run alpha:mvp:test && mkdir -p .test-results && bun run scripts/dogfood-alpha-mvp.ts --json > .test-results/alpha-mvp-dogfood.json && ./scripts/migration-hygiene.sh"
   },
   "keywords": [
     "lsp",

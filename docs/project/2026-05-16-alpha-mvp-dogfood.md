@@ -84,8 +84,11 @@ Use `--pretty` with `--json` for human-readable JSON formatting.
 
 The harness starts the local HTTP server, executes the Phase 1 navigation loop through `/api/v1/tools/call`, emits machine-readable evidence, and exits non-zero when any required call fails.
 
-The broader one-command Phase 1 validation path is:
+The broader one-command Phase 1 validation paths are:
 
 ```bash
+bun run alpha:mvp:check
 just alpha-mvp-check
 ```
+
+See `docs/project/alpha-mvp-validation.md` for the full validation bundle.

@@ -68,13 +68,14 @@ Alpha mutation posture is **preview first**.
 
 ## One-command validation
 
-Run the current Phase 1 validation bundle with:
+Run the current Phase 1 validation bundle with either command:
 
 ```bash
+bun run alpha:mvp:check
 just alpha-mvp-check
 ```
 
-This command runs TypeScript typecheck, Alpha MVP HTTP/direct-MCP/MCP-HTTP tests, the repeatable dogfood harness, and migration hygiene.
+These commands run TypeScript typecheck, Alpha MVP HTTP/direct-MCP/MCP-HTTP tests, the repeatable dogfood harness, and migration hygiene. See `docs/project/alpha-mvp-validation.md` for the package, Just, and CI validation surfaces.
 
 ## Done criteria for Phase 1
 
