@@ -1,3 +1,11 @@
+---
+summary: "Ontology-LSP Troubleshooting Guide for the Semantic Code Intelligence repo."
+read_when:
+  - "You need TROUBLESHOOTING information for Semantic Code Intelligence."
+  - "You are changing docs/TROUBLESHOOTING.md or related behavior."
+type: "reference"
+---
+
 # Ontology-LSP Troubleshooting Guide
 
 This comprehensive troubleshooting guide will help you diagnose and resolve common issues with the Ontology-LSP system.

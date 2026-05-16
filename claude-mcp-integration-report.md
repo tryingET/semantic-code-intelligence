@@ -1,3 +1,11 @@
+---
+summary: "Claude-MCP Integration Test Report for the Semantic Code Intelligence repo."
+read_when:
+  - "You need claude mcp integration report information for Semantic Code Intelligence."
+  - "You are changing claude-mcp-integration-report.md or related behavior."
+type: "reference"
+---
+
 # Claude-MCP Integration Test Report
 
 **Overall Result: 7/7 tests passed**

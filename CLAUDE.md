@@ -1,3 +1,11 @@
+---
+summary: "CLAUDE.md for the Semantic Code Intelligence repo."
+read_when:
+  - "You need CLAUDE information for Semantic Code Intelligence."
+  - "You are changing CLAUDE.md or related behavior."
+type: "reference"
+---
+
 # CLAUDE.md
 
 This file provides guidance for MCP-compatible coding assistants working with this repository.

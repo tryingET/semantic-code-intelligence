@@ -1,3 +1,11 @@
+---
+summary: "Claude Desktop MCP Configuration for the Semantic Code Intelligence repo."
+read_when:
+  - "You need CLAUDE DESKTOP SETUP information for Semantic Code Intelligence."
+  - "You are changing CLAUDE_DESKTOP_SETUP.md or related behavior."
+type: "reference"
+---
+
 # Claude Desktop MCP Configuration
 
 ## Quick Setup

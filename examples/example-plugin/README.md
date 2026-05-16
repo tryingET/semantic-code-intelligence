@@ -1,3 +1,11 @@
+---
+summary: "Enhanced Search Plugin for the Semantic Code Intelligence repo."
+read_when:
+  - "You need README information for Semantic Code Intelligence."
+  - "You are changing examples/example-plugin/README.md or related behavior."
+type: "reference"
+---
+
 # Enhanced Search Plugin
 
 An example Ontology-LSP plugin that demonstrates how to enhance Layer 1 (Fast Search) with advanced fuzzy matching, caching optimizations, and real-time indexing.

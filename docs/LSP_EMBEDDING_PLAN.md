@@ -1,8 +1,9 @@
 ---
-title: Embedding External Language Servers into the Core (Layer 3 Planner / Layer 4 Ontology)
-description: Architectural plan to integrate LSP semantics across all adapters (LSP, MCP, HTTP, CLI) while deprecating redundant implementations
-status: proposal
-owner: core-team
+summary: "LSP Embedding Plan (Layer 3 Planner) for the Semantic Code Intelligence repo."
+read_when:
+  - "You need LSP EMBEDDING PLAN information for Semantic Code Intelligence."
+  - "You are changing docs/LSP_EMBEDDING_PLAN.md or related behavior."
+type: "reference"
 ---
 
 # LSP Embedding Plan (Layer 3 Planner)

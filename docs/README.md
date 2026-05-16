@@ -1,3 +1,11 @@
+---
+summary: "Documentation Index for the Semantic Code Intelligence repo."
+read_when:
+  - "You need README information for Semantic Code Intelligence."
+  - "You are changing docs/README.md or related behavior."
+type: "reference"
+---
+
 # Documentation Index
 
 This repository implements a protocol‑agnostic core with thin adapters for MCP (stdio/HTTP), HTTP API, LSP, and CLI. This index highlights how to run it, where to configure it, and how to use the primary workflows.

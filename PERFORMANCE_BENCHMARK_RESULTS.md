@@ -1,3 +1,11 @@
+---
+summary: "Performance Benchmark Results for the Semantic Code Intelligence repo."
+read_when:
+  - "You need PERFORMANCE BENCHMARK RESULTS information for Semantic Code Intelligence."
+  - "You are changing PERFORMANCE_BENCHMARK_RESULTS.md or related behavior."
+type: "reference"
+---
+
 # Performance Benchmark Results
 
 ## Executive Summary

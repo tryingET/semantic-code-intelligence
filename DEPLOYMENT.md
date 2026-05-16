@@ -1,3 +1,11 @@
+---
+summary: "Deployment Configuration for the Semantic Code Intelligence repo."
+read_when:
+  - "You need DEPLOYMENT information for Semantic Code Intelligence."
+  - "You are changing DEPLOYMENT.md or related behavior."
+type: "reference"
+---
+
 # Deployment Configuration
 
 ## Quick Start

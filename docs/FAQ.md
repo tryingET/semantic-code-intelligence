@@ -1,3 +1,11 @@
+---
+summary: "Frequently Asked Questions (FAQ) for the Semantic Code Intelligence repo."
+read_when:
+  - "You need FAQ information for Semantic Code Intelligence."
+  - "You are changing docs/FAQ.md or related behavior."
+type: "reference"
+---
+
 # Frequently Asked Questions (FAQ)
 
 ## General Questions

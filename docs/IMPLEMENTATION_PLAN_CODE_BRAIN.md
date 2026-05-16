@@ -1,3 +1,11 @@
+---
+summary: "Implementation Plan — Hybrid Code Intelligence (AST + SCIP, optional LSP) for the Semantic Code Intelligence repo."
+read_when:
+  - "You need IMPLEMENTATION PLAN CODE BRAIN information for Semantic Code Intelligence."
+  - "You are changing docs/IMPLEMENTATION_PLAN_CODE_BRAIN.md or related behavior."
+type: "reference"
+---
+
 # Implementation Plan — Hybrid Code Intelligence (AST + SCIP, optional LSP)
 
 ## Objective

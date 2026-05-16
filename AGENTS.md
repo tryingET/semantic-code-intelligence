@@ -1,3 +1,11 @@
+---
+summary: "AGENTS.md — Guidelines for Agentic Changes in this Repo for the Semantic Code Intelligence repo."
+read_when:
+  - "You need AGENTS information for Semantic Code Intelligence."
+  - "You are changing AGENTS.md or related behavior."
+type: "reference"
+---
+
 # AGENTS.md — Guidelines for Agentic Changes in this Repo
 
 This document defines how agents (and humans automating work) should

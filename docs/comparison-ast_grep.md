@@ -1,3 +1,11 @@
+---
+summary: "Ontology‑LSP vs. ast-grep for the Semantic Code Intelligence repo."
+read_when:
+  - "You need comparison ast grep information for Semantic Code Intelligence."
+  - "You are changing docs/comparison-ast_grep.md or related behavior."
+type: "reference"
+---
+
 # Ontology‑LSP vs. ast-grep
 
 This document provides a practical, engineering-focused comparison between Ontology‑LSP and ast‑grep to help you choose the right tool for a given job and understand where they can complement each other.

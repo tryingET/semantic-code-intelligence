@@ -1,3 +1,11 @@
+---
+summary: "Text Search Implementation Summary for the Semantic Code Intelligence repo."
+read_when:
+  - "You need TEXT SEARCH IMPLEMENTATION SUMMARY information for Semantic Code Intelligence."
+  - "You are changing TEXT_SEARCH_IMPLEMENTATION_SUMMARY.md or related behavior."
+type: "reference"
+---
+
 # Text Search Implementation Summary
 
 ## Task Completion Report

@@ -1,3 +1,11 @@
+---
+summary: "MCP Server Error Handling Implementation for the Semantic Code Intelligence repo."
+read_when:
+  - "You need ERROR HANDLING IMPLEMENTATION information for Semantic Code Intelligence."
+  - "You are changing ERROR_HANDLING_IMPLEMENTATION.md or related behavior."
+type: "reference"
+---
+
 # MCP Server Error Handling Implementation
 
 ## Overview

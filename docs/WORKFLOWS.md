@@ -1,3 +1,11 @@
+---
+summary: "Workflows & Recipes for the Semantic Code Intelligence repo."
+read_when:
+  - "You need WORKFLOWS information for Semantic Code Intelligence."
+  - "You are changing docs/WORKFLOWS.md or related behavior."
+type: "reference"
+---
+
 # Workflows & Recipes
 
 Run high‑value workflows deterministically via the Ontology‑LSP tool surface. Prefer HTTP tools in CI; MCP (HTTP or stdio) is fine for local dev.

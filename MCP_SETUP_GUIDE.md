@@ -1,3 +1,11 @@
+---
+summary: "MCP Adapter Setup & Testing Guide for the Semantic Code Intelligence repo."
+read_when:
+  - "You need MCP SETUP GUIDE information for Semantic Code Intelligence."
+  - "You are changing MCP_SETUP_GUIDE.md or related behavior."
+type: "reference"
+---
+
 # MCP Adapter Setup & Testing Guide
 
 ## Quick Start

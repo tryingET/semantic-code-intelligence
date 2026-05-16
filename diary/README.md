@@ -1,3 +1,11 @@
+---
+summary: "Diary for the Semantic Code Intelligence repo."
+read_when:
+  - "You need README information for Semantic Code Intelligence."
+  - "You are changing diary/README.md or related behavior."
+type: "reference"
+---
+
 # Diary
 
 Repo-local session capture for KES (Knowledge Evolution System).

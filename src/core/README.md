@@ -1,3 +1,11 @@
+---
+summary: "Unified Core Architecture for the Semantic Code Intelligence repo."
+read_when:
+  - "You need README information for Semantic Code Intelligence."
+  - "You are changing src/core/README.md or related behavior."
+type: "reference"
+---
+
 # Unified Core Architecture
 
 This directory contains the unified, protocol-agnostic core architecture for the ontology-lsp project. The architecture eliminates duplicate code between protocol adapters (LSP, MCP, HTTP) and provides a single source of truth for all code analysis functionality.

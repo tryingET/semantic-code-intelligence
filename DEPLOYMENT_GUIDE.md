@@ -1,3 +1,11 @@
+---
+summary: "Ontology-LSP Production Deployment Guide for the Semantic Code Intelligence repo."
+read_when:
+  - "You need DEPLOYMENT GUIDE information for Semantic Code Intelligence."
+  - "You are changing DEPLOYMENT_GUIDE.md or related behavior."
+type: "reference"
+---
+
 # Ontology-LSP Production Deployment Guide
 
 ## 🚀 Deployment Status: PRODUCTION READY ✅

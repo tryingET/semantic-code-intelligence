@@ -1,3 +1,11 @@
+---
+summary: "MCP Tool Usage Examples for the Semantic Code Intelligence repo."
+read_when:
+  - "You need MCP TOOL EXAMPLES information for Semantic Code Intelligence."
+  - "You are changing MCP_TOOL_EXAMPLES.md or related behavior."
+type: "reference"
+---
+
 # MCP Tool Usage Examples
 
 This document provides examples of how to use each of the 16 MCP tools exposed by the Ontology LSP server.

@@ -1,3 +1,11 @@
+---
+summary: "NEXTSTEPS.md - What to Do Next for the Semantic Code Intelligence repo."
+read_when:
+  - "You need NEXT STEPS information for Semantic Code Intelligence."
+  - "You are changing NEXT_STEPS.md or related behavior."
+type: "reference"
+---
+
 # NEXT_STEPS.md - What to Do Next
 
 > **Purpose**: Forward-looking action items ONLY. No history, no completed items.

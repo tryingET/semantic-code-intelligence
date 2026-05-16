@@ -1,3 +1,11 @@
+---
+summary: "Tree-sitter Native Module Fix for Production Deployment for the Semantic Code Intelligence repo."
+read_when:
+  - "You need TREE SITTER FIX information for Semantic Code Intelligence."
+  - "You are changing TREE_SITTER_FIX.md or related behavior."
+type: "reference"
+---
+
 # Tree-sitter Native Module Fix for Production Deployment
 
 ## Problem Description

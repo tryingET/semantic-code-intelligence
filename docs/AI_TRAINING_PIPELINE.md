@@ -1,3 +1,11 @@
+---
+summary: "AI Training Pipeline - Custom Intelligence Generation for the Semantic Code Intelligence repo."
+read_when:
+  - "You need AI TRAINING PIPELINE information for Semantic Code Intelligence."
+  - "You are changing docs/AI_TRAINING_PIPELINE.md or related behavior."
+type: "reference"
+---
+
 # AI Training Pipeline - Custom Intelligence Generation
 
 ## Overview

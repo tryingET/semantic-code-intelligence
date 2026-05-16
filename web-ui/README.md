@@ -1,3 +1,11 @@
+---
+summary: "Ontology-LSP Web UI Dashboard for the Semantic Code Intelligence repo."
+read_when:
+  - "You need README information for Semantic Code Intelligence."
+  - "You are changing web-ui/README.md or related behavior."
+type: "reference"
+---
+
 # Ontology-LSP Web UI Dashboard
 
 A real-time monitoring dashboard for the Ontology-LSP system, providing insights into system health, performance metrics, and learning statistics.

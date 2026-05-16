@@ -1,3 +1,11 @@
+---
+summary: "Semantic Code Intelligence: Ontology-Enhanced Programming Companion for the Semantic Code Intelligence repo."
+read_when:
+  - "You need README information for Semantic Code Intelligence."
+  - "You are changing README.md or related behavior."
+type: "reference"
+---
+
 # Semantic Code Intelligence: Ontology-Enhanced Programming Companion
 
 🎉 **PRODUCTION READY** - A unified code intelligence system that transforms programming from passive analysis to active intelligence. Built with protocol-agnostic core architecture serving LSP, MCP (Model Context Protocol), and HTTP interfaces.

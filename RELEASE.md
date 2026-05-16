@@ -1,3 +1,11 @@
+---
+summary: "Release Checklist for the Semantic Code Intelligence repo."
+read_when:
+  - "You need RELEASE information for Semantic Code Intelligence."
+  - "You are changing RELEASE.md or related behavior."
+type: "reference"
+---
+
 # Release Checklist
 
 This checklist describes how to build, tag, publish, and deploy a new release of Ontology‑LSP.

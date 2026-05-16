@@ -1,3 +1,11 @@
+---
+summary: "Contributing to Ontology LSP for the Semantic Code Intelligence repo."
+read_when:
+  - "You need CONTRIBUTING information for Semantic Code Intelligence."
+  - "You are changing CONTRIBUTING.md or related behavior."
+type: "reference"
+---
+
 # Contributing to Ontology LSP
 
 Thank you for your interest in contributing to Ontology LSP! This document provides guidelines and instructions for contributing to the project.

@@ -1,3 +1,11 @@
+---
+summary: "Software Principles for the Semantic Code Intelligence repo."
+read_when:
+  - "You need software principles information for Semantic Code Intelligence."
+  - "You are changing docs/software-principles.md or related behavior."
+type: "reference"
+---
+
 ## Principles for a high‑quality software foundation (one page)
 1) **Outcome‑driven & constraint‑aware** — make objectives, **MUST/MUST‑NOT** rules, and risk bounds explicit up front.
 2) **Contract‑first boundaries** — describe sync APIs with **OpenAPI**; async channels with **AsyncAPI**; keep invariants & SLOs in those contracts.

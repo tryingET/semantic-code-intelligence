@@ -1,3 +1,11 @@
+---
+summary: "Troubleshooting Quick Reference for the Semantic Code Intelligence repo."
+read_when:
+  - "You need TROUBLESHOOTING QUICK REFERENCE information for Semantic Code Intelligence."
+  - "You are changing docs/TROUBLESHOOTING_QUICK_REFERENCE.md or related behavior."
+type: "reference"
+---
+
 # Troubleshooting Quick Reference
 
 This is a condensed reference for common troubleshooting commands. For complete documentation, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).

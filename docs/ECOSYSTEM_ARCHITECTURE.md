@@ -1,3 +1,11 @@
+---
+summary: "Ecosystem Architecture - Complete Vision for the Semantic Code Intelligence repo."
+read_when:
+  - "You need ECOSYSTEM ARCHITECTURE information for Semantic Code Intelligence."
+  - "You are changing docs/ECOSYSTEM_ARCHITECTURE.md or related behavior."
+type: "reference"
+---
+
 # Ecosystem Architecture - Complete Vision
 
 ## Overview

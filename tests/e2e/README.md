@@ -1,3 +1,11 @@
+---
+summary: "End-to-End Integration Tests for the Semantic Code Intelligence repo."
+read_when:
+  - "You need README information for Semantic Code Intelligence."
+  - "You are changing tests/e2e/README.md or related behavior."
+type: "reference"
+---
+
 # End-to-End Integration Tests
 
 This directory contains comprehensive end-to-end tests that validate the Ontology-LSP system against real-world codebases. These tests ensure the system works correctly with actual open-source projects and meets performance requirements under realistic conditions.

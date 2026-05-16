@@ -1,3 +1,11 @@
+---
+summary: "Layer 4 StoragePort for the Semantic Code Intelligence repo."
+read_when:
+  - "You need STORAGE PORT information for Semantic Code Intelligence."
+  - "You are changing docs/STORAGE_PORT.md or related behavior."
+type: "reference"
+---
+
 # Layer 4 StoragePort
 
 Layer 4 (Ontology / Semantic Graph) persistence is now abstracted behind a StoragePort.

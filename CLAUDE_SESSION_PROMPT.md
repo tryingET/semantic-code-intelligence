@@ -1,3 +1,11 @@
+---
+summary: "Session Prompt (MCP Clients) for the Semantic Code Intelligence repo."
+read_when:
+  - "You need CLAUDE SESSION PROMPT information for Semantic Code Intelligence."
+  - "You are changing CLAUDE_SESSION_PROMPT.md or related behavior."
+type: "reference"
+---
+
 # Session Prompt (MCP Clients)
 
 Copy and paste this at the start of each session:

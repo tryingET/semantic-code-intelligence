@@ -1,3 +1,11 @@
+---
+summary: "Plugin Architecture Design for the Semantic Code Intelligence repo."
+read_when:
+  - "You need PLUGIN ARCHITECTURE information for Semantic Code Intelligence."
+  - "You are changing docs/PLUGIN_ARCHITECTURE.md or related behavior."
+type: "reference"
+---
+
 # Plugin Architecture Design
 
 ## Executive Summary

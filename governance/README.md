@@ -1,3 +1,11 @@
+---
+summary: "Monorepo Work Items for the Semantic Code Intelligence repo."
+read_when:
+  - "You need README information for Semantic Code Intelligence."
+  - "You are changing governance/README.md or related behavior."
+type: "reference"
+---
+
 # Monorepo Work Items
 
 `governance/work-items.json` is the checked-in deterministic projection/mirror for this monorepo's Agent Kernel work-items state.

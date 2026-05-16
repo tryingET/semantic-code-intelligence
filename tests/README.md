@@ -1,3 +1,11 @@
+---
+summary: "Comprehensive Integration Tests for Unified Architecture for the Semantic Code Intelligence repo."
+read_when:
+  - "You need README information for Semantic Code Intelligence."
+  - "You are changing tests/README.md or related behavior."
+type: "reference"
+---
+
 # Comprehensive Integration Tests for Unified Architecture
 
 This directory contains comprehensive integration tests for the Ontology-LSP unified architecture. These tests verify that all components work together correctly and meet the performance targets outlined in VISION.md.

@@ -1,3 +1,11 @@
+---
+summary: "Adapter Architecture Implementation for the Semantic Code Intelligence repo."
+read_when:
+  - "You need ADAPTER ARCHITECTURE information for Semantic Code Intelligence."
+  - "You are changing ADAPTER_ARCHITECTURE.md or related behavior."
+type: "reference"
+---
+
 # Adapter Architecture Implementation
 
 This document describes the successful implementation of the unified core architecture with thin protocol adapters, eliminating all duplicate code between LSP, MCP, HTTP, and CLI interfaces.

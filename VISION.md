@@ -1,3 +1,11 @@
+---
+summary: "Semantic Code Intelligence Vision for the Semantic Code Intelligence repo."
+read_when:
+  - "You need VISION information for Semantic Code Intelligence."
+  - "You are changing VISION.md or related behavior."
+type: "reference"
+---
+
 # Semantic Code Intelligence Vision
 
 ## Executive Summary

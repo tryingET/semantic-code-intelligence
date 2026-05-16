@@ -1,3 +1,11 @@
+---
+summary: "Implementation Plan: Unified Core with MCP Adapter for the Semantic Code Intelligence repo."
+read_when:
+  - "You need IMPLEMENTATION PLAN information for Semantic Code Intelligence."
+  - "You are changing IMPLEMENTATION_PLAN.md or related behavior."
+type: "reference"
+---
+
 # Implementation Plan: Unified Core with MCP Adapter
 
 ## Executive Summary

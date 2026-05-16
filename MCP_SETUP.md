@@ -1,3 +1,11 @@
+---
+summary: "MCP Server Setup Guide for the Semantic Code Intelligence repo."
+read_when:
+  - "You need MCP SETUP information for Semantic Code Intelligence."
+  - "You are changing MCP_SETUP.md or related behavior."
+type: "reference"
+---
+
 # MCP Server Setup Guide
 
 ## Problem Solved

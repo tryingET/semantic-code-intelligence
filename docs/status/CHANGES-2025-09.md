@@ -1,3 +1,11 @@
+---
+summary: "Changes — September 2025 (Condensed) for the Semantic Code Intelligence repo."
+read_when:
+  - "You need CHANGES 2025 09 information for Semantic Code Intelligence."
+  - "You are changing docs/status/CHANGES-2025-09.md or related behavior."
+type: "reference"
+---
+
 # Changes — September 2025 (Condensed)
 
 This is a condensed changelog capturing key updates that previously lived inline in `PROJECT_STATUS.md`.

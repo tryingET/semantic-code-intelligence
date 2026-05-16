@@ -1,3 +1,11 @@
+---
+summary: "Adapter Error Shapes for the Semantic Code Intelligence repo."
+read_when:
+  - "You need adapter error shapes information for Semantic Code Intelligence."
+  - "You are changing docs/adapter-error-shapes.md or related behavior."
+type: "reference"
+---
+
 # Adapter Error Shapes
 
 This document standardizes how adapters (LSP, MCP, HTTP, CLI) present errors surfaced from the unified core. Aligning these shapes improves cross‑protocol E2E consistency and simplifies client handling.

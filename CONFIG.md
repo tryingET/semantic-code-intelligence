@@ -1,3 +1,11 @@
+---
+summary: "Configuration Guide for the Semantic Code Intelligence repo."
+read_when:
+  - "You need CONFIG information for Semantic Code Intelligence."
+  - "You are changing CONFIG.md or related behavior."
+type: "reference"
+---
+
 # Configuration Guide
 
 ## Overview

@@ -1,3 +1,11 @@
+---
+summary: "Ontology‑LSP — Project Status (Concise) for the Semantic Code Intelligence repo."
+read_when:
+  - "You need PROJECT STATUS information for Semantic Code Intelligence."
+  - "You are changing PROJECT_STATUS.md or related behavior."
+type: "reference"
+---
+
 # Ontology‑LSP — Project Status (Concise)
 
 This is a condensed project status. Detailed historical updates have been moved to `docs/status/`.

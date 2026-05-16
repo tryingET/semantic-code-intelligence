@@ -1,3 +1,11 @@
+---
+summary: "API Specification: Core ↔ Adapter Interface for the Semantic Code Intelligence repo."
+read_when:
+  - "You need API SPECIFICATION information for Semantic Code Intelligence."
+  - "You are changing API_SPECIFICATION.md or related behavior."
+type: "reference"
+---
+
 # API Specification: Core ↔ Adapter Interface
 
 ## Overview

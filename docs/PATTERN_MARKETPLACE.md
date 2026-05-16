@@ -1,3 +1,11 @@
+---
+summary: "Pattern Marketplace - Knowledge Economy for the Semantic Code Intelligence repo."
+read_when:
+  - "You need PATTERN MARKETPLACE information for Semantic Code Intelligence."
+  - "You are changing docs/PATTERN_MARKETPLACE.md or related behavior."
+type: "reference"
+---
+
 # Pattern Marketplace - Knowledge Economy
 
 ## Overview

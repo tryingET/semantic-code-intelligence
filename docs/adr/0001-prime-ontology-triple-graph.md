@@ -1,3 +1,11 @@
+---
+summary: "ADR-0001: Prime Ontology Engine and Triple Graph Storage for the Semantic Code Intelligence repo."
+read_when:
+  - "You need 0001 prime ontology triple graph information for Semantic Code Intelligence."
+  - "You are changing docs/adr/0001-prime-ontology-triple-graph.md or related behavior."
+type: "reference"
+---
+
 # ADR-0001: Prime Ontology Engine and Triple Graph Storage
 
 Status: Proposed

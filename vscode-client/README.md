@@ -1,3 +1,11 @@
+---
+summary: "Ontology LSP VS Code Extension for the Semantic Code Intelligence repo."
+read_when:
+  - "You need README information for Semantic Code Intelligence."
+  - "You are changing vscode-client/README.md or related behavior."
+type: "reference"
+---
+
 # Ontology LSP VS Code Extension
 
 A comprehensive VS Code extension that connects to the Ontology Language Server, providing intelligent code navigation with semantic understanding, pattern learning, and knowledge propagation.

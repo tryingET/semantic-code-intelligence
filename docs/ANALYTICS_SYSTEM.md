@@ -1,3 +1,11 @@
+---
+summary: "Analytics System - Code Health & Team Metrics for the Semantic Code Intelligence repo."
+read_when:
+  - "You need ANALYTICS SYSTEM information for Semantic Code Intelligence."
+  - "You are changing docs/ANALYTICS_SYSTEM.md or related behavior."
+type: "reference"
+---
+
 # Analytics System - Code Health & Team Metrics
 
 ## Overview

@@ -1,3 +1,11 @@
+---
+summary: "Text Search Routing Analysis for the Semantic Code Intelligence repo."
+read_when:
+  - "You need TEXT SEARCH ROUTING ANALYSIS information for Semantic Code Intelligence."
+  - "You are changing TEXT_SEARCH_ROUTING_ANALYSIS.md or related behavior."
+type: "reference"
+---
+
 # Text Search Routing Analysis
 
 ## Summary

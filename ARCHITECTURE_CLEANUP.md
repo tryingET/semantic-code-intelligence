@@ -1,3 +1,11 @@
+---
+summary: "Architecture Cleanup Complete ✅ for the Semantic Code Intelligence repo."
+read_when:
+  - "You need ARCHITECTURE CLEANUP information for Semantic Code Intelligence."
+  - "You are changing ARCHITECTURE_CLEANUP.md or related behavior."
+type: "reference"
+---
+
 # Architecture Cleanup Complete ✅
 
 ## What Was Done

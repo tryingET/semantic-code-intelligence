@@ -1,3 +1,11 @@
+---
+summary: "Memory Profile Report - Ontology-LSP System for the Semantic Code Intelligence repo."
+read_when:
+  - "You need MEMORY PROFILE REPORT information for Semantic Code Intelligence."
+  - "You are changing MEMORY_PROFILE_REPORT.md or related behavior."
+type: "reference"
+---
+
 # Memory Profile Report - Ontology-LSP System
 
 **Generated:** 2025-08-25T15:24:08.803Z  

@@ -1,3 +1,11 @@
+---
+summary: "Cli Demos for the Semantic Code Intelligence repo."
+read_when:
+  - "You need CLI DEMOS information for Semantic Code Intelligence."
+  - "You are changing docs/CLI_DEMOS.md or related behavior."
+type: "reference"
+---
+
 CLI Demos (VHS)
 
 This repo includes VHS tapes to showcase the `ontology-lsp` CLI.

@@ -1,3 +1,11 @@
+---
+summary: "Testing Strategy: MCP Integration for the Semantic Code Intelligence repo."
+read_when:
+  - "You need TESTING STRATEGY information for Semantic Code Intelligence."
+  - "You are changing TESTING_STRATEGY.md or related behavior."
+type: "reference"
+---
+
 # Testing Strategy: MCP Integration
 
 ## Overview

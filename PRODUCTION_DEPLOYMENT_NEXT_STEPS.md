@@ -1,3 +1,11 @@
+---
+summary: "Production Deployment - Next Steps Guide for the Semantic Code Intelligence repo."
+read_when:
+  - "You need PRODUCTION DEPLOYMENT NEXT STEPS information for Semantic Code Intelligence."
+  - "You are changing PRODUCTION_DEPLOYMENT_NEXT_STEPS.md or related behavior."
+type: "reference"
+---
+
 # Production Deployment - Next Steps Guide
 
 ## 🎯 Current Status: 100% PRODUCTION READY

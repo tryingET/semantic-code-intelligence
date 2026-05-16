@@ -1,3 +1,11 @@
+---
+summary: "Learning System Feedback Loop - Validation Report for the Semantic Code Intelligence repo."
+read_when:
+  - "You need FEEDBACK LOOP VALIDATION REPORT information for Semantic Code Intelligence."
+  - "You are changing FEEDBACK_LOOP_VALIDATION_REPORT.md or related behavior."
+type: "reference"
+---
+
 # Learning System Feedback Loop - Validation Report
 
 ## Executive Summary ✅
