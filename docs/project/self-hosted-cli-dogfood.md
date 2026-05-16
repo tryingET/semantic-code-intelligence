@@ -39,11 +39,18 @@ Run the structural workflow dogfood with:
 bun run structural:dogfood
 ```
 
+Run the safe-write safety proof harness with:
+
+```bash
+bun run safe-write:dogfood
+```
+
 The commands write machine-readable evidence to:
 
 ```text
 .test-results/self-hosted-cli-dogfood.json
 .test-results/structural-workflow-dogfood.json
+.test-results/safe-write-dogfood.json
 ```
 
 ## What the harness does
@@ -87,6 +94,8 @@ ALLOW_SNAPSHOT_APPLY=1 sci workflow safe_write --args-file /tmp/sci-safe-write.j
 ```
 
 Use `brief:true` when the harnessed LLM only needs the risk class, snapshot id, check status, apply status, and next action. Use full output or `extract_snapshot_artifacts` only when the diff/check details are needed.
+
+The repeatable safe-write harness applies a tiny fixture patch through guarded `safe_write`, proves failed checks block apply, runs the returned rollback command, and verifies the fixture content is restored exactly.
 
 ## Operator rule
 

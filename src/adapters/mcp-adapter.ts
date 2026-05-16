@@ -794,8 +794,8 @@ export class MCPAdapter {
 
 
     private async handleSafeWrite(args: Record<string, any>) {
-        const patch = String(args?.patch || '').trim();
-        if (!patch) return { content: [{ type: 'text', text: 'patch required' }], isError: true };
+        const patch = typeof args?.patch === 'string' ? args.patch : '';
+        if (!patch.trim()) return { content: [{ type: 'text', text: 'patch required' }], isError: true };
         const commands = Array.isArray(args?.commands) ? (args.commands as string[]) : ['bun run typecheck'];
         const timeoutSec = typeof args?.timeoutSec === 'number' ? args.timeoutSec : 240;
         const apply = args?.apply === true;
@@ -873,8 +873,8 @@ export class MCPAdapter {
     }
 
     private async handleApplyAfterChecks(args: Record<string, any>) {
-        const patch = String(args?.patch || '').trim();
-        if (!patch) return { content: [{ type: 'text', text: 'patch required' }], isError: true };
+        const patch = typeof args?.patch === 'string' ? args.patch : '';
+        if (!patch.trim()) return { content: [{ type: 'text', text: 'patch required' }], isError: true };
         const commands = Array.isArray(args?.commands) ? (args.commands as string[]) : ['bun run typecheck'];
         const timeoutSec = typeof args?.timeoutSec === 'number' ? args.timeoutSec : 240;
         const reverse = !!args?.reverse;

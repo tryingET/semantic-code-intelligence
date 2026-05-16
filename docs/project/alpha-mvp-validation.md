@@ -48,6 +48,7 @@ Dogfood-only evidence:
 bun run alpha:mvp:dogfood > .test-results/alpha-mvp-dogfood.json
 bun run self:dogfood:cli
 bun run structural:dogfood
+bun run safe-write:dogfood
 ```
 
 Test-only subset:
@@ -122,6 +123,7 @@ When the Alpha MVP contract changes, update all of these in the same wave:
 - `scripts/dogfood-alpha-mvp.ts`
 - `scripts/dogfood-self-hosted-cli.ts`
 - `scripts/dogfood-structural-workflow.ts`
+- `scripts/dogfood-safe-write.ts`
 - target-repo/global CLI usage docs such as `docs/project/target-repo-cli-usage.md`
 - Alpha MVP tests under `tests/alpha-mvp-*.test.ts`, including CLI fallback coverage
 - `.github/workflows/alpha-mvp.yml`
