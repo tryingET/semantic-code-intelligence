@@ -19,6 +19,7 @@ The Phase 1 Alpha MVP validation bundle proves the first-user path for harnessed
 - MCP stdio can initialize, advertise the Alpha MVP tools through `tools/list`, and execute `read_file`, `text_search`, and `patch_checks_in_snapshot` while keeping stdout protocol-clean;
 - HTTP, direct MCP, and MCP HTTP can stage `propose_patch` diffs and run explicit `run_checks` against snapshots without mutating the working tree;
 - CLI fallback can execute machine-readable tool calls through `semantic-code-intelligence workflow <tool> --args <json> --json`;
+- self-hosted CLI dogfood uses SCI's own CLI workflow surface against this repo for navigation and preview-first patch planning;
 - repeatable dogfood evidence can be emitted as machine-readable JSON;
 - migration hygiene still rejects stale identity drift and unsafe local artifacts.
 
@@ -40,6 +41,7 @@ Dogfood-only evidence:
 
 ```bash
 bun run alpha:mvp:dogfood > .test-results/alpha-mvp-dogfood.json
+bun run self:dogfood:cli
 ```
 
 Test-only subset:
@@ -100,6 +102,8 @@ Patch-planning parity currently means `propose_patch` accepts a reviewable diff 
 
 CLI fallback parity currently means local command-line execution can call the same tool registry through the generic `workflow` command with JSON arguments and machine-readable stdout. CLI invocations are process-local, so multi-step snapshot flows that require shared in-memory snapshot state should use composite workflow tools such as `patch_checks_in_snapshot` unless a future durable snapshot/session surface is promoted.
 
+Self-hosted CLI dogfood currently means SCI CLI is used as a practical work loop on the SCI repo itself, not only as a protocol smoke test. See `docs/project/self-hosted-cli-dogfood.md`.
+
 ## Maintenance rule
 
 When the Alpha MVP contract changes, update all of these in the same wave:
@@ -108,5 +112,6 @@ When the Alpha MVP contract changes, update all of these in the same wave:
 - package scripts in `package.json`
 - `just alpha-mvp-check`
 - `scripts/dogfood-alpha-mvp.ts`
+- `scripts/dogfood-self-hosted-cli.ts`
 - Alpha MVP tests under `tests/alpha-mvp-*.test.ts`, including CLI fallback coverage
 - `.github/workflows/alpha-mvp.yml`

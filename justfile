@@ -2032,7 +2032,13 @@ alpha-mvp-check:
     bun test tests/alpha-mvp-tool-contract.test.ts tests/alpha-mvp-mcp-parity.test.ts tests/alpha-mvp-mcp-http-protocol.test.ts tests/alpha-mvp-mcp-stdio-protocol.test.ts tests/alpha-mvp-cli-parity.test.ts
     mkdir -p .test-results
     bun run scripts/dogfood-alpha-mvp.ts --json > .test-results/alpha-mvp-dogfood.json
+    bun run self:dogfood:cli
     ./scripts/migration-hygiene.sh
+
+# Dogfood SCI's own CLI workflow surface against this repo
+self-dogfood-cli:
+    mkdir -p .test-results
+    bun run scripts/dogfood-self-hosted-cli.ts --json > .test-results/self-hosted-cli-dogfood.json
 
 # Check migrated repo identity/local artifact hygiene
 migration-hygiene:

@@ -61,6 +61,7 @@ Phase 1 has moved from posture to a repeatable Alpha MVP validation bundle. The 
 - MCP HTTP JSON-RPC can list tools and call navigation plus patch-planning operations;
 - MCP stdio can initialize, advertise tools, execute representative read/navigation/patch-check calls, and keep stdout protocol-clean;
 - CLI fallback can execute machine-readable workflow calls for local verification;
+- self-hosted CLI dogfood uses SCI's own CLI workflow surface against this repo for navigation and preview-first patch planning;
 - dogfood evidence is emitted as JSON and verifies that preview-first patch planning does not mutate the working tree;
 - migration hygiene continues to reject pre-rename identity drift and unsafe local artifacts.
 
