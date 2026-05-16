@@ -131,6 +131,44 @@ export class ToolRegistry {
             },
         },
         {
+            name: 'structural_search',
+            title: 'Structural Search (ast-grep)',
+            description:
+                'Use ast-grep for deterministic structural search. Returns bounded file/range/snippet matches for harnessed LLM coding sessions.',
+            category: 'operation',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    language: { type: 'string', description: 'ast-grep language, e.g. typescript, javascript, python' },
+                    pattern: { type: 'string', description: 'ast-grep pattern' },
+                    paths: { type: 'array', items: { type: 'string' }, description: 'Repo-relative files or directories' },
+                    maxResults: { type: 'number', default: 50 },
+                },
+                required: ['language', 'pattern'],
+            },
+        },
+        {
+            name: 'structural_patch_checks',
+            title: 'Structural Patch Checks (ast-grep + Snapshot)',
+            description:
+                'Generate an ast-grep structural rewrite diff, stage it in a snapshot, run checks, and optionally apply only when ALLOW_SNAPSHOT_APPLY=1.',
+            category: 'workflow',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    language: { type: 'string', description: 'ast-grep language, e.g. typescript, javascript, python' },
+                    pattern: { type: 'string', description: 'ast-grep pattern' },
+                    rewrite: { type: 'string', description: 'ast-grep rewrite template' },
+                    paths: { type: 'array', items: { type: 'string' }, description: 'Repo-relative files or directories' },
+                    commands: { type: 'array', items: { type: 'string' }, default: ['bun run build:tsc'] },
+                    timeoutSec: { type: 'number', default: 240 },
+                    apply: { type: 'boolean', default: false },
+                    maxResults: { type: 'number', default: 200 },
+                },
+                required: ['language', 'pattern', 'rewrite'],
+            },
+        },
+        {
             name: 'ast_query',
             description: 'Run a Tree-sitter s-expression query over selected files',
             inputSchema: {

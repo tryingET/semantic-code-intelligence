@@ -172,6 +172,7 @@ export class MCPAdapter {
             const errorHandlingOptions = (() => {
                 const longRunning =
                     name === 'patch_checks_in_snapshot' ||
+                    name === 'structural_patch_checks' ||
                     name === 'apply_after_checks' ||
                     name === 'apply_snapshot' ||
                     name === 'rename_safely' ||
@@ -257,6 +258,10 @@ export class MCPAdapter {
                         return this.handleTextSearch(arguments_);
                     case 'symbol_search':
                         return this.handleSymbolSearch(arguments_);
+                    case 'structural_search':
+                        return this.handleStructuralSearch(arguments_);
+                    case 'structural_patch_checks':
+                        return this.handleStructuralPatchChecks(arguments_);
                     case 'ast_query':
                         return this.handleAstQuery(arguments_);
                     case 'graph_expand':
@@ -1321,6 +1326,277 @@ export class MCPAdapter {
             content: [{ type: 'text', text: JSON.stringify({ query, count: out.length, symbols: out }, null, 2) }],
             isError: false,
         };
+    }
+
+    private findAstGrepBinary(): string | null {
+        const candidates = ['ast-grep', 'sg'];
+        for (const candidate of candidates) {
+            const found = spawnSync('bash', ['-lc', `command -v ${candidate}`], { stdio: 'pipe', encoding: 'utf8' });
+            if (found.status !== 0) continue;
+            const bin = String(found.stdout || '').trim();
+            if (!bin) continue;
+            const version = spawnSync(bin, ['--version'], { stdio: 'pipe', encoding: 'utf8' });
+            const text = `${version.stdout || ''}${version.stderr || ''}`.trim().toLowerCase();
+            if (candidate === 'ast-grep' || text.includes('ast-grep')) return bin;
+        }
+        return null;
+    }
+
+    private normalizeStructuralPaths(pathsArg: any): string[] {
+        const workspaceRoot = path.resolve(process.cwd());
+        const rawPaths = Array.isArray(pathsArg) && pathsArg.length > 0 ? pathsArg : ['.'];
+        const out: string[] = [];
+        for (const raw of rawPaths) {
+            const requested = String(raw || '').trim();
+            if (!requested) continue;
+            const abs = path.resolve(workspaceRoot, requested);
+            const rel = path.relative(workspaceRoot, abs);
+            if (rel.startsWith('..') || path.isAbsolute(rel)) {
+                throw new CoreError('InvalidParams', 'structural paths must stay within the workspace', { path: requested });
+            }
+            out.push(rel === '' ? '.' : rel);
+        }
+        return out.length ? out : ['.'];
+    }
+
+    private parseAstGrepJsonLines(stdout: string): any[] {
+        const trimmed = String(stdout || '').trim();
+        if (!trimmed) return [];
+        const parsed: any[] = [];
+        try {
+            const value = JSON.parse(trimmed);
+            return Array.isArray(value) ? value : [value];
+        } catch {}
+        for (const line of trimmed.split(/\r?\n/)) {
+            const item = line.trim();
+            if (!item) continue;
+            try {
+                parsed.push(JSON.parse(item));
+            } catch {}
+        }
+        return parsed;
+    }
+
+    private async handleStructuralSearch(args: Record<string, any>) {
+        const language = String(args?.language || '').trim();
+        const pattern = String(args?.pattern || '').trim();
+        if (!language || !pattern) {
+            return { content: [{ type: 'text', text: 'language and pattern required' }], isError: true };
+        }
+        const bin = this.findAstGrepBinary();
+        if (!bin) {
+            const payload = { ok: false, code: 'ast_grep_unavailable', message: 'ast-grep binary not found on PATH' };
+            return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: true };
+        }
+        let paths: string[];
+        try {
+            paths = this.normalizeStructuralPaths(args?.paths);
+        } catch (error) {
+            return handleAdapterError(error, 'mcp');
+        }
+        const maxResults = Math.max(1, Math.min(1000, Number(args?.maxResults || 50)));
+        const proc = spawnSync(bin, ['run', '--pattern', pattern, '--lang', language, '--json=stream', ...paths], {
+            cwd: process.cwd(),
+            stdio: 'pipe',
+            encoding: 'utf8',
+            maxBuffer: 8 * 1024 * 1024,
+            timeout: 30_000,
+        });
+        if (proc.status !== 0 && String(proc.stderr || '').trim()) {
+            const payload = {
+                ok: false,
+                code: 'ast_grep_failed',
+                message: String(proc.stderr || '').trim().slice(0, 4000),
+                command: 'ast-grep run',
+            };
+            return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: true };
+        }
+        const matches = this.parseAstGrepJsonLines(String(proc.stdout || ''))
+            .slice(0, maxResults)
+            .map((m: any) => ({
+                file: m.file,
+                range: m.range,
+                snippet: String(m.text || m.lines || '').slice(0, 1000),
+                language: m.language || language,
+            }));
+        const payload = {
+            ok: true,
+            backend: 'ast-grep',
+            language,
+            pattern,
+            paths,
+            count: matches.length,
+            capped: this.parseAstGrepJsonLines(String(proc.stdout || '')).length > matches.length,
+            matches,
+        };
+        return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: false };
+    }
+
+    private applyStructuralReplacements(text: string, replacements: Array<{ start: number; end: number; replacement: string }>): string {
+        const original = Buffer.from(text, 'utf8');
+        const ordered = [...replacements].sort((a, b) => b.start - a.start);
+        let current = original;
+        for (const edit of ordered) {
+            const start = Math.max(0, Math.min(current.length, edit.start));
+            const end = Math.max(start, Math.min(current.length, edit.end));
+            current = Buffer.concat([
+                current.subarray(0, start),
+                Buffer.from(edit.replacement, 'utf8'),
+                current.subarray(end),
+            ]);
+        }
+        return current.toString('utf8');
+    }
+
+    private async buildStructuralDiff(matches: any[]): Promise<{ diff: string; files: string[]; replacementCount: number }> {
+        const workspaceRoot = path.resolve(process.cwd());
+        const byFile = new Map<string, Array<{ start: number; end: number; replacement: string }>>();
+        for (const match of matches) {
+            const rel = String(match?.file || '').trim();
+            const replacement = typeof match?.replacement === 'string' ? match.replacement : undefined;
+            const start = Number(match?.replacementOffsets?.start ?? match?.range?.byteOffset?.start);
+            const end = Number(match?.replacementOffsets?.end ?? match?.range?.byteOffset?.end);
+            if (!rel || replacement === undefined || !Number.isFinite(start) || !Number.isFinite(end)) continue;
+            const abs = path.resolve(workspaceRoot, rel);
+            const normalizedRel = path.relative(workspaceRoot, abs);
+            if (!normalizedRel || normalizedRel.startsWith('..') || path.isAbsolute(normalizedRel)) continue;
+            const edits = byFile.get(normalizedRel) || [];
+            edits.push({ start, end, replacement });
+            byFile.set(normalizedRel, edits);
+        }
+        if (byFile.size === 0) return { diff: '', files: [], replacementCount: 0 };
+
+        const tmpRoot = await fs.mkdtemp(path.join('/tmp', 'sci-structural-'));
+        try {
+            const diffParts: string[] = [];
+            let replacementCount = 0;
+            for (const [rel, edits] of byFile.entries()) {
+                const ordered = [...edits].sort((a, b) => a.start - b.start);
+                for (let i = 1; i < ordered.length; i++) {
+                    if (ordered[i].start < ordered[i - 1].end) {
+                        throw new CoreError('InvalidParams', 'ast-grep produced overlapping structural replacements', { file: rel });
+                    }
+                }
+                const abs = path.join(workspaceRoot, rel);
+                const original = await fs.readFile(abs, 'utf8');
+                const modified = this.applyStructuralReplacements(original, edits);
+                if (modified === original) continue;
+                replacementCount += edits.length;
+                const origPath = path.join(tmpRoot, 'orig', rel);
+                const modPath = path.join(tmpRoot, 'mod', rel);
+                await fs.mkdir(path.dirname(origPath), { recursive: true });
+                await fs.mkdir(path.dirname(modPath), { recursive: true });
+                await fs.writeFile(origPath, original, 'utf8');
+                await fs.writeFile(modPath, modified, 'utf8');
+                const proc = spawnSync('diff', ['-u', '--label', `a/${rel}`, '--label', `b/${rel}`, origPath, modPath], {
+                    stdio: 'pipe',
+                    encoding: 'utf8',
+                    maxBuffer: 4 * 1024 * 1024,
+                    timeout: 10_000,
+                });
+                const body = String(proc.stdout || '');
+                if (body.trim()) diffParts.push(`diff --git a/${rel} b/${rel}\n${body}`);
+            }
+            return { diff: diffParts.join('\n'), files: Array.from(byFile.keys()), replacementCount };
+        } finally {
+            await fs.rm(tmpRoot, { recursive: true, force: true }).catch(() => {});
+        }
+    }
+
+    private async handleStructuralPatchChecks(args: Record<string, any>) {
+        const language = String(args?.language || '').trim();
+        const pattern = String(args?.pattern || '').trim();
+        const rewrite = String(args?.rewrite ?? '');
+        if (!language || !pattern || !rewrite) {
+            return { content: [{ type: 'text', text: 'language, pattern, and rewrite required' }], isError: true };
+        }
+        const bin = this.findAstGrepBinary();
+        if (!bin) {
+            const payload = { ok: false, code: 'ast_grep_unavailable', message: 'ast-grep binary not found on PATH' };
+            return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: true };
+        }
+        let paths: string[];
+        try {
+            paths = this.normalizeStructuralPaths(args?.paths);
+        } catch (error) {
+            return handleAdapterError(error, 'mcp');
+        }
+        const maxResults = Math.max(1, Math.min(2000, Number(args?.maxResults || 200)));
+        const commands = Array.isArray(args?.commands) ? (args.commands as string[]) : ['bun run build:tsc'];
+        const timeoutSec = typeof args?.timeoutSec === 'number' ? args.timeoutSec : 240;
+        const proc = spawnSync(
+            bin,
+            ['run', '--pattern', pattern, '--rewrite', rewrite, '--lang', language, '--json=stream', ...paths],
+            { cwd: process.cwd(), stdio: 'pipe', encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: 30_000 }
+        );
+        if (proc.status !== 0 && String(proc.stderr || '').trim()) {
+            const payload = { ok: false, code: 'ast_grep_failed', message: String(proc.stderr || '').trim().slice(0, 4000) };
+            return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: true };
+        }
+        const allMatches = this.parseAstGrepJsonLines(String(proc.stdout || ''));
+        const matches = allMatches.slice(0, maxResults);
+        const built = await this.buildStructuralDiff(matches);
+        if (!built.diff.trim()) {
+            const payload = {
+                ok: true,
+                matches: allMatches.length,
+                patch: { files: [], replacementCount: 0, diff: '' },
+                snapshot: null,
+                checks: null,
+                applied: false,
+                next_actions: ['No structural replacements were generated; adjust pattern/rewrite or paths'],
+            };
+            return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: false };
+        }
+
+        const snap = overlayStore.createSnapshot(false);
+        const stage = overlayStore.stagePatch(snap.id, built.diff);
+        if (!stage.accepted) {
+            const payload = { ok: false, matches: allMatches.length, snapshot: snap.id, stage, applied: false };
+            return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: true };
+        }
+        const checks = await overlayStore.runChecks(snap.id, commands, timeoutSec);
+        let applied = false;
+        let applyResult: any = null;
+        if (args?.apply === true) {
+            if (process.env.ALLOW_SNAPSHOT_APPLY === '1' && checks.ok) {
+                applyResult = await overlayStore.applyToWorkingTree(snap.id, { check: false });
+                applied = !!applyResult?.ok;
+            } else {
+                applyResult = {
+                    ok: false,
+                    message: process.env.ALLOW_SNAPSHOT_APPLY === '1' ? 'checks_failed' : 'ALLOW_SNAPSHOT_APPLY=1 required',
+                };
+            }
+        }
+        const ok = !!checks.ok && (args?.apply === true ? applied : true);
+        const payload = {
+            workflow: 'structural_patch_checks',
+            ok,
+            backend: 'ast-grep',
+            matches: allMatches.length,
+            capped: allMatches.length > matches.length,
+            patch: {
+                files: built.files,
+                replacementCount: built.replacementCount,
+                diffBytes: Buffer.byteLength(built.diff, 'utf8'),
+                diffSummary: built.diff.split(/\r?\n/).slice(0, 80).join('\n'),
+            },
+            snapshot: snap.id,
+            stage,
+            checks: { ok: !!checks.ok, elapsedMs: checks.elapsedMs, output: String(checks.output || '').slice(-4000) },
+            applied,
+            applyResult,
+            next_actions: applied
+                ? ['Review working tree diff and commit if appropriate']
+                : [
+                      `Open snapshot diff: snapshot://${snap.id}/overlay.diff`,
+                      args?.apply === true && process.env.ALLOW_SNAPSHOT_APPLY !== '1'
+                          ? 'Set ALLOW_SNAPSHOT_APPLY=1 only when intentionally applying'
+                          : 'Apply separately only after review',
+                  ],
+        };
+        return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: false };
     }
 
     private async handleAstQuery(args: Record<string, any>) {

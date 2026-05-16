@@ -27,6 +27,8 @@ const alphaMvpTools = [
     'graph_expand',
     'propose_patch',
     'run_checks',
+    'structural_search',
+    'structural_patch_checks',
 ];
 
 async function callTool(base: string, name: string, args: Record<string, unknown>) {
@@ -57,6 +59,8 @@ describe('Alpha MVP tool contract', () => {
         expect(specs.get('find_references')?.inputSchema?.properties?.includeDeclaration?.type).toBe('boolean');
         expect(specs.get('ast_query')?.inputSchema?.properties?.limit?.type).toBe('number');
         expect(specs.get('graph_expand')?.inputSchema?.properties?.limit?.type).toBe('number');
+        expect(specs.get('structural_search')?.inputSchema?.properties?.maxResults?.type).toBe('number');
+        expect(specs.get('structural_patch_checks')?.inputSchema?.properties?.apply?.type).toBe('boolean');
     });
 });
 

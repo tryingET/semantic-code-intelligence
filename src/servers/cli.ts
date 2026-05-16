@@ -658,6 +658,71 @@ class CLI {
                 process.exit(0);
             });
 
+        // Alias: structural-search (wraps 'structural_search')
+        this.program
+            .command('structural-search <language> <pattern>')
+            .description('Run ast-grep structural search with bounded JSON results')
+            .option('--paths <paths...>', 'Repo-relative files or directories')
+            .option('-n, --max-results <count>', 'Maximum matches', '50')
+            .option('-j, --json', 'Print raw JSON response')
+            .action(async (language, pattern, options) => {
+                await this.ensureInitialized(options);
+                const [{ MCPAdapter }, { ToolExecutor }] = await Promise.all([
+                    import('../adapters/mcp-adapter.js'),
+                    import('../core/tools/executor.js'),
+                ]);
+                const args = {
+                    language: String(language),
+                    pattern: String(pattern),
+                    paths: options.paths,
+                    maxResults: parseInt(String(options.maxResults) || '50', 10),
+                };
+                const mcp = new MCPAdapter(this.coreAnalyzer);
+                const exec = new ToolExecutor();
+                const result = await exec.execute(mcp as any, 'structural_search', args);
+                const printed = this.printToolResult(result, !!options.json);
+                console.log(printed);
+                await this.shutdown();
+                process.exit(0);
+            });
+
+        // Alias: structural-patch-checks (wraps 'structural_patch_checks')
+        this.program
+            .command('structural-patch-checks <language> <pattern> <rewrite>')
+            .description('Generate an ast-grep rewrite diff, stage it in a snapshot, and run checks')
+            .option('--paths <paths...>', 'Repo-relative files or directories')
+            .option('--cmd <command...>', 'Commands to run (default: bun run build:tsc)')
+            .option('-t, --timeout <sec>', 'Timeout seconds for checks', '240')
+            .option('--apply', 'Apply only when checks pass and ALLOW_SNAPSHOT_APPLY=1')
+            .option('-j, --json', 'Print raw JSON response')
+            .action(async (language, pattern, rewrite, options) => {
+                await this.ensureInitialized(options);
+                const [{ MCPAdapter }, { ToolExecutor }] = await Promise.all([
+                    import('../adapters/mcp-adapter.js'),
+                    import('../core/tools/executor.js'),
+                ]);
+                const args = {
+                    language: String(language),
+                    pattern: String(pattern),
+                    rewrite: String(rewrite),
+                    paths: options.paths,
+                    commands: Array.isArray(options.cmd)
+                        ? options.cmd
+                        : options.cmd
+                          ? [options.cmd]
+                          : ['bun run build:tsc'],
+                    timeoutSec: parseInt(String(options.timeout) || '240', 10),
+                    apply: !!options.apply,
+                };
+                const mcp = new MCPAdapter(this.coreAnalyzer);
+                const exec = new ToolExecutor();
+                const result = await exec.execute(mcp as any, 'structural_patch_checks', args);
+                const printed = this.printToolResult(result, !!options.json);
+                console.log(printed);
+                await this.shutdown();
+                process.exit(0);
+            });
+
         // Pipelines (L5) helpers
         const pipelines = this.program.command('pipelines').description('Learning pipelines tools');
 

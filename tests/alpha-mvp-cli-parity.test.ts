@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 
 type CliResult = { code: number | null; stdout: string; stderr: string };
 
@@ -12,6 +12,8 @@ const patchPlanningDiff = `diff --git a/${patchPlanningTarget} b/${patchPlanning
  # Alpha MVP contract — harnessed LLM coding sessions
 +${patchPlanningMarker}
 `;
+const hasAstGrep = spawnSync('bash', ['-lc', 'command -v ast-grep >/dev/null 2>&1'], { stdio: 'ignore' }).status === 0;
+const structuralTest = hasAstGrep ? test : test.skip;
 
 function runCli(args: string[]): Promise<CliResult> {
     const bun = process.env.BUN_PATH || `${process.env.HOME}/.bun/bin/bun`;
@@ -80,5 +82,43 @@ describe('Alpha MVP CLI fallback parity', () => {
         const after = await Bun.file(patchPlanningTarget).text();
         expect(after).toBe(before);
         expect(after).not.toContain(patchPlanningMarker);
+    }, 60000);
+
+    structuralTest('generic workflow command executes ast-grep structural search and preview-first structural patch checks', async () => {
+        const target = 'tests/alpha-mvp-cli-parity.test.ts';
+        const before = await Bun.file(target).text();
+        expect(before).toContain('const patchPlanningTarget');
+
+        const search = await workflow('structural_search', {
+            language: 'typescript',
+            pattern: 'workflow($NAME, $ARGS)',
+            paths: [target],
+            maxResults: 5,
+        });
+        expect(search.payload.ok).toBe(true);
+        expect(search.payload.backend).toBe('ast-grep');
+        expect(search.payload.matches.length).toBeGreaterThan(0);
+        expect(search.payload.matches.length).toBeLessThanOrEqual(5);
+
+        const checked = await workflow('structural_patch_checks', {
+            language: 'typescript',
+            pattern: 'const patchPlanningTarget = $VALUE',
+            rewrite: 'const structuralPatchTarget = $VALUE',
+            paths: [target],
+            commands: ['true'],
+            timeoutSec: 30,
+            apply: false,
+        });
+        expect(checked.payload.workflow).toBe('structural_patch_checks');
+        expect(checked.payload.ok).toBe(true);
+        expect(checked.payload.backend).toBe('ast-grep');
+        expect(checked.payload.stage?.accepted).toBe(true);
+        expect(checked.payload.checks?.ok).toBe(true);
+        expect(checked.payload.applied).toBe(false);
+        expect(checked.payload.patch?.replacementCount).toBeGreaterThan(0);
+
+        const after = await Bun.file(target).text();
+        expect(after).toBe(before);
+        expect(after).toContain('const patchPlanningTarget');
     }, 60000);
 });

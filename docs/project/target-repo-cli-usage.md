@@ -64,9 +64,17 @@ sci workflow symbol_search \
 sci workflow patch_checks_in_snapshot \
   --args '{"patch":"diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1,1 +1,1 @@\n-# Old\n+# Old\n","commands":["true"],"timeoutSec":30}' \
   --json
+
+sci workflow structural_search \
+  --args '{"language":"typescript","pattern":"console.log($$$ARGS)","paths":["src"],"maxResults":20}' \
+  --json
+
+sci workflow structural_patch_checks \
+  --args '{"language":"typescript","pattern":"console.log($$$ARGS)","rewrite":"console.error($$$ARGS)","paths":["src"],"commands":["true"],"timeoutSec":30,"apply":false}' \
+  --json
 ```
 
-Use target-repo relative paths in `--args`. Avoid absolute paths unless the operator is doing an uncommitted one-off investigation.
+Use target-repo relative paths in `--args`. Avoid absolute paths unless the operator is doing an uncommitted one-off investigation. Structural patch workflows are preview-first; `apply` defaults to `false`, and `apply: true` requires `ALLOW_SNAPSHOT_APPLY=1`.
 
 ## External dogfood evidence rule
 
