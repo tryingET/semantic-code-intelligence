@@ -16,6 +16,7 @@ The Phase 1 Alpha MVP validation bundle proves the first-user path for harnessed
 - HTTP `/api/v1/tools/call` can execute `read_file` and the non-mutating navigation cluster (`text_search`, `symbol_search`, `find_definition`, `find_references`, `ast_query`, and `graph_expand`);
 - direct `MCPAdapter` calls can execute `get_snapshot`, `read_file`, and the non-mutating navigation cluster;
 - MCP HTTP JSON-RPC can discover tools through `tools/list` and call `read_file` plus the navigation cluster through `tools/call`;
+- MCP stdio can initialize, advertise the Alpha MVP tools through `tools/list`, and execute `read_file`, `text_search`, and `patch_checks_in_snapshot` while keeping stdout protocol-clean;
 - HTTP, direct MCP, and MCP HTTP can stage `propose_patch` diffs and run explicit `run_checks` against snapshots without mutating the working tree;
 - CLI fallback can execute machine-readable tool calls through `semantic-code-intelligence workflow <tool> --args <json> --json`;
 - repeatable dogfood evidence can be emitted as machine-readable JSON;
@@ -91,7 +92,9 @@ The `interpretation.does_not_prove` section is intentional. Passing this bundle 
 
 ## Navigation parity scope
 
-Navigation parity currently means the same bounded tool names are exercised through HTTP tools/call, direct MCPAdapter calls, and MCP HTTP JSON-RPC. It does not mean every parser or graph backend returns rich semantic results in every environment; fallback shapes remain valid alpha evidence when they are structured and non-throwing.
+Navigation parity currently means the same bounded tool names are exercised through HTTP tools/call, direct MCPAdapter calls, MCP HTTP JSON-RPC, and an MCP stdio smoke path. It does not mean every parser or graph backend returns rich semantic results in every environment; fallback shapes remain valid alpha evidence when they are structured and non-throwing.
+
+MCP stdio parity currently means the server can initialize, list tools, execute representative bounded navigation and preview-first patch-check calls, and keep stdout free of non-JSON-RPC pollution. Stderr logs are acceptable for diagnostics and are not protocol payloads.
 
 Patch-planning parity currently means `propose_patch` accepts a reviewable diff into an isolated snapshot and `run_checks` executes an explicit command against that snapshot. It deliberately does not apply the staged diff to the canonical working tree; `apply_snapshot` and direct-write workflows remain outside the Alpha MVP default path.
 

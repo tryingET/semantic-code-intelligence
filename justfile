@@ -2029,7 +2029,7 @@ test-stop-async:
 # Validate Phase 1 harnessed-LLM Alpha MVP surface
 alpha-mvp-check:
     bun run build:tsc
-    bun test tests/alpha-mvp-tool-contract.test.ts tests/alpha-mvp-mcp-parity.test.ts tests/alpha-mvp-mcp-http-protocol.test.ts tests/alpha-mvp-cli-parity.test.ts
+    bun test tests/alpha-mvp-tool-contract.test.ts tests/alpha-mvp-mcp-parity.test.ts tests/alpha-mvp-mcp-http-protocol.test.ts tests/alpha-mvp-mcp-stdio-protocol.test.ts tests/alpha-mvp-cli-parity.test.ts
     mkdir -p .test-results
     bun run scripts/dogfood-alpha-mvp.ts --json > .test-results/alpha-mvp-dogfood.json
     ./scripts/migration-hygiene.sh
