@@ -829,18 +829,25 @@ export class MCPAdapter {
             }
         }
         const snapshotArtifacts = this.structuralSnapshotLinks(snapshot);
-        const ok = !!stageOut?.accepted && !!checksOut?.ok && (apply ? applied : true);
-        const rollback = {
-            available: !!snapshot,
-            strategy: 'reverse_patch',
-            command: `git apply -R .ontology/snapshots/${snapshot}/overlay.diff`,
-            artifact: snapshotArtifacts.overlayDiff,
-        };
+        const applyVerification = applied ? await this.verifyAppliedSnapshotDiff(snapshot) : null;
         const verification = {
             staged: !!stageOut?.accepted,
             checksPassed: !!checksOut?.ok,
             applyGuardSatisfied: !apply || process.env.ALLOW_SNAPSHOT_APPLY === '1',
             applied,
+            appliedDiffMatchesSnapshot: applied ? applyVerification?.appliedDiffMatchesSnapshot === true : null,
+            method: applied ? applyVerification?.method || 'git_apply_reverse_check_vs_snapshot_overlay' : null,
+            diagnostics: applied ? applyVerification?.diagnostics || null : null,
+        };
+        const ok =
+            !!stageOut?.accepted &&
+            !!checksOut?.ok &&
+            (apply ? applied && verification.appliedDiffMatchesSnapshot === true : true);
+        const rollback = {
+            available: !!snapshot,
+            strategy: 'reverse_patch',
+            command: `git apply -R .ontology/snapshots/${snapshot}/overlay.diff`,
+            artifact: snapshotArtifacts.overlayDiff,
         };
         const summary = {
             ok,
@@ -849,6 +856,7 @@ export class MCPAdapter {
             risk,
             snapshot,
             checks: { ok: !!checksOut?.ok, commands, elapsedMs: checksOut?.elapsedMs || null },
+            verification,
             applied,
             next: applied ? 'review git diff; rollback artifact available' : 'inspect snapshot artifact; set apply:true with ALLOW_SNAPSHOT_APPLY=1 only when ready',
         };
@@ -870,6 +878,114 @@ export class MCPAdapter {
                         ],
               };
         return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: false };
+    }
+
+    private async verifyAppliedSnapshotDiff(snapshot: string): Promise<{
+        appliedDiffMatchesSnapshot: boolean;
+        method: string;
+        diagnostics: Record<string, unknown>;
+    }> {
+        const method = 'git_diff_patch_id_and_reverse_check_vs_snapshot_overlay';
+        try {
+            const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
+            const dir = ensure ? await ensure(snapshot) : null;
+            const diffFile = dir ? path.join(dir, 'overlay.diff') : path.resolve('.ontology', 'snapshots', snapshot, 'overlay.diff');
+            const diffStat = await fs.stat(diffFile).catch(() => null);
+            if (!diffStat?.isFile()) {
+                return {
+                    appliedDiffMatchesSnapshot: false,
+                    method,
+                    diagnostics: { reason: 'snapshot_overlay_diff_unavailable', snapshot, diffFile },
+                };
+            }
+
+            const overlayDiff = await fs.readFile(diffFile, 'utf8');
+            const status = overlayStore.getStatus(snapshot);
+            const touchedFiles = Array.isArray(status?.touchedFiles) ? status.touchedFiles : [];
+            if (touchedFiles.length === 0) {
+                return {
+                    appliedDiffMatchesSnapshot: false,
+                    method,
+                    diagnostics: { reason: 'snapshot_touched_files_unavailable', snapshot, diffFile },
+                };
+            }
+
+            const quotedFiles = touchedFiles.map((file: string) => JSON.stringify(file)).join(' ');
+            const workingDiffProc = spawnSync('bash', ['-lc', `git diff --no-ext-diff -- ${quotedFiles}`], {
+                cwd: process.cwd(),
+                encoding: 'utf8',
+                stdio: 'pipe',
+            });
+            const workingDiff = String(workingDiffProc.stdout || '');
+            if (workingDiffProc.status !== 0 || !workingDiff.trim()) {
+                return {
+                    appliedDiffMatchesSnapshot: false,
+                    method,
+                    diagnostics: {
+                        reason: workingDiffProc.status !== 0 ? 'git_diff_failed' : 'working_tree_diff_empty_for_touched_files',
+                        snapshot,
+                        diffFile,
+                        touchedFiles,
+                        outputTail: `${String(workingDiffProc.stdout || '')}${String(workingDiffProc.stderr || '')}`.slice(-4000),
+                    },
+                };
+            }
+
+            const patchId = (diff: string) => {
+                const proc = spawnSync('git', ['patch-id', '--stable'], {
+                    cwd: process.cwd(),
+                    encoding: 'utf8',
+                    input: diff,
+                    stdio: ['pipe', 'pipe', 'pipe'],
+                });
+                return {
+                    ok: proc.status === 0,
+                    id: String(proc.stdout || '').trim().split(/\s+/)[0] || '',
+                    outputTail: `${String(proc.stdout || '')}${String(proc.stderr || '')}`.slice(-4000),
+                    exitCode: proc.status,
+                };
+            };
+            const overlayPatchId = patchId(overlayDiff);
+            const workingPatchId = patchId(workingDiff);
+            const reverse = spawnSync(
+                'bash',
+                ['-lc', `git apply --check -R --whitespace=nowarn ${JSON.stringify(diffFile)}`],
+                { cwd: process.cwd(), encoding: 'utf8', stdio: 'pipe' }
+            );
+            const reverseOutput = `${String(reverse.stdout || '')}${String(reverse.stderr || '')}`.slice(-4000);
+            const patchIdsMatch =
+                overlayPatchId.ok && workingPatchId.ok && !!overlayPatchId.id && overlayPatchId.id === workingPatchId.id;
+            return {
+                appliedDiffMatchesSnapshot: patchIdsMatch && reverse.status === 0,
+                method,
+                diagnostics: {
+                    snapshot,
+                    diffFile,
+                    touchedFiles,
+                    overlayPatchId: overlayPatchId.id || null,
+                    workingPatchId: workingPatchId.id || null,
+                    patchIdsMatch,
+                    reverseCheckExitCode: reverse.status,
+                    reverseCheckOutputTail: reverseOutput,
+                    workingDiffExitCode: workingDiffProc.status,
+                    patchIdOutputTail: !overlayPatchId.ok
+                        ? overlayPatchId.outputTail
+                        : !workingPatchId.ok
+                          ? workingPatchId.outputTail
+                          : '',
+                },
+            };
+        } catch (error) {
+            return {
+                appliedDiffMatchesSnapshot: false,
+                method,
+                diagnostics: {
+                    snapshot,
+                    reason: 'verification_error',
+                    message: error instanceof Error ? error.message : String(error),
+                },
+            };
+        }
     }
 
     private async handleApplyAfterChecks(args: Record<string, any>) {

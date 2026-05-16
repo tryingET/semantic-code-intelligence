@@ -95,7 +95,7 @@ ALLOW_SNAPSHOT_APPLY=1 sci workflow safe_write --args-file /tmp/sci-safe-write.j
 
 Use `brief:true` when the harnessed LLM only needs the risk class, snapshot id, check status, apply status, and next action. Use full output or `extract_snapshot_artifacts` only when the diff/check details are needed.
 
-The repeatable safe-write harness applies a tiny fixture patch through guarded `safe_write`, proves failed checks block apply, runs the returned rollback command, and verifies the fixture content is restored exactly.
+The repeatable safe-write harness applies a tiny fixture patch through guarded `safe_write`, proves failed checks block apply, asserts `verification.appliedDiffMatchesSnapshot === true` for the guarded apply, runs the returned rollback command, and verifies the fixture content is restored exactly.
 
 ## Operator rule
 
@@ -107,7 +107,7 @@ For SCI maintenance work, prefer SCI CLI workflow calls before raw shell probing
 - graph/fallback context;
 - preview-first patch checks;
 - deterministic structural matching and rewrite planning through ast-grep-backed workflows;
-- guarded safe writes through `safe_write` when a reviewed patch is ready to validate or apply.
+- guarded safe writes through `safe_write` when a reviewed patch is ready to validate, exactly verify after apply, or roll back.
 
 Raw shell tools are still appropriate for git status, deterministic validation commands, AK operations, and cases where SCI does not yet expose the needed primitive.
 

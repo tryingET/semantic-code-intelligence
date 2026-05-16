@@ -50,7 +50,7 @@ The Alpha MVP tool surface is:
 | `run_checks` | Run explicit validation commands or configured checks and return outcomes. | Commands, exit codes, stdout/stderr summaries, duration. |
 | `structural_search` | Run ast-grep-backed structural search over bounded repo-relative paths with explicit result, timeout, and output-buffer limits. | Workflow/backend availability, language, pattern, paths, limits, match count, cap status, file/range/snippet matches. |
 | `structural_patch_checks` | Generate an ast-grep structural rewrite diff, stage it in a snapshot, run explicit checks, and avoid working-tree writes by default. | Match count, patch file/replacement/diff-byte summary, snapshot id and artifact links, check result, applied=false unless explicitly guarded. |
-| `safe_write` | Primary autonomous-safe write path: stage a patch, run checks, classify risk, optionally apply only with `apply:true` plus `ALLOW_SNAPSHOT_APPLY=1`, and return rollback/artifact evidence. | Risk class, snapshot id, check result, apply guard result, rollback command/artifact, concise brief output when requested. |
+| `safe_write` | Primary autonomous-safe write path: stage a patch, run checks, classify risk, optionally apply only with `apply:true` plus `ALLOW_SNAPSHOT_APPLY=1`, verify the applied working-tree change matches the reviewed snapshot overlay, and return rollback/artifact evidence. | Risk class, snapshot id, check result, apply guard result, exact applied-diff verification when applied, rollback command/artifact, concise brief output when requested. |
 
 ## Cross-interface invariants
 
@@ -69,6 +69,7 @@ Alpha mutation posture is **preview first**.
 - Failed checks must preserve diagnostics and avoid claiming success.
 - Learned patterns can suggest; they do not silently enforce policy.
 - `structural_patch_checks` and `safe_write` follow the same preview-first posture: `apply` defaults to `false`, and `apply: true` is honored only when `ALLOW_SNAPSHOT_APPLY=1` is set and checks pass.
+- When `safe_write` applies, it verifies the applied working-tree state against the reviewed snapshot `overlay.diff` with a reverse `git apply --check` proof and reports `verification.appliedDiffMatchesSnapshot`; unverifiable shapes are structured non-success verification states rather than silent success.
 - SCI orchestrates structural workflow safety and evidence; `ast-grep` performs deterministic structural matching and rewrite generation.
 - Default structural checks use `bun run typecheck`, which is the tsgo-primary TypeScript validation lane. Do not reintroduce `build:tsc`; `bun run typecheck:fallback` remains the tsc fallback.
 

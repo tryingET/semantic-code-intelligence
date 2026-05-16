@@ -31,7 +31,7 @@ function parseWorkflowStdout(stdout: string) {
 
 function callSafeWrite(args: Record<string, unknown>, env: Record<string, string | undefined> = {}): CallEvidence {
   const started = Date.now();
-  const proc = spawnSync('sci', ['workflow', 'safe_write', '--args', JSON.stringify(args), '--json'], {
+  const proc = spawnSync('bun', ['run', 'src/servers/cli.ts', 'workflow', 'safe_write', '--args', JSON.stringify(args), '--json'], {
     encoding: 'utf8',
     env: { ...process.env, SILENT_MODE: 'true', STDIO_MODE: 'true', ...env },
   });
@@ -109,6 +109,7 @@ const evidence = {
     afterFailedApply === original &&
     applied.payload?.ok === true &&
     applied.payload?.applied === true &&
+    applied.payload?.verification?.appliedDiffMatchesSnapshot === true &&
     afterApply.includes(marker) &&
     rollbackResult?.status === 0 &&
     afterRollback === original &&
@@ -118,6 +119,7 @@ const evidence = {
     previewUnchanged: afterPreview === original,
     failedChecksBlockedApply: failedApply.payload?.ok === false && afterFailedApply === original,
     guardedApplyChangedFixture: applied.payload?.applied === true && afterApply.includes(marker),
+    appliedDiffMatchesSnapshot: applied.payload?.verification?.appliedDiffMatchesSnapshot === true,
     rollbackRestoredExactly: afterRollback === original,
     fixtureCleanAfterRollback: fixtureHasNoPostRollbackModification,
   },
@@ -130,6 +132,7 @@ const evidence = {
       risk: call.payload?.risk,
       applied: call.payload?.applied,
       checks: call.payload?.checks,
+      verification: call.payload?.verification,
       applyResult: call.payload?.applyResult,
       rollback: call.payload?.rollback,
       next: call.payload?.next,
