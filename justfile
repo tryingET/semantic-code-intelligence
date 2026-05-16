@@ -51,6 +51,7 @@ default:
     @echo "  just plan-rename <old> <new>   - Refactor: plan rename (preview)"
     @echo "  just safe-apply [file] [-- <cmd...>] - Stage diff safely in snapshot + checks"
     @echo "  just alpha-mvp-check     - Validate Phase 1 harnessed-LLM Alpha MVP surface"
+    @echo "  just install-cli-local   - Build and link the SCI CLI for target-repo use"
     @echo "  just migration-hygiene   - Check migrated repo identity/local artifact hygiene"
     @echo ""
     @echo "Run 'just --list' for complete command list"
@@ -2039,6 +2040,12 @@ alpha-mvp-check:
 self-dogfood-cli:
     mkdir -p .test-results
     bun run scripts/dogfood-self-hosted-cli.ts --json > .test-results/self-hosted-cli-dogfood.json
+
+# Build and link the SCI CLI into the operator's Bun global command surface
+install-cli-local:
+    bun run cli:install-local
+    command -v semantic-code-intelligence
+    semantic-code-intelligence --help >/dev/null
 
 # Check migrated repo identity/local artifact hygiene
 migration-hygiene:

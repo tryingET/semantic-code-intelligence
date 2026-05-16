@@ -25,6 +25,7 @@
     "build:mcp-stdio": "bun build ./src/servers/mcp.ts --target=bun --outdir=dist/mcp --format=esm --external tree-sitter --external tree-sitter-typescript --external tree-sitter-javascript --external tree-sitter-python --external pg --external bun:sqlite --external express --external cors",
     "build:http": "bun build ./src/servers/http.ts --target=bun --outdir=dist/http --format=esm --external tree-sitter --external tree-sitter-typescript --external tree-sitter-javascript --external tree-sitter-python --external pg --external bun:sqlite --external express --external cors",
     "build:cli": "bun build ./src/servers/cli.ts --target=bun --outdir=dist/cli --format=esm --external tree-sitter --external tree-sitter-typescript --external tree-sitter-javascript --external tree-sitter-python --external pg --external bun:sqlite --external express --external cors",
+    "cli:install-local": "bun run build:cli && bun link",
     "build:tsc": "tsc -p tsconfig.build.json",
     "start": "bun run dist/lsp/lsp.js --stdio",
     "start:mcp": "bun run dist/mcp/mcp.js",

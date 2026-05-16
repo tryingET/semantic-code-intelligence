@@ -27,12 +27,19 @@ This keeps source-owner boundaries clear:
 
 ## Install or expose the CLI
 
-During local development, build SCI and put its package bin on `PATH` by the mechanism appropriate for the operator environment.
+During local development, build SCI and link its package bin into the operator's Bun global command surface.
 
-Useful checks from this repo:
+From the SCI repo:
 
 ```bash
-bun run build:cli
+just install-cli-local
+# or: bun run cli:install-local
+```
+
+Then verify from any target repo:
+
+```bash
+cd /path/to/target-repo
 semantic-code-intelligence --help
 ```
 
@@ -78,4 +85,4 @@ Not acceptable:
 
 Earlier external dogfood against a Pi extension package showed useful navigation and preview-first patch-check behavior, but it also exposed the wrong coupling: SCI carried target-repo knowledge.
 
-The corrected product direction is installed/global SCI CLI usage from the target repository's cwd.
+The corrected product direction is installed/global SCI CLI usage from the target repository's cwd. Current local development support is `just install-cli-local`, which builds the CLI and registers the package bin so target repos can invoke `semantic-code-intelligence` directly.
