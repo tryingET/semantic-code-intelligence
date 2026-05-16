@@ -1,0 +1,327 @@
+{
+    "name": "ontology-lsp",
+    "displayName": "Ontology Language Server",
+    "description": "Intelligent code navigation with semantic understanding, pattern learning, and knowledge propagation",
+    "version": "1.0.0",
+    "publisher": "ontology-team",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/ontology-team/ontology-lsp.git"
+    },
+    "engines": {
+        "vscode": "^1.103.0"
+    },
+    "categories": [
+        "Programming Languages",
+        "Linters",
+        "Other"
+    ],
+    "keywords": [
+        "ontology",
+        "lsp",
+        "refactoring",
+        "semantic",
+        "ai"
+    ],
+    "activationEvents": [
+        "onStartupFinished",
+        "onLanguage:typescript",
+        "onLanguage:javascript",
+        "onLanguage:python"
+    ],
+    "main": "./out/extension.js",
+    "contributes": {
+        "configuration": {
+            "type": "object",
+            "title": "Ontology LSP Configuration",
+            "properties": {
+                "ontologyLSP.enable": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Enable/disable the Ontology Language Server"
+                },
+                "ontologyLSP.server.path": {
+                    "type": "string",
+                    "default": "/home/lightningralf/programming/ontology-lsp/dist/lsp/lsp.js",
+                    "description": "Path to the Ontology LSP server executable (leave empty for bundled)"
+                },
+                "ontologyLSP.trace.server": {
+                    "type": "string",
+                    "enum": [
+                        "off",
+                        "messages",
+                        "verbose"
+                    ],
+                    "default": "off",
+                    "description": "Trace communication between VS Code and the language server"
+                },
+                "ontologyLSP.fuzzyMatching.enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Enable fuzzy matching for code navigation"
+                },
+                "ontologyLSP.fuzzyMatching.threshold": {
+                    "type": "number",
+                    "default": 0.7,
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Similarity threshold for fuzzy matching (0-1)"
+                },
+                "ontologyLSP.patternLearning.enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Enable automatic pattern learning from refactoring actions"
+                },
+                "ontologyLSP.patternLearning.minConfidence": {
+                    "type": "number",
+                    "default": 0.8,
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Minimum confidence threshold for applying learned patterns"
+                },
+                "ontologyLSP.propagation.enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Enable knowledge propagation for related changes"
+                },
+                "ontologyLSP.propagation.autoApply": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Automatically apply high-confidence propagated changes"
+                },
+                "ontologyLSP.propagation.maxDepth": {
+                    "type": "number",
+                    "default": 2,
+                    "minimum": 1,
+                    "maximum": 10,
+                    "description": "Maximum depth for propagation search"
+                },
+                "ontologyLSP.performance.cacheSize": {
+                    "type": "number",
+                    "default": 250,
+                    "description": "Maximum cache size in MB"
+                },
+                "ontologyLSP.performance.parallelWorkers": {
+                    "type": "number",
+                    "default": 2,
+                    "minimum": 1,
+                    "maximum": 16,
+                    "description": "Number of parallel workers for analysis"
+                },
+                "ontologyLSP.ui.showStatusBar": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Show Ontology status in the status bar"
+                },
+                "ontologyLSP.ui.showInlineHints": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Show inline hints for concept relationships"
+                },
+                "ontologyLSP.telemetry.enabled": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Enable anonymous telemetry to improve the extension"
+                },
+                "ontologyLSP.experimental.aiSuggestions": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Enable experimental AI-powered suggestions"
+                }
+            }
+        },
+        "commands": [
+            {
+                "command": "ontology.enable",
+                "title": "Enable Ontology LSP",
+                "category": "Ontology"
+            },
+            {
+                "command": "ontology.disable",
+                "title": "Disable Ontology LSP",
+                "category": "Ontology"
+            },
+            {
+                "command": "ontology.restart",
+                "title": "Restart Language Server",
+                "category": "Ontology"
+            },
+            {
+                "command": "ontology.showGraph",
+                "title": "Show Concept Graph",
+                "category": "Ontology"
+            },
+            {
+                "command": "ontology.analyzeCodebase",
+                "title": "Analyze Entire Codebase",
+                "category": "Ontology"
+            },
+            {
+                "command": "ontology.showPatterns",
+                "title": "Show Learned Patterns",
+                "category": "Ontology"
+            },
+            {
+                "command": "ontology.clearCache",
+                "title": "Clear Ontology Cache",
+                "category": "Ontology"
+            },
+            {
+                "command": "ontology.exportOntology",
+                "title": "Export Ontology Data",
+                "category": "Ontology"
+            },
+            {
+                "command": "ontology.importOntology",
+                "title": "Import Ontology Data",
+                "category": "Ontology"
+            },
+            {
+                "command": "ontology.showStats",
+                "title": "Show Statistics",
+                "category": "Ontology"
+            },
+            {
+                "command": "ontology.trainPattern",
+                "title": "Train Pattern from Selection",
+                "category": "Ontology"
+            },
+            {
+                "command": "ontology.suggestRefactoring",
+                "title": "Suggest Refactorings",
+                "category": "Ontology"
+            },
+            {
+                "command": "ontology.buildSymbolMap",
+                "title": "Build Symbol Map",
+                "category": "Symbol"
+            },
+            {
+                "command": "ontology.planRename",
+                "title": "Plan Rename (Preview)",
+                "category": "Refactor"
+            }
+        ],
+        "menus": {
+            "editor/context": [
+                {
+                    "command": "ontology.suggestRefactoring",
+                    "when": "editorTextFocus",
+                    "group": "1_modification"
+                },
+                {
+                    "command": "ontology.trainPattern",
+                    "when": "editorHasSelection",
+                    "group": "1_modification"
+                },
+                {
+                    "command": "ontology.buildSymbolMap",
+                    "when": "editorTextFocus",
+                    "group": "2_navigation"
+                },
+                {
+                    "command": "ontology.planRename",
+                    "when": "editorTextFocus",
+                    "group": "2_navigation"
+                }
+            ],
+            "commandPalette": [
+                {
+                    "command": "ontology.trainPattern",
+                    "when": "editorHasSelection"
+                },
+                {
+                    "command": "ontology.buildSymbolMap"
+                },
+                {
+                    "command": "ontology.planRename"
+                }
+            ]
+        },
+        "keybindings": [
+            {
+                "command": "ontology.showGraph",
+                "key": "ctrl+shift+o g",
+                "mac": "cmd+shift+o g"
+            },
+            {
+                "command": "ontology.suggestRefactoring",
+                "key": "ctrl+shift+o r",
+                "mac": "cmd+shift+o r"
+            },
+            {
+                "command": "ontology.buildSymbolMap",
+                "key": "ctrl+shift+o s",
+                "mac": "cmd+shift+o s"
+            },
+            {
+                "command": "ontology.planRename",
+                "key": "ctrl+shift+o n",
+                "mac": "cmd+shift+o n"
+            }
+        ],
+        "colors": [
+            {
+                "id": "ontology.relatedCode",
+                "description": "Background color for semantically related code",
+                "defaults": {
+                    "dark": "#3333FF20",
+                    "light": "#0000FF15",
+                    "highContrast": "#0000FF30"
+                }
+            }
+        ],
+        "views": {
+            "explorer": [
+                {
+                    "id": "ontologyExplorer",
+                    "name": "Ontology Explorer",
+                    "icon": "$(symbol-class)",
+                    "contextualTitle": "Ontology Explorer"
+                }
+            ]
+        },
+        "viewsWelcome": [
+            {
+                "view": "ontologyExplorer",
+                "contents": "No ontology data available.\n[Analyze Codebase](command:ontology.analyzeCodebase)"
+            }
+        ]
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run compile",
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./",
+        "pretest": "npm run compile",
+        "lint": "eslint src --ext ts",
+        "test": "npm run compile && node ./out/test/runTest.js",
+        "test:unit": "npm test -- --grep 'Test Suite$'",
+        "test:integration": "npm test -- --grep 'Integration'",
+        "test:e2e": "npm test -- --grep 'End-to-End'",
+        "test:coverage": "nyc npm test",
+        "package": "vsce package",
+        "publish": "vsce publish"
+    },
+    "dependencies": {
+        "uuid": "^11.1.0",
+        "vscode-languageclient": "^9.0.1"
+    },
+    "devDependencies": {
+        "@types/mocha": "^10.0.10",
+        "@types/node": "24.x",
+        "@types/sinon": "^17.0.4",
+        "@types/uuid": "^10.0.0",
+        "@types/vscode": "^1.103.0",
+        "@typescript-eslint/eslint-plugin": "^8.40.0",
+        "@typescript-eslint/parser": "^8.40.0",
+        "@vscode/test-electron": "^2.5.2",
+        "@vscode/vsce": "^3.6.0",
+        "eslint": "^9.33.0",
+        "glob": "^11.0.3",
+        "mocha": "^11.7.1",
+        "nyc": "^17.1.0",
+        "sinon": "^21.0.0",
+        "typescript": "^5.9.2"
+    }
+}

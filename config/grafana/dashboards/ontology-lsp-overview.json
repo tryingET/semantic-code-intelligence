@@ -1,0 +1,115 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Ontology-LSP Overview",
+    "tags": ["ontology-lsp", "code-intelligence", "performance"],
+    "style": "dark",
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Service Health Status",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "up{job=~\"ontology.*\"}",
+            "legendFormat": "{{job}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "custom": {
+              "align": "auto",
+              "displayMode": "list",
+              "inspect": false
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"color": "red", "value": null},
+                {"color": "green", "value": 1}
+              ]
+            },
+            "unit": "short"
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Request Rate (req/sec)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(http_requests_total{job=~\"ontology.*\"}[5m])",
+            "legendFormat": "{{method}} {{endpoint}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Response Time (95th percentile)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job=~\"ontology.*\"}[5m]))",
+            "legendFormat": "{{job}} p95"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}
+      },
+      {
+        "id": 4,
+        "title": "Cache Performance",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(cache_hits_total{job=~\"ontology.*\"}[5m])",
+            "legendFormat": "Cache Hits"
+          },
+          {
+            "expr": "rate(cache_misses_total{job=~\"ontology.*\"}[5m])",
+            "legendFormat": "Cache Misses"  
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+      },
+      {
+        "id": 5,
+        "title": "Pattern Learning Stats",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "patterns_learned_total{job=~\"ontology.*\"}",
+            "legendFormat": "Total Patterns"
+          },
+          {
+            "expr": "rate(pattern_applications_total{job=~\"ontology.*\"}[5m])",
+            "legendFormat": "Applications/sec"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "timepicker": {},
+    "templating": {
+      "list": []
+    },
+    "annotations": {
+      "list": []
+    },
+    "refresh": "10s",
+    "schemaVersion": 30,
+    "version": 1,
+    "links": []
+  }
+}

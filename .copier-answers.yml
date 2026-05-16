@@ -1,0 +1,15 @@
+company_name: Software Company
+company_ontology_ref: <repo:softwareco/ontology@main>
+company_slug: softwareco
+core_owner_handle: '@core-owner'
+enable_community_pack: false
+enable_release_pack: false
+enable_vouch_gate: false
+kernel_ontology_ref: <repo:core/ontology-kernel@main>
+org_docs_profile: compact
+org_owner_handle: '@org-owners'
+package_manager: uv
+project_owner_handle: '@tryinget'
+repo_slug: semantic-code-intelligence
+template_source_sha: dd5a7cb1f500de14c109627849cb52423a40c04f
+

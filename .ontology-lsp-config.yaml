@@ -1,0 +1,28 @@
+# Ontology LSP Configuration
+workspaceRoot: .
+database:
+  path: .ontology/ontology.db
+layers:
+  layer1:
+    enabled: true
+    timeout: 5000
+  layer2:
+    enabled: true
+    timeout: 50000
+  layer3:
+    enabled: true
+    timeout: 10000
+  layer4:
+    enabled: true
+    timeout: 10000
+  layer5:
+    enabled: true
+    timeout: 20000
+cache:
+  enabled: true
+  ttlMs: 300000
+  maxSize: 1000
+performance:
+  enableTiming: true
+  logSlowOperations: true
+  slowOperationThresholdMs: 1000

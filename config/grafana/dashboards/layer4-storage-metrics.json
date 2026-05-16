@@ -1,0 +1,42 @@
+{
+  "title": "Ontology-LSP Layer 4 Storage Metrics",
+  "uid": "ontology-l4-metrics",
+  "schemaVersion": 37,
+  "version": 1,
+  "tags": ["ontology", "layer4", "storage"],
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "L4 Operation Count",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {"expr": "sum by(op) (ontology_l4_operation_count)", "legendFormat": "{{op}}"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "L4 Operation Errors",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {"expr": "sum by(op) (ontology_l4_operation_errors)", "legendFormat": "{{op}}"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "L4 Duration p95 (ms)",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [
+        {"expr": "ontology_l4_operation_duration_ms{quantile='p95'}", "legendFormat": "{{op}} p95"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "L4 Duration p99 (ms)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [
+        {"expr": "ontology_l4_operation_duration_ms{quantile='p99'}", "legendFormat": "{{op}} p99"}
+      ]
+    }
+  ]
+}
+

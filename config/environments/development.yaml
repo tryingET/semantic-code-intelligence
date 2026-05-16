@@ -1,0 +1,369 @@
+# Ontology-LSP Development Configuration
+
+# ================================
+# Application Settings
+# ================================
+app:
+  name: "Ontology-LSP"
+  version: "2.0.0"
+  environment: "development"
+  debug: true
+
+# ================================
+# Server Configuration
+# ================================
+server:
+  # Service ports (same as production for consistency)
+  ports:
+    http_api: 7000
+    mcp_sse: 7001
+    lsp_server: 7002
+  
+  # Development-friendly settings
+  workers: 1
+  max_connections: 100
+  keep_alive_timeout: 30000
+  request_timeout: 60000  # Longer for debugging
+  
+  # Permissive CORS for development
+  cors:
+    origins: 
+      - "http://localhost:3000"
+      - "http://localhost:8080"
+      - "http://localhost:5173"  # Vite
+      - "http://127.0.0.1:3000"
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"]
+    credentials: true
+  
+  trust_proxy: false
+  helmet: false  # Disabled for development
+  rate_limiting:
+    window_ms: 60000   # 1 minute
+    max_requests: 1000 # Generous for development
+    skip_successful_requests: true
+
+# ================================
+# Database Configuration
+# ================================
+database:
+  # Use SQLite for development simplicity
+  primary:
+    type: "sqlite"
+    path: "./.ontology/ontology.db"
+    wal_mode: true
+    foreign_keys: true
+    
+  # Alternative PostgreSQL setup for testing
+  postgresql:
+    type: "postgresql" 
+    host: "localhost"
+    port: 5432
+    database: "ontology_lsp_dev"
+    username: "ontology"
+    # password from environment variable
+    ssl: false
+    pool:
+      min: 1
+      max: 5
+      idle_timeout: 30000
+  
+  # Migrations auto-run in development
+  migrations:
+    auto_run: true
+    directory: "./src/database/migrations"
+
+# ================================
+# Cache Configuration
+# ================================
+cache:
+  # In-memory cache for development (no Redis required)
+  type: "memory"
+  
+  # Redis configuration (if available)
+  redis:
+    host: "localhost"
+    port: 6379
+    db: 1  # Different DB than production
+    key_prefix: "ontology_lsp_dev:"
+    
+  # Shorter TTL for development
+  ttl:
+    default: 300       # 5 minutes
+    patterns: 1800     # 30 minutes
+    concepts: 600      # 10 minutes
+    analysis: 300      # 5 minutes
+  
+  distributed: false
+  compression: false
+  serialization: "json"
+
+# ================================
+# Performance Settings
+# ================================
+performance:
+  monitoring: true
+  metrics: true
+  tracing: true
+  
+  # More relaxed targets for development
+  layer_targets:
+    layer1_fast: 10    # 2x production
+    tree_sitter: 100    # 2x production
+    ontology: 20        # 2x production
+    patterns: 20        # 2x production
+    knowledge: 40       # 2x production
+  
+  # Development resource limits
+  limits:
+    max_memory_mb: 1024  # Lower for development
+    max_file_size_mb: 20
+    max_files_per_analysis: 1000
+    max_concurrent_requests: 20
+  
+  # Generous timeouts for debugging
+  timeouts:
+    analysis: 120000    # 2 minutes
+    pattern_learning: 30000
+    request: 60000
+
+# ================================
+# Learning & AI Configuration
+# ================================
+learning:
+  enabled: true
+  
+  # More aggressive learning in development
+  patterns:
+    confidence_threshold: 0.5  # Lower threshold
+    learning_rate: 0.2         # Faster learning
+    max_patterns_per_file: 100
+    auto_apply: true           # Auto-apply for testing
+  
+  # Knowledge propagation
+  knowledge:
+    propagation_enabled: true
+    similarity_threshold: 0.6  # More permissive
+    max_depth: 3               # Shallower for speed
+  
+  # AI features
+  ai:
+    suggestions_enabled: true
+    vector_search: false       # Disabled to avoid API costs
+    semantic_analysis: true
+
+# ================================
+# Security Configuration
+# ================================
+security:
+  # Simplified JWT for development
+  jwt:
+    algorithm: "HS256"
+    expires_in: "7d"        # Longer expiry
+    refresh_expires_in: "30d"
+  
+  # Authentication optional in development
+  auth:
+    required: false
+    methods: ["jwt"]
+    
+  # Basic encryption
+  encryption:
+    algorithm: "aes-256-gcm"
+    key_derivation: "pbkdf2"
+  
+  # Relaxed CSP for development
+  csp:
+    enabled: false
+
+# ================================
+# Observability
+# ================================
+observability:
+  # Verbose logging for development
+  logging:
+    level: "debug"
+    format: "pretty"      # Human-readable format
+    structured: false     # Simple format
+    correlation_id: true
+    
+  # Local tracing
+  tracing:
+    enabled: true
+    service_name: "ontology-lsp-dev"
+    service_version: "2.0.0-dev"
+    exporter:
+      type: "console"     # Log traces to console
+      # type: "otlp"
+      # endpoint: "http://localhost:4317"
+  
+  # Development metrics
+  metrics:
+    enabled: true
+    prometheus:
+      enabled: true
+      path: "/metrics"
+      port: 9090
+    custom:
+      - "pattern_applications_total"
+      - "concepts_created_total"
+      - "analysis_duration_seconds"
+      - "dev_hot_reloads_total"
+
+# ================================
+# File System Configuration
+# ================================
+filesystem:
+  # Local development directories
+  temp_dir: "./.ontology/temp"
+  data_dir: "./.ontology/data"
+  cache_dir: "./.ontology/cache"
+  logs_dir: "./.ontology/logs"
+  
+  # Aggressive file watching for development
+  watch:
+    enabled: true
+    debounce_ms: 250      # Faster response
+    ignore_patterns:
+      - "node_modules"
+      - "dist"
+      - ".git"
+      - ".ontology"
+      - "*.tmp"
+      - "*.log"
+
+# ================================
+# Development Features
+# ================================
+development:
+  # Hot reload
+  hot_reload: true
+  auto_restart: true
+  
+  # Debug features
+  debug:
+    layers: true
+    verbose_logging: true
+    performance_warnings: true
+    memory_usage: true
+  
+  # Development tools
+  tools:
+    playground: true
+    inspector: true
+    profiler: true
+    
+  # Testing
+  testing:
+    auto_run: false
+    coverage: true
+    watch_mode: true
+
+# ================================
+# Language Support
+# ================================
+languages:
+  supported:
+    - "typescript"
+    - "javascript"
+    - "python"
+    # "go" and "rust" disabled for faster development
+  
+  parsers:
+    tree_sitter:
+      timeout_ms: 10000   # Longer for development
+      max_tree_size: 500000
+  
+  specific:
+    typescript:
+      config_file: "tsconfig.json"
+      strict_mode: true
+    javascript:
+      config_file: "jsconfig.json"
+    python:
+      version: "3.9+"
+      executable: "python3"
+
+# ================================
+# Backup & Recovery
+# ================================
+backup:
+  enabled: false    # Disabled in development
+  
+  # Local backup if needed
+  local:
+    enabled: false
+    directory: "./.ontology/backups"
+    retention_days: 7
+
+# ================================
+# Feature Flags
+# ================================
+features:
+  # Core features - all enabled for testing
+  vector_search: false     # Disabled to avoid API costs
+  semantic_analysis: true
+  pattern_learning: true
+  knowledge_propagation: true
+  
+  # Protocol features
+  lsp:
+    diagnostics: true
+    code_actions: true
+    completion: true
+    hover: true
+    format: true
+    rename: true
+  
+  mcp:
+    sse_enabled: true
+    tools_enabled: true
+    resources_enabled: true
+  
+  http:
+    websockets: true      # Enabled for testing
+    graphql: false
+  
+  # Experimental features enabled for testing
+  experimental:
+    real_time_collaboration: false  # Still too experimental
+    cross_project_patterns: true   # Good for testing
+    ai_code_generation: false      # Avoid API costs
+
+# ================================
+# Performance Tuning for Development
+# ================================
+optimization:
+  # Memory optimization (relaxed)
+  memory:
+    gc_threshold: 0.9
+    buffer_size: 32768
+    
+  # CPU optimization
+  cpu:
+    worker_threads: false  # Simpler debugging
+    cluster_mode: false
+    
+  # I/O optimization
+  io:
+    buffer_size: 16384
+    async_operations: true
+
+# ================================
+# Local Development Overrides
+# ================================
+local:
+  # Workspace settings
+  workspace:
+    default_path: "./test-workspace"
+    watch_extensions: [".ts", ".js", ".py", ".md"]
+    
+  # API settings
+  api:
+    cors_all_origins: true
+    detailed_errors: true
+    request_logging: true
+    
+  # MCP settings
+  mcp:
+    enable_stdio_fallback: true
+    verbose_tool_output: true

@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+
+# Prefer local repo build when fresh; otherwise run TS directly (dev/test)
+if command -v bun >/dev/null 2>&1; then
+  CLI_DIST="$HERE/dist/cli/cli.js"
+  CLI_SRC="$HERE/src/servers/cli.ts"
+  CLI_SRC_DEP="$HERE/src/adapters/cli-adapter.ts"
+
+  if [[ -f "$CLI_DIST" ]] && [[ "$CLI_DIST" -nt "$CLI_SRC" ]] && [[ "$CLI_DIST" -nt "$CLI_SRC_DEP" ]]; then
+    exec bun "$CLI_DIST" "$@"
+  fi
+
+  exec bun "$CLI_SRC" "$@"
+fi
+
+# Fallback to Node if bun not available
+exec node "$HERE/dist/cli/cli.js" "$@"

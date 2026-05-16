@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ontology-lsp.local/schemas/dogfood-summary.schema.json",
+  "title": "Dogfood CI Summary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "meta", "timingsMs", "metrics", "toolCounts", "explore", "rename", "patchChecks"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "minimum": 1 },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ci", "workspaceRoot", "host", "port"],
+      "properties": {
+        "ci": { "type": "boolean" },
+        "workspaceRoot": { "type": "string" },
+        "host": { "type": "string" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    },
+    "timingsMs": {
+      "type": "object",
+      "additionalProperties": { "type": "number", "minimum": 0 }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "l1": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "p50": { "type": "number", "minimum": 0 },
+            "p95": { "type": "number", "minimum": 0 },
+            "p99": { "type": "number", "minimum": 0 },
+            "searches": { "type": "number", "minimum": 0 },
+            "errors": { "type": "number", "minimum": 0 }
+          }
+        },
+        "l2": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "p50": { "type": "number", "minimum": 0 },
+            "p95": { "type": "number", "minimum": 0 },
+            "p99": { "type": "number", "minimum": 0 },
+            "count": { "type": "number", "minimum": 0 },
+            "errors": { "type": "number", "minimum": 0 }
+          }
+        }
+      },
+      "required": ["l1", "l2"]
+    },
+    "toolCounts": {
+      "type": "object",
+      "additionalProperties": { "type": "number", "minimum": 0 }
+    },
+    "explore": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["impact", "off", "on"],
+      "properties": {
+        "impact": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["defs", "neighbors"],
+          "properties": {
+            "defs": { "type": "number", "minimum": 0 },
+            "neighbors": { "type": "number", "minimum": 0 }
+          }
+        },
+        "off": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["defs", "refs"],
+          "properties": {
+            "defs": { "type": "number", "minimum": 0 },
+            "refs": { "type": "number", "minimum": 0 }
+          }
+        },
+        "on": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["defs", "refs"],
+          "properties": {
+            "defs": { "type": "number", "minimum": 0 },
+            "refs": { "type": "number", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "rename": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ok", "snapshot"],
+      "properties": {
+        "ok": { "type": "boolean" },
+        "snapshot": { "type": ["string", "null"] },
+        "files": { "type": ["number", "null"] }
+      }
+    },
+    "patchChecks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ok", "snapshot"],
+      "properties": {
+        "ok": { "type": "boolean" },
+        "snapshot": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

@@ -1,0 +1,242 @@
+# Ontology-LSP Production Deployment
+# All-in-one file for production deployment
+# Apply with: kubectl apply -f production.yaml
+
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ontology-lsp
+  labels:
+    name: ontology-lsp
+    app.kubernetes.io/name: ontology-lsp
+
+---
+# Service Account and RBAC
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ontology-lsp-sa
+  namespace: ontology-lsp
+  labels:
+    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/component: rbac
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ontology-lsp-role
+  namespace: ontology-lsp
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets", "pods", "services", "endpoints"]
+    verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ontology-lsp-rolebinding
+  namespace: ontology-lsp
+subjects:
+  - kind: ServiceAccount
+    name: ontology-lsp-sa
+    namespace: ontology-lsp
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ontology-lsp-role
+
+---
+# ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ontology-lsp-config
+  namespace: ontology-lsp
+data:
+  NODE_ENV: "production"
+  LOG_LEVEL: "info"
+  HTTP_API_PORT: "7000"
+  MCP_HTTP_PORT: "7001"
+  LSP_SERVER_PORT: "7002"
+  CACHE_TTL: "3600"
+  PERFORMANCE_MONITORING: "true"
+  PATTERN_LEARNING: "true"
+  OTEL_ENABLED: "true"
+  OTEL_SERVICE_NAME: "ontology-lsp"
+
+---
+# Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ontology-lsp
+  namespace: ontology-lsp
+  labels:
+    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/version: "2.0.0"
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ontology-lsp
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ontology-lsp
+        app.kubernetes.io/version: "2.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "7000"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: ontology-lsp-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+      containers:
+        - name: ontology-lsp
+          image: ontology-lsp:2.0.0
+          ports:
+            - containerPort: 7000
+              name: http-api
+            - containerPort: 7001
+              name: mcp-http
+            - containerPort: 7002
+              name: lsp-tcp
+          envFrom:
+            - configMapRef:
+                name: ontology-lsp-config
+            - secretRef:
+                name: ontology-lsp-secrets
+                optional: true
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 7000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 7000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 7000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: data
+              mountPath: /app/data
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: data
+          emptyDir:
+            sizeLimit: 2Gi
+
+---
+# Services
+apiVersion: v1
+kind: Service
+metadata:
+  name: ontology-lsp-http
+  namespace: ontology-lsp
+  labels:
+    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/component: http-api
+spec:
+  type: ClusterIP
+  ports:
+    - port: 7000
+      targetPort: 7000
+      name: http
+  selector:
+    app.kubernetes.io/name: ontology-lsp
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ontology-lsp-mcp
+  namespace: ontology-lsp
+  labels:
+    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/component: mcp-http
+spec:
+  type: ClusterIP
+  ports:
+    - port: 7001
+      targetPort: 7001
+      name: mcp-http
+  selector:
+    app.kubernetes.io/name: ontology-lsp
+
+---
+# Horizontal Pod Autoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ontology-lsp-hpa
+  namespace: ontology-lsp
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ontology-lsp
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+
+---
+# Pod Disruption Budget
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ontology-lsp-pdb
+  namespace: ontology-lsp
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ontology-lsp

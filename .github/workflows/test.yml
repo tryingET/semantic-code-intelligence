@@ -1,0 +1,211 @@
+name: Test
+
+on:
+  push:
+    branches: [ main, unified-core-architecture ]
+  pull_request:
+    branches: [ main, unified-core-architecture ]
+
+env:
+  BUN_VERSION: "1.2.20"
+
+jobs:
+  test-server:
+    name: Test Unified Server Architecture
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: ${{ env.BUN_VERSION }}
+    
+    - name: Cache Bun dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.bun/install/cache
+          node_modules
+        key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-bun-
+    
+    - name: Install dependencies
+      run: bun install --frozen-lockfile
+    
+    - name: Type checking
+      run: bun run build:tsc
+    
+    - name: Run core tests
+      run: |
+        echo "🧪 Running core unit tests..."
+        bun test tests/step*.test.ts tests/test-helpers.test.ts --timeout 120000
+    
+    - name: Run unified architecture tests
+      run: |
+        echo "🧪 Running unified core tests..."
+        bun test tests/unified-core.test.ts --timeout 120000
+    
+    - name: Run integration tests
+      run: |
+        echo "🧪 Running integration tests..."
+        bun test tests/integration.test.ts --timeout 120000
+    
+    - name: Run linter
+      run: bun run lint
+
+  test-extension:
+    name: Test VS Code Extension
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: ${{ env.BUN_VERSION }}
+    
+    - name: Setup Node.js for VS Code extension
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: vscode-client/package-lock.json
+    
+    - name: Install server dependencies
+      run: bun install --frozen-lockfile
+    
+    - name: Build production server
+      run: |
+        echo "🔨 Building production server artifacts..."
+        bun build src/servers/lsp.ts --target=bun --outdir=dist/lsp --minify
+        bun build src/servers/http.ts --target=bun --outdir=dist/api --minify
+    
+    - name: Install extension dependencies
+      working-directory: ./vscode-client
+      run: npm ci
+    
+    - name: Compile extension
+      working-directory: ./vscode-client
+      run: npm run compile
+    
+    - name: Run extension tests
+      working-directory: ./vscode-client
+      run: xvfb-run -a npm test
+      env:
+        ONTOLOGY_TEST_MODE: true
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      if: github.event_name == 'push'
+      with:
+        directory: ./vscode-client/coverage
+        flags: vscode-extension
+        name: vscode-extension-coverage
+        token: ${{ secrets.CODECOV_TOKEN }}
+
+  advanced-tests:
+    name: Advanced Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    continue-on-error: true  # These tests are in improvement state
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: ${{ env.BUN_VERSION }}
+    
+    - name: Cache dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.bun/install/cache
+          node_modules
+        key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+    
+    - name: Install dependencies
+      run: bun install --frozen-lockfile
+    
+    - name: Run adapter tests
+      run: |
+        echo "🧪 Running adapter tests (60%+ passing)..."
+        bun test tests/adapters.test.ts --timeout 120000
+    
+    - name: Run learning system tests
+      run: |
+        echo "🧪 Running learning system tests..."
+        bun test tests/learning-system.test.ts --timeout 120000
+    
+    - name: Run performance tests
+      run: |
+        echo "⚡ Running performance benchmarks..."
+        bun test tests/performance.test.ts --timeout 300000
+    
+    - name: Run consistency tests
+      run: |
+        echo "🔄 Running cross-protocol consistency tests..."
+        bun test tests/consistency.test.ts --timeout 180000
+
+  package:
+    name: Package Extension
+    runs-on: ubuntu-latest
+    needs: [test-server, test-extension]
+    timeout-minutes: 10
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: ${{ env.BUN_VERSION }}
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: vscode-client/package-lock.json
+    
+    - name: Install dependencies
+      run: |
+        bun install --frozen-lockfile
+        cd vscode-client && npm ci
+    
+    - name: Build all components
+      run: |
+        echo "🔨 Building server components..."
+        bun build src/servers/lsp.ts --target=bun --outdir=dist/lsp --minify
+        bun build src/servers/http.ts --target=bun --outdir=dist/api --minify
+        bun build src/servers/mcp.ts --target=bun --outdir=dist/mcp --minify
+        bun build src/servers/cli.ts --target=bun --outdir=dist/cli --minify
+        
+        echo "🔨 Building VS Code extension..."
+        cd vscode-client && npm run compile
+    
+    - name: Package extension
+      working-directory: ./vscode-client
+      run: |
+        npx @vscode/vsce package
+    
+    - name: Upload VSIX artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ontology-lsp-extension
+        path: vscode-client/*.vsix
+        retention-days: 30
+    
+    - name: Upload production builds
+      uses: actions/upload-artifact@v4
+      with:
+        name: production-builds
+        path: dist/
+        retention-days: 7

@@ -1,0 +1,459 @@
+# Ontology-LSP CI/CD Pipeline
+# Comprehensive workflow for build, test, and deployment
+
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop, 'feature/*', 'release/*' ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, develop ]
+    types: [ opened, synchronize, reopened ]
+
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      skip_tests:
+        description: 'Skip tests (emergency deployment)'
+        required: false
+        default: false
+        type: boolean
+
+# Global environment variables
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  BUNTARGET: bun
+  NODE_ENV: test
+
+# Global permissions
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+  pull-requests: write
+  checks: write
+
+jobs:
+  # ================================
+  # Code Quality and Security
+  # ================================
+  quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for better analysis
+      
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: 1.2.20
+      
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+            vscode-client/node_modules
+            mcp-ontology-server/node_modules
+          key: bun-${{ runner.os }}-${{ hashFiles('**/bun.lock', '**/package-lock.json') }}
+          restore-keys: |
+            bun-${{ runner.os }}-
+      
+      - name: Install dependencies
+        run: |
+          bun install --frozen-lockfile
+          cd vscode-client && npm ci
+          cd ../mcp-ontology-server && bun install --frozen-lockfile
+      
+      - name: Lint code
+        run: |
+          bun run lint
+          cd vscode-client && npm run lint
+      
+      - name: Format check
+        run: bun run format
+      
+      - name: Type check
+        run: |
+          bun run typecheck
+          cd vscode-client && npm run compile
+      
+      - name: Security audit
+        run: |
+          bun audit
+          cd vscode-client && npm audit --audit-level=moderate
+      
+      - name: Upload lint results
+        if: always()
+        uses: github/super-linter@v5
+        env:
+          DEFAULT_BRANCH: main
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TYPESCRIPT_DEFAULT_STYLE: biome
+
+  # ================================
+  # Comprehensive Testing
+  # ================================
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: quality
+    if: ${{ !inputs.skip_tests }}
+    
+    strategy:
+      matrix:
+        test-type: [unit, integration, performance, e2e]
+        include:
+          - test-type: unit
+            command: bun test tests/step*.test.ts
+            timeout: 10
+          - test-type: integration
+            command: bun test tests/integration.test.ts tests/unified-core.test.ts
+            timeout: 15
+          - test-type: performance
+            command: bun test tests/performance.test.ts
+            timeout: 20
+          - test-type: e2e
+            command: ./scripts/test-integration.sh
+            timeout: 25
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: 1.2.20
+      
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ runner.os }}-${{ hashFiles('**/bun.lock') }}
+      
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      
+      - name: Setup test environment
+        run: |
+          mkdir -p .ontology/{db,cache,logs,pids}
+          cp test-workspace/sample.ts .ontology/test-file.ts
+      
+      - name: Start test services
+        if: matrix.test-type != 'unit'
+        run: |
+          # Start background services for integration tests
+          bun run src/api/http-server.ts &
+          echo $! > .ontology/pids/http-api.pid
+          bun run mcp-ontology-server/src/sse-server.ts &
+          echo $! > .ontology/pids/mcp-sse.pid
+          sleep 5
+      
+      - name: Run ${{ matrix.test-type }} tests
+        timeout-minutes: ${{ matrix.timeout }}
+        run: ${{ matrix.command }}
+        env:
+          NODE_ENV: test
+          LOG_LEVEL: error
+          HTTP_API_PORT: 7010
+          MCP_SSE_PORT: 7011
+          LSP_SERVER_PORT: 7012
+      
+      - name: Stop test services
+        if: always() && matrix.test-type != 'unit'
+        run: |
+          [ -f .ontology/pids/http-api.pid ] && kill $(cat .ontology/pids/http-api.pid) || true
+          [ -f .ontology/pids/mcp-sse.pid ] && kill $(cat .ontology/pids/mcp-sse.pid) || true
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.test-type }}
+          path: |
+            .ontology/logs/
+            coverage/
+            test-results/
+      
+      - name: Generate test report
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: ${{ matrix.test-type }} Tests
+          path: test-results/*.xml
+          reporter: jest-junit
+          fail-on-error: false
+
+  # ================================
+  # Build Docker Images
+  # ================================
+  build:
+    name: Build Container
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [quality]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+      digest: ${{ steps.build.outputs.digest }}
+      version: ${{ steps.meta.outputs.version }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+      
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable={{is_default_branch}}
+      
+      - name: Build and push image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+            VERSION=${{ steps.meta.outputs.version }}
+      
+      - name: Output image
+        id: image
+        run: echo "image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}" >> $GITHUB_OUTPUT
+      
+      - name: Scan image for vulnerabilities
+        uses: anchore/scan-action@v3
+        id: scan
+        with:
+          image: ${{ steps.image.outputs.image }}
+          fail-build: true
+          severity-cutoff: high
+      
+      - name: Upload SARIF scan results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ${{ steps.scan.outputs.sarif }}
+
+  # ================================
+  # Deploy to Staging
+  # ================================
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [test, build]
+    if: github.ref == 'refs/heads/develop' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')
+    environment: staging
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.0'
+      
+      - name: Configure Kubernetes
+        run: |
+          echo "${{ secrets.KUBECONFIG_STAGING }}" | base64 -d > /tmp/kubeconfig
+          echo "KUBECONFIG=/tmp/kubeconfig" >> $GITHUB_ENV
+      
+      - name: Deploy to staging
+        run: |
+          # Update image in deployment
+          sed -i "s|ontology-lsp:2.0.0|${{ needs.build.outputs.image }}|g" k8s/production.yaml
+          
+          # Apply manifests
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/configmap.yaml
+          kubectl apply -f k8s/secret.yaml || echo "Secrets already exist"
+          kubectl apply -f k8s/production.yaml
+          
+          # Wait for rollout
+          kubectl rollout status deployment/ontology-lsp -n ontology-lsp --timeout=300s
+      
+      - name: Verify deployment
+        run: |
+          # Check service health
+          kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=ontology-lsp -n ontology-lsp --timeout=120s
+          
+          # Test endpoints
+          kubectl port-forward -n ontology-lsp svc/ontology-lsp-http 7000:7000 &
+          sleep 5
+          curl -f http://localhost:7000/health || exit 1
+          curl -f http://localhost:7000/ready || exit 1
+      
+      - name: Run smoke tests
+        run: |
+          # Basic API tests
+          response=$(curl -s http://localhost:7000/stats)
+          echo "Stats response: $response"
+          
+          # MCP endpoint test
+          kubectl port-forward -n ontology-lsp svc/ontology-lsp-mcp 7001:7001 &
+          sleep 2
+          curl -f http://localhost:7001/health || exit 1
+
+  # ================================
+  # Deploy to Production
+  # ================================
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [test, build, deploy-staging]
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
+    environment: production
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.0'
+      
+      - name: Configure Kubernetes
+        run: |
+          echo "${{ secrets.KUBECONFIG_PRODUCTION }}" | base64 -d > /tmp/kubeconfig
+          echo "KUBECONFIG=/tmp/kubeconfig" >> $GITHUB_ENV
+      
+      - name: Create deployment backup
+        run: |
+          kubectl get deployment ontology-lsp -n ontology-lsp -o yaml > deployment-backup.yaml || echo "No existing deployment"
+      
+      - name: Deploy to production
+        run: |
+          # Update image in deployment
+          sed -i "s|ontology-lsp:2.0.0|${{ needs.build.outputs.image }}|g" k8s/production.yaml
+          
+          # Apply with gradual rollout
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/configmap.yaml
+          kubectl apply -f k8s/secret.yaml || echo "Secrets already exist"
+          kubectl apply -f k8s/production.yaml
+          
+          # Wait for rollout with extended timeout
+          kubectl rollout status deployment/ontology-lsp -n ontology-lsp --timeout=600s
+      
+      - name: Verify production deployment
+        run: |
+          # Comprehensive health checks
+          kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=ontology-lsp -n ontology-lsp --timeout=300s
+          
+          # Test all endpoints through ingress
+          curl -f https://ontology-lsp.example.com/health || exit 1
+          curl -f https://api.ontology-lsp.example.com/ready || exit 1
+          curl -f https://mcp.ontology-lsp.example.com/health || exit 1
+      
+      - name: Run production smoke tests
+        run: |
+          # Performance test
+          curl -f https://api.ontology-lsp.example.com/stats
+          
+          # Pattern learning test
+          curl -X POST https://api.ontology-lsp.example.com/analyze \
+            -H "Content-Type: application/json" \
+            -d '{"code":"function test() { return true; }", "language":"typescript"}' \
+            || exit 1
+      
+      - name: Notify deployment
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          channel: '#deployments'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          text: |
+            Production deployment ${{ job.status }}!
+            Version: ${{ needs.build.outputs.version }}
+            Image: ${{ needs.build.outputs.image }}
+
+  # ================================
+  # Post-deployment monitoring
+  # ================================
+  monitor:
+    name: Post-deployment Monitoring
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [deploy-production]
+    if: always() && needs.deploy-production.result == 'success'
+    
+    steps:
+      - name: Wait for metrics collection
+        run: sleep 60
+      
+      - name: Check application metrics
+        run: |
+          # Check Prometheus metrics
+          response=$(curl -s "https://monitoring.ontology-lsp.example.com/api/v1/query?query=up{job=~\"ontology.*\"}")
+          echo "Metrics response: $response"
+          
+          # Verify all services are up
+          if echo "$response" | jq -r '.data.result[].value[1]' | grep -q "0"; then
+            echo "Some services are down!"
+            exit 1
+          fi
+      
+      - name: Performance baseline check
+        run: |
+          # Check response times
+          avg_response=$(curl -s "https://monitoring.ontology-lsp.example.com/api/v1/query?query=rate(http_request_duration_seconds_sum[5m])/rate(http_request_duration_seconds_count[5m])" | jq -r '.data.result[0].value[1]')
+          
+          if (( $(echo "$avg_response > 0.2" | bc -l) )); then
+            echo "Response time too high: ${avg_response}s"
+            exit 1
+          fi

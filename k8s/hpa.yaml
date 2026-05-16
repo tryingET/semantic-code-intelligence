@@ -1,0 +1,120 @@
+# Ontology-LSP Horizontal Pod Autoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ontology-lsp-hpa
+  namespace: ontology-lsp
+  labels:
+    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/component: autoscaler
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ontology-lsp
+  
+  # Scaling configuration
+  minReplicas: 2
+  maxReplicas: 10
+  
+  # Scaling behavior
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      selectPolicy: Max
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+        - type: Pods
+          value: 2
+          periodSeconds: 15
+    scaleDown:
+      stabilizationWindowSeconds: 60
+      selectPolicy: Min
+      policies:
+        - type: Percent
+          value: 10
+          periodSeconds: 30
+        - type: Pods
+          value: 1
+          periodSeconds: 30
+  
+  # Scaling metrics
+  metrics:
+    # CPU utilization
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    
+    # Memory utilization
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+    
+    # Custom metrics (if available via Prometheus adapter)
+    - type: Pods
+      pods:
+        metric:
+          name: http_requests_per_second
+        target:
+          type: AverageValue
+          averageValue: "100"
+    
+    - type: Pods
+      pods:
+        metric:
+          name: pattern_applications_per_minute
+        target:
+          type: AverageValue
+          averageValue: "50"
+    
+    # Request latency metric
+    - type: Object
+      object:
+        metric:
+          name: http_request_duration_95th_percentile
+        describedObject:
+          apiVersion: v1
+          kind: Service
+          name: ontology-lsp-http
+        target:
+          type: Value
+          value: "200m"  # 200ms
+
+---
+# Vertical Pod Autoscaler (if VPA is available)
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: ontology-lsp-vpa
+  namespace: ontology-lsp
+  labels:
+    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/component: vpa
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ontology-lsp
+  
+  updatePolicy:
+    updateMode: "Auto"  # Options: Off, Initial, Auto
+  
+  resourcePolicy:
+    containerPolicies:
+      - containerName: ontology-lsp
+        minAllowed:
+          cpu: 100m
+          memory: 128Mi
+        maxAllowed:
+          cpu: 2000m
+          memory: 4Gi
+        controlledResources: ["cpu", "memory"]
+        controlledValues: RequestsAndLimits

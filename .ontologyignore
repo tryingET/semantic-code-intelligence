@@ -1,0 +1,10 @@
+# Ontology LSP ignore patterns
+node_modules/
+.git/
+dist/
+build/
+*.log
+.env
+.env.local
+*.min.js
+*.map

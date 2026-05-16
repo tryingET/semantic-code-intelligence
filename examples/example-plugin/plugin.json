@@ -1,0 +1,124 @@
+{
+  "id": "example-enhanced-search",
+  "name": "Enhanced Search Plugin",
+  "version": "1.0.0",
+  "description": "Example layer plugin that enhances Layer 1 search with advanced fuzzy matching and caching optimizations",
+  "author": {
+    "name": "Ontology-LSP Team",
+    "email": "plugins@ontology-lsp.dev",
+    "url": "https://ontology-lsp.dev"
+  },
+  "type": "layer",
+  "category": "productivity",
+  "tags": ["search", "fuzzy-matching", "performance", "caching"],
+  "targetLayer": "layer1",
+  "enhanceExisting": true,
+  "compatibility": {
+    "minCoreVersion": "1.0.0",
+    "maxCoreVersion": "2.0.0",
+    "nodeVersion": ">=18.0.0",
+    "platforms": ["linux", "darwin", "win32"]
+  },
+  "capabilities": {
+    "filesystem": {
+      "read": ["**/*.ts", "**/*.js", "**/*.json", "**/*.md"],
+      "write": ["tmp/**/*", ".cache/**/*"],
+      "execute": false,
+      "watch": true
+    },
+    "network": {
+      "outbound": [],
+      "inbound": false,
+      "protocols": []
+    },
+    "system": {
+      "processAccess": false,
+      "environmentAccess": false,
+      "coreApiAccess": [
+        "findDefinition",
+        "findReferences",
+        "getDocument",
+        "getWorkspaceFiles"
+      ],
+      "childProcesses": false
+    },
+    "resources": {
+      "maxMemoryMB": 50,
+      "maxCpuPercent": 15,
+      "maxExecutionTimeMs": 5000,
+      "maxConcurrentOperations": 5,
+      "maxFileSize": 1048576
+    }
+  },
+  "performance": {
+    "maxLatencyMs": 10,
+    "maxMemoryMB": 50,
+    "maxCpuPercent": 15,
+    "maxConcurrentOps": 5,
+    "cacheHitRateMin": 0.85,
+    "throughputMin": 100
+  },
+  "metadata": {
+    "homepage": "https://ontology-lsp.dev/plugins/enhanced-search",
+    "repository": "https://github.com/ontology-lsp/plugin-enhanced-search",
+    "license": "MIT",
+    "keywords": [
+      "search",
+      "fuzzy",
+      "performance",
+      "caching",
+      "layer1",
+      "enhancement"
+    ],
+    "screenshots": [
+      "https://ontology-lsp.dev/plugins/enhanced-search/screenshots/performance.png",
+      "https://ontology-lsp.dev/plugins/enhanced-search/screenshots/results.png"
+    ],
+    "documentation": "https://ontology-lsp.dev/plugins/enhanced-search/docs"
+  },
+  "dependencies": {
+    "fuse.js": "^7.0.0",
+    "lru-cache": "^10.0.0"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "configSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "fuzzyThreshold": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.3,
+        "description": "Fuzzy matching threshold (0 = exact, 1 = very fuzzy)"
+      },
+      "maxResults": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 1000,
+        "default": 50,
+        "description": "Maximum number of search results to return"
+      },
+      "cacheSize": {
+        "type": "integer",
+        "minimum": 100,
+        "maximum": 10000,
+        "default": 1000,
+        "description": "Number of search results to cache"
+      },
+      "enableAdvancedPatterns": {
+        "type": "boolean",
+        "default": true,
+        "description": "Enable advanced regex and glob pattern matching"
+      }
+    },
+    "additionalProperties": false
+  },
+  "defaultConfig": {
+    "fuzzyThreshold": 0.3,
+    "maxResults": 50,
+    "cacheSize": 1000,
+    "enableAdvancedPatterns": true
+  }
+}

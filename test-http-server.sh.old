@@ -1,0 +1,71 @@
+#!/bin/bash
+
+# Test script for HTTP API server
+
+echo "[TEST] Starting HTTP API server test..."
+echo "[TEST] Using Bun runtime at: $(which bun)"
+echo "[TEST] Bun version: $(bun --version)"
+
+# Set up environment
+export ONTOLOGY_API_PORT=7000
+export ONTOLOGY_API_HOST=localhost
+export ONTOLOGY_WORKSPACE="$(pwd)"
+export ONTOLOGY_DB_PATH=".ontology/test-api.db"
+export ONTOLOGY_API_CORS=true
+
+# Clean up any existing test database
+rm -rf .ontology/test-api.db
+
+echo "[TEST] Configuration:"
+echo "  Port: $ONTOLOGY_API_PORT"
+echo "  Host: $ONTOLOGY_API_HOST"
+echo "  Workspace: $ONTOLOGY_WORKSPACE"
+echo "  Database: $ONTOLOGY_DB_PATH"
+echo ""
+
+# Start the server in background
+echo "[TEST] Starting server..."
+bun run src/api/http-server.ts &
+SERVER_PID=$!
+
+echo "[TEST] Server PID: $SERVER_PID"
+
+# Wait for server to start
+echo "[TEST] Waiting for server to initialize..."
+sleep 3
+
+# Test health endpoint
+echo "[TEST] Testing health endpoint..."
+HEALTH_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:7000/health)
+
+if [ "$HEALTH_RESPONSE" = "200" ]; then
+    echo "[TEST] ✅ Health check passed! Server is running."
+    echo "[TEST] Health response:"
+    curl -s http://localhost:7000/health | jq .
+else
+    echo "[TEST] ❌ Health check failed. HTTP status: $HEALTH_RESPONSE"
+fi
+
+# Test stats endpoint
+echo ""
+echo "[TEST] Testing stats endpoint..."
+STATS_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:7000/stats)
+
+if [ "$STATS_RESPONSE" = "200" ]; then
+    echo "[TEST] ✅ Stats endpoint working."
+    echo "[TEST] Stats response:"
+    curl -s http://localhost:7000/stats | jq .
+else
+    echo "[TEST] ❌ Stats endpoint failed. HTTP status: $STATS_RESPONSE"
+fi
+
+# Keep server running for manual testing
+echo ""
+echo "[TEST] Server is running on http://localhost:7000"
+echo "[TEST] Press Ctrl+C to stop the server..."
+
+# Handle shutdown
+trap "echo '[TEST] Stopping server...'; kill $SERVER_PID 2>/dev/null; exit" INT TERM
+
+# Wait for server process
+wait $SERVER_PID

@@ -1,0 +1,40 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd $CLAUDE_PROJECT_DIR && command -v just >/dev/null 2>&1 && (echo '🚀 Starting Ontology LSP...' && just start > /tmp/ontology-startup.log 2>&1 &) || echo '⚠️  Install just: cargo install just'",
+            "comment": "Start servers using justfile",
+            "timeout": 1
+          }
+        ]
+      },
+      {
+        "matcher": "resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd $CLAUDE_PROJECT_DIR && command -v just >/dev/null 2>&1 && (just status | grep -q 'Not running' && just start > /tmp/ontology-resume.log 2>&1 &) || true",
+            "comment": "Check and restart servers if needed",
+            "timeout": 1
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd $CLAUDE_PROJECT_DIR && command -v just >/dev/null 2>&1 && just stop || (lsof -ti:7000,7001,7002 | xargs -r kill -9 2>/dev/null || true)",
+            "comment": "Stop servers using justfile or fallback",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

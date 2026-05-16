@@ -1,0 +1,104 @@
+# Ontology-LSP RBAC Configuration
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ontology-lsp-sa
+  namespace: ontology-lsp
+  labels:
+    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/component: rbac
+automountServiceAccountToken: true
+
+---
+# Role for accessing ConfigMaps and Secrets
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ontology-lsp-role
+  namespace: ontology-lsp
+  labels:
+    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/component: rbac
+rules:
+  # Access to ConfigMaps for dynamic configuration
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+  
+  # Access to Secrets for credentials
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+  
+  # Access to own Pod information
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+    resourceNames: []
+  
+  # Access to Services for service discovery
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch"]
+  
+  # Access to Endpoints
+  - apiGroups: [""]
+    resources: ["endpoints"]
+    verbs: ["get", "list", "watch"]
+
+---
+# Bind the role to the service account
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ontology-lsp-rolebinding
+  namespace: ontology-lsp
+  labels:
+    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/component: rbac
+subjects:
+  - kind: ServiceAccount
+    name: ontology-lsp-sa
+    namespace: ontology-lsp
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ontology-lsp-role
+
+---
+# ClusterRole for cross-namespace monitoring (optional)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ontology-lsp-monitoring
+  labels:
+    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/component: monitoring
+rules:
+  # Read-only access to Nodes for system metrics
+  - apiGroups: [""]
+    resources: ["nodes", "nodes/metrics", "nodes/proxy"]
+    verbs: ["get", "list", "watch"]
+  
+  # Read-only access to cluster-level metrics
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["nodes", "pods"]
+    verbs: ["get", "list"]
+
+---
+# Bind monitoring cluster role (only if cluster monitoring is needed)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ontology-lsp-monitoring
+  labels:
+    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/component: monitoring
+subjects:
+  - kind: ServiceAccount
+    name: ontology-lsp-sa
+    namespace: ontology-lsp
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ontology-lsp-monitoring

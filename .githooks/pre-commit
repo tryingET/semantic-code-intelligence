@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Collect staged files with common extensions
+FILES=$(git diff --name-only --cached | rg -N '\.(ts|tsx|js|json|md)$' || true)
+
+if [ -z "$FILES" ]; then
+  exit 0
+fi
+
+echo "Running Biome on staged files..."
+bunx @biomejs/biome check --write --max-diagnostics=0 $FILES || {
+  echo "Biome found issues. Please review the above output." >&2
+  exit 1
+}
+
+# Re-add any changes made by Biome
+echo "$FILES" | xargs git add
+
+echo "Biome checks passed."
+

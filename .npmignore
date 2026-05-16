@@ -1,0 +1,56 @@
+# Source files
+src/
+tests/
+
+# Development files
+*.ts
+!*.d.ts
+tsconfig.json
+jest.config.js
+biome.json
+
+# VS Code extension source
+vscode-client/src/
+vscode-client/out/
+vscode-client/.vscode-test/
+vscode-client/tsconfig.json
+vscode-client/*.vsix
+
+# Test files
+test-workspace/
+*.test.ts
+*.test.js
+
+# Build artifacts
+.ontology/
+node_modules/
+.git/
+.gitignore
+
+# Documentation source
+docs/
+*.md
+!README.md
+!LICENSE
+
+# Development scripts
+justfile
+ontology-lsp
+install-extension.sh
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Lock files (users should generate their own)
+bun.lockb
+package-lock.json
+yarn.lock

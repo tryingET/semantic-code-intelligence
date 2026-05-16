@@ -1,0 +1,69 @@
+{
+  "name": "@ontology-lsp/example-enhanced-search",
+  "version": "1.0.0",
+  "description": "Example layer plugin demonstrating enhanced search capabilities",
+  "keywords": [
+    "ontology-lsp",
+    "plugin",
+    "search",
+    "fuzzy-matching",
+    "layer-enhancement"
+  ],
+  "author": {
+    "name": "Ontology-LSP Team",
+    "email": "plugins@ontology-lsp.dev",
+    "url": "https://ontology-lsp.dev"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ontology-lsp/plugin-enhanced-search.git"
+  },
+  "homepage": "https://ontology-lsp.dev/plugins/enhanced-search",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist/**/*",
+    "plugin.json",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "clean": "rm -rf dist",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "typecheck": "tsc --noEmit",
+    "validate": "ontology-plugin validate .",
+    "package": "npm run build && ontology-plugin package .",
+    "dev": "npm run build:watch",
+    "prepublishOnly": "npm run clean && npm run build && npm run test"
+  },
+  "dependencies": {
+    "fuse.js": "^7.0.0",
+    "lru-cache": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "jest": "^29.0.0",
+    "@types/jest": "^29.0.0",
+    "ts-jest": "^29.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@ontology-lsp/core": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "ontology-lsp": {
+    "plugin": true,
+    "type": "layer",
+    "targetLayer": "layer1"
+  }
+}

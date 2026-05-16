@@ -1,0 +1,41 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "target": "ES2021",
+    "types": ["node"]
+  },
+  "include": [
+    "src/adapters/lsp-adapter.ts",
+    "src/adapters/utils.ts",
+    "src/adapters/shims.d.ts",
+    "src/adapters/mcp-adapter.ts",
+    "src/types/**/*",
+    "src/core/types.ts",
+    "src/core/layer-manager.ts",
+    "src/core/utils/error-handler.ts",
+    "src/core/utils/file-logger.ts",
+    "src/core/utils/logger.ts",
+    "src/core/utils/connection-manager.ts",
+    "src/core/tools/registry.ts",
+    "src/core/services/event-bus-service.ts",
+    "src/core/services/cache-service.ts",
+    "src/core/services/monitoring-service.ts",
+    "src/core/services/database-service.ts",
+    "src/core/services/shared-services.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts",
+    "src/servers/**/*",
+    "src/plugins/**/*",
+    "src/ontology/**/*",
+    "src/patterns/**/*",
+    "src/learning/**/*",
+    "src/core/example.ts"
+  ]
+}

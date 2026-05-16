@@ -1,0 +1,93 @@
+# Ontology-LSP Prometheus Configuration
+# Monitoring and metrics collection
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'ontology-lsp-local'
+    replica: 'prometheus-01'
+
+# Rule files
+rule_files:
+  - "alert_rules.yml"
+
+# Scraping configuration  
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    scrape_interval: 30s
+    metrics_path: /metrics
+
+  # Ontology-LSP HTTP API Server
+  - job_name: 'ontology-http-api'
+    static_configs:
+      - targets: ['ontology-lsp:7000']
+    scrape_interval: 10s
+    metrics_path: /metrics
+    scrape_timeout: 5s
+    params:
+      format: ['prometheus']
+
+  # Ontology-LSP MCP HTTP Server  
+  - job_name: 'ontology-mcp-http'
+    static_configs:
+      - targets: ['ontology-lsp:7001']
+    scrape_interval: 10s
+    metrics_path: /metrics
+    scrape_timeout: 5s
+
+  # PostgreSQL metrics (if postgres_exporter is available)
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres:5432']
+    scrape_interval: 30s
+    metrics_path: /metrics
+    params:
+      # Add PostgreSQL connection parameters if needed
+      collect[]: ['pg_stat_database', 'pg_stat_bgwriter']
+
+  # Redis/Valkey metrics (if redis_exporter is available)
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:6379']
+    scrape_interval: 30s
+    metrics_path: /metrics
+
+  # Docker container metrics (if available)
+  - job_name: 'docker'
+    static_configs:
+      - targets: ['localhost:9323']
+    scrape_interval: 30s
+    metrics_path: /metrics
+
+  # Node/System metrics (if node_exporter is available)
+  - job_name: 'node'
+    static_configs:
+      - targets: ['localhost:9100']
+    scrape_interval: 30s
+    metrics_path: /metrics
+
+# Alerting configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          # - alertmanager:9093
+
+# Remote write configuration (for production)
+# remote_write:
+#   - url: "https://your-prometheus-remote-write-endpoint"
+#     basic_auth:
+#       username: "your-username"
+#       password: "your-password"
+
+# Storage configuration
+storage:
+  tsdb:
+    path: /prometheus
+    retention.time: 15d
+    retention.size: 10GB
+    wal-compression: true

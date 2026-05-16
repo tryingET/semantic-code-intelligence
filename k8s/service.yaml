@@ -1,0 +1,90 @@
+# Ontology-LSP Service Definitions
+apiVersion: v1
+kind: Service
+metadata:
+  name: ontology-lsp-http
+  namespace: ontology-lsp
+  labels:
+    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/component: http-api
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "7000"
+    prometheus.io/path: "/metrics"
+spec:
+  type: ClusterIP
+  ports:
+    - port: 7000
+      targetPort: 7000
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: ontology-lsp
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ontology-lsp-mcp
+  namespace: ontology-lsp
+  labels:
+    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/component: mcp-http
+spec:
+  type: ClusterIP
+  ports:
+    - port: 7001
+      targetPort: 7001
+      protocol: TCP
+      name: mcp-http
+  selector:
+    app.kubernetes.io/name: ontology-lsp
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ontology-lsp-lsp
+  namespace: ontology-lsp
+  labels:
+    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/component: lsp-server
+spec:
+  type: ClusterIP
+  ports:
+    - port: 7002
+      targetPort: 7002
+      protocol: TCP
+      name: lsp-tcp
+  selector:
+    app.kubernetes.io/name: ontology-lsp
+
+---
+# Headless service for StatefulSet-like behavior (if needed)
+apiVersion: v1
+kind: Service
+metadata:
+  name: ontology-lsp-headless
+  namespace: ontology-lsp
+  labels:
+    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/component: headless
+spec:
+  type: ClusterIP
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+    - port: 7000
+      targetPort: 7000
+      protocol: TCP
+      name: http
+    - port: 7001
+      targetPort: 7001
+      protocol: TCP
+      name: mcp-http
+    - port: 7002
+      targetPort: 7002
+      protocol: TCP
+      name: lsp-tcp
+  selector:
+    app.kubernetes.io/name: ontology-lsp

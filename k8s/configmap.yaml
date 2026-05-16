@@ -1,0 +1,147 @@
+# Ontology-LSP Configuration Maps
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ontology-lsp-config
+  namespace: ontology-lsp
+  labels:
+    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/component: config
+data:
+  # Application configuration
+  NODE_ENV: "production"
+  LOG_LEVEL: "info"
+  
+  # Service ports
+  HTTP_API_PORT: "7000"
+  MCP_HTTP_PORT: "7001" 
+  LSP_SERVER_PORT: "7002"
+  
+  # Performance settings
+  CACHE_TTL: "3600"
+  PERFORMANCE_MONITORING: "true"
+  DISTRIBUTED_CACHE: "true"
+  PATTERN_LEARNING: "true"
+  FUZZY_MATCHING: "true"
+  
+  # Database settings
+  DATABASE_PATH: "/app/data/ontology.db"
+  
+  # Security settings
+  TRUST_PROXY: "true"
+  CORS_ORIGINS: "https://ontology-lsp.example.com"
+  
+  # OpenTelemetry tracing
+  OTEL_ENABLED: "true"
+  OTEL_SERVICE_NAME: "ontology-lsp"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger-collector.monitoring.svc.cluster.local:4317"
+
+---
+# PostgreSQL initialization script
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-config
+  namespace: ontology-lsp
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: config
+data:
+  init.sql: |
+    -- Ontology-LSP PostgreSQL Initialization Script
+    -- Creates database schema for knowledge storage and vector embeddings
+
+    -- Enable required extensions
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+    CREATE EXTENSION IF NOT EXISTS "vector";
+    CREATE EXTENSION IF NOT EXISTS "pg_trgm";
+
+    -- Create main schema
+    CREATE SCHEMA IF NOT EXISTS ontology;
+    SET search_path TO ontology, public;
+
+    -- Core Tables (abbreviated for ConfigMap size limits)
+    CREATE TABLE IF NOT EXISTS concepts (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        name VARCHAR(255) NOT NULL,
+        type VARCHAR(100) NOT NULL,
+        file_path TEXT NOT NULL,
+        line_start INTEGER NOT NULL,
+        line_end INTEGER NOT NULL,
+        column_start INTEGER NOT NULL,
+        column_end INTEGER NOT NULL,
+        signature TEXT,
+        documentation TEXT,
+        language VARCHAR(50) NOT NULL,
+        project_id UUID NOT NULL,
+        embedding vector(1536),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        UNIQUE(name, type, file_path, line_start)
+    );
+
+    CREATE TABLE IF NOT EXISTS relationships (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        source_concept_id UUID NOT NULL REFERENCES concepts(id) ON DELETE CASCADE,
+        target_concept_id UUID NOT NULL REFERENCES concepts(id) ON DELETE CASCADE,
+        relationship_type VARCHAR(100) NOT NULL,
+        weight FLOAT DEFAULT 1.0,
+        confidence FLOAT DEFAULT 0.5 CHECK (confidence >= 0 AND confidence <= 1),
+        metadata JSONB DEFAULT '{}',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        UNIQUE(source_concept_id, target_concept_id, relationship_type)
+    );
+
+    CREATE TABLE IF NOT EXISTS patterns (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        name VARCHAR(255) NOT NULL,
+        pattern_type VARCHAR(100) NOT NULL,
+        before_template TEXT NOT NULL,
+        after_template TEXT NOT NULL,
+        conditions JSONB DEFAULT '{}',
+        confidence FLOAT DEFAULT 0.5 CHECK (confidence >= 0 AND confidence <= 1),
+        usage_count INTEGER DEFAULT 0,
+        success_rate FLOAT DEFAULT 0.0,
+        language VARCHAR(50),
+        tags TEXT[],
+        description TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        UNIQUE(name, pattern_type, language)
+    );
+
+    -- Create indexes
+    CREATE INDEX IF NOT EXISTS idx_concepts_name_type ON concepts(name, type);
+    CREATE INDEX IF NOT EXISTS idx_concepts_file_path ON concepts(file_path);
+    CREATE INDEX IF NOT EXISTS idx_relationships_source ON relationships(source_concept_id);
+    CREATE INDEX IF NOT EXISTS idx_patterns_type ON patterns(pattern_type);
+
+    -- Grant permissions
+    GRANT ALL PRIVILEGES ON SCHEMA ontology TO ontology;
+    GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA ontology TO ontology;
+    GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA ontology TO ontology;
+
+---
+# Redis configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+  namespace: ontology-lsp
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: config
+data:
+  redis.conf: |
+    bind 0.0.0.0
+    port 6379
+    maxmemory 1gb
+    maxmemory-policy allkeys-lru
+    save 900 1
+    save 300 10
+    save 60 10000
+    appendonly yes
+    appendfsync everysec
+    timeout 300
+    tcp-keepalive 60

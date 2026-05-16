@@ -1,0 +1,98 @@
+version: 2
+updates:
+  # Main project (Bun)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    commit-message:
+      prefix: "⬆️"
+      include: "scope"
+    reviewers:
+      - "your-username"  # Replace with actual GitHub username
+    assignees:
+      - "your-username"  # Replace with actual GitHub username
+    open-pull-requests-limit: 5
+    target-branch: "unified-core-architecture"
+    
+    # Group dependency updates to reduce PR noise
+    groups:
+      development-dependencies:
+        dependency-type: "development"
+        patterns:
+          - "@types/*"
+          - "@biomejs/*"
+          - "typescript"
+          - "rimraf"
+      
+      runtime-dependencies:
+        dependency-type: "production"
+        patterns:
+          - "vscode-*"
+          - "@modelcontextprotocol/*"
+          - "tree-sitter*"
+      
+      lsp-protocol:
+        patterns:
+          - "vscode-languageserver*"
+          - "@types/vscode*"
+
+  # VS Code Extension (Node.js/npm)
+  - package-ecosystem: "npm"
+    directory: "/vscode-client"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "09:00"
+    commit-message:
+      prefix: "⬆️ [vscode]"
+      include: "scope"
+    reviewers:
+      - "your-username"  # Replace with actual GitHub username
+    assignees:
+      - "your-username"  # Replace with actual GitHub username
+    open-pull-requests-limit: 3
+    target-branch: "unified-core-architecture"
+    
+    groups:
+      vscode-dependencies:
+        patterns:
+          - "@vscode/*"
+          - "vscode-*"
+      
+      testing-dependencies:
+        dependency-type: "development"
+        patterns:
+          - "@types/*"
+          - "mocha"
+          - "glob"
+
+  # Docker base images
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+      time: "09:00"
+    commit-message:
+      prefix: "⬆️ [docker]"
+    reviewers:
+      - "your-username"  # Replace with actual GitHub username
+    open-pull-requests-limit: 2
+    target-branch: "unified-core-architecture"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "thursday"
+      time: "09:00"
+    commit-message:
+      prefix: "⬆️ [actions]"
+    reviewers:
+      - "your-username"  # Replace with actual GitHub username
+    open-pull-requests-limit: 3
+    target-branch: "unified-core-architecture"

@@ -1,0 +1,12 @@
+# Ontology-LSP Kubernetes Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ontology-lsp
+  labels:
+    name: ontology-lsp
+    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/component: namespace
+  annotations:
+    description: "Intelligent Programming Companion with MCP, LSP, and HTTP protocols"

@@ -1,0 +1,325 @@
+# Ontology-LSP Production Configuration
+
+# ================================
+# Application Settings
+# ================================
+app:
+  name: "Ontology-LSP"
+  version: "2.0.0"
+  environment: "production"
+  debug: false
+
+# ================================
+# Server Configuration
+# ================================
+server:
+  # Service ports
+  ports:
+    http_api: 7000
+    mcp_sse: 7001
+    lsp_server: 7002
+  
+  # Performance settings
+  workers: 4
+  max_connections: 10000
+  keep_alive_timeout: 65000
+  request_timeout: 30000
+  
+  # Security
+  cors:
+    origins: 
+      - "https://ontology-lsp.example.com"
+      - "https://api.ontology-lsp.example.com"
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    credentials: true
+  
+  trust_proxy: true
+  helmet: true
+  rate_limiting:
+    window_ms: 900000  # 15 minutes
+    max_requests: 1000
+    skip_successful_requests: false
+
+# ================================
+# Database Configuration
+# ================================
+database:
+  # Primary database
+  primary:
+    type: "postgresql"
+    host: "postgres-service.ontology-lsp.svc.cluster.local"
+    port: 5432
+    database: "ontology_lsp"
+    username: "ontology"
+    # password from environment variable
+    ssl: true
+    pool:
+      min: 2
+      max: 20
+      idle_timeout: 30000
+      acquire_timeout: 60000
+  
+  # Read replicas (if available)
+  replicas: []
+  
+  # Migrations
+  migrations:
+    auto_run: false
+    directory: "./src/database/migrations"
+
+# ================================
+# Cache Configuration
+# ================================
+cache:
+  # Redis configuration
+  redis:
+    host: "redis-service.ontology-lsp.svc.cluster.local"
+    port: 6379
+    # password from environment variable
+    db: 0
+    key_prefix: "ontology_lsp:"
+    
+  # Cache behavior
+  ttl:
+    default: 3600      # 1 hour
+    patterns: 86400    # 24 hours
+    concepts: 7200     # 2 hours
+    analysis: 1800     # 30 minutes
+  
+  # Distributed caching
+  distributed: true
+  compression: true
+  serialization: "json"
+
+# ================================
+# Performance Settings
+# ================================
+performance:
+  monitoring: true
+  metrics: true
+  tracing: true
+  
+  # Layer performance targets (milliseconds)
+  layer_targets:
+    layer1_fast: 5
+    tree_sitter: 50
+    ontology: 10
+    patterns: 10
+    knowledge: 20
+  
+  # Resource limits
+  limits:
+    max_memory_mb: 2048
+    max_file_size_mb: 50
+    max_files_per_analysis: 10000
+    max_concurrent_requests: 100
+  
+  # Timeouts
+  timeouts:
+    analysis: 60000
+    pattern_learning: 10000
+    request: 30000
+
+# ================================
+# Learning & AI Configuration
+# ================================
+learning:
+  enabled: true
+  
+  # Pattern learning
+  patterns:
+    confidence_threshold: 0.8
+    learning_rate: 0.05
+    max_patterns_per_file: 50
+    auto_apply: false
+  
+  # Knowledge propagation
+  knowledge:
+    propagation_enabled: true
+    similarity_threshold: 0.8
+    max_depth: 5
+  
+  # AI features
+  ai:
+    suggestions_enabled: true
+    vector_search: true
+    semantic_analysis: true
+
+# ================================
+# Security Configuration
+# ================================
+security:
+  # JWT settings
+  jwt:
+    algorithm: "HS256"
+    expires_in: "24h"
+    refresh_expires_in: "7d"
+  
+  # Authentication
+  auth:
+    required: true
+    methods: ["jwt", "api_key"]
+  
+  # Encryption
+  encryption:
+    algorithm: "aes-256-gcm"
+    key_derivation: "pbkdf2"
+  
+  # Content Security Policy
+  csp:
+    enabled: true
+    directives:
+      default_src: ["'self'"]
+      script_src: ["'self'", "'unsafe-inline'"]
+      style_src: ["'self'", "'unsafe-inline'"]
+      img_src: ["'self'", "data:", "https:"]
+
+# ================================
+# Observability
+# ================================
+observability:
+  # Logging
+  logging:
+    level: "info"
+    format: "json"
+    structured: true
+    correlation_id: true
+    
+  # OpenTelemetry
+  tracing:
+    enabled: true
+    service_name: "ontology-lsp"
+    service_version: "2.0.0"
+    exporter:
+      type: "otlp"
+      endpoint: "http://jaeger-collector.monitoring.svc.cluster.local:4317"
+  
+  # Metrics
+  metrics:
+    enabled: true
+    prometheus:
+      enabled: true
+      path: "/metrics"
+      port: 9090
+    custom:
+      - "pattern_applications_total"
+      - "concepts_created_total"
+      - "analysis_duration_seconds"
+
+# ================================
+# File System Configuration
+# ================================
+filesystem:
+  # Directories
+  temp_dir: "/tmp/ontology-lsp"
+  data_dir: "/app/data"
+  cache_dir: "/app/cache"
+  logs_dir: "/app/logs"
+  
+  # File watching
+  watch:
+    enabled: true
+    debounce_ms: 1000
+    ignore_patterns:
+      - "node_modules"
+      - "dist"
+      - ".git"
+      - ".ontology"
+      - "*.tmp"
+
+# ================================
+# Language Support
+# ================================
+languages:
+  supported:
+    - "typescript"
+    - "javascript"
+    - "python"
+    - "go"
+    - "rust"
+  
+  parsers:
+    tree_sitter:
+      timeout_ms: 5000
+      max_tree_size: 1000000
+  
+  specific:
+    typescript:
+      config_file: "tsconfig.json"
+      strict_mode: true
+    python:
+      version: "3.9+"
+      executable: "python3"
+    go:
+      module_mode: true
+
+# ================================
+# Backup & Recovery
+# ================================
+backup:
+  enabled: true
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  retention_days: 30
+  storage:
+    type: "s3"
+    bucket: "ontology-lsp-backups"
+    region: "us-east-1"
+  
+  # What to backup
+  include:
+    - "database"
+    - "patterns"
+    - "configurations"
+  
+  compression: true
+  encryption: true
+
+# ================================
+# Feature Flags
+# ================================
+features:
+  # Core features
+  vector_search: true
+  semantic_analysis: true
+  pattern_learning: true
+  knowledge_propagation: true
+  
+  # Protocol features
+  lsp:
+    diagnostics: true
+    code_actions: true
+    completion: true
+    hover: true
+  
+  mcp:
+    sse_enabled: true
+    tools_enabled: true
+  
+  http:
+    websockets: false
+    graphql: false
+  
+  # Experimental features
+  experimental:
+    real_time_collaboration: false
+    cross_project_patterns: false
+    ai_code_generation: false
+
+# ================================
+# Resource Optimization
+# ================================
+optimization:
+  # Memory optimization
+  memory:
+    gc_threshold: 0.8
+    buffer_size: 65536
+    
+  # CPU optimization
+  cpu:
+    worker_threads: true
+    cluster_mode: false
+    
+  # I/O optimization
+  io:
+    buffer_size: 32768
+    async_operations: true

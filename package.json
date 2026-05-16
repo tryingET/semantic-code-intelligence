@@ -1,0 +1,97 @@
+{
+  "name": "semantic-code-intelligence",
+  "version": "2.0.0",
+  "description": "Unified ontology-enhanced code intelligence system with MCP, LSP, and HTTP adapters",
+  "type": "module",
+  "main": "dist/core/analyzer.js",
+  "bin": {
+    "ontology-lsp": "./bin/ontology-lsp",
+    "ontology-mcp": "./bin/ontology-mcp"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lightningRalf/semantic-code-intelligence"
+  },
+  "files": [
+    "bin/",
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "bun run build:all",
+    "build:all": "bun run build:lsp && bun run build:mcp-stdio && bun run build:mcp-http && bun run build:http && bun run build:cli",
+    "build:lsp": "bun build ./src/servers/lsp.ts --target=bun --outdir=dist/lsp --format=esm --external tree-sitter --external tree-sitter-typescript --external tree-sitter-javascript --external tree-sitter-python --external pg --external bun:sqlite --external express --external cors",
+    "build:mcp-stdio": "bun build ./src/servers/mcp.ts --target=bun --outdir=dist/mcp --format=esm --external tree-sitter --external tree-sitter-typescript --external tree-sitter-javascript --external tree-sitter-python --external pg --external bun:sqlite --external express --external cors",
+    "build:http": "bun build ./src/servers/http.ts --target=bun --outdir=dist/http --format=esm --external tree-sitter --external tree-sitter-typescript --external tree-sitter-javascript --external tree-sitter-python --external pg --external bun:sqlite --external express --external cors",
+    "build:cli": "bun build ./src/servers/cli.ts --target=bun --outdir=dist/cli --format=esm --external tree-sitter --external tree-sitter-typescript --external tree-sitter-javascript --external tree-sitter-python --external pg --external bun:sqlite --external express --external cors",
+    "build:tsc": "tsc -p tsconfig.build.json",
+    "start": "bun run dist/lsp/lsp.js --stdio",
+    "start:mcp": "bun run dist/mcp/mcp.js",
+    "dev": "bun run src/servers/lsp.ts",
+    "test": "bun test",
+    "test:nonperf": "bun test",
+    "test:perf": "PERF=1 bun test tests/performance tests/benchmarks",
+    "test:e2e": "E2E=1 bun test tests/e2e",
+    "test:mcp": "bun test tests/adapters/mcp.test.ts",
+    "test:watch": "bun test --watch",
+    "test:coverage": "bun test --coverage",
+    "lint": "bunx @biomejs/biome check --write .",
+    "format": "bunx @biomejs/biome format --write .",
+    "clean": "rimraf dist",
+    "build:mcp-http": "bun build ./src/servers/mcp-http.ts --target=bun --outdir=dist/mcp-http --format=esm --external tree-sitter --external tree-sitter-typescript --external tree-sitter-javascript --external tree-sitter-python --external pg --external bun:sqlite --external express --external cors",
+    "prepack": "bun run build:all"
+  },
+  "keywords": [
+    "lsp",
+    "ontology",
+    "refactoring",
+    "pattern-learning",
+    "fuzzy-matching"
+  ],
+  "author": "Ontology LSP",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.4",
+    "@types/glob": "^9.0.0",
+    "bloom-filters": "^3.0.4",
+    "chokidar": "^4.0.3",
+    "commander": "^14.0.0",
+    "glob": "^11.0.3",
+    "graphlib": "^2.1.8",
+    "js-yaml": "^4.1.0",
+    "leven": "^4.0.0",
+    "lru-cache": "^11.1.0",
+    "minimatch": "^10.0.1",
+    "tree-sitter": "^0.21.0",
+    "tree-sitter-javascript": "^0.23.1",
+    "tree-sitter-python": "^0.23.6",
+    "tree-sitter-typescript": "^0.23.2",
+    "uuid": "^11.1.0",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.12",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.2.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/graphlib": "^2.1.12",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^24.3.0",
+    "@types/uuid": "^10.0.0",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.9.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "bun": ">=1.2.0"
+  },
+  "trustedDependencies": [
+    "tree-sitter",
+    "tree-sitter-javascript",
+    "tree-sitter-python",
+    "tree-sitter-typescript"
+  ]
+}

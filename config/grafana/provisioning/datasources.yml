@@ -1,0 +1,67 @@
+# Ontology-LSP Grafana Datasource Configuration
+
+apiVersion: 1
+
+datasources:
+  # Prometheus datasource
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    basicAuth: false
+    jsonData:
+      timeInterval: "5s"
+      queryTimeout: "60s"
+      httpMethod: "GET"
+
+  # PostgreSQL datasource for direct database queries
+  - name: PostgreSQL
+    type: postgres
+    access: proxy  
+    url: postgres:5432
+    database: ontology_lsp
+    user: ontology
+    secureJsonData:
+      password: ontology_dev_password
+    jsonData:
+      sslmode: disable
+      maxOpenConns: 0
+      maxIdleConns: 2
+      connMaxLifetime: 14400
+      postgresVersion: 1600
+      timescaledb: false
+
+  # Jaeger for tracing data
+  - name: Jaeger
+    type: jaeger
+    access: proxy
+    url: http://jaeger:16686
+    editable: false
+    jsonData:
+      tracesToLogs:
+        datasourceUid: 'loki'
+        tags: ['job', 'instance', 'pod', 'namespace']
+        mappedTags: [
+          { key: 'service.name', value: 'service' }
+        ]
+        mapTagNamesEnabled: false
+        spanStartTimeShift: '1h'
+        spanEndTimeShift: '1h'
+      nodeGraph:
+        enabled: true
+
+  # Loki for logs (if available)  
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: false
+    jsonData:
+      maxLines: 1000
+      derivedFields:
+        - datasourceUid: 'jaeger'
+          matcherRegex: '"trace_id":"(\w+)"'
+          name: 'TraceID'
+          url: '$${__value.raw}'

@@ -1,0 +1,21 @@
+schema: ai-society.layer-contract.v1
+layer: L2
+name: tpl-monorepo
+answers_file_policy:
+  required: true
+  path: .copier-answers.yml
+  commit_required: true
+transitions:
+  allowed:
+    - L0 -> L1
+    - L1 -> L2
+  forbidden:
+    - L1 -> L0
+    - L2 -> L1
+    - cycle
+guardrails:
+  nested_copier_tasks_allowed: false
+  max_layer_depth: 2
+  supply_chain:
+    copier_source_must_be_local_or_trusted: true
+    pin_or_vendor_dependencies: recommended

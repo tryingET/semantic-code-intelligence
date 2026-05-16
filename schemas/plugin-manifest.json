@@ -1,0 +1,613 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ontology-lsp.dev/schemas/plugin-manifest.json",
+  "title": "Ontology-LSP Plugin Manifest",
+  "description": "Schema for Ontology-LSP plugin manifest files (plugin.json)",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "version",
+    "description",
+    "author",
+    "type",
+    "category",
+    "compatibility",
+    "capabilities",
+    "performance",
+    "metadata",
+    "main"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-_]+$",
+      "minLength": 3,
+      "maxLength": 50,
+      "description": "Unique plugin identifier (lowercase, alphanumeric, dashes, underscores only)"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "description": "Human-readable plugin name"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+      "description": "Semantic version (semver) of the plugin"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 500,
+      "description": "Brief description of what the plugin does"
+    },
+    "author": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Author's name"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Author's email address"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Author's website or profile URL"
+        }
+      },
+      "additionalProperties": false
+    },
+    "type": {
+      "type": "string",
+      "enum": ["layer", "newLayer", "protocol", "language", "integration", "analysis"],
+      "description": "Type of plugin functionality"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "language-support",
+        "code-analysis", 
+        "integration",
+        "productivity",
+        "debugging",
+        "testing",
+        "documentation",
+        "security",
+        "performance"
+      ],
+      "description": "Plugin category for marketplace organization"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 2,
+        "maxLength": 30
+      },
+      "maxItems": 10,
+      "description": "Keywords for plugin discovery"
+    },
+    "compatibility": {
+      "type": "object",
+      "required": ["minCoreVersion", "nodeVersion", "platforms"],
+      "properties": {
+        "minCoreVersion": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "description": "Minimum required core version (semver)"
+        },
+        "maxCoreVersion": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "description": "Maximum supported core version (semver)"
+        },
+        "nodeVersion": {
+          "type": "string",
+          "pattern": "^>=?\\d+\\.\\d+\\.\\d+$",
+          "description": "Required Node.js version (semver range)"
+        },
+        "platforms": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["linux", "darwin", "win32", "freebsd", "openbsd"]
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Supported operating systems"
+        }
+      },
+      "additionalProperties": false
+    },
+    "capabilities": {
+      "type": "object",
+      "required": ["filesystem", "network", "system", "resources"],
+      "properties": {
+        "filesystem": {
+          "type": "object",
+          "required": ["read", "write", "execute", "watch"],
+          "properties": {
+            "read": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "description": "Glob pattern for readable paths"
+              },
+              "description": "Allowed file read paths (glob patterns)"
+            },
+            "write": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "description": "Glob pattern for writable paths"
+              },
+              "description": "Allowed file write paths (glob patterns)"
+            },
+            "execute": {
+              "type": "boolean",
+              "description": "Permission to execute system commands"
+            },
+            "watch": {
+              "type": "boolean",
+              "description": "Permission to watch file system changes"
+            }
+          },
+          "additionalProperties": false
+        },
+        "network": {
+          "type": "object",
+          "required": ["outbound", "inbound", "protocols"],
+          "properties": {
+            "outbound": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "description": "Allowed outbound host:port patterns"
+              },
+              "description": "Allowed outbound network connections"
+            },
+            "inbound": {
+              "type": "boolean",
+              "description": "Permission to accept inbound connections"
+            },
+            "protocols": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["http", "https", "ws", "wss", "tcp", "udp"]
+              },
+              "uniqueItems": true,
+              "description": "Allowed network protocols"
+            }
+          },
+          "additionalProperties": false
+        },
+        "system": {
+          "type": "object",
+          "required": ["processAccess", "environmentAccess", "coreApiAccess", "childProcesses"],
+          "properties": {
+            "processAccess": {
+              "type": "boolean",
+              "description": "Access to process information"
+            },
+            "environmentAccess": {
+              "type": "boolean",
+              "description": "Access to environment variables"
+            },
+            "coreApiAccess": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "findDefinition",
+                  "findReferences", 
+                  "getCompletions",
+                  "getDocument",
+                  "parseDocument",
+                  "learnPattern",
+                  "getPatterns",
+                  "provideFeedback",
+                  "getWorkspaceFiles",
+                  "watchFiles",
+                  "getCoreConfig",
+                  "getWorkspaceConfig",
+                  "reportPerformance",
+                  "getSystemHealth"
+                ]
+              },
+              "uniqueItems": true,
+              "description": "Allowed core API methods"
+            },
+            "childProcesses": {
+              "type": "boolean",
+              "description": "Permission to spawn child processes"
+            }
+          },
+          "additionalProperties": false
+        },
+        "resources": {
+          "type": "object",
+          "required": ["maxMemoryMB", "maxCpuPercent", "maxExecutionTimeMs", "maxConcurrentOperations", "maxFileSize"],
+          "properties": {
+            "maxMemoryMB": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 1024,
+              "description": "Maximum memory usage in MB"
+            },
+            "maxCpuPercent": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "Maximum CPU usage percentage"
+            },
+            "maxExecutionTimeMs": {
+              "type": "number",
+              "minimum": 100,
+              "maximum": 300000,
+              "description": "Maximum single operation execution time in milliseconds"
+            },
+            "maxConcurrentOperations": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "Maximum concurrent operations"
+            },
+            "maxFileSize": {
+              "type": "number",
+              "minimum": 1024,
+              "maximum": 104857600,
+              "description": "Maximum file size to process in bytes"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "performance": {
+      "type": "object",
+      "required": ["maxLatencyMs", "maxMemoryMB", "maxCpuPercent", "maxConcurrentOps", "cacheHitRateMin"],
+      "properties": {
+        "maxLatencyMs": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 10000,
+          "description": "Maximum operation latency in milliseconds"
+        },
+        "maxMemoryMB": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 1024,
+          "description": "Maximum memory footprint in MB"
+        },
+        "maxCpuPercent": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Maximum CPU usage percentage"
+        },
+        "maxConcurrentOps": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Maximum concurrent operations"
+        },
+        "cacheHitRateMin": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Minimum cache hit rate (0.0 to 1.0)"
+        },
+        "throughputMin": {
+          "type": "number",
+          "minimum": 1,
+          "description": "Minimum operations per second (optional)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["license", "keywords"],
+      "properties": {
+        "homepage": {
+          "type": "string",
+          "format": "uri",
+          "description": "Plugin homepage URL"
+        },
+        "repository": {
+          "type": "string",
+          "format": "uri",
+          "description": "Source code repository URL"
+        },
+        "license": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50,
+          "description": "SPDX license identifier"
+        },
+        "keywords": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 30
+          },
+          "minItems": 1,
+          "maxItems": 15,
+          "uniqueItems": true,
+          "description": "Search keywords for marketplace"
+        },
+        "screenshots": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uri",
+            "description": "Screenshot URL"
+          },
+          "maxItems": 5,
+          "description": "Screenshot URLs for marketplace"
+        },
+        "documentation": {
+          "type": "string",
+          "format": "uri",
+          "description": "Documentation URL"
+        }
+      },
+      "additionalProperties": false
+    },
+    "dependencies": {
+      "type": "object",
+      "patternProperties": {
+        "^[a-zA-Z0-9@/_-]+$": {
+          "type": "string",
+          "description": "Version range for dependency"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Plugin npm dependencies"
+    },
+    "peerDependencies": {
+      "type": "object",
+      "patternProperties": {
+        "^[a-zA-Z0-9@/_-]+$": {
+          "type": "string",
+          "description": "Version range for peer dependency"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Plugin peer dependencies"
+    },
+    "main": {
+      "type": "string",
+      "pattern": "^[^/].*\\.(js|ts)$",
+      "description": "Main entry point file (relative path)"
+    },
+    "types": {
+      "type": "string",
+      "pattern": "^[^/].*\\.d\\.ts$",
+      "description": "TypeScript definition file (relative path)"
+    },
+    "configSchema": {
+      "type": "object",
+      "description": "JSON Schema for plugin configuration"
+    },
+    "defaultConfig": {
+      "type": "object",
+      "description": "Default configuration values"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "layerPlugin": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "layer"
+        },
+        "targetLayer": {
+          "type": "string",
+          "enum": ["layer1", "layer2", "layer3", "layer4", "layer5"],
+          "description": "Which existing layer to enhance"
+        },
+        "enhanceExisting": {
+          "type": "boolean",
+          "description": "True to enhance existing layer, false to replace"
+        }
+      },
+      "required": ["targetLayer", "enhanceExisting"]
+    },
+    "newLayerPlugin": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "newLayer"
+        },
+        "layerNumber": {
+          "type": "integer",
+          "minimum": 6,
+          "maximum": 20,
+          "description": "Layer number (6 or higher)"
+        },
+        "layerName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50,
+          "description": "Descriptive name for the new layer"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^layer[1-9]\\d*$"
+          },
+          "uniqueItems": true,
+          "description": "Required layers that must run before this one"
+        }
+      },
+      "required": ["layerNumber", "layerName", "dependencies"]
+    },
+    "protocolPlugin": {
+      "type": "object", 
+      "properties": {
+        "type": {
+          "const": "protocol"
+        },
+        "protocolName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50,
+          "description": "Name of the protocol (e.g., 'websocket', 'graphql')"
+        },
+        "defaultPort": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 65535,
+          "description": "Default port for the protocol server"
+        },
+        "supportedMethods": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Protocol methods/operations supported"
+        }
+      },
+      "required": ["protocolName", "supportedMethods"]
+    },
+    "languagePlugin": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "language"
+        },
+        "languageId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 30,
+          "description": "Language identifier (e.g., 'rust', 'python')"
+        },
+        "fileExtensions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^\\.[a-zA-Z0-9]+$"
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "File extensions supported by this language"
+        },
+        "mimeTypes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9]+/[a-zA-Z0-9+.-]+$"
+          },
+          "uniqueItems": true,
+          "description": "MIME types for the language"
+        }
+      },
+      "required": ["languageId", "fileExtensions"]
+    },
+    "integrationPlugin": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "integration"
+        },
+        "serviceName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50,
+          "description": "Name of the external service (e.g., 'github', 'jira')"
+        },
+        "endpoints": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "methods"],
+            "properties": {
+              "path": {
+                "type": "string",
+                "pattern": "^/.*$",
+                "description": "Endpoint path"
+              },
+              "methods": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
+                },
+                "minItems": 1,
+                "uniqueItems": true,
+                "description": "HTTP methods supported"
+              }
+            }
+          },
+          "minItems": 1,
+          "description": "API endpoints exposed by the plugin"
+        }
+      },
+      "required": ["serviceName", "endpoints"]
+    },
+    "analysisPlugin": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "analysis"
+        },
+        "analysisTypes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "syntax",
+              "semantic", 
+              "quality",
+              "security",
+              "performance",
+              "documentation",
+              "testing",
+              "dependency"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Types of analysis performed"
+        },
+        "supportedLanguages": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Programming languages supported for analysis"
+        }
+      },
+      "required": ["analysisTypes", "supportedLanguages"]
+    }
+  },
+  "anyOf": [
+    { "$ref": "#/definitions/layerPlugin" },
+    { "$ref": "#/definitions/newLayerPlugin" },
+    { "$ref": "#/definitions/protocolPlugin" },
+    { "$ref": "#/definitions/languagePlugin" },
+    { "$ref": "#/definitions/integrationPlugin" },
+    { "$ref": "#/definitions/analysisPlugin" }
+  ]
+}

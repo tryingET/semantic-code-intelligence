@@ -1,0 +1,1 @@
+../orgmem2/.claude/docs/software-principles.md

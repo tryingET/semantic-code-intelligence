@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ontology‑LSP Dashboard</title>
+    <!-- E2E apply test: safe comment -->
+    <style>
+      :root { --indigo:#4f46e5; --fg:#111827; --muted:#6b7280; --br:#e5e7eb; --bg:#f9fafb; }
+      html,body { margin:0; padding:0; background:#fff; color:var(--fg); font:14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+      header { padding:16px 20px; border-bottom:1px solid var(--br); display:flex; align-items:center; gap:12px; }
+      header h1 { font-size:16px; margin:0; }
+      main { padding:16px 20px; display:flex; gap:16px; flex-wrap:wrap; }
+      .col { flex: 1 1 420px; min-width: 340px; }
+      .card { border:1px solid var(--br); border-radius:10px; background:#fff; margin-bottom:16px; }
+      .card header { padding:10px 12px; border-bottom:1px solid var(--br); background:#fafafa; }
+      .card header h2 { margin:0; font-size:14px; }
+      .card .body { padding:12px; }
+      .row { display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; }
+      label { display:block; font-size:12px; color:#374151; margin-bottom:4px; }
+      input, textarea, select { border:1px solid #d1d5db; border-radius:8px; padding:8px; font:inherit; }
+      textarea { width:100%; min-height:120px; }
+      button { background:var(--indigo); color:#fff; border:none; border-radius:8px; padding:8px 12px; cursor:pointer; }
+      button.secondary { background:#111827; }
+      button:disabled { opacity:.6; cursor:default; }
+      .muted { color:var(--muted); font-size:12px; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size:12px; line-height:1.35; }
+      pre { background:#f9fafb; border:1px solid var(--br); border-radius:8px; padding:10px; overflow:auto; max-height:420px; }
+      /* toast */
+      .toast { position:fixed; right:16px; bottom:16px; background:#111827; color:#fff; padding:10px 12px; border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,.2); opacity:0; transform:translateY(8px); transition:opacity .18s ease, transform .18s ease; z-index:9999; max-width:360px; }
+      .toast.show { opacity:1; transform:translateY(0); }
+      /* diff highlighting */
+      .diff-add { background:#ecfdf5; color:#065f46; }
+      .diff-del { background:#fef2f2; color:#991b1b; }
+      .diff-hunk { background:#eff6ff; color:#1e3a8a; font-weight:600; }
+      .diff-file { background:#f3f4f6; color:#374151; font-weight:600; }
+      table.kv { border-collapse: collapse; width:100%; }
+      table.kv td { padding:4px 6px; border-bottom:1px solid #f3f4f6; }
+      table.kv td:first-child { color:#374151; width:40%; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Ontology‑LSP Dashboard</h1>
+      <span class="muted" id="hdr-status">Initializing…</span>
+      <button id="btn-refresh" title="Refresh metrics">Refresh</button>
+    </header>
+    <main>
+      <section class="col">
+        <div class="card">
+          <header><h2>System Health</h2></header>
+          <div class="body">
+            <table class="kv" id="health-kv"></table>
+            <div class="muted">Endpoints: GET /health, GET /api/v1/monitoring</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <header><h2>Layers (p50/p95/p99)</h2></header>
+          <div class="body">
+            <div id="layers"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <header><h2>Tools</h2></header>
+          <div class="body">
+            <div id="tools"></div>
+            <div id="toolsRecent" class="mono" style="margin-top:6px;"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <header><h2>Learning Stats</h2></header>
+          <div class="body">
+            <table class="kv" id="learning-kv"></table>
+          </div>
+        </div>
+      </section>
+
+      <section class="col">
+        <div class="card">
+          <header><h2>Snapshots</h2></header>
+          <div class="body">
+            <div class="row">
+              <div>
+                <label for="snapSelect">Snapshot</label>
+                <select id="snapSelect"></select>
+              </div>
+              <button id="btnSnapList">List</button>
+              <button id="btnSnapDiff">View Diff</button>
+              <button id="btnSnapStatus">View Status</button>
+              <label style="margin-left:8px;">Preset</label>
+              <select id="snapPreset">
+                <option value="fast">Fast (touched typecheck)</option>
+                <option value="typecheck">Typecheck (project)</option>
+                <option value="build">Build</option>
+                <option value="noop">No-op</option>
+              </select>
+              <button id="btnSnapApplyAfter" title="Run checks (preset) then apply if OK (dev-only)">Apply After Checks</button>
+              <button id="btnSnapStageApplyAfter" title="Stage patch → checks → apply (dev-only)">Stage+Apply (dev)</button>
+              <button id="btnSnapRevertLast" title="Revert last applied patch (dev-only)">Revert Last (dev)</button>
+              <button id="btnSnapCopy" title="Copy snapshot id">Copy ID</button>
+              <button id="btnSnapOpen" title="Open diff in new tab">Open Diff (tab)</button>
+            </div>
+            <pre class="mono" id="snapOut">Select snapshot and click View Diff or View Status</pre>
+          </div>
+        </div>
+
+        <div class="card">
+          <header><h2>Workflows</h2></header>
+          <div class="body">
+            <div class="row">
+              <div>
+                <label>Locate Confirm (symbol)</label>
+                <input id="w-symbol" type="text" placeholder="TestClass" />
+              </div>
+              <div>
+                <label>File (optional)</label>
+                <input id="w-file" type="text" placeholder="tests/fixtures/example.ts" />
+              </div>
+              <button id="btnLocate">Run</button>
+            </div>
+            <pre class="mono" id="wfOut1"></pre>
+
+            <div class="row" style="margin-top:8px;">
+              <div>
+                <label>Safe Rename (old → new)</label>
+                <input id="w-old" type="text" placeholder="HTTPServer" />
+              </div>
+              <div>
+                <label>&nbsp;</label>
+                <input id="w-new" type="text" placeholder="HTTPServerX" />
+              </div>
+              <div>
+                <label>File</label>
+                <input id="w-file2" type="text" placeholder="src/servers/http.ts" />
+              </div>
+              <button id="btnRename">Run</button>
+            </div>
+            <pre class="mono" id="wfOut2"></pre>
+
+            <div style="margin-top:8px;">
+              <label>Patch + Checks (apply_patch or unified diff)</label>
+              <textarea id="w-patch" placeholder="*** Begin Patch
+*** Update File: tests/fixtures/example.ts
+@@
+ export class TestClass {
+-    private value: number = 0;
++    // UI: noop comment
++    private value: number = 0;
+*** End Patch
+"></textarea>
+              <div class="row">
+                <button id="btnPatch">Stage + Checks</button>
+                <label>Preset</label>
+                <select id="patchPreset">
+                  <option value="fast">Fast</option>
+                  <option value="typecheck">Typecheck</option>
+                  <option value="build">Build</option>
+                  <option value="noop">No-op</option>
+                </select>
+                <button id="btnPatchApplyAfter" title="Stage → checks → apply (dev-only)">Apply After (dev)</button>
+              </div>
+            </div>
+            <pre class="mono" id="wfOut3"></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="col">
+        <div class="card">
+          <header><h2>Pipelines (Streamable HTTP + Details)</h2></header>
+          <div class="body">
+            <div class="row">
+              <div>
+                <label>Pipeline ID</label>
+                <input id="pl-id" type="text" placeholder="pattern_feedback_cycle" />
+              </div>
+              <div>
+                <label>Pipelines</label>
+                <select id="pl-id-sel"></select>
+              </div>
+              <div>
+                <label>Run ID</label>
+                <input id="pl-runId" type="text" placeholder="<uuid>" />
+              </div>
+              <div>
+                <label>Limit</label>
+                <input id="pl-limit" type="number" value="10" min="1" max="100" />
+              </div>
+            </div>
+            <div class="row">
+              <button id="btnPlList">List (tools)</button>
+              <button id="btnPlLoad">Load Pipelines</button>
+              <button id="btnPlRun" title="Stream run output (NDJSON)">Run Stream</button>
+              <button id="btnPlStatus" title="Fetch pipeline status">Status</button>
+              <button id="btnPlRuns" title="List recent runs">Runs</button>
+              <button id="btnPlRunDetail" title="Fetch run detail">Run Detail</button>
+            </div>
+            <pre class="mono" id="plOut">Run output will appear here…</pre>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- toast container -->
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script>
+      const api = (p) => `${location.origin}${p}`;
+      const $ = (id) => document.getElementById(id);
+      const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+      function kv(el, obj) {
+        el.innerHTML = Object.entries(obj || {}).map(([k,v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('');
+      }
+
+      function renderLayers(el, breakdown) {
+        const keys = Object.keys(breakdown||{});
+        el.innerHTML = keys.length ? keys.map(k => {
+          const d = breakdown[k] || {}; const p50 = d.p50||0, p95=d.p95||0, p99=d.p99||0, c=d.count||0;
+          return `<div style="margin:4px 0;">
+            <strong>${esc(k)}</strong>
+            <div class="muted">count=${c}, p50=${p50}ms, p95=${p95}ms, p99=${p99}ms</div>
+          </div>`;
+        }).join('') : '<span class="muted">No data</span>';
+      }
+      function renderToolCounts(el, counts) {
+        const keys = Object.keys(counts||{}).sort((a,b)=> (counts[b]||0)-(counts[a]||0));
+        el.innerHTML = keys.length ? keys.slice(0,12).map(k => `<div><strong>${esc(k)}</strong>: ${counts[k]}</div>`).join('') : '<span class="muted">No tool calls yet</span>';
+      }
+      function renderToolRecent(el, items) {
+        const arr = Array.isArray(items)? items.slice(-12) : [];
+        if (!arr.length) { el.innerHTML = '<span class="muted">No recent calls</span>'; return; }
+        const rows = arr.reverse().map(it => {
+          const ts = new Date(it.timestamp||Date.now()).toLocaleTimeString();
+          return `${esc(ts)} · ${esc(it.name||'unknown')}`;
+        });
+        el.innerHTML = rows.join('<br/>');
+      }
+
+      function highlightUnifiedDiff(text) {
+        const lines = text.split(/\r?\n/);
+        return lines.map((ln) => {
+          if (ln.startsWith('+++ ') || ln.startsWith('--- ')) return `<span class="diff-file">${esc(ln)}</span>`;
+          if (ln.startsWith('@@')) return `<span class="diff-hunk">${esc(ln)}</span>`;
+          if (ln.startsWith('+')) return `<span class="diff-add">${esc(ln)}</span>`;
+          if (ln.startsWith('-')) return `<span class="diff-del">${esc(ln)}</span>`;
+          return esc(ln);
+        }).join('\n');
+      }
+
+      async function getJSON(u, opts) {
+        const res = await fetch(u, opts);
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+        return res.json();
+      }
+
+      async function refresh() {
+        try {
+          const health = await getJSON(api('/health'));
+          $('hdr-status').textContent = `${health.status} @ ${health.timestamp}`;
+          kv($('health-kv'), { status: health.status, timestamp: health.timestamp });
+        } catch(e) { $('hdr-status').textContent = 'health error'; }
+
+        try {
+          const mon = await getJSON(api('/api/v1/monitoring'));
+          const perf = mon?.data?.performance || {}; const layers = mon?.data?.layers || {};
+          kv($('health-kv'), { status: 'OK', totalRequests: perf.totalRequests||0, p95: (perf.p95Latency||0)+'ms' });
+          renderLayers($('layers'), layers);
+          renderToolCounts($('tools'), mon?.data?.toolCounts || {});
+          renderToolRecent($('toolsRecent'), mon?.data?.toolRecent || []);
+        } catch(e) {}
+
+        try {
+          const ls = await getJSON(api('/api/v1/learning-stats'));
+          const s = ls?.data || {};
+          kv($('learning-kv'), { patterns: s.patterns ?? 0, concepts: s.concepts ?? 0, updatedAt: s.updatedAt ?? '' });
+        } catch(e) {}
+      }
+
+      // Simple toast helper
+      function showToast(msg, kind) {
+        const el = $('toast');
+        if (!el) return;
+        el.textContent = String(msg || '');
+        el.style.background = kind === 'warn' ? '#92400e' : kind === 'err' ? '#991b1b' : '#111827';
+        el.classList.add('show');
+        clearTimeout(showToast._t);
+        showToast._t = setTimeout(() => { el.classList.remove('show'); }, 3000);
+      }
+
+      async function listSnapshots() {
+        const res = await getJSON(api('/api/v1/snapshots'));
+        const snaps = res?.data?.snapshots || [];
+        const sel = $('snapSelect'); sel.innerHTML = '';
+        for (const s of snaps) {
+          const o = document.createElement('option'); o.value = s.id; o.textContent = `${s.id} (${s.diffCount} diffs)`; sel.appendChild(o);
+        }
+        if (!snaps.length) $('snapOut').textContent = 'No snapshots';
+      }
+
+      async function snapDiff() {
+        const id = $('snapSelect').value; if (!id) return;
+        const res = await getJSON(api(`/api/v1/snapshots/${id}/diff`));
+        $('snapOut').innerHTML = highlightUnifiedDiff(res?.data?.diff || '');
+      }
+      async function snapStatus() {
+        const id = $('snapSelect').value; if (!id) return;
+        const res = await getJSON(api(`/api/v1/snapshots/${id}/status`));
+        $('snapOut').textContent = JSON.stringify(res, null, 2);
+      }
+      async function snapCopy() {
+        const id = $('snapSelect').value; if (!id) return;
+        try { await navigator.clipboard.writeText(id); const btn=$('btnSnapCopy'); const old=btn.textContent; btn.textContent='Copied'; setTimeout(()=>btn.textContent=old,800); } catch {}
+      }
+      async function snapOpen() {
+        const id = $('snapSelect').value; if (!id) return;
+        try {
+          const res = await getJSON(api(`/api/v1/snapshots/${id}/diff`));
+          const diff = res?.data?.diff || '';
+          const w = window.open('', '_blank');
+          if (!w) return;
+          const css = `body{margin:16px;font:13px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,"Liberation Mono","Courier New", monospace;}
+            .diff-add{background:#ecfdf5;color:#065f46} .diff-del{background:#fef2f2;color:#991b1b}
+            .diff-hunk{background:#eff6ff;color:#1e3a8a;font-weight:600} .diff-file{background:#f3f4f6;color:#374151;font-weight:600}`;
+          w.document.write(`<!doctype html><html><head><meta charset=\"utf-8\"><title>Snapshot ${id} diff</title><style>${css}</style></head><body><pre>${highlightUnifiedDiff(diff)}</pre></body></html>`);
+          w.document.close();
+        } catch {}
+      }
+
+      // Apply-after-checks helpers
+      function presetToArgs(preset) {
+        switch (preset) {
+          case 'fast':
+            return { commands: ['bun run build:tsc'], onlyTouched: true, timeoutSec: 120 };
+          case 'typecheck':
+            return { commands: ['bun run build:tsc'], onlyTouched: false, timeoutSec: 240 };
+          case 'build':
+            return { commands: ['bun run build'], onlyTouched: false, timeoutSec: 300 };
+          case 'noop':
+          default:
+            return { commands: ['true'], onlyTouched: false, timeoutSec: 30 };
+        }
+      }
+      async function snapApplyAfterChecks() {
+        const id = $('snapSelect').value; if (!id) { $('snapOut').textContent = 'Select a snapshot'; return; }
+        const preset = $('snapPreset').value || 'fast';
+        const args = presetToArgs(preset);
+        try {
+          $('snapOut').textContent = `Running checks (${preset})...`;
+          const chk = await toolsCall('run_checks', { snapshot: id, commands: args.commands, onlyTouched: !!args.onlyTouched, timeoutSec: args.timeoutSec });
+          if (!chk || chk.ok === false) {
+            $('snapOut').textContent = JSON.stringify({ phase: 'checks', ok: false, chk }, null, 2);
+            return;
+          }
+          const app = await toolsCall('apply_snapshot', { snapshot: id });
+          $('snapOut').textContent = JSON.stringify({ phase: 'apply', ok: !!app?.ok, chk, app }, null, 2);
+        } catch (e) {
+          const msg = e?.message || String(e||'apply failed');
+          $('snapOut').textContent = `apply-after-checks failed: ${msg}`;
+          if (/apply_snapshot is disabled/i.test(msg)) {
+            showToast('Apply disabled (set ALLOW_SNAPSHOT_APPLY=1)', 'warn');
+          } else {
+            showToast(msg, 'err');
+          }
+        }
+      }
+
+      function pickPatchText() {
+        const t = document.getElementById('w-patch');
+        let patch = '';
+        if (t && (t as HTMLTextAreaElement).value) patch = (t as HTMLTextAreaElement).value;
+        if (!patch) patch = window.prompt('Enter apply_patch or unified diff','') || '';
+        return patch;
+      }
+      async function snapStageApplyAfter() {
+        const patch = pickPatchText();
+        if (!patch.trim()) { showToast('No patch provided', 'warn'); return; }
+        const preset = $('snapPreset').value || 'fast';
+        const args = presetToArgs(preset);
+        try {
+          const out = await toolsCall('apply_after_checks', { patch, commands: args.commands, timeoutSec: args.timeoutSec });
+          $('snapOut').textContent = JSON.stringify(out, null, 2);
+          if (!out?.applied) showToast('Apply disabled (set ALLOW_SNAPSHOT_APPLY=1)', 'warn');
+        } catch(e) { showToast(e?.message||String(e),'err'); }
+      }
+      async function snapRevertLast() {
+        try {
+          const res = await getJSON(api('/api/v1/snapshots'));
+          const list = res?.data?.snapshots || [];
+          if (!list.length) { showToast('No snapshots to revert', 'warn'); return; }
+          const sorted = list.slice().sort((a,b)=> (b.createdAt||0)-(a.createdAt||0));
+          const id = sorted[0].id;
+          const diffRes = await getJSON(api(`/api/v1/snapshots/${id}/diff`));
+          const patch = diffRes?.data?.diff || '';
+          if (!patch) { showToast('No diff found to revert', 'warn'); return; }
+          const preset = $('snapPreset').value || 'fast';
+          const args = presetToArgs(preset);
+          const out = await toolsCall('apply_after_checks', { patch, reverse: true, commands: args.commands, timeoutSec: args.timeoutSec });
+          $('snapOut').textContent = JSON.stringify(out, null, 2);
+          if (!out?.applied) showToast('Revert disabled (set ALLOW_SNAPSHOT_APPLY=1)', 'warn');
+        } catch(e) { showToast(e?.message||String(e),'err'); }
+      }
+
+      async function toolsCall(name, args) {
+        const res = await fetch(api('/api/v1/tools/call'), {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, arguments: args||{} })
+        });
+        const body = await res.json();
+        if (!body.success) throw new Error(body?.error?.message || 'tool failed');
+        return body.result;
+      }
+
+      async function wfLocate() {
+        const symbol = $('w-symbol').value || 'TestClass';
+        const file = $('w-file').value || undefined;
+        const out = await toolsCall('locate_confirm_definition', { symbol, file });
+        $('wfOut1').textContent = JSON.stringify(out, null, 2);
+      }
+      async function wfRename() {
+        const oldName = $('w-old').value || 'HTTPServer';
+        const newName = $('w-new').value || 'HTTPServerX';
+        const file = $('w-file2').value || 'src/servers/http.ts';
+        const out = await toolsCall('rename_safely', { oldName, newName, file, runChecks: false });
+        $('wfOut2').textContent = JSON.stringify(out, null, 2);
+      }
+      async function wfPatch() {
+        const patch = $('w-patch').value||'';
+        const out = await toolsCall('patch_checks_in_snapshot', { patch, onlyTouched: true, commands: ['true'] });
+        $('wfOut3').textContent = JSON.stringify(out, null, 2);
+      }
+      async function wfPatchApplyAfter() {
+        const patch = $('w-patch').value||'';
+        const preset = ($('patchPreset').value||'fast');
+        const args = presetToArgs(preset);
+        try {
+          const out = await toolsCall('apply_after_checks', { patch, commands: args.commands, timeoutSec: args.timeoutSec });
+          $('wfOut3').textContent = JSON.stringify(out, null, 2);
+          if (!out?.applied) showToast('Apply disabled (set ALLOW_SNAPSHOT_APPLY=1)', 'warn');
+        } catch(e) {
+          const msg = e?.message || String(e||'apply failed');
+          $('wfOut3').textContent = msg;
+          showToast(msg, 'err');
+        }
+      }
+
+      async function listPipelines() {
+        const out = await toolsCall('list_pipelines', {});
+        $('plOut').textContent = JSON.stringify(out, null, 2);
+      }
+
+      async function loadPipelines() {
+        const res = await getJSON(api('/api/v1/pipelines'));
+        const items = res?.data?.pipelines || [];
+        const sel = $('pl-id-sel');
+        sel.innerHTML = '';
+        for (const p of items) {
+          const o = document.createElement('option');
+          o.value = p.id; o.textContent = `${p.id} (${p.enabled ? 'on' : 'off'})`;
+          sel.appendChild(o);
+        }
+        $('plOut').textContent = JSON.stringify(res, null, 2);
+      }
+
+      async function runPipelineStream() {
+        const id = $('pl-id').value || 'pattern_feedback_cycle';
+        $('plOut').textContent = '';
+        const res = await fetch(api('/api/v1/pipelines/run-stream'), {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id, pollMs: 300, timeoutSec: 60 })
+        });
+        if (!res.body) { $('plOut').textContent = 'No body'; return; }
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let buf = '';
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          const lines = buf.split('\n');
+          buf = lines.pop() || '';
+          for (const ln of lines) {
+            if (!ln.trim()) continue;
+            try { const obj = JSON.parse(ln); $('plOut').textContent += (obj.event?`[${obj.event}] `:'') + JSON.stringify(obj) + '\n'; }
+            catch { $('plOut').textContent += ln + '\n'; }
+          }
+        }
+        if (buf) $('plOut').textContent += buf + '\n';
+      }
+
+      async function pipelineStatus() {
+        const id = $('pl-id').value || '';
+        if (!id) { $('plOut').textContent = 'Pipeline id required'; return; }
+        const res = await getJSON(api(`/api/v1/pipelines/status?id=${encodeURIComponent(id)}`));
+        $('plOut').textContent = JSON.stringify(res, null, 2);
+      }
+
+      async function pipelineRuns() {
+        const id = $('pl-id').value || '';
+        const limit = Number($('pl-limit').value || '10') || 10;
+        if (!id) { $('plOut').textContent = 'Pipeline id required'; return; }
+        const res = await getJSON(api(`/api/v1/pipelines/runs?id=${encodeURIComponent(id)}&limit=${limit}`));
+        $('plOut').textContent = JSON.stringify(res, null, 2);
+      }
+
+      async function pipelineRunDetail() {
+        const id = $('pl-id').value || '';
+        const runId = $('pl-runId').value || '';
+        if (!id || !runId) { $('plOut').textContent = 'Pipeline id and runId required'; return; }
+        const res = await getJSON(api(`/api/v1/pipelines/run?id=${encodeURIComponent(id)}&runId=${encodeURIComponent(runId)}`));
+        $('plOut').textContent = JSON.stringify(res, null, 2);
+      }
+
+      $('btn-refresh').onclick = refresh;
+      $('btnSnapList').onclick = listSnapshots;
+      $('btnSnapDiff').onclick = snapDiff;
+      $('btnSnapStatus').onclick = snapStatus;
+      $('btnSnapCopy').onclick = snapCopy;
+      $('btnSnapOpen').onclick = snapOpen;
+      const btnApplyAfter = document.getElementById('btnSnapApplyAfter');
+      if (btnApplyAfter) btnApplyAfter.onclick = snapApplyAfterChecks;
+      const btnStageApplyAfter = document.getElementById('btnSnapStageApplyAfter');
+      if (btnStageApplyAfter) btnStageApplyAfter.onclick = snapStageApplyAfter;
+      const btnRevertLast = document.getElementById('btnSnapRevertLast');
+      if (btnRevertLast) btnRevertLast.onclick = snapRevertLast;
+      $('btnLocate').onclick = wfLocate;
+      $('btnRename').onclick = wfRename;
+      $('btnPatch').onclick = wfPatch;
+      const btnPatchApplyAfter = document.getElementById('btnPatchApplyAfter');
+      if (btnPatchApplyAfter) btnPatchApplyAfter.onclick = wfPatchApplyAfter;
+      $('btnPlList').onclick = listPipelines;
+      $('btnPlLoad').onclick = loadPipelines;
+      $('btnPlRun').onclick = runPipelineStream;
+      $('btnPlStatus').onclick = pipelineStatus;
+      $('btnPlRuns').onclick = pipelineRuns;
+      $('btnPlRunDetail').onclick = pipelineRunDetail;
+
+      // Keep text input in sync with dropdown
+      (function(){
+        const sel = $('pl-id-sel');
+        if (sel) sel.addEventListener('change', () => { const v = sel.value; if (v) $('pl-id').value = v; });
+      })();
+
+      refresh();
+    </script>
+  </body>
+  </html>

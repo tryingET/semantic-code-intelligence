@@ -1,0 +1,14 @@
+{
+    "name": "ontology-test-workspace",
+    "version": "1.0.0",
+    "description": "Test workspace for Ontology LSP",
+    "main": "sample.js",
+    "scripts": {
+        "test": "echo \"Test workspace for Ontology LSP\""
+    },
+    "dependencies": {},
+    "devDependencies": {
+        "typescript": "^5.0.0",
+        "@types/node": "^20.0.0"
+    }
+}
