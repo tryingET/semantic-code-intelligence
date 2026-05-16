@@ -51,6 +51,39 @@ Alpha-supported operations are specified in `docs/project/alpha-mvp-contract.md`
 
 Success means a harnessed LLM coding session can solve routine code-navigation and patch-planning tasks with less raw shell probing, fewer stale assumptions, and clearer validation evidence.
 
+### Current alpha evidence
+
+Phase 1 has moved from posture to a repeatable Alpha MVP validation bundle. The current bundle proves:
+
+- the documented Alpha MVP tool surface is registered and discoverable;
+- HTTP `/api/v1/tools/call` executes bounded file reading, navigation, and preview-first patch checks;
+- direct `MCPAdapter` coverage exercises the same core behavior without relying only on HTTP;
+- MCP HTTP JSON-RPC can list tools and call navigation plus patch-planning operations;
+- MCP stdio can initialize, advertise tools, execute representative read/navigation/patch-check calls, and keep stdout protocol-clean;
+- CLI fallback can execute machine-readable workflow calls for local verification;
+- dogfood evidence is emitted as JSON and verifies that preview-first patch planning does not mutate the working tree;
+- migration hygiene continues to reject pre-rename identity drift and unsafe local artifacts.
+
+The current one-command validation paths are:
+
+```bash
+bun run alpha:mvp:check
+just alpha-mvp-check
+```
+
+This is credible Alpha MVP evidence for the first-user substrate. It is not yet production readiness.
+
+### Remaining Phase 1 gaps
+
+Before treating Phase 1 as broadly proven, keep pressure on:
+
+- dogfooding against at least one nontrivial external repo, not only this repo;
+- richer semantic graph behavior beyond stable fallback shapes;
+- evidence comparison across runs so regressions are easier to spot;
+- clearer performance budgets for harnessed-LLM interactive use;
+- durable snapshot/session semantics where process-local CLI or adapter state is insufficient;
+- operator-readable explanation of when to use HTTP, MCP HTTP, MCP stdio, direct adapter tests, or CLI fallback.
+
 ## Phase 2: Developer workbench
 
 Human-facing IDE and dashboard experiences become primary only after Phase 1 proves the substrate.
