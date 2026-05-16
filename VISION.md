@@ -18,6 +18,8 @@ The product is broader than an LSP server. LSP remains one interface, but the ce
 
 Make large codebases feel small, safe, and explainable for both humans and harnessed LLM coding sessions.
 
+Phase ordering: Semantic Code Intelligence is intended to serve harnessed LLM coding sessions, human developers, CI/review automation, and productized workbench surfaces over time. The first user is the **harnessed LLM coding session**. See `docs/project/product-posture.md` for the phased posture.
+
 Terminology note: **agent** is overloaded. In this document, prefer **harnessed LLM coding session** when referring to an LLM operating inside a tool/runtime harness such as Pi, Claude Code, Cursor, or another coding workbench. Use **developer** for a human. Use **adapter**, **service**, or **process** for software components.
 
 A developer or harnessed LLM coding session should be able to ask:
