@@ -2,15 +2,17 @@
 
 ## Executive Summary
 
-Semantic Code Intelligence is a local-first code-intelligence workbench for agents and developers. It turns a repository into a queryable, snapshot-aware semantic substrate: fast text search, structural AST understanding, symbol/refactoring plans, ontology-backed relationships, and learned code patterns exposed through thin protocol adapters.
+Semantic Code Intelligence is a local-first code-intelligence workbench for harnessed LLM coding sessions and developers. It turns a repository into a queryable, snapshot-aware semantic substrate: fast text search, structural AST understanding, symbol/refactoring plans, ontology-backed relationships, and learned code patterns exposed through thin protocol adapters.
 
-The product is broader than an LSP server. LSP remains one interface, but the center of gravity is a protocol-agnostic code brain serving MCP, HTTP, CLI, editor extensions, CI, and future agent workflows from the same core contracts.
+The product is broader than an LSP server. LSP remains one interface, but the center of gravity is a protocol-agnostic code brain serving MCP, HTTP, CLI, editor extensions, CI, and future harnessed-LLM workflows from the same core contracts.
 
 ## North Star
 
-Make large codebases feel small, safe, and explainable for both humans and coding agents.
+Make large codebases feel small, safe, and explainable for both humans and harnessed LLM coding sessions.
 
-A developer or agent should be able to ask:
+Terminology note: **agent** is overloaded. In this document, prefer **harnessed LLM coding session** when referring to an LLM operating inside a tool/runtime harness such as Pi, Claude Code, Cursor, or another coding workbench. Use **developer** for a human. Use **adapter**, **service**, or **process** for software components.
+
+A developer or harnessed LLM coding session should be able to ask:
 
 - Where is this concept defined and used?
 - What symbols, files, and architectural relationships are nearby?
@@ -28,7 +30,7 @@ Code understanding is about relationships, patterns, and evolution:
 - **Patterns**: naming, error handling, layering, refactoring recipes, and team conventions.
 - **Evolution**: how those relationships and patterns change over time.
 
-Semantic Code Intelligence should become a living memory for a codebase: fast enough for daily navigation, precise enough for safe edits, and structured enough for agent orchestration.
+Semantic Code Intelligence should become a living memory for a codebase: fast enough for daily navigation, precise enough for safe edits, and structured enough for harnessed-LLM orchestration.
 
 ## Product Boundaries
 
@@ -81,14 +83,14 @@ graph TB
   end
 
   subgraph USERS["Consumers"]
-    AGENTS["Coding Agents"]
+    HLLM["Harnessed LLM Coding Sessions"]
     DEVS["Developers"]
     CI["CI / Review Pipelines"]
     DASH["Dashboard"]
   end
 
   CORE --> ADAPTERS
-  MCP --> AGENTS
+  MCP --> HLLM
   HTTP --> DASH
   HTTP --> CI
   LSP --> DEVS
@@ -120,7 +122,7 @@ Pattern detection, confidence scoring, feedback loops, and propagation suggestio
 
 ## LLM-Friendly Tool Surface
 
-The primary agent interface should be snapshot-aware MCP/HTTP tools:
+The primary harnessed-LLM interface should be snapshot-aware MCP/HTTP tools:
 
 - `get_snapshot` → returns a snapshot id for git HEAD plus overlay state.
 - `text_search(query, glob?, kind?, case?, limit?, context?, snapshot)`
@@ -133,7 +135,7 @@ The primary agent interface should be snapshot-aware MCP/HTTP tools:
 - `propose_patch(diff, run_checks?, snapshot)`
 - `run_checks(commands?, snapshot)`
 
-These tools should replace unbounded grep/read/sed behavior in agent workflows when precision, repeatability, or edit safety matters.
+These tools should replace unbounded grep/read/sed behavior in harnessed-LLM workflows when precision, repeatability, or edit safety matters.
 
 ## Implementation Priorities
 
@@ -150,7 +152,7 @@ These tools should replace unbounded grep/read/sed behavior in agent workflows w
 - Strengthen overlay and patch proposal flow.
 - Run format, lint, typecheck, and targeted tests before accepting patches.
 - Emit reviewable evidence for every proposed mutation.
-- Keep direct write behavior out of the core agent path.
+- Keep direct write behavior out of the core harnessed-LLM path.
 
 ### Phase C: Improve Precision
 
@@ -186,7 +188,7 @@ These tools should replace unbounded grep/read/sed behavior in agent workflows w
 
 ### Usefulness
 
-- Developers and agents find definitions, references, related concepts, and safe rename plans faster than with ad-hoc shell workflows.
+- Developers and harnessed LLM coding sessions find definitions, references, related concepts, and safe rename plans faster than with ad-hoc shell workflows.
 - Learned patterns improve suggestions without becoming opaque policy.
 - The system makes repository structure easier to explain and onboard.
 
@@ -204,6 +206,6 @@ Semantic Code Intelligence becomes a repository's shared programming memory:
 2. It answers with bounded evidence tied to a snapshot.
 3. It proposes changes as reviewable plans, not hidden mutations.
 4. It learns from accepted and rejected suggestions.
-5. It gives coding agents and humans the same reliable substrate.
+5. It gives harnessed LLM coding sessions and humans the same reliable substrate.
 
 This is programming augmented by structured code intelligence: fast enough for flow, safe enough for automation, and explicit enough to trust.
