@@ -245,6 +245,8 @@ export class MCPAdapter {
                         return this.handlePatternStats();
                     case 'get_snapshot':
                         return this.handleGetSnapshot(arguments_);
+                    case 'read_file':
+                        return this.handleReadFile(arguments_);
                     case 'propose_patch':
                         return this.handleProposePatch(arguments_);
                     case 'run_checks':
@@ -340,6 +342,71 @@ export class MCPAdapter {
             // Fallback: return adapter-shaped message for non-core errors
             return handleAdapterError(error, 'mcp');
         }
+    }
+
+    private async handleReadFile(args: Record<string, any>) {
+        const requestedPath = typeof args?.path === 'string' ? args.path.trim() : '';
+        if (!requestedPath) {
+            return handleAdapterError(new CoreError('InvalidParams', 'Missing required parameter: path'), 'mcp');
+        }
+
+        if (typeof args?.snapshot === 'string' && args.snapshot.trim()) {
+            try {
+                overlayStore.ensureSnapshot(args.snapshot.trim());
+            } catch (error: any) {
+                return handleAdapterError(new CoreError('InvalidParams', error?.message || 'Invalid snapshot id'), 'mcp');
+            }
+        }
+
+        const workspaceRoot = path.resolve(process.cwd());
+        const absPath = path.resolve(workspaceRoot, requestedPath);
+        const relPath = path.relative(workspaceRoot, absPath);
+        if (!relPath || relPath.startsWith('..') || path.isAbsolute(relPath)) {
+            return handleAdapterError(
+                new CoreError('InvalidParams', 'read_file path must stay within the workspace', { path: requestedPath }),
+                'mcp'
+            );
+        }
+
+        const stat = await fs.stat(absPath).catch(() => null);
+        if (!stat || !stat.isFile()) {
+            return handleAdapterError(
+                new CoreError('InvalidParams', 'read_file path does not exist or is not a file', { path: requestedPath }),
+                'mcp'
+            );
+        }
+
+        const maxBytesRaw = Number(args?.maxBytes ?? 65_536);
+        const maxBytes = Number.isFinite(maxBytesRaw) ? Math.max(1, Math.min(262_144, Math.floor(maxBytesRaw))) : 65_536;
+        const content = await fs.readFile(absPath, 'utf8');
+        const lines = content.split(/\r?\n/);
+
+        const range = args?.range && typeof args.range === 'object' ? args.range : null;
+        const startLineRaw = Number(range?.startLine ?? 1);
+        const endLineRaw = Number(range?.endLine ?? lines.length);
+        const startLine = Number.isFinite(startLineRaw) ? Math.max(1, Math.floor(startLineRaw)) : 1;
+        const endLine = Number.isFinite(endLineRaw) ? Math.max(startLine, Math.floor(endLineRaw)) : lines.length;
+        const selected = lines.slice(startLine - 1, Math.min(endLine, lines.length)).join('\n');
+        const bytes = Buffer.byteLength(selected, 'utf8');
+        const truncated = bytes > maxBytes;
+        const text = truncated ? selected.slice(0, maxBytes) : selected;
+
+        return {
+            content: [
+                {
+                    type: 'text',
+                    text: JSON.stringify({
+                        path: relPath,
+                        range: { startLine, endLine: Math.min(endLine, lines.length) },
+                        content: text,
+                        truncated,
+                        bytes: Buffer.byteLength(text, 'utf8'),
+                        totalLines: lines.length,
+                    }),
+                },
+            ],
+            isError: false,
+        } as any;
     }
 
     private async handleListSymbols(args: Record<string, any>) {

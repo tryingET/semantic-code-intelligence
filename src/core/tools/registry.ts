@@ -25,6 +25,26 @@ export class ToolRegistry {
             description: 'Create or return a snapshot id for consistent reads/edits',
             inputSchema: { type: 'object', properties: { preferExisting: { type: 'boolean' } } },
         },
+        {
+            name: 'read_file',
+            description: 'Read a bounded file range from the workspace for snapshot-aware code navigation',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    path: { type: 'string', description: 'Workspace-relative file path' },
+                    range: {
+                        type: 'object',
+                        properties: {
+                            startLine: { type: 'number', description: '1-based inclusive start line' },
+                            endLine: { type: 'number', description: '1-based inclusive end line' },
+                        },
+                    },
+                    snapshot: { type: 'string', description: 'Optional snapshot id to validate before reading workspace state' },
+                    maxBytes: { type: 'number', default: 65536 },
+                },
+                required: ['path'],
+            },
+        },
         // WORKFLOWS (legacy names kept for compatibility)
         {
             name: 'workflow_safe_rename',
