@@ -8,11 +8,17 @@ type: "reference"
 
 # Semantic Code Intelligence: Ontology-Enhanced Programming Companion
 
-🎉 **PRODUCTION READY** - A unified code intelligence system that transforms programming from passive analysis to active intelligence. Built with protocol-agnostic core architecture serving LSP, MCP (Model Context Protocol), and HTTP interfaces.
+**Alpha posture**: Semantic Code Intelligence is a phased code-intelligence substrate. The first supported user is the **harnessed LLM coding session**: an LLM operating inside a tool/runtime harness such as Pi, Claude Code, Cursor, or another coding workbench.
 
-**Current Status**: All critical issues resolved, unified architecture implemented, performance targets exceeded, and production deployment validated.
+Phase 1 focuses on snapshot-aware navigation, patch planning, validation evidence, and stable MCP/HTTP/CLI contracts. Human IDE polish, CI/review automation, dashboards, production deployment, marketplace, analytics, and AI-training claims are later phases unless they directly support the Phase 1 substrate.
 
-## 🚀 Production-Ready Features
+Read first:
+
+- Product posture: [docs/project/product-posture.md](docs/project/product-posture.md)
+- Alpha MVP contract: [docs/project/alpha-mvp-contract.md](docs/project/alpha-mvp-contract.md)
+- Identity policy: [docs/project/identity-policy.md](docs/project/identity-policy.md)
+
+## 🚀 Alpha Capabilities
 
 ### 🧠 **Unified Intelligence Core**
 - **Protocol-Agnostic**: Single core serves LSP, MCP, and HTTP with identical functionality

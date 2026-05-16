@@ -36,7 +36,7 @@ Primary interfaces:
 2. HTTP API for deterministic tool calls and tests
 3. CLI for local verification and fallback
 
-Alpha-supported operations:
+Alpha-supported operations are specified in `docs/project/alpha-mvp-contract.md`:
 
 - `get_snapshot`
 - `read_file`

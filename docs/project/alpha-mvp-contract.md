@@ -1,0 +1,85 @@
+---
+summary: "Alpha MVP contract for harnessed LLM coding sessions using Semantic Code Intelligence."
+read_when:
+  - "You are implementing, testing, or documenting the Phase 1 harnessed-LLM tool surface."
+  - "You need to know what is alpha-supported versus roadmap for Semantic Code Intelligence."
+type: "reference"
+---
+
+# Alpha MVP contract — harnessed LLM coding sessions
+
+## User and job
+
+The Phase 1 user is a **harnessed LLM coding session**: an LLM operating inside a tool/runtime harness such as Pi, Claude Code, Cursor, or another coding workbench.
+
+The job is to make code-navigation and patch-planning work bounded, repeatable, and evidence-bearing.
+
+A harnessed LLM coding session should be able to:
+
+1. establish the repository state it is reasoning over;
+2. retrieve relevant files, symbols, definitions, references, and graph neighborhoods;
+3. propose a patch without silently mutating canonical files;
+4. run explicit checks against the proposed or actual change;
+5. report evidence that a human operator can inspect.
+
+## Primary interfaces
+
+Alpha support is limited to these interfaces, in order:
+
+1. **MCP tools** for harnessed LLM coding sessions;
+2. **HTTP `/api/v1/tools/call`** for deterministic parity tests and non-MCP harnesses;
+3. **CLI commands** for local verification and fallback.
+
+LSP, VS Code, dashboards, CI reports, Kubernetes deployment, marketplace, analytics, and AI-training surfaces are not Phase 1 commitments unless they directly verify or support the harnessed-LLM tool contract.
+
+## Supported tool contract
+
+The Alpha MVP tool surface is:
+
+| Operation | Required behavior | Minimum evidence |
+|---|---|---|
+| `get_snapshot` | Return an identifier for the repository state or overlay state used by later calls. | Snapshot id or explicit state descriptor. |
+| `read_file` | Read bounded file ranges from the requested snapshot/workspace state. | Path, range, and content or structured error. |
+| `text_search` | Search text with caps, ignore handling, and deterministic result shape. | Query, result count, capped results. |
+| `symbol_search` | Find likely symbols with path/language hints where available. | Query, candidates, confidence/ranking fields when available. |
+| `ast_query` | Run structural language-aware queries where parser support exists. | Language, query, matched ranges, parser/fallback status. |
+| `find_definition` | Resolve likely definition locations without requiring a long-lived editor process. | Symbol/query, file/range candidates, fallback status. |
+| `find_references` | Return bounded reference candidates. | Symbol/query, file/range candidates, cap metadata. |
+| `graph_expand` | Expand file/symbol neighborhoods through imports, exports, callers, callees, or semantic edges where available. | Node id, edge types, depth, neighbors, fallback status. |
+| `propose_patch` | Accept a patch proposal as a reviewable diff and reject invalid patch shapes. | Patch id or structured result; invalid-patch diagnostics on failure. |
+| `run_checks` | Run explicit validation commands or configured checks and return outcomes. | Commands, exit codes, stdout/stderr summaries, duration. |
+
+## Cross-interface invariants
+
+- MCP, HTTP, and CLI should use the same core behavior for the same operation.
+- Results should be bounded by limits rather than unbounded repository traversal.
+- Errors should be structured enough for a harnessed LLM to recover without guessing.
+- Stdio protocol paths must keep stdout clean.
+- Tool names and documentation use the canonical Semantic Code Intelligence identity; no pre-rename compatibility names are retained during alpha.
+
+## Patch and mutation safety
+
+Alpha mutation posture is **preview first**.
+
+- A proposed change is a diff/patch before it is an applied file mutation.
+- Checks are explicit and reported.
+- Failed checks must preserve diagnostics and avoid claiming success.
+- Learned patterns can suggest; they do not silently enforce policy.
+
+## Done criteria for Phase 1
+
+Phase 1 is credible when:
+
+1. the supported operations above are documented and discoverable;
+2. MCP and HTTP parity is tested for the core tool calls;
+3. at least one nontrivial dogfood workflow records evidence that the tool surface reduced raw shell probing or stale assumptions;
+4. migration hygiene and docs strict checks pass;
+5. old product identity strings remain absent outside the hygiene rule itself and historical notes in this policy family.
+
+## Explicit non-goals
+
+- Production Kubernetes deployment as a default path.
+- Marketplace, analytics, and AI-training as supported product features.
+- Human IDE polish before harnessed-LLM substrate reliability.
+- Direct autonomous writes without a reviewable patch/check path.
+- Canonical task, decision, evidence, or governance authority; AK remains the owner for those facts.

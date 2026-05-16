@@ -73,6 +73,12 @@ See `CONFIG.md` for env defaults like `FAST_STDIO_CHECKS=touched` and `SNAPSHOT_
 - Python: ./tech-stack-py.md
 - Go: ./tech-stack-go.md
 
+## Project posture and Phase 1 contract
+
+- Product posture: ./project/product-posture.md
+- Alpha MVP contract: ./project/alpha-mvp-contract.md
+- Identity policy: ./project/identity-policy.md
+
 ## Additional Docs
 
 - Workflows & Recipes: ./WORKFLOWS.md
