@@ -2044,6 +2044,8 @@ self-dogfood-cli:
 # Build and link the SCI CLI into the operator's Bun global command surface
 install-cli-local:
     bun run cli:install-local
+    command -v sci
+    sci --help >/dev/null
     command -v semantic-code-intelligence
     semantic-code-intelligence --help >/dev/null
 

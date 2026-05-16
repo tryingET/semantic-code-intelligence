@@ -16,8 +16,10 @@ The intended Phase 1 model is that a harnessed LLM coding session stands inside 
 
 ```bash
 cd /path/to/target-repo
-semantic-code-intelligence workflow read_file --args '{"path":"README.md","range":{"startLine":1,"endLine":80}}' --json
+sci workflow read_file --args '{"path":"README.md","range":{"startLine":1,"endLine":80}}' --json
 ```
+
+The short command is `sci`; the long command `semantic-code-intelligence` remains supported for explicit scripts and documentation.
 
 This keeps source-owner boundaries clear:
 
@@ -40,6 +42,7 @@ Then verify from any target repo:
 
 ```bash
 cd /path/to/target-repo
+sci --help
 semantic-code-intelligence --help
 ```
 
@@ -50,15 +53,15 @@ If the installed command is not available yet, use an explicit local path outsid
 From the target repo root:
 
 ```bash
-semantic-code-intelligence workflow text_search \
+sci workflow text_search \
   --args '{"query":"toolbox","path":"packages","maxResults":12}' \
   --json
 
-semantic-code-intelligence workflow symbol_search \
+sci workflow symbol_search \
   --args '{"query":"CATALOG","fileHint":"packages/pi-toolbox-discovery/extensions/toolbox.ts","maxResults":10}' \
   --json
 
-semantic-code-intelligence workflow patch_checks_in_snapshot \
+sci workflow patch_checks_in_snapshot \
   --args '{"patch":"diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1,1 +1,1 @@\n-# Old\n+# Old\n","commands":["true"],"timeoutSec":30}' \
   --json
 ```
@@ -71,7 +74,7 @@ External dogfood is valuable, but it should be captured as evidence of the targe
 
 Acceptable:
 
-- a target repo runs installed `semantic-code-intelligence` from its own cwd;
+- a target repo runs installed `sci` or `semantic-code-intelligence` from its own cwd;
 - an operator records the target repo name and scenario in AK evidence or a repo-owned doc;
 - a generic SCI script accepts an explicit target cwd argument without defaults.
 
@@ -85,4 +88,4 @@ Not acceptable:
 
 Earlier external dogfood against a Pi extension package showed useful navigation and preview-first patch-check behavior, but it also exposed the wrong coupling: SCI carried target-repo knowledge.
 
-The corrected product direction is installed/global SCI CLI usage from the target repository's cwd. Current local development support is `just install-cli-local`, which builds the CLI and registers the package bin so target repos can invoke `semantic-code-intelligence` directly.
+The corrected product direction is installed/global SCI CLI usage from the target repository's cwd. Current local development support is `just install-cli-local`, which builds the CLI and registers package bins so target repos can invoke `sci` directly, with `semantic-code-intelligence` available as the long-form alias.

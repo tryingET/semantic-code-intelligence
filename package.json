@@ -5,6 +5,7 @@
   "type": "module",
   "main": "dist/core/analyzer.js",
   "bin": {
+    "sci": "./bin/semantic-code-intelligence",
     "semantic-code-intelligence": "./bin/semantic-code-intelligence",
     "semantic-code-mcp": "./bin/semantic-code-mcp"
   },
