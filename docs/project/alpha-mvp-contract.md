@@ -48,8 +48,8 @@ The Alpha MVP tool surface is:
 | `graph_expand` | Expand file/symbol neighborhoods through imports, exports, callers, callees, or semantic edges where available. | Node id, edge types, depth, neighbors, fallback status. |
 | `propose_patch` | Accept a patch proposal as a reviewable diff and reject invalid patch shapes. | Patch id or structured result; invalid-patch diagnostics on failure. |
 | `run_checks` | Run explicit validation commands or configured checks and return outcomes. | Commands, exit codes, stdout/stderr summaries, duration. |
-| `structural_search` | Run ast-grep-backed structural search over bounded repo-relative paths. | Backend availability, language, pattern, match count, file/range/snippet matches. |
-| `structural_patch_checks` | Generate an ast-grep structural rewrite diff, stage it in a snapshot, run explicit checks, and avoid working-tree writes by default. | Match count, diff summary, snapshot id, check result, applied=false unless explicitly guarded. |
+| `structural_search` | Run ast-grep-backed structural search over bounded repo-relative paths with explicit result, timeout, and output-buffer limits. | Workflow/backend availability, language, pattern, paths, limits, match count, cap status, file/range/snippet matches. |
+| `structural_patch_checks` | Generate an ast-grep structural rewrite diff, stage it in a snapshot, run explicit checks, and avoid working-tree writes by default. | Match count, patch file/replacement/diff-byte summary, snapshot id and artifact links, check result, applied=false unless explicitly guarded. |
 
 ## Cross-interface invariants
 
@@ -67,7 +67,9 @@ Alpha mutation posture is **preview first**.
 - Checks are explicit and reported.
 - Failed checks must preserve diagnostics and avoid claiming success.
 - Learned patterns can suggest; they do not silently enforce policy.
-- `structural_patch_checks` follows the same preview-first posture: `apply` defaults to `false`, and `apply: true` is honored only when `ALLOW_SNAPSHOT_APPLY=1` is set.
+- `structural_patch_checks` follows the same preview-first posture: `apply` defaults to `false`, and `apply: true` is honored only when `ALLOW_SNAPSHOT_APPLY=1` is set and checks pass.
+- SCI orchestrates structural workflow safety and evidence; `ast-grep` performs deterministic structural matching and rewrite generation.
+- Default structural checks use `bun run typecheck`, which is the tsgo-primary TypeScript validation lane. Do not reintroduce `build:tsc`; `bun run typecheck:fallback` remains the tsc fallback.
 
 ## One-command validation
 

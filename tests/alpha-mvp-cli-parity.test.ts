@@ -125,6 +125,23 @@ describe('Alpha MVP CLI fallback parity', () => {
         expect(checked.payload.checks?.ok).toBe(true);
         expect(checked.payload.applied).toBe(false);
         expect(checked.payload.patch?.replacementCount).toBeGreaterThan(0);
+        expect(checked.payload.patch?.diffBytes).toBeGreaterThan(0);
+        expect(Array.isArray(checked.payload.patch?.summary)).toBe(true);
+        expect(checked.payload.snapshotArtifacts?.overlayDiff).toContain(`snapshot://${checked.payload.snapshot}/overlay.diff`);
+        expect(checked.payload.next_actions.join('\n')).toContain('snapshot://');
+        expect(checked.payload.checks?.commands).toEqual(['true']);
+
+        const defaultChecks = await workflow('structural_patch_checks', {
+            language: 'typescript',
+            pattern: 'const patchPlanningTarget = $VALUE',
+            rewrite: 'const structuralPatchTarget = $VALUE',
+            paths: [target],
+            timeoutSec: 120,
+            apply: false,
+        });
+        expect(defaultChecks.payload.ok).toBe(true);
+        expect(defaultChecks.payload.checks?.commands).toEqual(['bun run typecheck']);
+        expect(String(defaultChecks.payload.checks?.output || '')).toContain('tsgo');
 
         const refusedApply = await workflow('structural_patch_checks', {
             language: 'typescript',

@@ -33,10 +33,17 @@ bun run self:dogfood:cli
 just self-dogfood-cli
 ```
 
-The command writes machine-readable evidence to:
+Run the structural workflow dogfood with:
+
+```bash
+bun run structural:dogfood
+```
+
+The commands write machine-readable evidence to:
 
 ```text
 .test-results/self-hosted-cli-dogfood.json
+.test-results/structural-workflow-dogfood.json
 ```
 
 ## What the harness does
@@ -50,6 +57,14 @@ The harness calls SCI CLI workflow tools against this repo to:
 5. stage and check a doc patch with `patch_checks_in_snapshot`;
 6. verify the working tree target file was not mutated.
 
+The structural harness calls installed `sci workflow` against this repo to:
+
+1. find a known TypeScript pattern with `structural_search`;
+2. generate a structural rewrite diff with `structural_patch_checks` and `commands:["true"]`;
+3. verify omitted commands default to `bun run typecheck` (tsgo primary in SCI);
+4. verify `apply:true` is refused without `ALLOW_SNAPSHOT_APPLY=1`;
+5. verify the working tree remains unchanged.
+
 This makes the CLI path a real self-hosted maintenance loop rather than only a protocol smoke test.
 
 ## Operator rule
@@ -60,7 +75,8 @@ For SCI maintenance work, prefer SCI CLI workflow calls before raw shell probing
 - text or symbol lookup;
 - definition/reference discovery;
 - graph/fallback context;
-- preview-first patch checks.
+- preview-first patch checks;
+- deterministic structural matching and rewrite planning through ast-grep-backed workflows.
 
 Raw shell tools are still appropriate for git status, deterministic validation commands, AK operations, and cases where SCI does not yet expose the needed primitive.
 

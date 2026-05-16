@@ -1363,21 +1363,23 @@ export class MCPAdapter {
         command: string,
         args: string[],
         options: { timeoutMs: number; maxBuffer: number }
-    ): Promise<{ status: number | null; stdout: string; stderr: string; timedOut: boolean }> {
+    ): Promise<{ status: number | null; stdout: string; stderr: string; timedOut: boolean; outputExceeded: boolean }> {
         return await new Promise((resolve) => {
             const proc = spawn(command, args, { cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe'] });
             let stdout = '';
             let stderr = '';
             let settled = false;
+            let outputExceeded = false;
             const finish = (status: number | null, timedOut: boolean) => {
                 if (settled) return;
                 settled = true;
                 clearTimeout(timer);
-                resolve({ status, stdout, stderr, timedOut });
+                resolve({ status, stdout, stderr, timedOut, outputExceeded });
             };
             const append = (kind: 'stdout' | 'stderr', chunk: unknown) => {
                 const next = kind === 'stdout' ? stdout + String(chunk) : stderr + String(chunk);
                 if (Buffer.byteLength(next, 'utf8') > options.maxBuffer) {
+                    outputExceeded = true;
                     stderr += `\nprocess output exceeded ${options.maxBuffer} bytes`;
                     proc.kill('SIGTERM');
                     finish(null, false);
@@ -1399,6 +1401,46 @@ export class MCPAdapter {
             });
             proc.on('close', (code) => finish(code, false));
         });
+    }
+
+    private structuralProcessErrorPayload(proc: { stderr: string; timedOut: boolean; outputExceeded: boolean }, command: string) {
+        const stderr = String(proc.stderr || '').trim();
+        if (proc.timedOut) {
+            return { ok: false, code: 'timeout', message: stderr || 'ast-grep timed out', command };
+        }
+        if (proc.outputExceeded) {
+            return { ok: false, code: 'too_much_output', message: stderr || 'ast-grep output exceeded buffer limit', command };
+        }
+        const lower = stderr.toLowerCase();
+        const code = lower.includes('pattern') || lower.includes('parse') || lower.includes('invalid') ? 'bad_ast_grep_pattern' : 'ast_grep_failed';
+        return { ok: false, code, message: stderr.slice(0, 4000), command };
+    }
+
+    private structuralSnapshotLinks(snapshot: string) {
+        return {
+            overlayDiff: `snapshot://${snapshot}/overlay.diff`,
+            status: `snapshot://${snapshot}/status`,
+            progress: `snapshot://${snapshot}/progress`,
+        };
+    }
+
+    private summarizeStructuralDiff(diff: string) {
+        const files = new Map<string, { added: number; removed: number }>();
+        let current = '';
+        for (const line of diff.split(/\r?\n/)) {
+            const file = /^diff --git a\/(.+?) b\//.exec(line)?.[1];
+            if (file) {
+                current = file;
+                files.set(current, { added: 0, removed: 0 });
+                continue;
+            }
+            if (!current || line.startsWith('+++') || line.startsWith('---')) continue;
+            const item = files.get(current);
+            if (!item) continue;
+            if (line.startsWith('+')) item.added += 1;
+            if (line.startsWith('-')) item.removed += 1;
+        }
+        return Array.from(files.entries()).map(([file, counts]) => ({ file, ...counts }));
     }
 
     private parseAstGrepJsonLines(stdout: string): any[] {
@@ -1437,35 +1479,33 @@ export class MCPAdapter {
             return handleAdapterError(error, 'mcp');
         }
         const maxResults = Math.max(1, Math.min(1000, Number(args?.maxResults || 50)));
+        const timeoutMs = Math.max(1_000, Math.min(120_000, Number(args?.timeoutMs || 30_000)));
+        const maxBuffer = Math.max(64 * 1024, Math.min(32 * 1024 * 1024, Number(args?.maxBuffer || 8 * 1024 * 1024)));
         const proc = await this.runStructuralProcess(bin, ['run', '--pattern', pattern, '--lang', language, '--json=stream', ...paths], {
-            maxBuffer: 8 * 1024 * 1024,
-            timeoutMs: 30_000,
+            maxBuffer,
+            timeoutMs,
         });
-        if (proc.status !== 0 && String(proc.stderr || '').trim()) {
-            const payload = {
-                ok: false,
-                code: 'ast_grep_failed',
-                message: String(proc.stderr || '').trim().slice(0, 4000),
-                command: 'ast-grep run',
-            };
+        if (proc.status !== 0 && (String(proc.stderr || '').trim() || proc.timedOut || proc.outputExceeded)) {
+            const payload = this.structuralProcessErrorPayload(proc, 'ast-grep run');
             return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: true };
         }
-        const matches = this.parseAstGrepJsonLines(String(proc.stdout || ''))
-            .slice(0, maxResults)
-            .map((m: any) => ({
-                file: m.file,
-                range: m.range,
-                snippet: String(m.text || m.lines || '').slice(0, 1000),
-                language: m.language || language,
-            }));
+        const allMatches = this.parseAstGrepJsonLines(String(proc.stdout || ''));
+        const matches = allMatches.slice(0, maxResults).map((m: any) => ({
+            file: m.file,
+            range: m.range,
+            snippet: String(m.text || m.lines || '').slice(0, 1000),
+            language: m.language || language,
+        }));
         const payload = {
+            workflow: 'structural_search',
             ok: true,
             backend: 'ast-grep',
             language,
             pattern,
             paths,
+            limits: { maxResults, timeoutMs, maxBuffer },
             count: matches.length,
-            capped: this.parseAstGrepJsonLines(String(proc.stdout || '')).length > matches.length,
+            capped: allMatches.length > matches.length,
             matches,
         };
         return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: false };
@@ -1563,26 +1603,43 @@ export class MCPAdapter {
         const maxResults = Math.max(1, Math.min(2000, Number(args?.maxResults || 200)));
         const commands = Array.isArray(args?.commands) ? (args.commands as string[]) : ['bun run typecheck'];
         const timeoutSec = typeof args?.timeoutSec === 'number' ? args.timeoutSec : 240;
+        const timeoutMs = Math.max(1_000, Math.min(120_000, Number(args?.timeoutMs || 30_000)));
+        const maxBuffer = Math.max(64 * 1024, Math.min(32 * 1024 * 1024, Number(args?.maxBuffer || 16 * 1024 * 1024)));
         const proc = await this.runStructuralProcess(
             bin,
             ['run', '--pattern', pattern, '--rewrite', rewrite, '--lang', language, '--json=stream', ...paths],
-            { maxBuffer: 16 * 1024 * 1024, timeoutMs: 30_000 }
+            { maxBuffer, timeoutMs }
         );
-        if (proc.status !== 0 && String(proc.stderr || '').trim()) {
-            const payload = { ok: false, code: 'ast_grep_failed', message: String(proc.stderr || '').trim().slice(0, 4000) };
+        if (proc.status !== 0 && (String(proc.stderr || '').trim() || proc.timedOut || proc.outputExceeded)) {
+            const payload = this.structuralProcessErrorPayload(proc, 'ast-grep run --rewrite');
             return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: true };
         }
         const allMatches = this.parseAstGrepJsonLines(String(proc.stdout || ''));
         const matches = allMatches.slice(0, maxResults);
-        const built = await this.buildStructuralDiff(matches);
+        let built: { diff: string; files: string[]; replacementCount: number };
+        try {
+            built = await this.buildStructuralDiff(matches);
+        } catch (error) {
+            return handleAdapterError(error, 'mcp');
+        }
         if (!built.diff.trim()) {
             const payload = {
+                workflow: 'structural_patch_checks',
                 ok: true,
+                backend: 'ast-grep',
+                language,
+                pattern,
+                rewrite,
+                paths,
+                limits: { maxResults, timeoutMs, maxBuffer },
                 matches: allMatches.length,
-                patch: { files: [], replacementCount: 0, diff: '' },
+                capped: allMatches.length > matches.length,
+                patch: { files: [], replacementCount: 0, diffBytes: 0, summary: [] },
                 snapshot: null,
+                snapshotArtifacts: null,
                 checks: null,
                 applied: false,
+                applyResult: null,
                 next_actions: ['No structural replacements were generated; adjust pattern/rewrite or paths'],
             };
             return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: false };
@@ -1609,27 +1666,37 @@ export class MCPAdapter {
             }
         }
         const ok = !!checks.ok && (args?.apply === true ? applied : true);
+        const snapshotArtifacts = this.structuralSnapshotLinks(snap.id);
         const payload = {
             workflow: 'structural_patch_checks',
             ok,
             backend: 'ast-grep',
+            language,
+            pattern,
+            rewrite,
+            paths,
+            limits: { maxResults, timeoutMs, maxBuffer, timeoutSec },
             matches: allMatches.length,
             capped: allMatches.length > matches.length,
             patch: {
                 files: built.files,
                 replacementCount: built.replacementCount,
                 diffBytes: Buffer.byteLength(built.diff, 'utf8'),
+                summary: this.summarizeStructuralDiff(built.diff),
                 diffSummary: built.diff.split(/\r?\n/).slice(0, 80).join('\n'),
             },
             snapshot: snap.id,
+            snapshotArtifacts,
+            links: Object.values(snapshotArtifacts),
             stage,
-            checks: { ok: !!checks.ok, elapsedMs: checks.elapsedMs, output: String(checks.output || '').slice(-4000) },
+            checks: { commands, ok: !!checks.ok, elapsedMs: checks.elapsedMs, output: String(checks.output || '').slice(-4000) },
             applied,
             applyResult,
             next_actions: applied
                 ? ['Review working tree diff and commit if appropriate']
                 : [
-                      `Open snapshot diff: snapshot://${snap.id}/overlay.diff`,
+                      `Open snapshot diff: ${snapshotArtifacts.overlayDiff}`,
+                      `Open snapshot status: ${snapshotArtifacts.status}`,
                       args?.apply === true && process.env.ALLOW_SNAPSHOT_APPLY !== '1'
                           ? 'Set ALLOW_SNAPSHOT_APPLY=1 only when intentionally applying'
                           : 'Apply separately only after review',

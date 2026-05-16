@@ -20,7 +20,9 @@ The Phase 1 Alpha MVP validation bundle proves the first-user path for harnessed
 - HTTP, direct MCP, and MCP HTTP can stage `propose_patch` diffs and run explicit `run_checks` against snapshots without mutating the working tree;
 - CLI fallback can execute machine-readable tool calls through `semantic-code-intelligence workflow <tool> --args <json> --json`;
 - CLI fallback covers ast-grep-backed `structural_search` and preview-first `structural_patch_checks` for deterministic structural edits;
+- HTTP, direct MCP, and MCP HTTP now include structural search parity coverage when `ast-grep` is available;
 - self-hosted CLI dogfood uses SCI's own CLI workflow surface against this repo for navigation and preview-first patch planning;
+- self-hosted structural dogfood records machine-readable evidence for structural search, snapshot patch artifacts, default tsgo checks, apply-guard refusal, and unchanged working tree posture;
 - target-repo CLI usage is documented as an installed/global command invoked from the repository being inspected;
 - repeatable dogfood evidence can be emitted as machine-readable JSON;
 - migration hygiene still rejects stale identity drift and unsafe local artifacts.
@@ -44,6 +46,7 @@ Dogfood-only evidence:
 ```bash
 bun run alpha:mvp:dogfood > .test-results/alpha-mvp-dogfood.json
 bun run self:dogfood:cli
+bun run structural:dogfood
 ```
 
 Test-only subset:
@@ -100,11 +103,11 @@ Navigation parity currently means the same bounded tool names are exercised thro
 
 MCP stdio parity currently means the server can initialize, list tools, execute representative bounded navigation and preview-first patch-check calls, and keep stdout free of non-JSON-RPC pollution. Stderr logs are acceptable for diagnostics and are not protocol payloads.
 
-Patch-planning parity currently means `propose_patch` accepts a reviewable diff into an isolated snapshot and `run_checks` executes an explicit command against that snapshot. `structural_patch_checks` now composes ast-grep structural rewrite generation into the same snapshot/check posture. It deliberately does not apply the staged diff to the canonical working tree by default; `apply_snapshot` and direct-write workflows remain outside the Alpha MVP default path.
+Patch-planning parity currently means `propose_patch` accepts a reviewable diff into an isolated snapshot and `run_checks` executes an explicit command against that snapshot. `structural_patch_checks` now composes ast-grep structural rewrite generation into the same snapshot/check posture. It deliberately does not apply the staged diff to the canonical working tree by default; `apply: true` is refused unless `ALLOW_SNAPSHOT_APPLY=1` is set and checks pass. Structural patch results include workflow/backend/language/pattern/rewrite/paths, explicit limits, match/cap metadata, patch file/replacement/diff-byte summaries, snapshot artifact links (`overlay.diff`, `status`, `progress`), checks, apply posture, and next actions.
 
 CLI fallback parity currently means local command-line execution can call the same tool registry through the generic `workflow` command with JSON arguments and machine-readable stdout. CLI invocations are process-local, so multi-step snapshot flows that require shared in-memory snapshot state should use composite workflow tools such as `patch_checks_in_snapshot` unless a future durable snapshot/session surface is promoted.
 
-Self-hosted CLI dogfood currently means SCI CLI is used as a practical work loop on the SCI repo itself, not only as a protocol smoke test. See `docs/project/self-hosted-cli-dogfood.md`.
+Self-hosted CLI dogfood currently means SCI CLI is used as a practical work loop on the SCI repo itself, not only as a protocol smoke test. Structural dogfood extends that with `scripts/dogfood-structural-workflow.ts`, which writes `.test-results/structural-workflow-dogfood.json` and proves preview-first ast-grep structural workflows without adding external target-repo assumptions. See `docs/project/self-hosted-cli-dogfood.md`.
 
 Target-repo CLI usage means an installed/global `semantic-code-intelligence` command is invoked from the repository being inspected, with target-repo-relative paths. SCI should not commit machine-local paths for external repositories. See `docs/project/target-repo-cli-usage.md`.
 
@@ -117,6 +120,7 @@ When the Alpha MVP contract changes, update all of these in the same wave:
 - `just alpha-mvp-check`
 - `scripts/dogfood-alpha-mvp.ts`
 - `scripts/dogfood-self-hosted-cli.ts`
+- `scripts/dogfood-structural-workflow.ts`
 - target-repo/global CLI usage docs such as `docs/project/target-repo-cli-usage.md`
 - Alpha MVP tests under `tests/alpha-mvp-*.test.ts`, including CLI fallback coverage
 - `.github/workflows/alpha-mvp.yml`

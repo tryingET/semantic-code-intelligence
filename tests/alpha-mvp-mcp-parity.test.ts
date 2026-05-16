@@ -1,9 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { spawnSync } from 'node:child_process';
 import { MCPAdapter } from '../src/adapters/mcp-adapter';
 import { LayerManager } from '../src/core/layer-manager';
 import { SharedServices } from '../src/core/services';
 import { CodeAnalyzer } from '../src/core/unified-analyzer';
 import { createTestConfig } from './test-helpers';
+
+const hasAstGrep = spawnSync('bash', ['-lc', 'command -v ast-grep >/dev/null 2>&1'], { stdio: 'ignore' }).status === 0;
+const structuralTest = hasAstGrep ? test : test.skip;
 
 const patchPlanningMarker = '<!-- alpha patch-planning parity snapshot-only marker -->';
 const patchPlanningTarget = 'docs/project/alpha-mvp-contract.md';
@@ -122,6 +126,25 @@ describe('Alpha MVP direct MCP parity', () => {
         expect(graph.schemaVersion).toBe(2);
         expect(graph.neighbors).toBeDefined();
     });
+
+    structuralTest('structural_search works through direct MCPAdapter calls', async () => {
+        const search = await parseContent(
+            await mcp.handleToolCall('structural_search', {
+                language: 'typescript',
+                pattern: 'mcp.handleToolCall($NAME, $ARGS)',
+                paths: ['tests/alpha-mvp-mcp-parity.test.ts'],
+                maxResults: 5,
+            })
+        );
+
+        expect(search.workflow).toBe('structural_search');
+        expect(search.ok).toBe(true);
+        expect(search.backend).toBe('ast-grep');
+        expect(search.paths).toEqual(['tests/alpha-mvp-mcp-parity.test.ts']);
+        expect(search.matches.length).toBeGreaterThan(0);
+        expect(search.matches.length).toBeLessThanOrEqual(5);
+        expect(search.limits.timeoutMs).toBeGreaterThan(0);
+    }, 30000);
 
     test('patch-planning cluster stages a diff and runs checks without mutating workspace', async () => {
         const before = await Bun.file(patchPlanningTarget).text();

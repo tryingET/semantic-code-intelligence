@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { spawnSync } from 'node:child_process';
 import { ToolRegistry } from '../src/core/tools/registry';
 import { HTTPServer } from '../src/servers/http';
 import { canBindTcp } from './helpers/bind-utils';
@@ -15,6 +16,9 @@ const patchPlanningDiff = `diff --git a/${patchPlanningTarget} b/${patchPlanning
  # Alpha MVP contract — harnessed LLM coding sessions
 +${patchPlanningMarker}
 `;
+
+const hasAstGrep = spawnSync('bash', ['-lc', 'command -v ast-grep >/dev/null 2>&1'], { stdio: 'ignore' }).status === 0;
+const structuralTest = hasAstGrep ? test : test.skip;
 
 const alphaMvpTools = [
     'get_snapshot',
@@ -60,7 +64,11 @@ describe('Alpha MVP tool contract', () => {
         expect(specs.get('ast_query')?.inputSchema?.properties?.limit?.type).toBe('number');
         expect(specs.get('graph_expand')?.inputSchema?.properties?.limit?.type).toBe('number');
         expect(specs.get('structural_search')?.inputSchema?.properties?.maxResults?.type).toBe('number');
+        expect(specs.get('structural_search')?.inputSchema?.properties?.timeoutMs?.type).toBe('number');
+        expect(specs.get('structural_search')?.inputSchema?.properties?.maxBuffer?.type).toBe('number');
         expect(specs.get('structural_patch_checks')?.inputSchema?.properties?.apply?.type).toBe('boolean');
+        expect(specs.get('structural_patch_checks')?.inputSchema?.properties?.timeoutMs?.type).toBe('number');
+        expect(specs.get('structural_patch_checks')?.inputSchema?.properties?.maxBuffer?.type).toBe('number');
     });
 });
 
@@ -134,6 +142,25 @@ bindDescribe('Alpha MVP HTTP tools/call contract', () => {
         expect(results.get('graph_expand')?.schemaVersion).toBe(2);
         expect(results.get('graph_expand')?.neighbors).toBeDefined();
     });
+
+    structuralTest('structural_search succeeds through HTTP tools/call', async () => {
+        const { status, body } = await callTool(base, 'structural_search', {
+            language: 'typescript',
+            pattern: 'callTool($BASE, $NAME, $ARGS)',
+            paths: ['tests/alpha-mvp-tool-contract.test.ts'],
+            maxResults: 5,
+        });
+
+        expect(status).toBe(200);
+        expect(body.success).toBe(true);
+        expect(body.result.workflow).toBe('structural_search');
+        expect(body.result.ok).toBe(true);
+        expect(body.result.backend).toBe('ast-grep');
+        expect(body.result.paths).toEqual(['tests/alpha-mvp-tool-contract.test.ts']);
+        expect(body.result.matches.length).toBeGreaterThan(0);
+        expect(body.result.matches.length).toBeLessThanOrEqual(5);
+        expect(body.result.limits.timeoutMs).toBeGreaterThan(0);
+    }, 30000);
 
     test('patch-planning cluster stages a diff and runs checks without mutating workspace', async () => {
         const before = await Bun.file(patchPlanningTarget).text();

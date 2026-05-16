@@ -1,7 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { canBindTcp } from './helpers/bind-utils';
 import { initMcpHttpSession, mcpHttpHeaders } from './helpers/mcp-http';
+
+const hasAstGrep = spawnSync('bash', ['-lc', 'command -v ast-grep >/dev/null 2>&1'], { stdio: 'ignore' }).status === 0;
+const structuralTest = hasAstGrep ? test : test.skip;
 
 const patchPlanningMarker = '<!-- alpha patch-planning parity snapshot-only marker -->';
 const patchPlanningTarget = 'docs/project/alpha-mvp-contract.md';
@@ -192,6 +195,25 @@ bindDescribe('Alpha MVP MCP HTTP protocol', () => {
         expect(results.get('graph_expand')?.schemaVersion).toBe(2);
         expect(results.get('graph_expand')?.neighbors).toBeDefined();
     });
+
+    structuralTest('structural_search succeeds through JSON-RPC tools/call', async () => {
+        const { status, body } = await toolsCall(29, 'structural_search', {
+            language: 'typescript',
+            pattern: 'toolsCall($ID, $NAME, $ARGS)',
+            paths: ['tests/alpha-mvp-mcp-http-protocol.test.ts'],
+            maxResults: 5,
+        });
+
+        expect(status).toBe(200);
+        expect(body.error).toBeUndefined();
+        const parsed = JSON.parse(body?.result?.content?.[0]?.text || '{}');
+        expect(parsed.workflow).toBe('structural_search');
+        expect(parsed.ok).toBe(true);
+        expect(parsed.backend).toBe('ast-grep');
+        expect(parsed.paths).toEqual(['tests/alpha-mvp-mcp-http-protocol.test.ts']);
+        expect(parsed.matches.length).toBeGreaterThan(0);
+        expect(parsed.matches.length).toBeLessThanOrEqual(5);
+    }, 30000);
 
     test('patch-planning cluster succeeds through JSON-RPC tools/call without mutating workspace', async () => {
         const before = await Bun.file(patchPlanningTarget).text();

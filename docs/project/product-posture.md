@@ -62,7 +62,9 @@ Phase 1 has moved from posture to a repeatable Alpha MVP validation bundle. The 
 - MCP stdio can initialize, advertise tools, execute representative read/navigation/patch-check calls, and keep stdout protocol-clean;
 - CLI fallback can execute machine-readable workflow calls for local verification;
 - ast-grep-backed structural search and preview-first structural patch checks are exposed through the same SCI workflow surface;
+- structural workflow parity now covers CLI, HTTP tools/call, direct MCPAdapter, and MCP HTTP JSON-RPC when ast-grep is available;
 - self-hosted CLI dogfood uses SCI's own CLI workflow surface against this repo for navigation and preview-first patch planning;
+- self-hosted structural dogfood records JSON evidence for ast-grep search, snapshot patch artifacts, tsgo-default checks, apply guard refusal, and unchanged working-tree posture;
 - dogfood evidence is emitted as JSON and verifies that preview-first patch planning does not mutate the working tree;
 - target-repo CLI usage is now framed as an installed/global command invoked from the repository being inspected, not as SCI knowing target repo paths;
 - migration hygiene continues to reject pre-rename identity drift, machine-local path coupling, and unsafe local artifacts.

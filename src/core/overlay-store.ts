@@ -367,6 +367,7 @@ export class OverlayStore {
 
         for (const cmd of cmdList) {
             await this.logProgress(snapshotId, `run:${cmd}:start`);
+            output.push(`$ ${cmd}\n`);
             const [bin, ...args] = cmd.split(' ');
             const ok = await new Promise<boolean>((resolve) => {
                 const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd });

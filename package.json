@@ -45,7 +45,8 @@
     "alpha:mvp:test": "bun test tests/alpha-mvp-tool-contract.test.ts tests/alpha-mvp-mcp-parity.test.ts tests/alpha-mvp-mcp-http-protocol.test.ts tests/alpha-mvp-mcp-stdio-protocol.test.ts tests/alpha-mvp-cli-parity.test.ts",
     "alpha:mvp:dogfood": "bun run scripts/dogfood-alpha-mvp.ts --json",
     "self:dogfood:cli": "mkdir -p .test-results && bun run scripts/dogfood-self-hosted-cli.ts --json > .test-results/self-hosted-cli-dogfood.json",
-    "alpha:mvp:check": "bun run typecheck && bun run alpha:mvp:test && mkdir -p .test-results && bun run scripts/dogfood-alpha-mvp.ts --json > .test-results/alpha-mvp-dogfood.json && bun run self:dogfood:cli && ./scripts/migration-hygiene.sh",
+    "structural:dogfood": "mkdir -p .test-results && bun run scripts/dogfood-structural-workflow.ts --json >/dev/null",
+    "alpha:mvp:check": "bun run typecheck && bun run alpha:mvp:test && mkdir -p .test-results && bun run scripts/dogfood-alpha-mvp.ts --json > .test-results/alpha-mvp-dogfood.json && bun run self:dogfood:cli && bun run structural:dogfood && ./scripts/migration-hygiene.sh",
     "typecheck": "tsgo --project tsconfig.build.json --noEmit --pretty false",
     "typecheck:fallback": "tsc -p tsconfig.build.json"
   },

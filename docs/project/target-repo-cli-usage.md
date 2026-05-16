@@ -74,7 +74,7 @@ sci workflow structural_patch_checks \
   --json
 ```
 
-Use target-repo relative paths in `--args`. Avoid absolute paths unless the operator is doing an uncommitted one-off investigation. Structural patch workflows are preview-first; `apply` defaults to `false`, and `apply: true` requires `ALLOW_SNAPSHOT_APPLY=1`.
+Use target-repo relative paths in `--args`. Avoid absolute paths unless the operator is doing an uncommitted one-off investigation. Structural patch workflows are preview-first; `apply` defaults to `false`, and `apply: true` requires `ALLOW_SNAPSHOT_APPLY=1` and passing checks. Omit `commands` to use the repo's default `bun run typecheck` path; in SCI that path is tsgo-primary, while `bun run typecheck:fallback` remains the explicit tsc fallback. Do not use or reintroduce a `build:tsc` alias.
 
 ## External dogfood evidence rule
 
