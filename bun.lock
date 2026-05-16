@@ -2,7 +2,7 @@
   "lockfileVersion": 1,
   "workspaces": {
     "": {
-      "name": "ontology-lsp-proxy",
+      "name": "semantic-code-intelligence",
       "dependencies": {
         "@modelcontextprotocol/sdk": "^1.17.4",
         "@types/glob": "^9.0.0",

@@ -7,7 +7,7 @@ import { readFileSync } from 'fs';
 console.log('🧪 Testing MCP Configuration as Claude Desktop would use it\n');
 
 // Read Claude Desktop config
-const configPath = '/home/lightningralf/.config/claude/claude-desktop-config.json';
+const configPath = '${process.env.HOME}/.config/claude/claude-desktop-config.json';
 console.log('📋 Reading configuration from:', configPath);
 
 let config;

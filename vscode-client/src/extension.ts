@@ -100,7 +100,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
         
         // Server options with automatic restart on crash
         // Use Bun to run the server for native SQLite support
-        const bunPath = '/home/lightningralf/.bun/bin/bun';
+        const bunPath = process.env.BUN_PATH || 'bun';
         // Prefer workspace root as CWD so server resolves paths correctly
         const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || context.extensionPath;
         const serverOptions: ServerOptions = {
@@ -330,9 +330,6 @@ function getServerPath(context: vscode.ExtensionContext): string {
         path.join(context.extensionPath, 'dist', 'server.js'),
         // Correct current project build locations
         path.join(context.extensionPath, 'dist', 'lsp', 'lsp.js'),
-        // Absolute fallback for local dev workspace
-        '/home/lightningralf/programming/ontology-lsp/dist/lsp/lsp.js',
-        '/home/lightningralf/programming/ontology-lsp/dist/server.js' // legacy fallback
     ];
     
     const fs = require('fs');

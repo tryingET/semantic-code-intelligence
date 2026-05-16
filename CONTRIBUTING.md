@@ -30,7 +30,7 @@ By participating in this project, you agree to abide by our Code of Conduct:
 2. Clone your fork locally:
    ```bash
    git clone https://github.com/tryingET/semantic-code-intelligence.git
-   cd ontology-lsp
+   cd semantic-code-intelligence
    ```
 3. Add the upstream remote:
    ```bash

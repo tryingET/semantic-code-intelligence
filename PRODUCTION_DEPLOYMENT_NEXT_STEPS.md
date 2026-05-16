@@ -125,7 +125,9 @@ kubectl apply -f k8s/namespace.yaml
 
 # 2. Apply configuration
 kubectl apply -f k8s/configmap.yaml
-kubectl apply -f k8s/secret.yaml  # After editing with real values
+cp k8s/secret.yaml.example /tmp/semantic-code-intelligence-secret.yaml
+# edit /tmp/semantic-code-intelligence-secret.yaml with real values
+kubectl apply -f /tmp/semantic-code-intelligence-secret.yaml  # After editing with real values
 
 # 3. Deploy dependencies
 kubectl apply -f k8s/postgres.yaml

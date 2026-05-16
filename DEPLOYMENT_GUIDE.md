@@ -88,7 +88,7 @@ Due to Docker socket permission constraints in the current environment, the cont
 
 1. **Create secrets:**
    ```bash
-   cp k8s/secret.yaml k8s/secret-prod.yaml
+   cp k8s/secret.yaml.example k8s/secret-prod.yaml
    # Edit k8s/secret-prod.yaml with real credentials
    kubectl apply -f k8s/secret-prod.yaml
    ```
@@ -155,7 +155,9 @@ helm install ontology-lsp-staging ontology-lsp/ontology-lsp \
 # Create namespace and apply manifests
 kubectl apply -f k8s/namespace.yaml
 kubectl apply -f k8s/configmap.yaml
-kubectl apply -f k8s/secret.yaml  # After editing
+cp k8s/secret.yaml.example /tmp/semantic-code-intelligence-secret.yaml
+# edit /tmp/semantic-code-intelligence-secret.yaml with real values
+kubectl apply -f /tmp/semantic-code-intelligence-secret.yaml  # After editing
 kubectl apply -f k8s/postgres.yaml
 kubectl apply -f k8s/redis.yaml
 kubectl apply -f k8s/deployment.yaml

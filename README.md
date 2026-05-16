@@ -111,7 +111,7 @@ ontology-lsp start
 ```bash
 # Clone the repository
 git clone https://github.com/tryingET/semantic-code-intelligence.git
-cd ontology-lsp
+cd semantic-code-intelligence
 
 # Install dependencies (using Bun)
 bun install
@@ -140,8 +140,8 @@ Add to your `.mcp.json`:
 {
   "mcpServers": {
     "ontology-lsp": {
-      "command": "/home/user/.bun/bin/bun",
-      "args": ["run", "/path/to/ontology-lsp/mcp-ontology-server/src/stdio.ts"],
+      "command": "bun",
+      "args": ["run", "./dist/mcp/mcp.js"],
       "type": "stdio",
       "description": "Ontology-enhanced LSP with 5-layer architecture"
     },
@@ -859,7 +859,7 @@ We welcome contributions! The project is production-ready with comprehensive tes
 ```bash
 # 1. Fork and clone
 git clone https://github.com/tryingET/semantic-code-intelligence.git
-cd ontology-lsp
+cd semantic-code-intelligence
 
 # 2. Install dependencies
 bun install

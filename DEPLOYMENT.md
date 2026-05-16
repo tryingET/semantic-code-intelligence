@@ -446,7 +446,7 @@ REQUEST_TIMEOUT=30000
 MAX_CONCURRENT_REQUESTS=100
 
 # Paths
-WORKSPACE_ROOT=/home/user/projects
+WORKSPACE_ROOT=/workspace/projects
 ONTOLOGY_DATA_DIR=.ontology
 
 # Feature Flags
@@ -682,7 +682,7 @@ export function getMetrics() {
 ```bash
 # 1. Clone and setup
 git clone https://github.com/tryingET/semantic-code-intelligence.git
-cd ontology-lsp
+cd semantic-code-intelligence
 
 # 2. Install dependencies
 bun install

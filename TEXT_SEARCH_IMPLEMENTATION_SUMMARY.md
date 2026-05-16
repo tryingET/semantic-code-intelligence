@@ -148,7 +148,7 @@ Text Search Performance Stats:
 [textSearch] Layer 1 available: true
 [textSearch] Calling Layer 1 with query: {
   identifier: "CodeAnalyzer",
-  searchPath: "/home/lightningralf/programming/ontology-lsp/src",
+  searchPath: "/workspace/semantic-code-intelligence/src",
   fileTypes: undefined,
   caseSensitive: true,
   includeTests: true,

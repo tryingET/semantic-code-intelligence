@@ -43,7 +43,7 @@
                 },
                 "ontologyLSP.server.path": {
                     "type": "string",
-                    "default": "/home/lightningralf/programming/ontology-lsp/dist/lsp/lsp.js",
+                    "default": "",
                     "description": "Path to the Ontology LSP server executable (leave empty for bundled)"
                 },
                 "ontologyLSP.trace.server": {

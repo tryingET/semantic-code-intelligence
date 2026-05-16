@@ -102,7 +102,7 @@ suite('SecurityManager Test Suite', () => {
             { fsPath: '/project/.env.local' },
             { fsPath: '/project/secrets.json' },
             { fsPath: '/project/private.key' },
-            { fsPath: '/home/user/.ssh/id_rsa' }
+            { fsPath: '/project/.ssh/id_rsa' }
         ];
         
         for (const uri of sensitiveFiles) {

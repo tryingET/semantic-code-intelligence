@@ -50,6 +50,7 @@ default:
     @echo "  just symbol-map-graph <symbol> - Symbol: Mermaid graph output"
     @echo "  just plan-rename <old> <new>   - Refactor: plan rename (preview)"
     @echo "  just safe-apply [file] [-- <cmd...>] - Stage diff safely in snapshot + checks"
+    @echo "  just migration-hygiene   - Check migrated repo identity/local artifact hygiene"
     @echo ""
     @echo "Run 'just --list' for complete command list"
 
@@ -818,7 +819,7 @@ docker-build: build-prod
     @echo "✅ Docker image built"
 
 # Push Docker image to registry
-docker-push registry="ghcr.io/yourusername": docker-build
+docker-push registry="ghcr.io/tryingET": docker-build
     @echo "📤 Pushing Docker image to {{registry}}..."
     docker tag ontology-lsp:latest {{registry}}/ontology-lsp:latest
     docker tag ontology-lsp:2.0.0 {{registry}}/ontology-lsp:2.0.0
@@ -861,12 +862,9 @@ deploy-staging: docker-build test-all
     kubectl apply -f k8s/namespace.yaml
     kubectl apply -f k8s/configmap.yaml
     @if ! kubectl get secret ontology-lsp-secrets -n ontology-lsp >/dev/null 2>&1; then \
-        echo "⚠️  Creating default secrets - update them for production!"; \
-        kubectl create secret generic ontology-lsp-secrets \
-            --from-literal=DATABASE_URL="postgres://ontology:changeme@postgres-service:5432/ontology_lsp" \
-            --from-literal=REDIS_URL="redis://redis-service:6379" \
-            --from-literal=JWT_SECRET="changeme-in-production" \
-            -n ontology-lsp; \
+        echo "❌ Kubernetes secret ontology-lsp-secrets not found. Create it from real values before deploying."; \
+        echo "   Template: k8s/secret.yaml.example"; \
+        exit 1; \
     fi
     kubectl apply -f k8s/postgres.yaml
     kubectl apply -f k8s/redis.yaml
@@ -2026,3 +2024,7 @@ test-tail:
 test-stop-async:
     @echo "🛑 Stopping async test run..."
     @if [ -f .test-results/async.pid ]; then kill `cat .test-results/async.pid` 2>/dev/null || true; rm -f .test-results/async.pid; else echo "No async pid"; fi
+
+# Check migrated repo identity/local artifact hygiene
+migration-hygiene:
+    ./scripts/migration-hygiene.sh

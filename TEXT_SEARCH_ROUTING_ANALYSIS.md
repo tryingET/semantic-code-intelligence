@@ -79,7 +79,7 @@ When running with `DEBUG_TEXT_SEARCH=1`:
 [textSearch] Layer 1 available: true
 [textSearch] Calling Layer 1 with query: {
   identifier: "CodeAnalyzer",
-  searchPath: "/home/lightningralf/programming/ontology-lsp/src",
+  searchPath: "/workspace/semantic-code-intelligence/src",
   fileTypes: undefined,
   caseSensitive: true,
   includeTests: true,

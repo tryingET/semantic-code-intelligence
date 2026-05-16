@@ -1,1 +1,3 @@
-../orgmem2/.claude/docs/tech-stack-py.md
+# Tech stack notes
+
+This repo is TypeScript/Bun-centered. Add Python-specific guidance here if Python production code is introduced.
