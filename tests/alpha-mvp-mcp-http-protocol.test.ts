@@ -145,4 +145,41 @@ bindDescribe('Alpha MVP MCP HTTP protocol', () => {
         const errorText = body?.error?.message || body?.result?.content?.[0]?.text || '';
         expect(String(errorText)).toContain('workspace');
     });
+
+    test('navigation cluster succeeds through JSON-RPC tools/call', async () => {
+        const calls = [
+            ['text_search', { query: 'handleReadFile', path: 'src', maxResults: 5 }],
+            ['symbol_search', { query: 'handleReadFile', maxResults: 5, fileHint: 'src/adapters/mcp-adapter.ts' }],
+            ['find_definition', { symbol: 'handleReadFile', file: 'src/adapters/mcp-adapter.ts', precise: true, maxResults: 5 }],
+            [
+                'find_references',
+                { symbol: 'handleReadFile', file: 'src/adapters/mcp-adapter.ts', includeDeclaration: true, maxResults: 5 },
+            ],
+            [
+                'ast_query',
+                { language: 'typescript', query: '(program) @root', paths: ['src/adapters/mcp-adapter.ts'], limit: 5 },
+            ],
+            ['graph_expand', { file: 'src/adapters/mcp-adapter.ts', edges: ['imports', 'exports'], depth: 1, limit: 5 }],
+        ] as const;
+
+        const results = new Map<string, any>();
+        let id = 10;
+        for (const [name, args] of calls) {
+            const { status, body } = await toolsCall(id++, name, args);
+            expect(status, `${name} should return HTTP 200`).toBe(200);
+            expect(body.error, `${name} should not produce a JSON-RPC error`).toBeUndefined();
+            const text = body?.result?.content?.[0]?.text;
+            expect(text, `${name} should return text content`).toBeDefined();
+            results.set(name, JSON.parse(text));
+        }
+
+        expect(results.get('text_search')?.count).toBeGreaterThan(0);
+        expect(results.get('text_search')?.results?.length).toBeLessThanOrEqual(5);
+        expect(results.get('symbol_search')?.symbols?.[0]?.name).toBe('handleReadFile');
+        expect(results.get('find_definition')?.count).toBeGreaterThan(0);
+        expect(results.get('find_references')?.count).toBeGreaterThan(0);
+        expect(Array.isArray(results.get('ast_query')?.results)).toBe(true);
+        expect(results.get('graph_expand')?.schemaVersion).toBe(2);
+        expect(results.get('graph_expand')?.neighbors).toBeDefined();
+    });
 });

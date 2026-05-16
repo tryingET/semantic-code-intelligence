@@ -20,7 +20,7 @@ describe('Alpha MVP direct MCP parity', () => {
     let mcp: MCPAdapter;
 
     beforeAll(async () => {
-        const config = createTestConfig();
+        const config = createTestConfig({ workspaceRoot: process.cwd() });
         const shared = new SharedServices(config);
         await shared.initialize();
         const layerManager = new LayerManager(config, shared.eventBus);
@@ -57,5 +57,59 @@ describe('Alpha MVP direct MCP parity', () => {
 
         expect(readRes.isError).toBe(true);
         expect(readRes.content?.[0]?.text).toContain('workspace');
+    });
+
+    test('navigation cluster works through direct MCPAdapter calls', async () => {
+        const textSearch = await parseContent(
+            await mcp.handleToolCall('text_search', { query: 'handleReadFile', path: `${process.cwd()}/src`, maxResults: 5 })
+        );
+        const symbolSearch = await parseContent(
+            await mcp.handleToolCall('symbol_search', {
+                query: 'handleReadFile',
+                maxResults: 5,
+                fileHint: 'src/adapters/mcp-adapter.ts',
+            })
+        );
+        const definition = await parseContent(
+            await mcp.handleToolCall('find_definition', {
+                symbol: 'handleReadFile',
+                file: 'src/adapters/mcp-adapter.ts',
+                precise: true,
+                maxResults: 5,
+            })
+        );
+        const references = await parseContent(
+            await mcp.handleToolCall('find_references', {
+                symbol: 'handleReadFile',
+                file: 'src/adapters/mcp-adapter.ts',
+                includeDeclaration: true,
+                maxResults: 5,
+            })
+        );
+        const ast = await parseContent(
+            await mcp.handleToolCall('ast_query', {
+                language: 'typescript',
+                query: '(program) @root',
+                paths: ['src/adapters/mcp-adapter.ts'],
+                limit: 5,
+            })
+        );
+        const graph = await parseContent(
+            await mcp.handleToolCall('graph_expand', {
+                file: 'src/adapters/mcp-adapter.ts',
+                edges: ['imports', 'exports'],
+                depth: 1,
+                limit: 5,
+            })
+        );
+
+        expect(textSearch.count).toBeGreaterThan(0);
+        expect(textSearch.results.length).toBeLessThanOrEqual(5);
+        expect(symbolSearch.symbols?.[0]?.name).toBe('handleReadFile');
+        expect(definition.count).toBeGreaterThan(0);
+        expect(references.count).toBeGreaterThan(0);
+        expect(Array.isArray(ast.results)).toBe(true);
+        expect(graph.schemaVersion).toBe(2);
+        expect(graph.neighbors).toBeDefined();
     });
 });

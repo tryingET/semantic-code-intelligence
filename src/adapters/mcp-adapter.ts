@@ -1226,6 +1226,28 @@ export class MCPAdapter {
                 caseInsensitive,
             });
 
+            // Some analyzer configurations can return an empty indexed result before the
+            // workspace index has warmed. Fall back to direct grep so harnessed LLM
+            // sessions still get deterministic bounded navigation evidence.
+            if (Number(result?.count || 0) === 0 && typeof query === 'string' && query.length > 0) {
+                const asyncGrep = new AsyncEnhancedGrep({ cacheSize: 500, cacheTTL: 30000 });
+                const results = await asyncGrep.search({ pattern: searchQuery, path, maxResults, timeout: 200, caseInsensitive });
+                if (results.length > 0) {
+                    const normalized = results.map((r) => ({
+                        file: r.file,
+                        line: r.line ?? 0,
+                        column: r.column ?? 0,
+                        text: r.text,
+                    }));
+                    return {
+                        content: [
+                            { type: 'text', text: JSON.stringify({ count: normalized.length, results: normalized }, null, 2) },
+                        ],
+                        isError: false,
+                    };
+                }
+            }
+
             return {
                 content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
                 isError: false,
@@ -1259,14 +1281,42 @@ export class MCPAdapter {
         const query = String(args?.query || '').trim();
         if (!query) return { content: [{ type: 'text', text: 'query required' }], isError: true };
         const maxResults = Math.min(Number(args?.maxResults || 50), 200);
+        const fileHint = typeof args?.fileHint === 'string' ? args.fileHint : '';
         const res = await (this.coreAnalyzer as any).buildSymbolMap({
             identifier: query,
             maxFiles: maxResults,
             astOnly: true,
         });
-        const out = (res?.declarations || [])
+        let out = (res?.declarations || [])
             .slice(0, maxResults)
             .map((d: any) => ({ uri: d.uri, range: d.range, kind: d.kind, name: d.name || query }));
+
+        if (out.length === 0 && fileHint) {
+            const workspaceRoot = path.resolve(process.cwd());
+            const absPath = path.resolve(workspaceRoot, fileHint);
+            const relPath = path.relative(workspaceRoot, absPath);
+            if (relPath && !relPath.startsWith('..') && !path.isAbsolute(relPath)) {
+                const text = await fs.readFile(absPath, 'utf8').catch(() => '');
+                const lines = text.split(/\r?\n/);
+                out = lines
+                    .map((line, index) => ({ line, index, column: line.indexOf(query) }))
+                    .filter((match) => match.column >= 0)
+                    .slice(0, maxResults)
+                    .map((match) => ({
+                        uri: `file://${absPath}`,
+                        range: {
+                            start: { line: match.index, character: match.column },
+                            end: { line: match.index, character: match.column + query.length },
+                        },
+                        kind: /function|class|interface|const|let|var|private|public|async/.test(match.line)
+                            ? 'symbol'
+                            : 'text_match',
+                        name: query,
+                        fallback: 'fileHint_text_scan',
+                    }));
+            }
+        }
+
         return {
             content: [{ type: 'text', text: JSON.stringify({ query, count: out.length, symbols: out }, null, 2) }],
             isError: false,

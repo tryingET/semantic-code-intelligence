@@ -13,9 +13,9 @@ type: "reference"
 The Phase 1 Alpha MVP validation bundle proves the first-user path for harnessed LLM coding sessions:
 
 - documented Alpha MVP tool surface is present;
-- HTTP `/api/v1/tools/call` can execute the core navigation primitive `read_file`;
-- direct `MCPAdapter` calls can execute `get_snapshot` and `read_file`;
-- MCP HTTP JSON-RPC can discover tools through `tools/list` and call `read_file` through `tools/call`;
+- HTTP `/api/v1/tools/call` can execute `read_file` and the non-mutating navigation cluster (`text_search`, `symbol_search`, `find_definition`, `find_references`, `ast_query`, and `graph_expand`);
+- direct `MCPAdapter` calls can execute `get_snapshot`, `read_file`, and the non-mutating navigation cluster;
+- MCP HTTP JSON-RPC can discover tools through `tools/list` and call `read_file` plus the navigation cluster through `tools/call`;
 - repeatable dogfood evidence can be emitted as machine-readable JSON;
 - migration hygiene still rejects stale identity drift and unsafe local artifacts.
 
@@ -86,6 +86,10 @@ The dogfood harness emits JSON with this high-level shape:
 ```
 
 The `interpretation.does_not_prove` section is intentional. Passing this bundle proves the Phase 1 harnessed-LLM Alpha MVP path, not production readiness or Phase 2+ surfaces.
+
+## Navigation parity scope
+
+Navigation parity currently means the same bounded tool names are exercised through HTTP tools/call, direct MCPAdapter calls, and MCP HTTP JSON-RPC. It does not mean every parser or graph backend returns rich semantic results in every environment; fallback shapes remain valid alpha evidence when they are structured and non-throwing.
 
 ## Maintenance rule
 

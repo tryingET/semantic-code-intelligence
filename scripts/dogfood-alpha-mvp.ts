@@ -54,7 +54,7 @@ try {
     const snapshot = await callTool('get_snapshot', { preferExisting: true }, 'Establish repository state for subsequent navigation calls.');
     await callTool(
         'read_file',
-        { path: 'docs/project/alpha-mvp-contract.md', range: { startLine: 1, endLine: 30 }, snapshot: snapshot?.id },
+        { path: 'docs/project/alpha-mvp-contract.md', range: { startLine: 1, endLine: 30 }, snapshot: snapshot?.snapshot || snapshot?.id },
         'Read the Phase 1 contract from a bounded range.'
     );
     await callTool('text_search', { query: 'handleReadFile', path: 'src', maxResults: 10 }, 'Locate implementation candidates by text.');
@@ -65,8 +65,18 @@ try {
     );
     await callTool(
         'find_definition',
-        { symbol: 'handleReadFile', file: 'src/adapters/mcp-adapter.ts', precise: true },
+        { symbol: 'handleReadFile', file: 'src/adapters/mcp-adapter.ts', precise: true, maxResults: 10 },
         'Resolve the implementation definition.'
+    );
+    await callTool(
+        'find_references',
+        { symbol: 'handleReadFile', file: 'src/adapters/mcp-adapter.ts', includeDeclaration: true, maxResults: 10 },
+        'Find bounded references so the harness can estimate local change impact.'
+    );
+    await callTool(
+        'ast_query',
+        { language: 'typescript', query: '(program) @root', paths: ['src/adapters/mcp-adapter.ts'], limit: 5 },
+        'Exercise structural query behavior and parser/fallback stability.'
     );
     await callTool(
         'graph_expand',
@@ -85,7 +95,7 @@ try {
             proves: [
                 'HTTP tools/call can execute the Phase 1 navigation loop deterministically.',
                 'read_file provides bounded path/range retrieval for harnessed LLM context gathering.',
-                'Search, symbol, definition, and graph tools compose into a code-navigation workflow.',
+                'Search, symbol, definition, reference, AST, and graph tools compose into a code-navigation workflow.',
             ],
             does_not_prove: [
                 'Production readiness.',

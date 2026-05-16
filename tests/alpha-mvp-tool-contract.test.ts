@@ -35,6 +35,19 @@ describe('Alpha MVP tool contract', () => {
             expect(toolNames.has(name), `${name} should be registered`).toBe(true);
         }
     });
+
+    test('navigation operations advertise bounded input caps or scope hints', () => {
+        const specs = new Map(ToolRegistry.list().map((tool) => [tool.name, tool]));
+
+        expect(specs.get('text_search')?.inputSchema?.properties?.maxResults?.type).toBe('number');
+        expect(specs.get('text_search')?.inputSchema?.properties?.path?.type).toBe('string');
+        expect(specs.get('symbol_search')?.inputSchema?.properties?.maxResults?.type).toBe('number');
+        expect(specs.get('symbol_search')?.inputSchema?.properties?.fileHint?.type).toBe('string');
+        expect(specs.get('find_definition')?.inputSchema?.properties?.file?.type).toBe('string');
+        expect(specs.get('find_references')?.inputSchema?.properties?.includeDeclaration?.type).toBe('boolean');
+        expect(specs.get('ast_query')?.inputSchema?.properties?.limit?.type).toBe('number');
+        expect(specs.get('graph_expand')?.inputSchema?.properties?.limit?.type).toBe('number');
+    });
 });
 
 bindDescribe('Alpha MVP HTTP tools/call contract', () => {
@@ -72,5 +85,39 @@ bindDescribe('Alpha MVP HTTP tools/call contract', () => {
         expect(status).toBe(400);
         expect(body.success).toBe(false);
         expect(body.error.message).toContain('workspace');
+    });
+
+    test('navigation cluster returns bounded structured results', async () => {
+        const calls = [
+            ['text_search', { query: 'handleReadFile', path: 'src', maxResults: 5 }],
+            ['symbol_search', { query: 'handleReadFile', maxResults: 5, fileHint: 'src/adapters/mcp-adapter.ts' }],
+            ['find_definition', { symbol: 'handleReadFile', file: 'src/adapters/mcp-adapter.ts', precise: true, maxResults: 5 }],
+            [
+                'find_references',
+                { symbol: 'handleReadFile', file: 'src/adapters/mcp-adapter.ts', includeDeclaration: true, maxResults: 5 },
+            ],
+            [
+                'ast_query',
+                { language: 'typescript', query: '(program) @root', paths: ['src/adapters/mcp-adapter.ts'], limit: 5 },
+            ],
+            ['graph_expand', { file: 'src/adapters/mcp-adapter.ts', edges: ['imports', 'exports'], depth: 1, limit: 5 }],
+        ] as const;
+
+        const results = new Map<string, any>();
+        for (const [name, args] of calls) {
+            const { status, body } = await callTool(base, name, args);
+            expect(status, `${name} should return HTTP 200`).toBe(200);
+            expect(body.success, `${name} should succeed`).toBe(true);
+            results.set(name, body.result);
+        }
+
+        expect(results.get('text_search')?.count).toBeGreaterThan(0);
+        expect(results.get('text_search')?.results?.length).toBeLessThanOrEqual(5);
+        expect(results.get('symbol_search')?.symbols?.[0]?.name).toBe('handleReadFile');
+        expect(results.get('find_definition')?.count).toBeGreaterThan(0);
+        expect(results.get('find_references')?.count).toBeGreaterThan(0);
+        expect(Array.isArray(results.get('ast_query')?.results)).toBe(true);
+        expect(results.get('graph_expand')?.schemaVersion).toBe(2);
+        expect(results.get('graph_expand')?.neighbors).toBeDefined();
     });
 });

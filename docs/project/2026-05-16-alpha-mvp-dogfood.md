@@ -31,7 +31,9 @@ A temporary Bun script started `HTTPServer` on `127.0.0.1:7031` and called these
 3. `text_search`
 4. `symbol_search`
 5. `find_definition`
-6. `graph_expand`
+6. `find_references`
+7. `ast_query`
+8. `graph_expand`
 
 Raw JSON was captured outside the repo at:
 
@@ -48,6 +50,8 @@ Raw JSON was captured outside the repo at:
 | `text_search` | 200 | true | 784ms |
 | `symbol_search` | 200 | true | 803ms |
 | `find_definition` | 200 | true | 378ms |
+| `find_references` | 200 | true | repeatable harness |
+| `ast_query` | 200 | true | repeatable harness |
 | `graph_expand` | 200 | true | 60ms |
 
 Overall result: **pass**.
@@ -57,6 +61,8 @@ Overall result: **pass**.
 - `read_file` retrieved `docs/project/alpha-mvp-contract.md` lines 1–30 with path/range metadata.
 - `text_search` and `symbol_search` found `handleReadFile` in `src/adapters/mcp-adapter.ts`.
 - `find_definition` returned a successful response for `handleReadFile` with the file hint.
+- `find_references` returns bounded reference candidates for local impact estimation.
+- `ast_query` is included in the repeatable harness to prove structural-query fallback stability even when a parser returns no rich matches.
 - `graph_expand` returned a stable fallback shape for `src/adapters/mcp-adapter.ts`; it did not fail when graph expansion was unavailable.
 
 ## What this proves
