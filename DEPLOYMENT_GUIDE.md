@@ -530,6 +530,6 @@ Set up alerts for:
 ### Getting Help
 
 - **Documentation**: https://ontology-lsp.com/docs
-- **Issues**: https://github.com/yourusername/ontology-lsp/issues
-- **Discussions**: https://github.com/yourusername/ontology-lsp/discussions
+- **Issues**: https://github.com/tryingET/semantic-code-intelligence/issues
+- **Discussions**: https://github.com/tryingET/semantic-code-intelligence/discussions
 - **Support Email**: support@ontology-lsp.com

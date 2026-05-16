@@ -334,6 +334,6 @@ Yes, in configuration:
 ## More Questions?
 
 - Check the [documentation](./index.md)
-- Join our [discussions](https://github.com/yourusername/ontology-lsp/discussions)
-- Open an [issue](https://github.com/yourusername/ontology-lsp/issues)
+- Join our [discussions](https://github.com/tryingET/semantic-code-intelligence/discussions)
+- Open an [issue](https://github.com/tryingET/semantic-code-intelligence/issues)
 - Contact maintainers

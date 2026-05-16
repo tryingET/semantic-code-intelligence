@@ -110,7 +110,7 @@ ontology-lsp start
 
 ```bash
 # Clone the repository
-git clone https://github.com/lightningRalf/semantic-code-intelligence.git
+git clone https://github.com/tryingET/semantic-code-intelligence.git
 cd ontology-lsp
 
 # Install dependencies (using Bun)
@@ -828,7 +828,7 @@ just emergency-reset
 
 1. **Check Web UI Dashboard**: `http://localhost:8080` for real-time diagnostics
 2. **Read Documentation**: Comprehensive guides in `/docs/` directory
-3. **Search Issues**: [GitHub Issues](https://github.com/lightningRalf/semantic-code-intelligence/issues)
+3. **Search Issues**: [GitHub Issues](https://github.com/tryingET/semantic-code-intelligence/issues)
 4. **Create Bug Report**: Use issue templates with system info
 5. **Performance Issues**: Include output from `just stats` and `just health`
 
@@ -858,7 +858,7 @@ We welcome contributions! The project is production-ready with comprehensive tes
 ### Quick Development Setup
 ```bash
 # 1. Fork and clone
-git clone https://github.com/lightningRalf/semantic-code-intelligence.git
+git clone https://github.com/tryingET/semantic-code-intelligence.git
 cd ontology-lsp
 
 # 2. Install dependencies

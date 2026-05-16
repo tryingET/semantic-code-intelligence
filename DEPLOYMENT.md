@@ -681,7 +681,7 @@ export function getMetrics() {
 
 ```bash
 # 1. Clone and setup
-git clone https://github.com/yourusername/ontology-lsp.git
+git clone https://github.com/tryingET/semantic-code-intelligence.git
 cd ontology-lsp
 
 # 2. Install dependencies

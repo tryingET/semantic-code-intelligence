@@ -203,7 +203,7 @@ MIT - See LICENSE in the repository root
 
 ## Support
 
-- GitHub Issues: [Report bugs and request features](https://github.com/your-org/ontology-lsp/issues)
+- GitHub Issues: [Report bugs and request features](https://github.com/tryingET/semantic-code-intelligence/issues)
 - Documentation: [Full documentation](https://docs.ontology-lsp.dev)
 - Discord: [Join our community](https://discord.gg/ontology-lsp)
 
