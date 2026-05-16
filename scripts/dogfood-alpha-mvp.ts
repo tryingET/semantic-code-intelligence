@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { spawnSync } from 'node:child_process';
 import { HTTPServer } from '../src/servers/http';
 
 type ToolCallEvidence = {
@@ -58,6 +59,40 @@ async function callTool(name: string, args: Record<string, unknown>, observation
     return body.result;
 }
 
+function parseCliWorkflowOutput(stdout: string) {
+    const raw = JSON.parse(stdout.trim() || '{}');
+    const text = raw?.content?.[0]?.text;
+    const payload = typeof text === 'string' ? JSON.parse(text) : raw;
+    return { raw, payload };
+}
+
+function callCliWorkflow(name: string, args: Record<string, unknown>, observation: string) {
+    const started = Date.now();
+    const bun = process.env.BUN_PATH || `${process.env.HOME}/.bun/bin/bun`;
+    const proc = spawnSync(bun, ['run', 'src/servers/cli.ts', 'workflow', name, '--args', JSON.stringify(args), '--json'], {
+        encoding: 'utf8',
+        env: { ...process.env, SILENT_MODE: 'true', STDIO_MODE: 'true' },
+    });
+    const elapsedMs = Date.now() - started;
+    let parsed: unknown = null;
+    try {
+        parsed = parseCliWorkflowOutput(String(proc.stdout || ''));
+    } catch {
+        parsed = { stdout: String(proc.stdout || '').slice(0, 1000), stderr: String(proc.stderr || '').slice(0, 1000) };
+    }
+    const success = proc.status === 0;
+    calls.push({
+        name: `cli:${name}`,
+        args,
+        status: proc.status ?? -1,
+        success,
+        elapsedMs,
+        observation,
+        sample: compactSample(parsed),
+    });
+    return (parsed as any)?.payload;
+}
+
 try {
     await server.start();
     const snapshot = await callTool('get_snapshot', { preferExisting: true }, 'Establish repository state for subsequent navigation calls.');
@@ -112,9 +147,28 @@ try {
     const afterPatchPlanning = await Bun.file(patchPlanningTarget).text();
     const workspaceUnchanged = beforePatchPlanning === afterPatchPlanning && !afterPatchPlanning.includes(patchPlanningMarker);
 
+    const beforeCliFallback = await Bun.file(patchPlanningTarget).text();
+    callCliWorkflow(
+        'read_file',
+        { path: 'docs/project/alpha-mvp-contract.md', range: { startLine: 1, endLine: 8 } },
+        'Use the CLI fallback workflow command for bounded file retrieval.'
+    );
+    callCliWorkflow(
+        'text_search',
+        { query: 'handleReadFile', path: 'src', maxResults: 5 },
+        'Use the CLI fallback workflow command for bounded navigation search.'
+    );
+    callCliWorkflow(
+        'patch_checks_in_snapshot',
+        { patch: patchPlanningDiff, commands: ['true'], timeoutSec: 30 },
+        'Use the CLI fallback workflow command for preview-first patch checks.'
+    );
+    const afterCliFallback = await Bun.file(patchPlanningTarget).text();
+    const cliWorkspaceUnchanged = beforeCliFallback === afterCliFallback && !afterCliFallback.includes(patchPlanningMarker);
+
     const evidence = {
         schema: 'semantic-code-intelligence.alpha_mvp_dogfood.v1',
-        ok: calls.every((call) => call.success) && workspaceUnchanged,
+        ok: calls.every((call) => call.success) && workspaceUnchanged && cliWorkspaceUnchanged,
         mode: 'harnessed_llm_code_navigation_simulation',
         base,
         summary: calls.map(({ name, status, success, elapsedMs, observation }) => ({ name, status, success, elapsedMs, observation })),
@@ -124,12 +178,18 @@ try {
             workspaceUnchanged,
             mutationPosture: 'preview_first_snapshot_only',
         },
+        cliFallback: {
+            workspaceUnchanged: cliWorkspaceUnchanged,
+            command: 'semantic-code-intelligence workflow <tool> --args <json> --json',
+            note: 'CLI workflow invocations are process-local; composite patch_checks_in_snapshot is used for snapshot plus checks.',
+        },
         interpretation: {
             proves: [
                 'HTTP tools/call can execute the Phase 1 navigation loop deterministically.',
                 'read_file provides bounded path/range retrieval for harnessed LLM context gathering.',
                 'Search, symbol, definition, reference, AST, and graph tools compose into a code-navigation workflow.',
                 'propose_patch and run_checks support preview-first patch planning without mutating the working tree.',
+                'The CLI workflow command provides a machine-readable local fallback for bounded tool calls.',
             ],
             does_not_prove: [
                 'Production readiness.',

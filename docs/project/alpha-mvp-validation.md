@@ -17,6 +17,7 @@ The Phase 1 Alpha MVP validation bundle proves the first-user path for harnessed
 - direct `MCPAdapter` calls can execute `get_snapshot`, `read_file`, and the non-mutating navigation cluster;
 - MCP HTTP JSON-RPC can discover tools through `tools/list` and call `read_file` plus the navigation cluster through `tools/call`;
 - HTTP, direct MCP, and MCP HTTP can stage `propose_patch` diffs and run explicit `run_checks` against snapshots without mutating the working tree;
+- CLI fallback can execute machine-readable tool calls through `semantic-code-intelligence workflow <tool> --args <json> --json`;
 - repeatable dogfood evidence can be emitted as machine-readable JSON;
 - migration hygiene still rejects stale identity drift and unsafe local artifacts.
 
@@ -94,6 +95,8 @@ Navigation parity currently means the same bounded tool names are exercised thro
 
 Patch-planning parity currently means `propose_patch` accepts a reviewable diff into an isolated snapshot and `run_checks` executes an explicit command against that snapshot. It deliberately does not apply the staged diff to the canonical working tree; `apply_snapshot` and direct-write workflows remain outside the Alpha MVP default path.
 
+CLI fallback parity currently means local command-line execution can call the same tool registry through the generic `workflow` command with JSON arguments and machine-readable stdout. CLI invocations are process-local, so multi-step snapshot flows that require shared in-memory snapshot state should use composite workflow tools such as `patch_checks_in_snapshot` unless a future durable snapshot/session surface is promoted.
+
 ## Maintenance rule
 
 When the Alpha MVP contract changes, update all of these in the same wave:
@@ -102,5 +105,5 @@ When the Alpha MVP contract changes, update all of these in the same wave:
 - package scripts in `package.json`
 - `just alpha-mvp-check`
 - `scripts/dogfood-alpha-mvp.ts`
-- Alpha MVP tests under `tests/alpha-mvp-*.test.ts`
+- Alpha MVP tests under `tests/alpha-mvp-*.test.ts`, including CLI fallback coverage
 - `.github/workflows/alpha-mvp.yml`

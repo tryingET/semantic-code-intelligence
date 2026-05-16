@@ -37,6 +37,9 @@ A temporary Bun script started `HTTPServer` on `127.0.0.1:7031` and called these
 9. `get_snapshot` for an isolated patch-planning snapshot
 10. `propose_patch`
 11. `run_checks`
+12. `cli:read_file`
+13. `cli:text_search`
+14. `cli:patch_checks_in_snapshot`
 
 Raw JSON was captured outside the repo at:
 
@@ -59,6 +62,9 @@ Raw JSON was captured outside the repo at:
 | `get_snapshot` (patch planning) | 200 | true | repeatable harness |
 | `propose_patch` | 200 | true | repeatable harness |
 | `run_checks` | 200 | true | repeatable harness |
+| `cli:read_file` | exit 0 | true | repeatable harness |
+| `cli:text_search` | exit 0 | true | repeatable harness |
+| `cli:patch_checks_in_snapshot` | exit 0 | true | repeatable harness |
 
 Overall result: **pass**.
 
@@ -72,6 +78,7 @@ Overall result: **pass**.
 - `graph_expand` returned a stable fallback shape for `src/adapters/mcp-adapter.ts`; it did not fail when graph expansion was unavailable.
 - `propose_patch` stages a reviewable diff in an isolated snapshot, and `run_checks` executes an explicit command against that staged snapshot.
 - The patch-planning section verifies the target file is unchanged after the harness, preserving the alpha preview-first mutation posture.
+- The CLI fallback section verifies machine-readable local tool calls through `semantic-code-intelligence workflow <tool> --args <json> --json`.
 
 ## What this proves
 
@@ -79,6 +86,7 @@ Overall result: **pass**.
 - The HTTP parity surface is adequate for deterministic dogfood evidence.
 - Search, symbol, definition, reference, AST, and graph tools compose into a code-navigation workflow.
 - Patch-planning tools can stage and check a diff without mutating the canonical working tree.
+- The CLI workflow command provides a local fallback path for bounded tool calls when MCP/HTTP harness integration is unavailable.
 - The newly added `read_file` operation closes the biggest gap between the documented Alpha MVP contract and the actual tool registry.
 
 ## What this does not prove
@@ -98,7 +106,7 @@ bun run scripts/dogfood-alpha-mvp.ts --json
 
 Use `--pretty` with `--json` for human-readable JSON formatting.
 
-The harness starts the local HTTP server, executes the Phase 1 navigation and preview-first patch-planning loop through `/api/v1/tools/call`, emits machine-readable evidence, and exits non-zero when any required call fails or when the patch-planning target file is mutated.
+The harness starts the local HTTP server, executes the Phase 1 navigation and preview-first patch-planning loop through `/api/v1/tools/call`, then runs a bounded CLI fallback loop through `semantic-code-intelligence workflow <tool> --args <json> --json`. It emits machine-readable evidence and exits non-zero when any required call fails or when the patch-planning target file is mutated.
 
 The broader one-command Phase 1 validation paths are:
 
