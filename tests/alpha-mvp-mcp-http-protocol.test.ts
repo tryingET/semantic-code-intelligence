@@ -88,6 +88,41 @@ bindDescribe('Alpha MVP MCP HTTP protocol', () => {
         return { status: res.status, body: await parseMcpBody(res) };
     }
 
+    async function toolsList(id: number) {
+        const res = await fetch(base, {
+            method: 'POST',
+            headers: mcpHttpHeaders(sessionId),
+            body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/list', params: {} }),
+        });
+        return { status: res.status, body: await parseMcpBody(res) };
+    }
+
+    test('tools/list advertises the Alpha MVP tool surface', async () => {
+        const { status, body } = await toolsList(2);
+
+        expect(status).toBe(200);
+        const tools = body?.result?.tools || [];
+        const toolNames = new Set(tools.map((tool: any) => tool.name));
+        for (const name of [
+            'get_snapshot',
+            'read_file',
+            'text_search',
+            'symbol_search',
+            'ast_query',
+            'find_definition',
+            'find_references',
+            'graph_expand',
+            'propose_patch',
+            'run_checks',
+        ]) {
+            expect(toolNames.has(name), `${name} should be discoverable through MCP HTTP tools/list`).toBe(true);
+        }
+
+        const readFile = tools.find((tool: any) => tool.name === 'read_file');
+        expect(readFile?.inputSchema?.required).toContain('path');
+        expect(readFile?.inputSchema?.properties?.path?.type).toBe('string');
+    });
+
     test('read_file succeeds through JSON-RPC tools/call', async () => {
         const { status, body } = await toolsCall(2, 'read_file', {
             path: 'docs/project/alpha-mvp-contract.md',
