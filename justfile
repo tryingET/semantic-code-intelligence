@@ -2040,6 +2040,11 @@ self-dogfood-cli:
     mkdir -p .test-results
     bun run scripts/dogfood-self-hosted-cli.ts --json > .test-results/self-hosted-cli-dogfood.json
 
+# Dogfood SCI CLI against the external pi-extensions monorepo without mutating it
+external-dogfood-pi-extensions:
+    mkdir -p .test-results
+    bun run scripts/dogfood-external-pi-extensions.ts --json > .test-results/external-dogfood-pi-extensions.json
+
 # Check migrated repo identity/local artifact hygiene
 migration-hygiene:
     ./scripts/migration-hygiene.sh

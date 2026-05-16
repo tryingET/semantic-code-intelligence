@@ -20,6 +20,7 @@ The Phase 1 Alpha MVP validation bundle proves the first-user path for harnessed
 - HTTP, direct MCP, and MCP HTTP can stage `propose_patch` diffs and run explicit `run_checks` against snapshots without mutating the working tree;
 - CLI fallback can execute machine-readable tool calls through `semantic-code-intelligence workflow <tool> --args <json> --json`;
 - self-hosted CLI dogfood uses SCI's own CLI workflow surface against this repo for navigation and preview-first patch planning;
+- external dogfood uses SCI CLI against the `pi-extensions` monorepo without mutating that repo;
 - repeatable dogfood evidence can be emitted as machine-readable JSON;
 - migration hygiene still rejects stale identity drift and unsafe local artifacts.
 
@@ -42,6 +43,7 @@ Dogfood-only evidence:
 ```bash
 bun run alpha:mvp:dogfood > .test-results/alpha-mvp-dogfood.json
 bun run self:dogfood:cli
+bun run external:dogfood:pi-extensions
 ```
 
 Test-only subset:
@@ -104,6 +106,8 @@ CLI fallback parity currently means local command-line execution can call the sa
 
 Self-hosted CLI dogfood currently means SCI CLI is used as a practical work loop on the SCI repo itself, not only as a protocol smoke test. See `docs/project/self-hosted-cli-dogfood.md`.
 
+External dogfood currently means SCI CLI is run from a real external repo root, starting with `pi-extensions/packages/pi-toolbox-discovery`, while preserving external source-owner boundaries. See `docs/project/external-dogfood-pi-extensions.md`.
+
 ## Maintenance rule
 
 When the Alpha MVP contract changes, update all of these in the same wave:
@@ -113,5 +117,6 @@ When the Alpha MVP contract changes, update all of these in the same wave:
 - `just alpha-mvp-check`
 - `scripts/dogfood-alpha-mvp.ts`
 - `scripts/dogfood-self-hosted-cli.ts`
+- external dogfood harnesses such as `scripts/dogfood-external-pi-extensions.ts`
 - Alpha MVP tests under `tests/alpha-mvp-*.test.ts`, including CLI fallback coverage
 - `.github/workflows/alpha-mvp.yml`

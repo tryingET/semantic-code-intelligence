@@ -44,6 +44,7 @@
     "alpha:mvp:test": "bun test tests/alpha-mvp-tool-contract.test.ts tests/alpha-mvp-mcp-parity.test.ts tests/alpha-mvp-mcp-http-protocol.test.ts tests/alpha-mvp-mcp-stdio-protocol.test.ts tests/alpha-mvp-cli-parity.test.ts",
     "alpha:mvp:dogfood": "bun run scripts/dogfood-alpha-mvp.ts --json",
     "self:dogfood:cli": "mkdir -p .test-results && bun run scripts/dogfood-self-hosted-cli.ts --json > .test-results/self-hosted-cli-dogfood.json",
+    "external:dogfood:pi-extensions": "mkdir -p .test-results && bun run scripts/dogfood-external-pi-extensions.ts --json > .test-results/external-dogfood-pi-extensions.json",
     "alpha:mvp:check": "bun run build:tsc && bun run alpha:mvp:test && mkdir -p .test-results && bun run scripts/dogfood-alpha-mvp.ts --json > .test-results/alpha-mvp-dogfood.json && bun run self:dogfood:cli && ./scripts/migration-hygiene.sh"
   },
   "keywords": [
