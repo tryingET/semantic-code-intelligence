@@ -18,7 +18,7 @@ The Phase 1 Alpha MVP validation bundle proves the first-user path for harnessed
 - MCP HTTP JSON-RPC can discover tools through `tools/list` and call `read_file` plus the navigation cluster through `tools/call`;
 - MCP stdio can initialize, advertise the Alpha MVP tools through `tools/list`, and execute `read_file`, `text_search`, and `patch_checks_in_snapshot` while keeping stdout protocol-clean;
 - HTTP, direct MCP, and MCP HTTP can stage `propose_patch` diffs and run explicit `run_checks` against snapshots without mutating the working tree;
-- CLI fallback proves `safe_write` as the autonomous-safe write path: preview/check by default, guarded apply refusal without `ALLOW_SNAPSHOT_APPLY=1`, risk classification, exact applied-diff verification after guarded apply, rollback command, and brief output;
+- CLI fallback proves `safe_write` as the autonomous-safe write path: preview/check by default, guarded apply refusal without `ALLOW_SNAPSHOT_APPLY=1`, risk classification, exact applied-diff verification after clean guarded apply, structured non-success verification for a dirty touched-file mismatch, rollback command, and brief output;
 - CLI fallback can execute machine-readable tool calls through `semantic-code-intelligence workflow <tool> --args <json> --json`;
 - CLI fallback covers ast-grep-backed `structural_search` and preview-first `structural_patch_checks` for deterministic structural edits;
 - HTTP, direct MCP, and MCP HTTP now include structural search parity coverage when `ast-grep` is available;

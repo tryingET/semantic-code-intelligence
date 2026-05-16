@@ -6,6 +6,7 @@ import { dirname } from 'node:path';
 const target = 'tests/fixtures/safe-write-target.md';
 const outputPath = '.test-results/safe-write-dogfood.json';
 const marker = 'SAFE_WRITE_DOGFOOD_MARKER';
+const dirtyMarker = 'SAFE_WRITE_PREEXISTING_DIRTY_MARKER';
 const jsonMode = process.argv.includes('--json');
 const pretty = process.argv.includes('--pretty');
 
@@ -65,8 +66,17 @@ function unifiedPatch(original: string, modified: string) {
 }
 
 const original = await Bun.file(target).text();
+process.on('exit', () => {
+  try {
+    writeFileSync(target, original);
+  } catch {
+    // Best-effort fixture cleanup for dogfood safety.
+  }
+});
 const modified = `${original.trimEnd()}\n\n${marker}\n`;
 const patch = unifiedPatch(original, modified);
+const mismatchMarker = 'Safe Write Dogfood Fixture Verified';
+const mismatchPatch = unifiedPatch(original, original.replace('Safe Write Dogfood Fixture', mismatchMarker));
 const calls: CallEvidence[] = [];
 
 const preview = callSafeWrite({ patch, commands: ['true'], timeoutSec: 30, brief: true });
@@ -95,6 +105,24 @@ if (typeof rollbackCommand === 'string' && rollbackCommand.trim()) {
 }
 const afterRollback = await Bun.file(target).text();
 
+const dirtyOriginal = `${original.trimEnd()}\n\n${dirtyMarker}\n`;
+writeFileSync(target, dirtyOriginal);
+const mismatchApply = callSafeWrite(
+  { patch: mismatchPatch, commands: ['true'], timeoutSec: 30, apply: true, brief: false },
+  { ALLOW_SNAPSHOT_APPLY: '1' },
+);
+calls.push(mismatchApply);
+const afterMismatchApply = await Bun.file(target).text();
+let mismatchRollbackResult: { status: number | null; stdout: string; stderr: string } | null = null;
+const mismatchRollbackCommand = mismatchApply.payload?.rollback?.command;
+if (typeof mismatchRollbackCommand === 'string' && mismatchRollbackCommand.trim()) {
+  const proc = run(mismatchRollbackCommand);
+  mismatchRollbackResult = { status: proc.status, stdout: String(proc.stdout || ''), stderr: String(proc.stderr || '') };
+}
+const afterMismatchRollback = await Bun.file(target).text();
+writeFileSync(target, original);
+const afterFinalRestore = await Bun.file(target).text();
+
 const dirty = run(`git status --short -- ${target}`).stdout.trim();
 const fixtureHasNoPostRollbackModification = dirty === '' || dirty.startsWith('?? ');
 
@@ -113,6 +141,14 @@ const evidence = {
     afterApply.includes(marker) &&
     rollbackResult?.status === 0 &&
     afterRollback === original &&
+    mismatchApply.payload?.ok === false &&
+    mismatchApply.payload?.applied === true &&
+    mismatchApply.payload?.verification?.appliedDiffMatchesSnapshot === false &&
+    afterMismatchApply.includes(mismatchMarker) &&
+    afterMismatchApply.includes(dirtyMarker) &&
+    mismatchRollbackResult?.status === 0 &&
+    afterMismatchRollback === dirtyOriginal &&
+    afterFinalRestore === original &&
     fixtureHasNoPostRollbackModification,
   target,
   assertions: {
@@ -121,6 +157,12 @@ const evidence = {
     guardedApplyChangedFixture: applied.payload?.applied === true && afterApply.includes(marker),
     appliedDiffMatchesSnapshot: applied.payload?.verification?.appliedDiffMatchesSnapshot === true,
     rollbackRestoredExactly: afterRollback === original,
+    dirtyTouchedFileVerificationFailsClosed:
+      mismatchApply.payload?.ok === false &&
+      mismatchApply.payload?.applied === true &&
+      mismatchApply.payload?.verification?.appliedDiffMatchesSnapshot === false,
+    mismatchRollbackPreservedPreexistingDirtyChange: afterMismatchRollback === dirtyOriginal,
+    finalRestoreExact: afterFinalRestore === original,
     fixtureCleanAfterRollback: fixtureHasNoPostRollbackModification,
   },
   calls: calls.map((call) => ({
@@ -139,6 +181,7 @@ const evidence = {
     },
   })),
   rollback: rollbackResult,
+  mismatchRollback: mismatchRollbackResult,
 };
 
 mkdirSync(dirname(outputPath), { recursive: true });
