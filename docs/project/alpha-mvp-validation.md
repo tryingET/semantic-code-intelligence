@@ -16,6 +16,7 @@ The Phase 1 Alpha MVP validation bundle proves the first-user path for harnessed
 - HTTP `/api/v1/tools/call` can execute `read_file` and the non-mutating navigation cluster (`text_search`, `symbol_search`, `find_definition`, `find_references`, `ast_query`, and `graph_expand`);
 - direct `MCPAdapter` calls can execute `get_snapshot`, `read_file`, and the non-mutating navigation cluster;
 - MCP HTTP JSON-RPC can discover tools through `tools/list` and call `read_file` plus the navigation cluster through `tools/call`;
+- HTTP, direct MCP, and MCP HTTP can stage `propose_patch` diffs and run explicit `run_checks` against snapshots without mutating the working tree;
 - repeatable dogfood evidence can be emitted as machine-readable JSON;
 - migration hygiene still rejects stale identity drift and unsafe local artifacts.
 
@@ -90,6 +91,8 @@ The `interpretation.does_not_prove` section is intentional. Passing this bundle 
 ## Navigation parity scope
 
 Navigation parity currently means the same bounded tool names are exercised through HTTP tools/call, direct MCPAdapter calls, and MCP HTTP JSON-RPC. It does not mean every parser or graph backend returns rich semantic results in every environment; fallback shapes remain valid alpha evidence when they are structured and non-throwing.
+
+Patch-planning parity currently means `propose_patch` accepts a reviewable diff into an isolated snapshot and `run_checks` executes an explicit command against that snapshot. It deliberately does not apply the staged diff to the canonical working tree; `apply_snapshot` and direct-write workflows remain outside the Alpha MVP default path.
 
 ## Maintenance rule
 

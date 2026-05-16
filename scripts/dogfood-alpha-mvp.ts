@@ -16,6 +16,15 @@ const pretty = process.argv.includes('--pretty');
 const host = process.env.DOGFOOD_HOST || '127.0.0.1';
 const port = Number(process.env.DOGFOOD_PORT || 7031);
 const base = `http://${host}:${port}`;
+const patchPlanningMarker = '<!-- alpha patch-planning parity snapshot-only marker -->';
+const patchPlanningTarget = 'docs/project/alpha-mvp-contract.md';
+const patchPlanningDiff = `diff --git a/${patchPlanningTarget} b/${patchPlanningTarget}
+--- a/${patchPlanningTarget}
++++ b/${patchPlanningTarget}
+@@ -9,1 +9,2 @@
+ # Alpha MVP contract — harnessed LLM coding sessions
++${patchPlanningMarker}
+`;
 
 // Keep --json stdout machine-readable even though HTTPServer logs with console.*.
 const originalConsole = { log: console.log, error: console.error, warn: console.warn, info: console.info };
@@ -84,18 +93,43 @@ try {
         'Inspect graph-neighborhood behavior and fallback stability.'
     );
 
+    const beforePatchPlanning = await Bun.file(patchPlanningTarget).text();
+    const patchSnapshot = await callTool(
+        'get_snapshot',
+        { preferExisting: false },
+        'Create an isolated snapshot for preview-first patch planning.'
+    );
+    await callTool(
+        'propose_patch',
+        { snapshot: patchSnapshot?.snapshot || patchSnapshot?.id, patch: patchPlanningDiff },
+        'Stage a reviewable diff in the snapshot without applying it to the workspace.'
+    );
+    await callTool(
+        'run_checks',
+        { snapshot: patchSnapshot?.snapshot || patchSnapshot?.id, commands: ['true'], timeoutSec: 30 },
+        'Run an explicit validation command against the staged snapshot.'
+    );
+    const afterPatchPlanning = await Bun.file(patchPlanningTarget).text();
+    const workspaceUnchanged = beforePatchPlanning === afterPatchPlanning && !afterPatchPlanning.includes(patchPlanningMarker);
+
     const evidence = {
         schema: 'semantic-code-intelligence.alpha_mvp_dogfood.v1',
-        ok: calls.every((call) => call.success),
+        ok: calls.every((call) => call.success) && workspaceUnchanged,
         mode: 'harnessed_llm_code_navigation_simulation',
         base,
         summary: calls.map(({ name, status, success, elapsedMs, observation }) => ({ name, status, success, elapsedMs, observation })),
         calls,
+        patchPlanning: {
+            target: patchPlanningTarget,
+            workspaceUnchanged,
+            mutationPosture: 'preview_first_snapshot_only',
+        },
         interpretation: {
             proves: [
                 'HTTP tools/call can execute the Phase 1 navigation loop deterministically.',
                 'read_file provides bounded path/range retrieval for harnessed LLM context gathering.',
                 'Search, symbol, definition, reference, AST, and graph tools compose into a code-navigation workflow.',
+                'propose_patch and run_checks support preview-first patch planning without mutating the working tree.',
             ],
             does_not_prove: [
                 'Production readiness.',

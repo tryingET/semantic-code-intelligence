@@ -5,6 +5,16 @@ import { SharedServices } from '../src/core/services';
 import { CodeAnalyzer } from '../src/core/unified-analyzer';
 import { createTestConfig } from './test-helpers';
 
+const patchPlanningMarker = '<!-- alpha patch-planning parity snapshot-only marker -->';
+const patchPlanningTarget = 'docs/project/alpha-mvp-contract.md';
+const patchPlanningDiff = `diff --git a/${patchPlanningTarget} b/${patchPlanningTarget}
+--- a/${patchPlanningTarget}
++++ b/${patchPlanningTarget}
+@@ -9,1 +9,2 @@
+ # Alpha MVP contract — harnessed LLM coding sessions
++${patchPlanningMarker}
+`;
+
 async function parseContent(res: any): Promise<any> {
     const txt = res?.content?.[0]?.text;
     expect(txt).toBeDefined();
@@ -112,4 +122,27 @@ describe('Alpha MVP direct MCP parity', () => {
         expect(graph.schemaVersion).toBe(2);
         expect(graph.neighbors).toBeDefined();
     });
+
+    test('patch-planning cluster stages a diff and runs checks without mutating workspace', async () => {
+        const before = await Bun.file(patchPlanningTarget).text();
+        expect(before).not.toContain(patchPlanningMarker);
+
+        const snapshot = await parseContent(await mcp.handleToolCall('get_snapshot', { preferExisting: false }));
+        const snapshotId = snapshot.id || snapshot.snapshot;
+        expect(snapshotId).toBeDefined();
+
+        const proposed = await parseContent(await mcp.handleToolCall('propose_patch', { snapshot: snapshotId, patch: patchPlanningDiff }));
+        expect(proposed.accepted).toBe(true);
+        expect(proposed.snapshot).toBe(snapshotId);
+
+        const checked = await parseContent(
+            await mcp.handleToolCall('run_checks', { snapshot: snapshotId, commands: ['true'], timeoutSec: 30 })
+        );
+        expect(checked.ok).toBe(true);
+        expect(checked.snapshot).toBe(snapshotId);
+
+        const after = await Bun.file(patchPlanningTarget).text();
+        expect(after).toBe(before);
+        expect(after).not.toContain(patchPlanningMarker);
+    }, 30000);
 });

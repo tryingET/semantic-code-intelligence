@@ -6,6 +6,16 @@ import { canBindTcp } from './helpers/bind-utils';
 const canBind = await canBindTcp('127.0.0.1');
 const bindDescribe = canBind ? describe : describe.skip;
 
+const patchPlanningMarker = '<!-- alpha patch-planning parity snapshot-only marker -->';
+const patchPlanningTarget = 'docs/project/alpha-mvp-contract.md';
+const patchPlanningDiff = `diff --git a/${patchPlanningTarget} b/${patchPlanningTarget}
+--- a/${patchPlanningTarget}
++++ b/${patchPlanningTarget}
+@@ -9,1 +9,2 @@
+ # Alpha MVP contract — harnessed LLM coding sessions
++${patchPlanningMarker}
+`;
+
 const alphaMvpTools = [
     'get_snapshot',
     'read_file',
@@ -120,4 +130,30 @@ bindDescribe('Alpha MVP HTTP tools/call contract', () => {
         expect(results.get('graph_expand')?.schemaVersion).toBe(2);
         expect(results.get('graph_expand')?.neighbors).toBeDefined();
     });
+
+    test('patch-planning cluster stages a diff and runs checks without mutating workspace', async () => {
+        const before = await Bun.file(patchPlanningTarget).text();
+        expect(before).not.toContain(patchPlanningMarker);
+
+        const snapshot = await callTool(base, 'get_snapshot', { preferExisting: false });
+        expect(snapshot.status).toBe(200);
+        const snapshotId = snapshot.body.result.snapshot || snapshot.body.result.id;
+        expect(snapshotId).toBeDefined();
+
+        const proposed = await callTool(base, 'propose_patch', { snapshot: snapshotId, patch: patchPlanningDiff });
+        expect(proposed.status).toBe(200);
+        expect(proposed.body.success).toBe(true);
+        expect(proposed.body.result.accepted).toBe(true);
+        expect(proposed.body.result.snapshot).toBe(snapshotId);
+
+        const checked = await callTool(base, 'run_checks', { snapshot: snapshotId, commands: ['true'], timeoutSec: 30 });
+        expect(checked.status).toBe(200);
+        expect(checked.body.success).toBe(true);
+        expect(checked.body.result.ok).toBe(true);
+        expect(checked.body.result.snapshot).toBe(snapshotId);
+
+        const after = await Bun.file(patchPlanningTarget).text();
+        expect(after).toBe(before);
+        expect(after).not.toContain(patchPlanningMarker);
+    }, 30000);
 });

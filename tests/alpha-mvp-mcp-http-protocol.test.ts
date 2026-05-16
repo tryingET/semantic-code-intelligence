@@ -3,6 +3,16 @@ import { spawn } from 'node:child_process';
 import { canBindTcp } from './helpers/bind-utils';
 import { initMcpHttpSession, mcpHttpHeaders } from './helpers/mcp-http';
 
+const patchPlanningMarker = '<!-- alpha patch-planning parity snapshot-only marker -->';
+const patchPlanningTarget = 'docs/project/alpha-mvp-contract.md';
+const patchPlanningDiff = `diff --git a/${patchPlanningTarget} b/${patchPlanningTarget}
+--- a/${patchPlanningTarget}
++++ b/${patchPlanningTarget}
+@@ -9,1 +9,2 @@
+ # Alpha MVP contract — harnessed LLM coding sessions
++${patchPlanningMarker}
+`;
+
 function wait(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -182,4 +192,33 @@ bindDescribe('Alpha MVP MCP HTTP protocol', () => {
         expect(results.get('graph_expand')?.schemaVersion).toBe(2);
         expect(results.get('graph_expand')?.neighbors).toBeDefined();
     });
+
+    test('patch-planning cluster succeeds through JSON-RPC tools/call without mutating workspace', async () => {
+        const before = await Bun.file(patchPlanningTarget).text();
+        expect(before).not.toContain(patchPlanningMarker);
+
+        const snapshotCall = await toolsCall(30, 'get_snapshot', { preferExisting: false });
+        expect(snapshotCall.status).toBe(200);
+        const snapshot = JSON.parse(snapshotCall.body?.result?.content?.[0]?.text || '{}');
+        const snapshotId = snapshot.id || snapshot.snapshot;
+        expect(snapshotId).toBeDefined();
+
+        const proposedCall = await toolsCall(31, 'propose_patch', { snapshot: snapshotId, patch: patchPlanningDiff });
+        expect(proposedCall.status).toBe(200);
+        expect(proposedCall.body.error).toBeUndefined();
+        const proposed = JSON.parse(proposedCall.body?.result?.content?.[0]?.text || '{}');
+        expect(proposed.accepted).toBe(true);
+        expect(proposed.snapshot).toBe(snapshotId);
+
+        const checkedCall = await toolsCall(32, 'run_checks', { snapshot: snapshotId, commands: ['true'], timeoutSec: 30 });
+        expect(checkedCall.status).toBe(200);
+        expect(checkedCall.body.error).toBeUndefined();
+        const checked = JSON.parse(checkedCall.body?.result?.content?.[0]?.text || '{}');
+        expect(checked.ok).toBe(true);
+        expect(checked.snapshot).toBe(snapshotId);
+
+        const after = await Bun.file(patchPlanningTarget).text();
+        expect(after).toBe(before);
+        expect(after).not.toContain(patchPlanningMarker);
+    }, 30000);
 });

@@ -34,6 +34,9 @@ A temporary Bun script started `HTTPServer` on `127.0.0.1:7031` and called these
 6. `find_references`
 7. `ast_query`
 8. `graph_expand`
+9. `get_snapshot` for an isolated patch-planning snapshot
+10. `propose_patch`
+11. `run_checks`
 
 Raw JSON was captured outside the repo at:
 
@@ -53,6 +56,9 @@ Raw JSON was captured outside the repo at:
 | `find_references` | 200 | true | repeatable harness |
 | `ast_query` | 200 | true | repeatable harness |
 | `graph_expand` | 200 | true | 60ms |
+| `get_snapshot` (patch planning) | 200 | true | repeatable harness |
+| `propose_patch` | 200 | true | repeatable harness |
+| `run_checks` | 200 | true | repeatable harness |
 
 Overall result: **pass**.
 
@@ -64,11 +70,15 @@ Overall result: **pass**.
 - `find_references` returns bounded reference candidates for local impact estimation.
 - `ast_query` is included in the repeatable harness to prove structural-query fallback stability even when a parser returns no rich matches.
 - `graph_expand` returned a stable fallback shape for `src/adapters/mcp-adapter.ts`; it did not fail when graph expansion was unavailable.
+- `propose_patch` stages a reviewable diff in an isolated snapshot, and `run_checks` executes an explicit command against that staged snapshot.
+- The patch-planning section verifies the target file is unchanged after the harness, preserving the alpha preview-first mutation posture.
 
 ## What this proves
 
 - The Phase 1 tool surface can support a bounded harnessed-LLM navigation loop over this repo.
 - The HTTP parity surface is adequate for deterministic dogfood evidence.
+- Search, symbol, definition, reference, AST, and graph tools compose into a code-navigation workflow.
+- Patch-planning tools can stage and check a diff without mutating the canonical working tree.
 - The newly added `read_file` operation closes the biggest gap between the documented Alpha MVP contract and the actual tool registry.
 
 ## What this does not prove
@@ -88,7 +98,7 @@ bun run scripts/dogfood-alpha-mvp.ts --json
 
 Use `--pretty` with `--json` for human-readable JSON formatting.
 
-The harness starts the local HTTP server, executes the Phase 1 navigation loop through `/api/v1/tools/call`, emits machine-readable evidence, and exits non-zero when any required call fails.
+The harness starts the local HTTP server, executes the Phase 1 navigation and preview-first patch-planning loop through `/api/v1/tools/call`, emits machine-readable evidence, and exits non-zero when any required call fails or when the patch-planning target file is mutated.
 
 The broader one-command Phase 1 validation paths are:
 
