@@ -1,11 +1,11 @@
-# Ontology-LSP Configuration Maps
+# Semantic Code Intelligence Configuration Maps
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: ontology-lsp-config
-  namespace: ontology-lsp
+  name: semantic-code-intelligence-config
+  namespace: semantic-code-intelligence
   labels:
-    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/name: semantic-code-intelligence
     app.kubernetes.io/component: config
 data:
   # Application configuration
@@ -29,11 +29,11 @@ data:
   
   # Security settings
   TRUST_PROXY: "true"
-  CORS_ORIGINS: "https://ontology-lsp.example.com"
+  CORS_ORIGINS: "https://semantic-code-intelligence.example.com"
   
   # OpenTelemetry tracing
   OTEL_ENABLED: "true"
-  OTEL_SERVICE_NAME: "ontology-lsp"
+  OTEL_SERVICE_NAME: "semantic-code-intelligence"
   OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger-collector.monitoring.svc.cluster.local:4317"
 
 ---
@@ -42,13 +42,13 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: postgres-init-config
-  namespace: ontology-lsp
+  namespace: semantic-code-intelligence
   labels:
     app.kubernetes.io/name: postgres
     app.kubernetes.io/component: config
 data:
   init.sql: |
-    -- Ontology-LSP PostgreSQL Initialization Script
+    -- Semantic Code Intelligence PostgreSQL Initialization Script
     -- Creates database schema for knowledge storage and vector embeddings
 
     -- Enable required extensions
@@ -128,7 +128,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: redis-config
-  namespace: ontology-lsp
+  namespace: semantic-code-intelligence
   labels:
     app.kubernetes.io/name: redis
     app.kubernetes.io/component: config

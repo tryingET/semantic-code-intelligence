@@ -1,11 +1,11 @@
-# Ontology-LSP RBAC Configuration
+# Semantic Code Intelligence RBAC Configuration
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: ontology-lsp-sa
-  namespace: ontology-lsp
+  name: semantic-code-intelligence-sa
+  namespace: semantic-code-intelligence
   labels:
-    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/name: semantic-code-intelligence
     app.kubernetes.io/component: rbac
 automountServiceAccountToken: true
 
@@ -14,10 +14,10 @@ automountServiceAccountToken: true
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: ontology-lsp-role
-  namespace: ontology-lsp
+  name: semantic-code-intelligence-role
+  namespace: semantic-code-intelligence
   labels:
-    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/name: semantic-code-intelligence
     app.kubernetes.io/component: rbac
 rules:
   # Access to ConfigMaps for dynamic configuration
@@ -51,28 +51,28 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: ontology-lsp-rolebinding
-  namespace: ontology-lsp
+  name: semantic-code-intelligence-rolebinding
+  namespace: semantic-code-intelligence
   labels:
-    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/name: semantic-code-intelligence
     app.kubernetes.io/component: rbac
 subjects:
   - kind: ServiceAccount
-    name: ontology-lsp-sa
-    namespace: ontology-lsp
+    name: semantic-code-intelligence-sa
+    namespace: semantic-code-intelligence
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: ontology-lsp-role
+  name: semantic-code-intelligence-role
 
 ---
 # ClusterRole for cross-namespace monitoring (optional)
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: ontology-lsp-monitoring
+  name: semantic-code-intelligence-monitoring
   labels:
-    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/name: semantic-code-intelligence
     app.kubernetes.io/component: monitoring
 rules:
   # Read-only access to Nodes for system metrics
@@ -90,15 +90,15 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: ontology-lsp-monitoring
+  name: semantic-code-intelligence-monitoring
   labels:
-    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/name: semantic-code-intelligence
     app.kubernetes.io/component: monitoring
 subjects:
   - kind: ServiceAccount
-    name: ontology-lsp-sa
-    namespace: ontology-lsp
+    name: semantic-code-intelligence-sa
+    namespace: semantic-code-intelligence
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: ontology-lsp-monitoring
+  name: semantic-code-intelligence-monitoring

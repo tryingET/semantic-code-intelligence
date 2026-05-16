@@ -1,17 +1,17 @@
-# Ontology-LSP Horizontal Pod Autoscaler
+# Semantic Code Intelligence Horizontal Pod Autoscaler
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: ontology-lsp-hpa
-  namespace: ontology-lsp
+  name: semantic-code-intelligence-hpa
+  namespace: semantic-code-intelligence
   labels:
-    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/name: semantic-code-intelligence
     app.kubernetes.io/component: autoscaler
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: ontology-lsp
+    name: semantic-code-intelligence
   
   # Scaling configuration
   minReplicas: 2
@@ -83,7 +83,7 @@ spec:
         describedObject:
           apiVersion: v1
           kind: Service
-          name: ontology-lsp-http
+          name: semantic-code-intelligence-http
         target:
           type: Value
           value: "200m"  # 200ms
@@ -93,23 +93,23 @@ spec:
 apiVersion: autoscaling.k8s.io/v1
 kind: VerticalPodAutoscaler
 metadata:
-  name: ontology-lsp-vpa
-  namespace: ontology-lsp
+  name: semantic-code-intelligence-vpa
+  namespace: semantic-code-intelligence
   labels:
-    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/name: semantic-code-intelligence
     app.kubernetes.io/component: vpa
 spec:
   targetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: ontology-lsp
+    name: semantic-code-intelligence
   
   updatePolicy:
     updateMode: "Auto"  # Options: Off, Initial, Auto
   
   resourcePolicy:
     containerPolicies:
-      - containerName: ontology-lsp
+      - containerName: semantic-code-intelligence
         minAllowed:
           cpu: 100m
           memory: 128Mi

@@ -1,8 +1,8 @@
-# Ontology LSP Commands
+# Semantic Code Intelligence Commands
 
 # Default recipe - show available commands with categories
 default:
-    @echo "🚀 Ontology LSP - Available Commands"
+    @echo "🚀 Semantic Code Intelligence - Available Commands"
     @echo "===================================="
     @echo ""
     @echo "📦 MCP (Model Context Protocol) Commands:"
@@ -814,17 +814,17 @@ build-prod:
 # Build Docker image
 docker-build: build-prod
     @echo "🐳 Building Docker image..."
-    docker build -t ontology-lsp:2.0.0 .
-    docker tag ontology-lsp:2.0.0 ontology-lsp:latest
+    docker build -t semantic-code-intelligence:2.0.0 .
+    docker tag semantic-code-intelligence:2.0.0 semantic-code-intelligence:latest
     @echo "✅ Docker image built"
 
 # Push Docker image to registry
 docker-push registry="ghcr.io/tryingET": docker-build
     @echo "📤 Pushing Docker image to {{registry}}..."
-    docker tag ontology-lsp:latest {{registry}}/ontology-lsp:latest
-    docker tag ontology-lsp:2.0.0 {{registry}}/ontology-lsp:2.0.0
-    docker push {{registry}}/ontology-lsp:latest
-    docker push {{registry}}/ontology-lsp:2.0.0
+    docker tag semantic-code-intelligence:latest {{registry}}/semantic-code-intelligence:latest
+    docker tag semantic-code-intelligence:2.0.0 {{registry}}/semantic-code-intelligence:2.0.0
+    docker push {{registry}}/semantic-code-intelligence:latest
+    docker push {{registry}}/semantic-code-intelligence:2.0.0
     @echo "✅ Docker images pushed"
 
 # Start local development with Docker Compose
@@ -856,13 +856,13 @@ deploy-staging: docker-build test-all
     @if ! kubectl config current-context | grep -q staging; then echo "❌ Not connected to staging cluster"; exit 1; fi
     
     # Update image in manifests
-    @sed -i.bak "s|ontology-lsp:2.0.0|ontology-lsp:latest|g" k8s/production.yaml
+    @sed -i.bak "s|semantic-code-intelligence:2.0.0|semantic-code-intelligence:latest|g" k8s/production.yaml
     
     # Apply Kubernetes manifests
     kubectl apply -f k8s/namespace.yaml
     kubectl apply -f k8s/configmap.yaml
-    @if ! kubectl get secret ontology-lsp-secrets -n ontology-lsp >/dev/null 2>&1; then \
-        echo "❌ Kubernetes secret ontology-lsp-secrets not found. Create it from real values before deploying."; \
+    @if ! kubectl get secret semantic-code-intelligence-secrets -n semantic-code-intelligence >/dev/null 2>&1; then \
+        echo "❌ Kubernetes secret semantic-code-intelligence-secrets not found. Create it from real values before deploying."; \
         echo "   Template: k8s/secret.yaml.example"; \
         exit 1; \
     fi
@@ -872,7 +872,7 @@ deploy-staging: docker-build test-all
     
     # Wait for rollout
     @echo "⏳ Waiting for deployment rollout..."
-    kubectl rollout status deployment/ontology-lsp -n ontology-lsp --timeout=300s
+    kubectl rollout status deployment/semantic-code-intelligence -n semantic-code-intelligence --timeout=300s
     
     # Restore backup
     @mv k8s/production.yaml.bak k8s/production.yaml 2>/dev/null || true
@@ -888,15 +888,15 @@ deploy-production: docker-build test-all
     @read -r confirm && [ "$$confirm" = "y" ] || [ "$$confirm" = "Y" ] || (echo "Deployment cancelled" && exit 1)
     
     # Update image in manifests  
-    @sed -i.bak "s|ontology-lsp:2.0.0|ontology-lsp:latest|g" k8s/production.yaml
+    @sed -i.bak "s|semantic-code-intelligence:2.0.0|semantic-code-intelligence:latest|g" k8s/production.yaml
     
     # Create backup of current deployment
-    @kubectl get deployment ontology-lsp -n ontology-lsp -o yaml > deployment-backup-$(date +%Y%m%d-%H%M%S).yaml || echo "No existing deployment"
+    @kubectl get deployment ontology-lsp -n semantic-code-intelligence -o yaml > deployment-backup-$(date +%Y%m%d-%H%M%S).yaml || echo "No existing deployment"
     
     # Apply manifests with production checks
     kubectl apply -f k8s/namespace.yaml
     kubectl apply -f k8s/configmap.yaml
-    @if ! kubectl get secret ontology-lsp-secrets -n ontology-lsp >/dev/null 2>&1; then \
+    @if ! kubectl get secret semantic-code-intelligence-secrets -n semantic-code-intelligence >/dev/null 2>&1; then \
         echo "❌ Production secrets not found! Create them manually."; \
         exit 1; \
     fi
@@ -906,12 +906,12 @@ deploy-production: docker-build test-all
     
     # Wait for rollout with extended timeout
     @echo "⏳ Waiting for production deployment rollout..."
-    kubectl rollout status deployment/ontology-lsp -n ontology-lsp --timeout=600s
+    kubectl rollout status deployment/semantic-code-intelligence -n semantic-code-intelligence --timeout=600s
     
     # Verify health
     @sleep 30
     @echo "🩺 Verifying production health..."
-    @kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=ontology-lsp -n ontology-lsp --timeout=120s
+    @kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=semantic-code-intelligence -n semantic-code-intelligence --timeout=120s
     
     # Restore backup
     @mv k8s/production.yaml.bak k8s/production.yaml 2>/dev/null || true
@@ -923,38 +923,38 @@ deploy: docker-build
     @just deploy-staging
 
 # Rollback deployment
-rollback namespace="ontology-lsp":
+rollback namespace="semantic-code-intelligence":
     @echo "↩️  Rolling back deployment in {{namespace}}..."
-    kubectl rollout undo deployment/ontology-lsp -n {{namespace}}
-    kubectl rollout status deployment/ontology-lsp -n {{namespace}} --timeout=300s
+    kubectl rollout undo deployment/semantic-code-intelligence -n {{namespace}}
+    kubectl rollout status deployment/semantic-code-intelligence -n {{namespace}} --timeout=300s
     @echo "✅ Rollback complete!"
 
 # Check deployment status
-deploy-status namespace="ontology-lsp":
+deploy-status namespace="semantic-code-intelligence":
     @echo "📊 Deployment Status for {{namespace}}"
     @echo "=================================="
-    kubectl get pods -n {{namespace}} -l app.kubernetes.io/name=ontology-lsp
-    kubectl get services -n {{namespace}} -l app.kubernetes.io/name=ontology-lsp
+    kubectl get pods -n {{namespace}} -l app.kubernetes.io/name=semantic-code-intelligence
+    kubectl get services -n {{namespace}} -l app.kubernetes.io/name=semantic-code-intelligence
     kubectl get ingress -n {{namespace}}
     @echo ""
     @echo "Recent events:"
     kubectl get events -n {{namespace}} --sort-by='.lastTimestamp' | tail -10
 
 # Scale deployment
-scale replicas="3" namespace="ontology-lsp":
+scale replicas="3" namespace="semantic-code-intelligence":
     @echo "📈 Scaling deployment to {{replicas}} replicas in {{namespace}}..."
-    kubectl scale deployment/ontology-lsp --replicas={{replicas}} -n {{namespace}}
-    kubectl rollout status deployment/ontology-lsp -n {{namespace}} --timeout=300s
+    kubectl scale deployment/semantic-code-intelligence --replicas={{replicas}} -n {{namespace}}
+    kubectl rollout status deployment/semantic-code-intelligence -n {{namespace}} --timeout=300s
     @echo "✅ Scaled to {{replicas}} replicas"
 
 # Port forward for local testing
-port-forward namespace="ontology-lsp":
+port-forward namespace="semantic-code-intelligence":
     @echo "🔀 Port forwarding from {{namespace}}..."
     @echo "📍 HTTP API: http://localhost:7000"
     @echo "📍 MCP HTTP: http://localhost:7001" 
     @echo "Press Ctrl+C to stop"
-    kubectl port-forward -n {{namespace}} svc/ontology-lsp-http 7000:7000 &
-    kubectl port-forward -n {{namespace}} svc/ontology-lsp-mcp 7001:7001 &
+    kubectl port-forward -n {{namespace}} svc/semantic-code-intelligence-http 7000:7000 &
+    kubectl port-forward -n {{namespace}} svc/semantic-code-intelligence-mcp 7001:7001 &
     wait
 
 # === UTILITIES ===

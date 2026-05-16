@@ -1,13 +1,13 @@
 {
-    "name": "ontology-lsp",
+    "name": "semantic-code-intelligence",
     "displayName": "Ontology Language Server",
     "description": "Intelligent code navigation with semantic understanding, pattern learning, and knowledge propagation",
     "version": "1.0.0",
-    "publisher": "ontology-team",
+    "publisher": "tryingET",
     "license": "MIT",
     "repository": {
         "type": "git",
-        "url": "https://github.com/ontology-team/ontology-lsp.git"
+        "url": "https://github.com/tryingET/semantic-code-intelligence.git"
     },
     "engines": {
         "vscode": "^1.103.0"
@@ -34,17 +34,17 @@
     "contributes": {
         "configuration": {
             "type": "object",
-            "title": "Ontology LSP Configuration",
+            "title": "Semantic Code Intelligence Configuration",
             "properties": {
                 "ontologyLSP.enable": {
                     "type": "boolean",
                     "default": true,
-                    "description": "Enable/disable the Ontology Language Server"
+                    "description": "Enable/disable Semantic Code Intelligence"
                 },
                 "ontologyLSP.server.path": {
                     "type": "string",
                     "default": "",
-                    "description": "Path to the Ontology LSP server executable (leave empty for bundled)"
+                    "description": "Path to the Semantic Code Intelligence LSP server executable (leave empty for bundled)"
                 },
                 "ontologyLSP.trace.server": {
                     "type": "string",
@@ -134,12 +134,12 @@
         "commands": [
             {
                 "command": "ontology.enable",
-                "title": "Enable Ontology LSP",
+                "title": "Enable Semantic Code Intelligence",
                 "category": "Ontology"
             },
             {
                 "command": "ontology.disable",
-                "title": "Disable Ontology LSP",
+                "title": "Disable Semantic Code Intelligence",
                 "category": "Ontology"
             },
             {

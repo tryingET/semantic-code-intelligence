@@ -1,11 +1,11 @@
-# Ontology-LSP Kubernetes Namespace
+# Semantic Code Intelligence Kubernetes Namespace
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: ontology-lsp
+  name: semantic-code-intelligence
   labels:
-    name: ontology-lsp
-    app.kubernetes.io/name: ontology-lsp
+    name: semantic-code-intelligence
+    app.kubernetes.io/name: semantic-code-intelligence
     app.kubernetes.io/version: "2.0.0"
     app.kubernetes.io/component: namespace
   annotations:

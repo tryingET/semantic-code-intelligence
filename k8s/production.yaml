@@ -1,4 +1,4 @@
-# Ontology-LSP Production Deployment
+# Semantic Code Intelligence Production Deployment
 # All-in-one file for production deployment
 # Apply with: kubectl apply -f production.yaml
 
@@ -6,28 +6,28 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: ontology-lsp
+  name: semantic-code-intelligence
   labels:
-    name: ontology-lsp
-    app.kubernetes.io/name: ontology-lsp
+    name: semantic-code-intelligence
+    app.kubernetes.io/name: semantic-code-intelligence
 
 ---
 # Service Account and RBAC
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: ontology-lsp-sa
-  namespace: ontology-lsp
+  name: semantic-code-intelligence-sa
+  namespace: semantic-code-intelligence
   labels:
-    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/name: semantic-code-intelligence
     app.kubernetes.io/component: rbac
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: ontology-lsp-role
-  namespace: ontology-lsp
+  name: semantic-code-intelligence-role
+  namespace: semantic-code-intelligence
 rules:
   - apiGroups: [""]
     resources: ["configmaps", "secrets", "pods", "services", "endpoints"]
@@ -37,24 +37,24 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: ontology-lsp-rolebinding
-  namespace: ontology-lsp
+  name: semantic-code-intelligence-rolebinding
+  namespace: semantic-code-intelligence
 subjects:
   - kind: ServiceAccount
-    name: ontology-lsp-sa
-    namespace: ontology-lsp
+    name: semantic-code-intelligence-sa
+    namespace: semantic-code-intelligence
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: ontology-lsp-role
+  name: semantic-code-intelligence-role
 
 ---
 # ConfigMap
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: ontology-lsp-config
-  namespace: ontology-lsp
+  name: semantic-code-intelligence-config
+  namespace: semantic-code-intelligence
 data:
   NODE_ENV: "production"
   LOG_LEVEL: "info"
@@ -65,17 +65,17 @@ data:
   PERFORMANCE_MONITORING: "true"
   PATTERN_LEARNING: "true"
   OTEL_ENABLED: "true"
-  OTEL_SERVICE_NAME: "ontology-lsp"
+  OTEL_SERVICE_NAME: "semantic-code-intelligence"
 
 ---
 # Deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ontology-lsp
-  namespace: ontology-lsp
+  name: semantic-code-intelligence
+  namespace: semantic-code-intelligence
   labels:
-    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/name: semantic-code-intelligence
     app.kubernetes.io/version: "2.0.0"
 spec:
   replicas: 3
@@ -86,26 +86,26 @@ spec:
       maxSurge: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: ontology-lsp
+      app.kubernetes.io/name: semantic-code-intelligence
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: ontology-lsp
+        app.kubernetes.io/name: semantic-code-intelligence
         app.kubernetes.io/version: "2.0.0"
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "7000"
         prometheus.io/path: "/metrics"
     spec:
-      serviceAccountName: ontology-lsp-sa
+      serviceAccountName: semantic-code-intelligence-sa
       securityContext:
         runAsNonRoot: true
         runAsUser: 1001
         runAsGroup: 1001
         fsGroup: 1001
       containers:
-        - name: ontology-lsp
-          image: ontology-lsp:2.0.0
+        - name: semantic-code-intelligence
+          image: semantic-code-intelligence:2.0.0
           ports:
             - containerPort: 7000
               name: http-api
@@ -115,9 +115,9 @@ spec:
               name: lsp-tcp
           envFrom:
             - configMapRef:
-                name: ontology-lsp-config
+                name: semantic-code-intelligence-config
             - secretRef:
-                name: ontology-lsp-secrets
+                name: semantic-code-intelligence-secrets
                 optional: true
           resources:
             requests:
@@ -168,10 +168,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: ontology-lsp-http
-  namespace: ontology-lsp
+  name: semantic-code-intelligence-http
+  namespace: semantic-code-intelligence
   labels:
-    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/name: semantic-code-intelligence
     app.kubernetes.io/component: http-api
 spec:
   type: ClusterIP
@@ -180,16 +180,16 @@ spec:
       targetPort: 7000
       name: http
   selector:
-    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/name: semantic-code-intelligence
 
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: ontology-lsp-mcp
-  namespace: ontology-lsp
+  name: semantic-code-intelligence-mcp
+  namespace: semantic-code-intelligence
   labels:
-    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/name: semantic-code-intelligence
     app.kubernetes.io/component: mcp-http
 spec:
   type: ClusterIP
@@ -198,20 +198,20 @@ spec:
       targetPort: 7001
       name: mcp-http
   selector:
-    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/name: semantic-code-intelligence
 
 ---
 # Horizontal Pod Autoscaler
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: ontology-lsp-hpa
-  namespace: ontology-lsp
+  name: semantic-code-intelligence-hpa
+  namespace: semantic-code-intelligence
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: ontology-lsp
+    name: semantic-code-intelligence
   minReplicas: 2
   maxReplicas: 10
   metrics:
@@ -233,10 +233,10 @@ spec:
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: ontology-lsp-pdb
-  namespace: ontology-lsp
+  name: semantic-code-intelligence-pdb
+  namespace: semantic-code-intelligence
 spec:
   minAvailable: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: ontology-lsp
+      app.kubernetes.io/name: semantic-code-intelligence

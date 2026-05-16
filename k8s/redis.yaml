@@ -1,9 +1,9 @@
-# Redis Cache for Ontology-LSP
+# Redis Cache for Semantic Code Intelligence
 apiVersion: v1
 kind: Service
 metadata:
   name: redis-service
-  namespace: ontology-lsp
+  namespace: semantic-code-intelligence
   labels:
     app.kubernetes.io/name: redis
     app.kubernetes.io/component: cache
@@ -22,7 +22,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: redis-pvc
-  namespace: ontology-lsp
+  namespace: semantic-code-intelligence
   labels:
     app.kubernetes.io/name: redis
     app.kubernetes.io/component: storage
@@ -39,7 +39,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: redis
-  namespace: ontology-lsp
+  namespace: semantic-code-intelligence
   labels:
     app.kubernetes.io/name: redis
     app.kubernetes.io/component: cache
@@ -72,7 +72,7 @@ spec:
             - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: ontology-lsp-secrets
+                  name: semantic-code-intelligence-secrets
                   key: REDIS_PASSWORD
                   optional: true
           volumeMounts:

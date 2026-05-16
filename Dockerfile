@@ -1,4 +1,4 @@
-# Ontology-LSP Production Dockerfile
+# Semantic Code Intelligence Production Dockerfile
 # Multi-stage build for optimal production deployment
 
 # ================================
@@ -175,7 +175,7 @@ COPY --chown=ontology:ontology <<'EOF' /app/start-services.sh
 #!/bin/sh
 set -e
 
-echo "🚀 Starting Ontology-LSP Production Services..."
+echo "🚀 Starting Semantic Code Intelligence Production Services..."
 echo "=============================================="
 
 # Create necessary directories
@@ -214,10 +214,10 @@ CMD ["/app/start-services.sh"]
 
 # Add metadata labels
 LABEL \
-    org.opencontainers.image.title="Ontology-LSP" \
+    org.opencontainers.image.title="Semantic Code Intelligence" \
     org.opencontainers.image.description="Intelligent Programming Companion with MCP, LSP, and HTTP protocols" \
     org.opencontainers.image.version="2.0.0" \
-    org.opencontainers.image.vendor="Ontology LSP" \
+    org.opencontainers.image.vendor="tryingET" \
     org.opencontainers.image.licenses="MIT" \
     org.opencontainers.image.source="https://github.com/tryingET/semantic-code-intelligence" \
     ontology.protocols="lsp,mcp,http" \

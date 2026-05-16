@@ -1,11 +1,11 @@
-# Ontology-LSP Service Definitions
+# Semantic Code Intelligence Service Definitions
 apiVersion: v1
 kind: Service
 metadata:
-  name: ontology-lsp-http
-  namespace: ontology-lsp
+  name: semantic-code-intelligence-http
+  namespace: semantic-code-intelligence
   labels:
-    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/name: semantic-code-intelligence
     app.kubernetes.io/component: http-api
   annotations:
     prometheus.io/scrape: "true"
@@ -19,16 +19,16 @@ spec:
       protocol: TCP
       name: http
   selector:
-    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/name: semantic-code-intelligence
 
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: ontology-lsp-mcp
-  namespace: ontology-lsp
+  name: semantic-code-intelligence-mcp
+  namespace: semantic-code-intelligence
   labels:
-    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/name: semantic-code-intelligence
     app.kubernetes.io/component: mcp-http
 spec:
   type: ClusterIP
@@ -38,16 +38,16 @@ spec:
       protocol: TCP
       name: mcp-http
   selector:
-    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/name: semantic-code-intelligence
 
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: ontology-lsp-lsp
-  namespace: ontology-lsp
+  name: semantic-code-intelligence-lsp
+  namespace: semantic-code-intelligence
   labels:
-    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/name: semantic-code-intelligence
     app.kubernetes.io/component: lsp-server
 spec:
   type: ClusterIP
@@ -57,17 +57,17 @@ spec:
       protocol: TCP
       name: lsp-tcp
   selector:
-    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/name: semantic-code-intelligence
 
 ---
 # Headless service for StatefulSet-like behavior (if needed)
 apiVersion: v1
 kind: Service
 metadata:
-  name: ontology-lsp-headless
-  namespace: ontology-lsp
+  name: semantic-code-intelligence-headless
+  namespace: semantic-code-intelligence
   labels:
-    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/name: semantic-code-intelligence
     app.kubernetes.io/component: headless
 spec:
   type: ClusterIP
@@ -87,4 +87,4 @@ spec:
       protocol: TCP
       name: lsp-tcp
   selector:
-    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/name: semantic-code-intelligence

@@ -469,7 +469,7 @@ Create `.vscode/settings.json`:
 Example (from an extension):
 ```ts
 // Using the public Extension API
-const api = await vscode.extensions.getExtension('your.publisher.ontology-lsp')?.activate();
+const api = await vscode.extensions.getExtension('tryingET.semantic-code-intelligence')?.activate();
 const symbolMap = await api?.buildSymbolMap('MySymbol', { astOnly: true, maxFiles: 10 });
 const plan = await api?.planRename('OldName', 'NewName');
 ```
@@ -936,7 +936,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## 🎉 Production Status
 
-**The Ontology-LSP system is now production-ready** with:
+**Semantic Code Intelligence is now production-ready** with:
 - ✅ **Unified architecture** with zero code duplication
 - ✅ **All performance targets exceeded** (86% under target times)
 - ✅ **Comprehensive testing** (100% adapter tests passing)

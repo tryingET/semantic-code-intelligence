@@ -1,11 +1,11 @@
-# Ontology-LSP Main Application Deployment
+# Semantic Code Intelligence Main Application Deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ontology-lsp
-  namespace: ontology-lsp
+  name: semantic-code-intelligence
+  namespace: semantic-code-intelligence
   labels:
-    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/name: semantic-code-intelligence
     app.kubernetes.io/component: application
     app.kubernetes.io/version: "2.0.0"
 spec:
@@ -17,11 +17,11 @@ spec:
       maxSurge: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: ontology-lsp
+      app.kubernetes.io/name: semantic-code-intelligence
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: ontology-lsp
+        app.kubernetes.io/name: semantic-code-intelligence
         app.kubernetes.io/component: application
         app.kubernetes.io/version: "2.0.0"
       annotations:
@@ -34,10 +34,10 @@ spec:
         runAsUser: 1001
         runAsGroup: 1001
         fsGroup: 1001
-      serviceAccountName: ontology-lsp-sa
+      serviceAccountName: semantic-code-intelligence-sa
       containers:
-        - name: ontology-lsp
-          image: ontology-lsp:2.0.0  # Update with your registry
+        - name: semantic-code-intelligence
+          image: semantic-code-intelligence:2.0.0  # Update with your registry
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 7000
@@ -54,74 +54,74 @@ spec:
             - name: NODE_ENV
               valueFrom:
                 configMapKeyRef:
-                  name: ontology-lsp-config
+                  name: semantic-code-intelligence-config
                   key: NODE_ENV
             - name: LOG_LEVEL
               valueFrom:
                 configMapKeyRef:
-                  name: ontology-lsp-config
+                  name: semantic-code-intelligence-config
                   key: LOG_LEVEL
             - name: HTTP_API_PORT
               valueFrom:
                 configMapKeyRef:
-                  name: ontology-lsp-config
+                  name: semantic-code-intelligence-config
                   key: HTTP_API_PORT
             - name: MCP_HTTP_PORT
               valueFrom:
                 configMapKeyRef:
-                  name: ontology-lsp-config
+                  name: semantic-code-intelligence-config
                   key: MCP_HTTP_PORT
             - name: LSP_SERVER_PORT
               valueFrom:
                 configMapKeyRef:
-                  name: ontology-lsp-config
+                  name: semantic-code-intelligence-config
                   key: LSP_SERVER_PORT
             - name: CACHE_TTL
               valueFrom:
                 configMapKeyRef:
-                  name: ontology-lsp-config
+                  name: semantic-code-intelligence-config
                   key: CACHE_TTL
             - name: PERFORMANCE_MONITORING
               valueFrom:
                 configMapKeyRef:
-                  name: ontology-lsp-config
+                  name: semantic-code-intelligence-config
                   key: PERFORMANCE_MONITORING
             - name: PATTERN_LEARNING
               valueFrom:
                 configMapKeyRef:
-                  name: ontology-lsp-config
+                  name: semantic-code-intelligence-config
                   key: PATTERN_LEARNING
             - name: OTEL_ENABLED
               valueFrom:
                 configMapKeyRef:
-                  name: ontology-lsp-config
+                  name: semantic-code-intelligence-config
                   key: OTEL_ENABLED
             - name: OTEL_SERVICE_NAME
               valueFrom:
                 configMapKeyRef:
-                  name: ontology-lsp-config
+                  name: semantic-code-intelligence-config
                   key: OTEL_SERVICE_NAME
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               valueFrom:
                 configMapKeyRef:
-                  name: ontology-lsp-config
+                  name: semantic-code-intelligence-config
                   key: OTEL_EXPORTER_OTLP_ENDPOINT
             
             # Secrets
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: ontology-lsp-secrets
+                  name: semantic-code-intelligence-secrets
                   key: DATABASE_URL
             - name: REDIS_URL
               valueFrom:
                 secretKeyRef:
-                  name: ontology-lsp-secrets
+                  name: semantic-code-intelligence-secrets
                   key: REDIS_URL
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: ontology-lsp-secrets
+                  name: semantic-code-intelligence-secrets
                   key: JWT_SECRET
             
             # Pod metadata
@@ -213,7 +213,7 @@ spec:
                   matchExpressions:
                     - key: app.kubernetes.io/name
                       operator: In
-                      values: ["ontology-lsp"]
+                      values: ["semantic-code-intelligence"]
                 topologyKey: kubernetes.io/hostname
         nodeAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
@@ -228,7 +228,7 @@ spec:
       tolerations:
         - key: "app"
           operator: "Equal"
-          value: "ontology-lsp"
+          value: "semantic-code-intelligence"
           effect: "NoSchedule"
       
       volumes:

@@ -1,11 +1,11 @@
-# Ontology-LSP Ingress for External Access
+# Semantic Code Intelligence Ingress for External Access
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: ontology-lsp-ingress
-  namespace: ontology-lsp
+  name: semantic-code-intelligence-ingress
+  namespace: semantic-code-intelligence
   labels:
-    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/name: semantic-code-intelligence
     app.kubernetes.io/component: ingress
   annotations:
     # Nginx ingress controller
@@ -19,7 +19,7 @@ metadata:
     
     # CORS configuration
     nginx.ingress.kubernetes.io/enable-cors: "true"
-    nginx.ingress.kubernetes.io/cors-allow-origin: "https://ontology-lsp.example.com"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "https://semantic-code-intelligence.example.com"
     nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
     nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization"
     
@@ -53,52 +53,52 @@ metadata:
 spec:
   tls:
     - hosts:
-        - ontology-lsp.example.com
-        - api.ontology-lsp.example.com
-        - mcp.ontology-lsp.example.com
-      secretName: ontology-lsp-tls
+        - semantic-code-intelligence.example.com
+        - api.semantic-code-intelligence.example.com
+        - mcp.semantic-code-intelligence.example.com
+      secretName: semantic-code-intelligence-tls
   
   rules:
     # Main web interface
-    - host: ontology-lsp.example.com
+    - host: semantic-code-intelligence.example.com
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: ontology-lsp-http
+                name: semantic-code-intelligence-http
                 port:
                   number: 7000
     
     # API subdomain
-    - host: api.ontology-lsp.example.com
+    - host: api.semantic-code-intelligence.example.com
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: ontology-lsp-http
+                name: semantic-code-intelligence-http
                 port:
                   number: 7000
           - path: /metrics
             pathType: Exact
             backend:
               service:
-                name: ontology-lsp-http
+                name: semantic-code-intelligence-http
                 port:
                   number: 7000
     
     # MCP subdomain
-    - host: mcp.ontology-lsp.example.com
+    - host: mcp.semantic-code-intelligence.example.com
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: ontology-lsp-mcp
+                name: semantic-code-intelligence-mcp
                 port:
                   number: 7001
 
@@ -107,10 +107,10 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: ontology-lsp-monitoring
-  namespace: ontology-lsp
+  name: semantic-code-intelligence-monitoring
+  namespace: semantic-code-intelligence
   labels:
-    app.kubernetes.io/name: ontology-lsp
+    app.kubernetes.io/name: semantic-code-intelligence
     app.kubernetes.io/component: monitoring
   annotations:
     kubernetes.io/ingress.class: "nginx"
@@ -118,20 +118,20 @@ metadata:
     nginx.ingress.kubernetes.io/rewrite-target: /$2
 spec:
   rules:
-    - host: monitoring.ontology-lsp.example.com
+    - host: monitoring.semantic-code-intelligence.example.com
       http:
         paths:
           - path: /api/metrics(/|$)(.*)
             pathType: Prefix
             backend:
               service:
-                name: ontology-lsp-http
+                name: semantic-code-intelligence-http
                 port:
                   number: 7000
           - path: /mcp/metrics(/|$)(.*)
             pathType: Prefix
             backend:
               service:
-                name: ontology-lsp-mcp
+                name: semantic-code-intelligence-mcp
                 port:
                   number: 7001
