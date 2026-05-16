@@ -1,6 +1,6 @@
 # GitHub Branch Protection Setup
 
-This document provides the recommended branch protection rules and GitHub settings for the Ontology-LSP project.
+This document provides the recommended branch protection rules and GitHub settings for the Semantic Code Intelligence project.
 
 ## Branch Protection Rules
 
@@ -194,11 +194,11 @@ Create `.github/pull_request_template.md` with checklist:
 Add these badges to your README.md:
 
 ```markdown
-[![CI](https://github.com/your-username/ontology-lsp/workflows/CI/badge.svg)](https://github.com/your-username/ontology-lsp/actions/workflows/ci.yml)
-[![CD](https://github.com/your-username/ontology-lsp/workflows/CD/badge.svg)](https://github.com/your-username/ontology-lsp/actions/workflows/cd.yml)
-[![Security](https://github.com/your-username/ontology-lsp/workflows/Security%20&%20Dependencies/badge.svg)](https://github.com/your-username/ontology-lsp/actions/workflows/security.yml)
-[![codecov](https://codecov.io/gh/your-username/ontology-lsp/branch/main/graph/badge.svg)](https://codecov.io/gh/your-username/ontology-lsp)
-[![Docker](https://img.shields.io/docker/v/your-username/ontology-lsp?label=docker&logo=docker)](https://ghcr.io/your-username/ontology-lsp)
+[![CI](https://github.com/your-username/semantic-code-intelligence/workflows/CI/badge.svg)](https://github.com/your-username/semantic-code-intelligence/actions/workflows/ci.yml)
+[![CD](https://github.com/your-username/semantic-code-intelligence/workflows/CD/badge.svg)](https://github.com/your-username/semantic-code-intelligence/actions/workflows/cd.yml)
+[![Security](https://github.com/your-username/semantic-code-intelligence/workflows/Security%20&%20Dependencies/badge.svg)](https://github.com/your-username/semantic-code-intelligence/actions/workflows/security.yml)
+[![codecov](https://codecov.io/gh/your-username/semantic-code-intelligence/branch/main/graph/badge.svg)](https://codecov.io/gh/your-username/semantic-code-intelligence)
+[![Docker](https://img.shields.io/docker/v/your-username/semantic-code-intelligence?label=docker&logo=docker)](https://ghcr.io/your-username/semantic-code-intelligence)
 ```
 
 ## Applying These Settings

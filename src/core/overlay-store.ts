@@ -156,7 +156,7 @@ export class OverlayStore {
     }
 
     private resolveWorkspaceBase(): string {
-        const envBase = process.env.WORKSPACE_ROOT || process.env.ONTOLOGY_WORKSPACE || '';
+        const envBase = process.env.WORKSPACE_ROOT || process.env.SEMANTIC_CODE_WORKSPACE || '';
         if (envBase) {
             try {
                 const abs = path.resolve(envBase);

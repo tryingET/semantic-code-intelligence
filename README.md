@@ -91,27 +91,27 @@ type: "reference"
 
 ```bash
 # Run directly without installing using bunx
-bunx ontology-lsp-proxy init
-bunx ontology-lsp-proxy start --stdio
-bunx ontology-lsp-proxy analyze
-bunx ontology-lsp-proxy stats
+bunx semantic-code-intelligence init
+bunx semantic-code-intelligence start --stdio
+bunx semantic-code-intelligence analyze
+bunx semantic-code-intelligence stats
 
 # Or use the shorter alias after first run
-bunx ontology-lsp init
+bunx semantic-code-intelligence init
 ```
 
 ### Global Installation
 
 ```bash
 # Install globally with npm
-npm install -g ontology-lsp-proxy
+npm install -g semantic-code-intelligence
 
 # Or with Bun
-bun install -g ontology-lsp-proxy
+bun install -g semantic-code-intelligence
 
 # Then use directly
-ontology-lsp init
-ontology-lsp start
+semantic-code-intelligence init
+semantic-code-intelligence start
 ```
 
 ### Manual Installation
@@ -147,16 +147,16 @@ Add to your `.mcp.json`:
 ```json
 {
   "mcpServers": {
-    "ontology-lsp": {
+    "semantic-code-intelligence": {
       "command": "bun",
       "args": ["run", "./dist/mcp/mcp.js"],
       "type": "stdio",
-      "description": "Ontology-enhanced LSP with 5-layer architecture"
+      "description": "Semantic code intelligence LSP with 5-layer architecture"
     },
-    "ontology-lsp-sse": {
+    "semantic-code-intelligence-sse": {
       "type": "sse",
       "url": "http://localhost:7001/mcp/sse",
-      "description": "Ontology-enhanced LSP with Streamable HTTP transport (requires 'just start')"
+      "description": "Semantic code intelligence LSP with Streamable HTTP transport (requires 'just start')"
     }
   }
 }
@@ -175,7 +175,7 @@ The system uses the following default ports (all configurable via environment va
 
 ### Project Configuration
 
-Create `.ontology-lsp-config.yaml` in your project root:
+Create `.semantic-code-intelligence-config.yaml` in your project root:
 
 ```yaml
 version: 1.0.0
@@ -264,7 +264,7 @@ performance:
 CLI example using tree view:
 
 ```bash
-ontology-lsp explore parseFile --file src --summary --tree --tree-depth 3
+semantic-code-intelligence explore parseFile --file src --summary --tree --tree-depth 3
 ```
 
 ## Monitoring & Metrics
@@ -283,7 +283,7 @@ You can inspect system health and performance via an HTTP endpoint or the CLI.
 - CLI stats:
   - Installed binary:
     ```bash
-    ontology-lsp stats
+    semantic-code-intelligence stats
     ```
   - Development (without build):
     ```bash
@@ -300,10 +300,10 @@ Build a targeted symbol map (declarations/references/imports/exports):
 
 ```bash
 # JSON output for tooling
-ontology-lsp symbol-map MySymbol --max-files 10 --json
+semantic-code-intelligence symbol-map MySymbol --max-files 10 --json
 
 # Pretty summary
-ontology-lsp symbol-map MySymbol --max-files 10
+semantic-code-intelligence symbol-map MySymbol --max-files 10
 
 # Justfile helpers
 just symbol-map MySymbol
@@ -313,10 +313,10 @@ Plan a rename (preview only; does not apply changes):
 
 ```bash
 # JSON preview
-ontology-lsp plan-rename OldName NewName --json
+semantic-code-intelligence plan-rename OldName NewName --json
 
 # Human-readable preview
-ontology-lsp plan-rename OldName NewName
+semantic-code-intelligence plan-rename OldName NewName
 
 # Justfile helper
 just plan-rename OldName NewName
@@ -454,11 +454,11 @@ console.log(`Found ${related.length} related concepts`);
 Create `.vscode/settings.json`:
 ```json
 {
-  "ontologyLSP.enabled": true,
-  "ontologyLSP.server.path": "ontology-lsp",
-  "ontologyLSP.fuzzyMatching.enabled": true,
-  "ontologyLSP.patternLearning.enabled": true,
-  "ontologyLSP.propagation.autoApply": false
+  "semanticCodeIntelligence.enabled": true,
+  "semanticCodeIntelligence.server.path": "semantic-code-intelligence",
+  "semanticCodeIntelligence.fuzzyMatching.enabled": true,
+  "semanticCodeIntelligence.patternLearning.enabled": true,
+  "semanticCodeIntelligence.propagation.autoApply": false
 }
 ```
 
@@ -508,8 +508,8 @@ jobs:
       - uses: actions/checkout@v2
       - name: Check refactoring suggestions
         run: |
-          ontology-lsp analyze --format=github-annotation
-          ontology-lsp suggest-renames --confidence=0.9
+          semantic-code-intelligence analyze --format=github-annotation
+          semantic-code-intelligence suggest-renames --confidence=0.9
 ```
 
 ## Development
@@ -607,8 +607,8 @@ Notes:
 
 Enable debug logging:
 ```bash
-export DEBUG=ontology-lsp:*
-ontology-lsp start --verbose
+export DEBUG=semantic-code-intelligence:*
+semantic-code-intelligence start --verbose
 ```
 
 View internal state:
@@ -750,7 +750,7 @@ rm .ontology/concepts.db
 just restart
 
 # Enable debug logging
-DEBUG=ontology-lsp:* just dev
+DEBUG=semantic-code-intelligence:* just dev
 ```
 
 #### 🌐 Web UI Not Loading

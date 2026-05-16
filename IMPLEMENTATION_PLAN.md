@@ -142,7 +142,7 @@ export class MCPAdapter {
 
   private setupServer() {
     this.server = new Server({
-      name: "ontology-lsp",
+      name: "semantic-code-intelligence",
       version: "2.0.0"
     })
 

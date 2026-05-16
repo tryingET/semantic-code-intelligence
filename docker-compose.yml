@@ -1,4 +1,4 @@
-# Ontology-LSP Local Development Environment
+# Semantic Code Intelligence Local Development Environment
 # Full-stack deployment with all dependencies
 
 version: '3.8'
@@ -13,7 +13,7 @@ services:
     image: pgvector/pgvector:pg16
     container_name: ontology-postgres
     environment:
-      POSTGRES_DB: ontology_lsp
+      POSTGRES_DB: semantic_code_intelligence
       POSTGRES_USER: ontology
       POSTGRES_PASSWORD: ontology_dev_password
       PGDATA: /var/lib/postgresql/data/pgdata
@@ -23,7 +23,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./config/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ontology -d ontology_lsp"]
+      test: ["CMD-SHELL", "pg_isready -U ontology -d semantic_code_intelligence"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -53,16 +53,16 @@ services:
     restart: unless-stopped
 
   # ================================
-  # Ontology-LSP Services
+  # Semantic Code Intelligence Services
   # ================================
   
-  # Main Ontology-LSP Application (All protocols in one container)
-  ontology-lsp:
+  # Main Semantic Code Intelligence Application (All protocols in one container)
+  semantic-code-intelligence:
     build:
       context: .
       dockerfile: Dockerfile
       target: runtime
-    container_name: ontology-lsp-main
+    container_name: semantic-code-intelligence-main
     depends_on:
       postgres:
         condition: service_healthy
@@ -70,7 +70,7 @@ services:
         condition: service_healthy
     environment:
       # Database Configuration
-      DATABASE_URL: postgres://ontology:ontology_dev_password@postgres:5432/ontology_lsp
+      DATABASE_URL: postgres://ontology:ontology_dev_password@postgres:5432/semantic_code_intelligence
       DATABASE_PATH: /app/data/ontology.db
       
       # Cache Configuration  
@@ -91,7 +91,7 @@ services:
       # Production Settings
       NODE_ENV: development
       LOG_LEVEL: debug
-      ONTOLOGY_WORKSPACE: /app/workspace
+      SEMANTIC_CODE_WORKSPACE: /app/workspace
       
       # Security
       TRUST_PROXY: "true"
@@ -99,7 +99,7 @@ services:
       
       # OpenTelemetry Tracing
       OTEL_ENABLED: "true"
-      OTEL_SERVICE_NAME: ontology-lsp
+      OTEL_SERVICE_NAME: semantic-code-intelligence
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
       
     ports:
@@ -204,7 +204,7 @@ services:
       - ./web-ui/dist:/usr/share/nginx/html:ro
       - ./config/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
-      - ontology-lsp
+      - semantic-code-intelligence
     networks:
       - ontology-network
     restart: unless-stopped

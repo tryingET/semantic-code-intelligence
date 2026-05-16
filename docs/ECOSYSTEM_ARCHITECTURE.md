@@ -10,7 +10,7 @@ type: "reference"
 
 ## Overview
 
-The Ontology-LSP Ecosystem Extensions create a self-reinforcing knowledge economy where code intelligence compounds through four interconnected pillars. This document provides the complete architectural vision with detailed visualizations.
+The Semantic Code Intelligence Ecosystem Extensions create a self-reinforcing knowledge economy where code intelligence compounds through four interconnected pillars. This document provides the complete architectural vision with detailed visualizations.
 
 ## The Four Pillars of Ecosystem Extensions
 

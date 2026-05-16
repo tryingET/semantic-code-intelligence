@@ -8,7 +8,7 @@ type: "reference"
 
 # Unified Core Architecture
 
-This directory contains the unified, protocol-agnostic core architecture for the ontology-lsp project. The architecture eliminates duplicate code between protocol adapters (LSP, MCP, HTTP) and provides a single source of truth for all code analysis functionality.
+This directory contains the unified, protocol-agnostic core architecture for the semantic-code-intelligence project. The architecture eliminates duplicate code between protocol adapters (LSP, MCP, HTTP) and provides a single source of truth for all code analysis functionality.
 
 ## Architecture Overview
 
@@ -149,7 +149,7 @@ const config = {
     redis: {
       url: 'redis://localhost:6379',
       ttl: 3600,
-      keyPrefix: 'ontology-lsp:'
+      keyPrefix: 'semantic-code-intelligence:'
     }
   },
   monitoring: {

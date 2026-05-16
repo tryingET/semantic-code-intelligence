@@ -1,4 +1,4 @@
-# Sample Python file for testing Ontology LSP
+# Sample Python file for testing Semantic Code Intelligence
 from typing import Optional, List, Dict, Any
 
 class UserRepository:

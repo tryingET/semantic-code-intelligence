@@ -1,4 +1,4 @@
-// Sample TypeScript file for testing Ontology LSP
+// Sample TypeScript file for testing Semantic Code Intelligence
 export class UserService {
     private users: User[] = [];
     

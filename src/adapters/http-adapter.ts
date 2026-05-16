@@ -840,7 +840,7 @@ export class HTTPAdapter {
         const spec: any = {
             openapi: '3.0.0',
             info: {
-                title: 'Ontology LSP HTTP API',
+                title: 'Semantic Code Intelligence HTTP API',
                 version: ver,
                 description: 'REST API for ontology-enhanced language server functionality',
             },

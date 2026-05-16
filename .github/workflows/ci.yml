@@ -355,7 +355,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/ontology-lsp
+          images: ghcr.io/${{ github.repository_owner }}/semantic-code-intelligence
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -377,7 +377,7 @@ jobs:
         uses: aquasecurity/trivy-action@master
         if: github.ref == 'refs/heads/main'
         with:
-          image-ref: ghcr.io/${{ github.repository_owner }}/ontology-lsp:latest
+          image-ref: ghcr.io/${{ github.repository_owner }}/semantic-code-intelligence:latest
           format: 'sarif'
           output: 'trivy-results.sarif'
 
@@ -470,7 +470,7 @@ jobs:
     steps:
       - name: Create job summary
         run: |
-          echo "# 🚀 Ontology-LSP CI Results" >> $GITHUB_STEP_SUMMARY
+          echo "# 🚀 Semantic Code Intelligence CI Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY

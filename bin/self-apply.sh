@@ -24,7 +24,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Reuse existing snapshot when available for iterative runs
-SNAP=$(ontology-lsp get-snapshot --prefer-existing)
+SNAP=$(semantic-code-intelligence get-snapshot --prefer-existing)
 
 if [[ -z "$PATCH_FILE" ]]; then
   TMP=$(mktemp)
@@ -50,7 +50,7 @@ if [[ ${#CMDS[@]} -eq 0 ]]; then
 fi
 
 # Prefer the workflow alias which reads the patch and runs checks inside the snapshot
-if ontology-lsp patch-checks-in-snapshot --snapshot "$SNAP" --patch-file "$PATCH_FILE" --only-touched $(printf ' --cmd %q' "${CMDS[@]}") --timeout 240; then
+if semantic-code-intelligence patch-checks-in-snapshot --snapshot "$SNAP" --patch-file "$PATCH_FILE" --only-touched $(printf ' --cmd %q' "${CMDS[@]}") --timeout 240; then
   :
 else
   echo "✗ Patch checks failed (snapshot: $SNAP). See output above." >&2

@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ontology-lsp.dev/schemas/plugin-manifest.json",
-  "title": "Ontology-LSP Plugin Manifest",
-  "description": "Schema for Ontology-LSP plugin manifest files (plugin.json)",
+  "$id": "https://semantic-code-intelligence.dev/schemas/plugin-manifest.json",
+  "title": "Semantic Code Intelligence Plugin Manifest",
+  "description": "Schema for Semantic Code Intelligence plugin manifest files (plugin.json)",
   "type": "object",
   "required": [
     "id",

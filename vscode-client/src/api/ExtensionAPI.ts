@@ -1,6 +1,6 @@
 /**
  * Extension API
- * Public API for third-party extensions to integrate with Ontology LSP
+ * Public API for third-party extensions to integrate with Semantic Code Intelligence
  * 
  * Sixth-order consideration: Extensibility for future AI integration and ecosystem growth
  */

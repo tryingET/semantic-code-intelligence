@@ -22,7 +22,7 @@ process.env.STDIO_MODE = 'true';
 
 const server = new Server(
   {
-    name: "debug-ontology-lsp",
+    name: "debug-semantic-code-intelligence",
     version: "1.0.0",
   },
   {

@@ -1,8 +1,8 @@
 {
   "dashboard": {
     "id": null,
-    "title": "Ontology-LSP Overview",
-    "tags": ["ontology-lsp", "code-intelligence", "performance"],
+    "title": "Semantic Code Intelligence Overview",
+    "tags": ["semantic-code-intelligence", "code-intelligence", "performance"],
     "style": "dark",
     "timezone": "browser",
     "panels": [

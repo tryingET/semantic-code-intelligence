@@ -20,7 +20,7 @@ suite('End-to-End Workflow Test Suite', () => {
         await fs.mkdir(testWorkspacePath, { recursive: true });
         
         // Wait for extension to be ready
-        const ext = vscode.extensions.getExtension('ontology-team.ontology-lsp');
+        const ext = vscode.extensions.getExtension('tryingET.semantic-code-intelligence');
         if (ext && !ext.isActive) {
             await ext.activate();
         }
@@ -33,7 +33,7 @@ suite('End-to-End Workflow Test Suite', () => {
         // Create a test file for each test
         const testFilePath = path.join(testWorkspacePath, 'test.ts');
         const testContent = `
-// Test file for Ontology LSP
+// Test file for Semantic Code Intelligence
 function getUserData(userId: string): Promise<User> {
     return fetch(\`/api/users/\${userId}\`)
         .then(response => response.json());
@@ -231,7 +231,7 @@ class UserService {
     test('Should handle configuration changes', async function() {
         this.timeout(10000);
         
-        const config = vscode.workspace.getConfiguration('ontologyLSP');
+        const config = vscode.workspace.getConfiguration('semanticCodeIntelligence');
         
         // Change configuration
         await config.update('fuzzyMatching.threshold', 0.8, vscode.ConfigurationTarget.Workspace);

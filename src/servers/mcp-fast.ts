@@ -31,7 +31,7 @@ export class FastMCPServer {
     constructor() {
         this.server = new Server(
             {
-                name: 'ontology-lsp',
+                name: 'semantic-code-intelligence',
                 version: '1.0.0',
             },
             {
@@ -163,7 +163,7 @@ export class FastMCPServer {
 
             // Initialize core analyzer with optimized config for MCP server
             const config = createDefaultCoreConfig();
-            const workspaceRoot = process.env.ONTOLOGY_WORKSPACE || process.env.WORKSPACE_ROOT || process.cwd();
+            const workspaceRoot = process.env.SEMANTIC_CODE_WORKSPACE || process.env.WORKSPACE_ROOT || process.cwd();
 
             // Disable slow startup operations and set aggressive timeouts
             if (config.optimization) {

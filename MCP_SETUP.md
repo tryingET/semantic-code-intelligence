@@ -38,11 +38,11 @@ The `.mcp.json` file is configured to use the optimized wrapper:
 ```json
 {
   "mcpServers": {
-    "ontology-lsp": {
+    "semantic-code-intelligence": {
       "command": "./mcp-wrapper.sh",
       "args": [],
       "type": "stdio",
-      "description": "Ontology-enhanced LSP with 5-layer architecture"
+      "description": "Semantic code intelligence LSP with 5-layer architecture"
     }
   }
 }

@@ -18,20 +18,20 @@ Sleep 600ms
 Type "echo 'Find by class name (TS)'"
 Enter
 Sleep 500ms
-Type "ontology-lsp find UserService -n 5"
+Type "semantic-code-intelligence find UserService -n 5"
 Enter
 Sleep 1600ms
 
 Type "echo 'Find method in specific file (TS, verbose)'"
 Enter
 Sleep 500ms
-Type "ontology-lsp find getUser -f sample.ts -n 3 -v"
+Type "semantic-code-intelligence find getUser -f sample.ts -n 3 -v"
 Enter
 Sleep 2000ms
 
 Type "echo 'Find Python symbol'"
 Enter
 Sleep 500ms
-Type "ontology-lsp find get_user -f sample.py -n 3"
+Type "semantic-code-intelligence find get_user -f sample.py -n 3"
 Enter
 Sleep 1800ms

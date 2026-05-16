@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Ontology LSP - Session Stop Hook
+# Semantic Code Intelligence - Session Stop Hook
 # Stops all servers using the justfile
 
 set -euo pipefail
@@ -24,7 +24,7 @@ if ! command -v just &> /dev/null; then
 fi
 
 # Stop all servers using justfile
-echo "🛑 Stopping Ontology LSP System..."
+echo "🛑 Stopping Semantic Code Intelligence System..."
 just stop
 
 echo ""

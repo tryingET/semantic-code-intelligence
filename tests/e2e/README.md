@@ -8,7 +8,7 @@ type: "reference"
 
 # End-to-End Integration Tests
 
-This directory contains comprehensive end-to-end tests that validate the Ontology-LSP system against real-world codebases. These tests ensure the system works correctly with actual open-source projects and meets performance requirements under realistic conditions.
+This directory contains comprehensive end-to-end tests that validate the Semantic Code Intelligence system against real-world codebases. These tests ensure the system works correctly with actual open-source projects and meets performance requirements under realistic conditions.
 
 ## 🎯 Test Objectives
 
@@ -117,7 +117,7 @@ bun test tests/e2e/ --coverage
 REPO_SIZE=small bun test tests/e2e/
 
 # Debug mode with verbose logging
-DEBUG=ontology-lsp:* bun test tests/e2e/
+DEBUG=semantic-code-intelligence:* bun test tests/e2e/
 ```
 
 ## 📊 Performance Targets
@@ -302,10 +302,10 @@ USE_LOCAL_REPOS=true bun test tests/e2e/
 **Slow Operations**
 ```bash
 # Profile individual operations
-DEBUG=ontology-lsp:performance bun test tests/e2e/
+DEBUG=semantic-code-intelligence:performance bun test tests/e2e/
 
 # Check layer performance
-DEBUG=ontology-lsp:layers bun test tests/e2e/
+DEBUG=semantic-code-intelligence:layers bun test tests/e2e/
 
 # Monitor system resources
 top -p $(pgrep -f "bun test")
@@ -326,7 +326,7 @@ bun --inspect test tests/e2e/
 rm -rf .ontology-test-cache
 
 # Monitor cache performance
-DEBUG=ontology-lsp:cache bun test tests/e2e/
+DEBUG=semantic-code-intelligence:cache bun test tests/e2e/
 ```
 
 ## 🎛️ Configuration
@@ -455,4 +455,4 @@ The E2E tests pass when:
 - Add new representative repositories as they become available
 - Remove repositories that become unmaintained
 
-This comprehensive E2E test suite ensures the Ontology-LSP system works reliably with real-world codebases and meets all performance and functionality requirements.
+This comprehensive E2E test suite ensures the Semantic Code Intelligence system works reliably with real-world codebases and meets all performance and functionality requirements.

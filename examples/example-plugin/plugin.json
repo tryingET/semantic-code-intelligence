@@ -4,9 +4,9 @@
   "version": "1.0.0",
   "description": "Example layer plugin that enhances Layer 1 search with advanced fuzzy matching and caching optimizations",
   "author": {
-    "name": "Ontology-LSP Team",
-    "email": "plugins@ontology-lsp.dev",
-    "url": "https://ontology-lsp.dev"
+    "name": "Semantic Code Intelligence Team",
+    "email": "plugins@semantic-code-intelligence.dev",
+    "url": "https://semantic-code-intelligence.dev"
   },
   "type": "layer",
   "category": "productivity",
@@ -59,8 +59,8 @@
     "throughputMin": 100
   },
   "metadata": {
-    "homepage": "https://ontology-lsp.dev/plugins/enhanced-search",
-    "repository": "https://github.com/ontology-lsp/plugin-enhanced-search",
+    "homepage": "https://semantic-code-intelligence.dev/plugins/enhanced-search",
+    "repository": "https://github.com/semantic-code-intelligence/plugin-enhanced-search",
     "license": "MIT",
     "keywords": [
       "search",
@@ -71,10 +71,10 @@
       "enhancement"
     ],
     "screenshots": [
-      "https://ontology-lsp.dev/plugins/enhanced-search/screenshots/performance.png",
-      "https://ontology-lsp.dev/plugins/enhanced-search/screenshots/results.png"
+      "https://semantic-code-intelligence.dev/plugins/enhanced-search/screenshots/performance.png",
+      "https://semantic-code-intelligence.dev/plugins/enhanced-search/screenshots/results.png"
     ],
-    "documentation": "https://ontology-lsp.dev/plugins/enhanced-search/docs"
+    "documentation": "https://semantic-code-intelligence.dev/plugins/enhanced-search/docs"
   },
   "dependencies": {
     "fuse.js": "^7.0.0",

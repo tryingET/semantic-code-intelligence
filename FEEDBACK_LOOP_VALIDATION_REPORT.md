@@ -179,7 +179,7 @@ With the feedback loop now fully operational, the system can:
 5. **Track performance** and provide analytics
 6. **Scale** to handle production workloads
 
-The Learning System is now a key operational component of the Ontology-LSP system, enabling it to evolve and improve based on real user feedback.
+The Learning System is now a key operational component of the Semantic Code Intelligence system, enabling it to evolve and improve based on real user feedback.
 
 ---
 

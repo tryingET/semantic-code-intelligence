@@ -57,7 +57,7 @@ export class CommandManager {
         if (this.client?.state === State.Stopped) {
             await this.client.start();
         }
-        vscode.window.showInformationMessage('Ontology LSP enabled');
+        vscode.window.showInformationMessage('Semantic Code Intelligence enabled');
     }
     
     private async disableExtension(): Promise<void> {
@@ -65,7 +65,7 @@ export class CommandManager {
         if (this.client?.state === State.Running) {
             await this.client.stop();
         }
-        vscode.window.showInformationMessage('Ontology LSP disabled');
+        vscode.window.showInformationMessage('Semantic Code Intelligence disabled');
     }
     
     private async restartServer(): Promise<void> {
@@ -76,7 +76,7 @@ export class CommandManager {
         
         await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
-            title: 'Restarting Ontology Language Server',
+            title: 'Restarting Semantic Code Intelligence Language Server',
             cancellable: false
         }, async (progress) => {
             progress.report({ increment: 0, message: 'Stopping server...' });
@@ -88,7 +88,7 @@ export class CommandManager {
             progress.report({ increment: 100, message: 'Server restarted' });
         });
         
-        vscode.window.showInformationMessage('Ontology Language Server restarted');
+        vscode.window.showInformationMessage('Semantic Code Intelligence Language Server restarted');
     }
     
     private async analyzeCodebase(): Promise<void> {
@@ -179,7 +179,7 @@ export class CommandManager {
         // Show statistics in output channel
         const output = vscode.window.createOutputChannel('Ontology Statistics');
         output.clear();
-        output.appendLine('=== Ontology LSP Statistics ===\n');
+        output.appendLine('=== Semantic Code Intelligence Statistics ===\n');
         output.appendLine(`Concepts: ${stats?.concepts || 0}`);
         output.appendLine(`Relationships: ${stats?.relationships || 0}`);
         output.appendLine(`Learned Patterns: ${stats?.patterns || 0}`);

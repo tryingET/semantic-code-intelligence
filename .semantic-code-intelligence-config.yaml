@@ -1,4 +1,4 @@
-# Ontology LSP Configuration
+# Semantic Code Intelligence Configuration
 workspaceRoot: .
 database:
   path: .ontology/ontology.db

@@ -1,25 +1,25 @@
 {
   "mcpServers": {
-    "ontology-lsp": {
+    "semantic-code-intelligence": {
       "command": "bun",
       "args": ["run", "./dist/mcp/mcp.js"],
       "env": {
         "NODE_ENV": "development",
         "LOG_LEVEL": "debug",
-        "ONTOLOGY_DB_PATH": ".ontology/ontology.db",
-        "ONTOLOGY_WORKSPACE": "."
+        "SEMANTIC_CODE_DB_PATH": ".ontology/ontology.db",
+        "SEMANTIC_CODE_WORKSPACE": "."
       }
     },
-    "ontology-mcpHTTP": {
+    "semantic-code-mcpHTTP": {
       "command": "bun",
       "args": ["run", "./dist/mcp-http/mcp-http.js"],
       "env": {
         "MCP_HTTP_HOST": "localhost",
         "MCP_HTTP_PORT": "7001",
-        "ONTOLOGY_LSP_HOST": "localhost",
-        "ONTOLOGY_LSP_PORT": "7000",
-        "ONTOLOGY_DB_PATH": ".ontology/ontology.db",
-        "ONTOLOGY_WORKSPACE": "."
+        "SEMANTIC_CODE_INTELLIGENCE_HOST": "localhost",
+        "SEMANTIC_CODE_INTELLIGENCE_PORT": "7000",
+        "SEMANTIC_CODE_DB_PATH": ".ontology/ontology.db",
+        "SEMANTIC_CODE_WORKSPACE": "."
       }
     }
   }

@@ -430,7 +430,7 @@ describe("Real MCP Client Integration", () => {
     2. [ ] Configure Claude: just configure-claude
     3. [ ] Restart Claude Desktop
     4. [ ] Ask: "What tools do you have available?"
-       - Should list ontology-lsp tools
+       - Should list semantic-code-intelligence tools
     5. [ ] Ask: "Find the definition of CodeAnalyzer"
        - Should return definition location
     6. [ ] Ask: "Find all references to findDefinition"

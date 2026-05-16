@@ -199,7 +199,7 @@ jobs:
     - name: Upload VSIX artifact
       uses: actions/upload-artifact@v4
       with:
-        name: ontology-lsp-extension
+        name: semantic-code-intelligence-extension
         path: vscode-client/*.vsix
         retention-days: 30
     

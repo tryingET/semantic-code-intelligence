@@ -638,7 +638,7 @@ export class CLIAdapter {
                 l2 && l2.name === 'TreeSitterLayer' && typeof l2.getMetrics === 'function' ? l2.getMetrics() : null;
 
             const output = [
-                this.formatHeader('Ontology LSP Statistics'),
+                this.formatHeader('Semantic Code Intelligence Statistics'),
                 `Status: ${diagnostics.initialized ? 'Initialized' : 'Not initialized'}`,
                 '',
                 this.formatHeader('Layer Status:'),

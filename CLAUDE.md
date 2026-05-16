@@ -118,11 +118,11 @@ just emergency-reset     # Nuclear option - full reset
 ### CLI Tool
 ```bash
 # CLI is available at dist/cli/index.js after build
-ontology-lsp init      # Initialize configuration
-ontology-lsp analyze   # Analyze codebase
-ontology-lsp stats     # Show statistics
-ontology-lsp find <identifier>  # Find with fuzzy matching
-ontology-lsp suggest   # Get refactoring suggestions
+semantic-code-intelligence init      # Initialize configuration
+semantic-code-intelligence analyze   # Analyze codebase
+semantic-code-intelligence stats     # Show statistics
+semantic-code-intelligence find <identifier>  # Find with fuzzy matching
+semantic-code-intelligence suggest   # Get refactoring suggestions
 ```
 
 ## Architecture
@@ -209,8 +209,8 @@ Uses Bun's built-in SQLite (no better-sqlite3):
 
 ### File Patterns
 - `.ontology/` - Local database and cache
-- `.ontologyignore` - Files to exclude from analysis
-- `.ontology-lsp-config.yaml` - Project configuration
+- `.semantic-code-ignore` - Files to exclude from analysis
+- `.semantic-code-intelligence-config.yaml` - Project configuration
 - `.mcp.json` - MCP server configuration (Model Context Protocol)
 
 ### Performance Targets
@@ -224,8 +224,8 @@ Uses Bun's built-in SQLite (no better-sqlite3):
 1. **Server won't start**: Ensure Bun is installed and path is correct
 2. **Native module errors**: Use Bun runtime, not Node.js
 3. **Test failures**: Run with `bun test`, not `npm test`
-4. **Extension not activating**: Check VS Code output panel for "Ontology Language Server"
-5. **Performance issues**: Check cache settings in config, run `ontology-lsp optimize`
+4. **Extension not activating**: Check VS Code output panel for "Semantic Code Intelligence Language Server"
+5. **Performance issues**: Check cache settings in config, run `semantic-code-intelligence optimize`
 
 ## Testing Strategy
 

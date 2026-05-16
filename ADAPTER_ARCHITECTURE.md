@@ -95,7 +95,7 @@ export function handleAdapterError(error: any, protocol: string)
 
 ```typescript
 // Old LSP server (600+ lines)
-class OntologyLSPServer {
+class SemanticCodeIntelligenceServer {
   // Embedded analysis logic
   // Duplicate ontology engine
   // Custom pattern learning
@@ -173,10 +173,10 @@ Custom methods are namespaced and keep standard LSP responses spec-clean.
 - ✅ `GET /api/v1/stats` → `HTTPAdapter.handleStats()`
 
 ### CLI Compatibility
-- ✅ `ontology-lsp find <symbol>` → `CLIAdapter.handleFind()`
-- ✅ `ontology-lsp references <symbol>` → `CLIAdapter.handleReferences()`
-- ✅ `ontology-lsp rename <old> <new>` → `CLIAdapter.handleRename()`
-- ✅ `ontology-lsp stats` → `CLIAdapter.handleStats()`
+- ✅ `semantic-code-intelligence find <symbol>` → `CLIAdapter.handleFind()`
+- ✅ `semantic-code-intelligence references <symbol>` → `CLIAdapter.handleReferences()`
+- ✅ `semantic-code-intelligence rename <old> <new>` → `CLIAdapter.handleRename()`
+- ✅ `semantic-code-intelligence stats` → `CLIAdapter.handleStats()`
 
 ## 🎭 Protocol-Specific Features Preserved
 

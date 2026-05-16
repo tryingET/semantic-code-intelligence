@@ -10,9 +10,9 @@ type: "reference"
 
 ## General Questions
 
-### What is Ontology LSP?
+### What is Semantic Code Intelligence?
 
-Ontology LSP is an enhanced Language Server Protocol implementation that adds intelligent code understanding through:
+Semantic Code Intelligence is an enhanced Language Server Protocol implementation that adds intelligent code understanding through:
 - Fuzzy matching for identifiers
 - Pattern learning from refactoring history
 - Conceptual relationships between code elements
@@ -21,7 +21,7 @@ Ontology LSP is an enhanced Language Server Protocol implementation that adds in
 
 ### How does it differ from standard LSP servers?
 
-Unlike traditional LSP servers that rely on exact string matching, Ontology LSP:
+Unlike traditional LSP servers that rely on exact string matching, Semantic Code Intelligence:
 - Understands conceptual relationships between identifiers
 - Learns from your refactoring patterns
 - Suggests related changes when you rename symbols
@@ -43,21 +43,21 @@ Coming soon:
 
 ## Installation & Setup
 
-### How do I install Ontology LSP?
+### How do I install Semantic Code Intelligence?
 
 #### Via NPM (Global Installation):
 ```bash
-npm install -g ontology-lsp-proxy
+npm install -g semantic-code-intelligence
 ```
 
 #### Via Bun:
 ```bash
-bun add -g ontology-lsp-proxy
+bun add -g semantic-code-intelligence
 ```
 
 #### VS Code Extension:
 1. Download the `.vsix` file from releases
-2. Install: `code --install-extension ontology-lsp-1.0.0.vsix`
+2. Install: `code --install-extension semantic-code-intelligence-1.0.0.vsix`
 
 ### Why is Bun required?
 
@@ -79,12 +79,12 @@ The server requires Bun to run, but the VS Code extension handles this automatic
 Configuration is stored in multiple places:
 1. `.ontology/config.json` - Project-specific settings
 2. VS Code settings - Extension configuration
-3. `.ontologyignore` - File exclusion patterns
+3. `.semantic-code-ignore` - File exclusion patterns
 4. Environment variables - Runtime overrides
 
 ### How do I exclude files from analysis?
 
-Create a `.ontologyignore` file in your project root:
+Create a `.semantic-code-ignore` file in your project root:
 ```
 # Dependencies
 node_modules/
@@ -104,9 +104,9 @@ test-data/
 Yes, in your VS Code settings:
 ```json
 {
-  "ontologyLSP.performance.workers": 2,
-  "ontologyLSP.performance.cacheSize": "250MB",
-  "ontologyLSP.propagation.maxDepth": 2
+  "semanticCodeIntelligence.performance.workers": 2,
+  "semanticCodeIntelligence.performance.cacheSize": "250MB",
+  "semanticCodeIntelligence.propagation.maxDepth": 2
 }
 ```
 
@@ -149,14 +149,14 @@ The concept graph is a knowledge representation of your code:
 
 1. Check VS Code version (requires 1.74.0+)
 2. Reload window: `Ctrl+Shift+P` → "Developer: Reload Window"
-3. Check output panel: View → Output → "Ontology Language Server"
+3. Check output panel: View → Output → "Semantic Code Intelligence Language Server"
 4. Verify Bun is accessible: `bun --version`
 
 ### Server crashes or high CPU usage?
 
 1. Reduce worker count in settings
-2. Clear cache: `ontology-lsp clear-cache`
-3. Check `.ontologyignore` patterns
+2. Clear cache: `semantic-code-intelligence clear-cache`
+3. Check `.semantic-code-ignore` patterns
 4. Reduce propagation depth
 5. Check available memory
 
@@ -180,13 +180,13 @@ The concept graph is a knowledge representation of your code:
 
 ```bash
 # Default port 7000
-ontology-lsp api
+semantic-code-intelligence api
 
 # Custom port
-ONTOLOGY_API_PORT=8080 ontology-lsp api
+ONTOLOGY_API_PORT=8080 semantic-code-intelligence api
 
 # With CORS enabled
-ONTOLOGY_API_CORS=true ontology-lsp api
+ONTOLOGY_API_CORS=true semantic-code-intelligence api
 ```
 
 ### What endpoints are available?
@@ -206,8 +206,8 @@ Use the GitHub Actions workflow:
 ```yaml
 - name: Ontology Check
   run: |
-    bunx ontology-lsp-proxy analyze
-    bunx ontology-lsp-proxy stats
+    bunx semantic-code-intelligence analyze
+    bunx semantic-code-intelligence stats
 ```
 
 ## Performance
@@ -242,7 +242,7 @@ Yes, optimizations for large codebases:
 
 ### Is my code sent anywhere?
 
-No, Ontology LSP runs entirely locally:
+No, Semantic Code Intelligence runs entirely locally:
 - All processing happens on your machine
 - No network requests except for updates
 - Database stored in `.ontology/` folder
@@ -260,7 +260,7 @@ No source code content is stored.
 
 ### Can I exclude sensitive files?
 
-Yes, use `.ontologyignore`:
+Yes, use `.semantic-code-ignore`:
 ```
 .env
 secrets/
@@ -303,7 +303,7 @@ Yes! To add language support:
 
 Yes, via the API:
 ```typescript
-import { OntologyEngine } from 'ontology-lsp-proxy';
+import { OntologyEngine } from 'semantic-code-intelligence';
 
 const engine = new OntologyEngine('./my-project');
 const concept = await engine.findConcept('getUserData');
@@ -313,12 +313,12 @@ const concept = await engine.findConcept('getUserData');
 
 Export:
 ```bash
-ontology-lsp export > ontology-backup.json
+semantic-code-intelligence export > ontology-backup.json
 ```
 
 Import:
 ```bash
-ontology-lsp import ontology-backup.json
+semantic-code-intelligence import ontology-backup.json
 ```
 
 ### Can I customize pattern matching?

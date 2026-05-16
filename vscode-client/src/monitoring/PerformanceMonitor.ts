@@ -260,7 +260,7 @@ export class PerformanceMonitor {
         // Notify user if memory is critically high
         if (current > 1024 * 1024 * 1024) { // 1GB
             vscode.window.showWarningMessage(
-                `Ontology LSP: High memory usage (${currentMB}MB). Consider restarting the extension.`
+                `Semantic Code Intelligence: High memory usage (${currentMB}MB). Consider restarting the extension.`
             );
         }
     }
@@ -273,7 +273,7 @@ export class PerformanceMonitor {
         // Throttle operations if CPU is critically high
         if (percentage > 90) {
             vscode.window.showWarningMessage(
-                `Ontology LSP: High CPU usage (${percentage.toFixed(0)}%). Some operations may be delayed.`
+                `Semantic Code Intelligence: High CPU usage (${percentage.toFixed(0)}%). Some operations may be delayed.`
             );
         }
     }
@@ -293,7 +293,7 @@ export class PerformanceMonitor {
     
     private showPerformanceReport(): void {
         this.outputChannel.clear();
-        this.outputChannel.appendLine('=== Ontology LSP Performance Report ===\n');
+        this.outputChannel.appendLine('=== Semantic Code Intelligence Performance Report ===\n');
         
         // Show operation statistics
         for (const [operation, metrics] of this.metrics) {

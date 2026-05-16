@@ -1,10 +1,10 @@
 {
   "mcpServers": {
-    "ontology-lsp": {
+    "semantic-code-intelligence": {
       "command": "bun",
       "args": ["run", "./dist/mcp/mcp.js"],
       "type": "stdio",
-      "description": "Ontology-enhanced LSP with 5-layer architecture",
+      "description": "Semantic code intelligence LSP with 5-layer architecture",
       "env": {}
     }
   }

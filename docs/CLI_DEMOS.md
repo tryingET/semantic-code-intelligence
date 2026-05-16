@@ -8,11 +8,11 @@ type: "reference"
 
 CLI Demos (VHS)
 
-This repo includes VHS tapes to showcase the `ontology-lsp` CLI.
+This repo includes VHS tapes to showcase the `semantic-code-intelligence` CLI.
 
 Prerequisites
 - Install VHS: https://github.com/charmbracelet/vhs#installation
-- Ensure `ontology-lsp` runs locally (build `dist` if needed).
+- Ensure `semantic-code-intelligence` runs locally (build `dist` if needed).
 
 Render all demos
 - Run: `scripts/render-vhs.sh`

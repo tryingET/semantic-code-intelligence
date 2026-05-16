@@ -56,13 +56,13 @@ default:
 
 # Path to Bun runtime
 bun := env_var_or_default("BUN_PATH", "~/.bun/bin/bun")
-workspace := env_var_or_default("ONTOLOGY_WORKSPACE", justfile_directory())
+workspace := env_var_or_default("SEMANTIC_CODE_WORKSPACE", justfile_directory())
 
 # === SERVER MANAGEMENT (replaces session-start/stop) ===
 
 # Start all servers with port availability checks
 start: stop-quiet ensure-env
-    @echo "🚀 Starting Ontology LSP System..."
+    @echo "🚀 Starting Semantic Code Intelligence System..."
     @echo "=================================="
     @mkdir -p .ontology/pids .ontology/logs
     @# Read effective ports from .env (fallback to defaults)
@@ -86,7 +86,7 @@ start: stop-quiet ensure-env
 
 # Stop all servers with improved process cleanup
 stop:
-    @echo "🛑 Stopping Ontology LSP servers..."
+    @echo "🛑 Stopping Semantic Code Intelligence servers..."
     @echo "  Stopping PID-tracked processes..."
     @-bash -c "if [ -f .ontology/pids/lsp.pid ]; then sed 's/!//g' .ontology/pids/lsp.pid | xargs -r kill 2>/dev/null || true; rm -f .ontology/pids/lsp.pid; fi"
     @-bash -c "if [ -f .ontology/pids/http-api.pid ]; then sed 's/!//g' .ontology/pids/http-api.pid | xargs -r kill 2>/dev/null || true; rm -f .ontology/pids/http-api.pid; fi"
@@ -95,7 +95,7 @@ stop:
     @just clean-ports-quiet
     @echo "  Terminating any orphaned processes..."
     @-pkill -f "src/servers" 2>/dev/null || true
-    @-pkill -f "ontology-lsp" 2>/dev/null || true
+    @-pkill -f "semantic-code-intelligence" 2>/dev/null || true
     @-pkill -f "http.server.*8081" 2>/dev/null || true
     @sleep 1
     @echo "✅ All servers stopped and ports cleaned"
@@ -107,7 +107,7 @@ stop-quiet:
     @-bash -c "if [ -f .ontology/pids/mcp-http.pid ]; then sed 's/!//g' .ontology/pids/mcp-http.pid | xargs -r kill 2>/dev/null || true; rm -f .ontology/pids/mcp-http.pid; fi" 2>/dev/null || true
     @just clean-ports-quiet
     @-pkill -f "src/servers" 2>/dev/null || true
-    @-pkill -f "ontology-lsp" 2>/dev/null || true
+    @-pkill -f "semantic-code-intelligence" 2>/dev/null || true
     @-pkill -f "http.server.*8081" 2>/dev/null || true
 
 # Restart servers
@@ -238,7 +238,7 @@ clean-ports-force:
     echo "    Cleaning port $LSP_PORT..." && (ss -tulnp 2>/dev/null | grep ":$LSP_PORT " | grep -o 'pid=[0-9]*' | cut -d= -f2 | xargs -r kill 2>/dev/null || true); \
     echo "    Cleaning port 8081..." && (ss -tulnp 2>/dev/null | grep ":8081 " | grep -o 'pid=[0-9]*' | cut -d= -f2 | xargs -r kill 2>/dev/null || true); \
     @-pkill -f "src/servers" 2>/dev/null || true
-    @-pkill -f "ontology-lsp" 2>/dev/null || true
+    @-pkill -f "semantic-code-intelligence" 2>/dev/null || true
     @-pkill -f "http.server.*8081" 2>/dev/null || true
     @sleep 1
 
@@ -439,7 +439,7 @@ package-extension:
 
 # Install the extension in VS Code
 install-extension: build-all package-extension
-    code --install-extension vscode-client/ontology-lsp-*.vsix
+    code --install-extension vscode-client/semantic-code-intelligence-*.vsix
 
 # === TESTING ===
 
@@ -708,7 +708,7 @@ suite-sliced-gated slices="4" slice="1" suite="tests" warn_ms="120000" warn_max=
 
 # Development mode - start with auto-reload (VISION.md compliant)
 dev: stop-quiet
-    @echo "🚀 Starting Ontology-LSP in development mode..."
+    @echo "🚀 Starting Semantic Code Intelligence in development mode..."
     @mkdir -p .ontology/pids .ontology/logs
     @echo "Checking port availability..."
     @just check-ports-available
@@ -891,7 +891,7 @@ deploy-production: docker-build test-all
     @sed -i.bak "s|semantic-code-intelligence:2.0.0|semantic-code-intelligence:latest|g" k8s/production.yaml
     
     # Create backup of current deployment
-    @kubectl get deployment ontology-lsp -n semantic-code-intelligence -o yaml > deployment-backup-$(date +%Y%m%d-%H%M%S).yaml || echo "No existing deployment"
+    @kubectl get deployment semantic-code-intelligence -n semantic-code-intelligence -o yaml > deployment-backup-$(date +%Y%m%d-%H%M%S).yaml || echo "No existing deployment"
     
     # Apply manifests with production checks
     kubectl apply -f k8s/namespace.yaml
@@ -966,7 +966,7 @@ install:
 
 # Initialize project (first time setup)
 init:
-    @echo "🎯 Initializing Ontology LSP..."
+    @echo "🎯 Initializing Semantic Code Intelligence..."
     @mkdir -p .ontology/logs .ontology/pids .ontology/db
     @{{bun}} install
     @echo "✅ Initialized! Run 'just start' to begin."
@@ -1057,7 +1057,7 @@ diagnostics:
         fi
     }
     
-    echo "🔍 Ontology-LSP Diagnostic Report"
+    echo "🔍 Semantic Code Intelligence Diagnostic Report"
     echo "================================="
     echo "Generated: $(date)"
     echo "System: $(uname -a)"
@@ -1186,7 +1186,7 @@ diagnostics:
         echo "  Running processes:"
         ps aux | grep -E "(bun.*src/servers|ontology)" | grep -v grep | sed 's/^/    /' || echo "    None found"
     else
-        echo "  No Ontology-LSP processes running"
+        echo "  No Semantic Code Intelligence processes running"
     fi
     
     # Check for zombie/defunct processes
@@ -1406,7 +1406,7 @@ backup:
     fi
     
     # Backup custom configuration files
-    for config_file in claude-desktop-config.json .mcp.json ontology-lsp-config.yaml; do
+    for config_file in claude-desktop-config.json .mcp.json .semantic-code-intelligence-config.yaml; do
         if [ -f "$config_file" ]; then
             echo "  📄 Backing up $config_file..."
             cp "$config_file" "$BACKUP_DIR/$TIMESTAMP/"
@@ -1437,7 +1437,7 @@ backup:
     fi
     
     # Create backup manifest
-    echo "# Ontology-LSP Backup Manifest" > "$BACKUP_DIR/$TIMESTAMP/MANIFEST"
+    echo "# Semantic Code Intelligence Backup Manifest" > "$BACKUP_DIR/$TIMESTAMP/MANIFEST"
     echo "Created: $(date)" >> "$BACKUP_DIR/$TIMESTAMP/MANIFEST"
     echo "System: $(uname -a)" >> "$BACKUP_DIR/$TIMESTAMP/MANIFEST"
     echo "Git commit: $(git rev-parse --short HEAD 2>/dev/null || echo 'Unknown')" >> "$BACKUP_DIR/$TIMESTAMP/MANIFEST"
@@ -1546,7 +1546,7 @@ restore-backup backup="":
         fi
         
         # Restore configuration
-        for config_file in .env claude-desktop-config.json .mcp.json ontology-lsp-config.yaml; do
+        for config_file in .env claude-desktop-config.json .mcp.json .semantic-code-intelligence-config.yaml; do
             if [ -f "$backup_extract_dir/$config_file" ]; then
                 echo "  ⚙️  Restoring $config_file..."
                 cp "$backup_extract_dir/$config_file" .
@@ -1645,7 +1645,7 @@ verify-backup backup="":
         
         # Check configuration files
         config_count=0
-        for config_file in .env claude-desktop-config.json .mcp.json ontology-lsp-config.yaml; do
+        for config_file in .env claude-desktop-config.json .mcp.json .semantic-code-intelligence-config.yaml; do
             if [ -f "$backup_extract_dir/$config_file" ]; then
                 echo "    ⚙️  Configuration ($config_file): ✅ Present"
                 config_count=$((config_count + 1))
@@ -1934,7 +1934,7 @@ memory-monitor:
 memory-check:
     @echo "💾 Quick Memory Check"
     @echo "===================="
-    @echo "Ontology-LSP Processes:"
+    @echo "Semantic Code Intelligence Processes:"
     @ps aux | grep -E "src/servers" | grep -v grep | awk '{printf "PID: %-8s RSS: %-10s CMD: %s\n", $$2, $$6"KB", substr($$0, index($$0,$$11))}'
     @echo ""
     @echo "Total RSS:" $(ps aux | grep -E "src/servers" | grep -v grep | awk '{sum+=$$6} END {print sum"KB"}')
@@ -1969,7 +1969,7 @@ demo-mcp-vhs:
         exit 1; \
     fi
 build-cli:
-    @echo "🔨 Building CLI (ontology-lsp) ..."
+    @echo "🔨 Building CLI (semantic-code-intelligence) ..."
     {{bun}} build src/servers/cli.ts --target=bun --outdir=dist/cli --format=esm \
         --external tree-sitter --external tree-sitter-typescript \
         --external tree-sitter-javascript --external tree-sitter-python

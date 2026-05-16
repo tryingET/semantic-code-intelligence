@@ -25,7 +25,7 @@ This repository implements a protocol‑agnostic core with thin adapters for MCP
 - Central config: `src/core/config/server-config.ts`
 - Env reference and adapter selection: see `CONFIG.md`
   - Storage: `LAYER4_ADAPTER=sqlite|postgres|triplestore` (default: sqlite)
-  - DB path: `ONTOLOGY_DB_PATH` (applies to L3/L4/L5 when set)
+  - DB path: `SEMANTIC_CODE_DB_PATH` (applies to L3/L4/L5 when set)
   - MCP/HTTP/LSP ports: `HTTP_API_PORT`, `MCP_HTTP_PORT`, `LSP_SERVER_PORT`
 
 ## HTTP API (Selected Endpoints)
@@ -45,19 +45,19 @@ This repository implements a protocol‑agnostic core with thin adapters for MCP
 
 ## CLI
 
-- Explore: `ontology-lsp explore <symbol> [-f file] [--json]`
-- Definitions: `ontology-lsp find <symbol> [-f file] [--json]`
-- References: `ontology-lsp references <symbol> [-f file] [--json]`
-- Planner: `ontology-lsp symbol-map <symbol> [-f file] [--json]`
-- Plan rename: `ontology-lsp plan-rename <old> <new> [-f file] [--json]`
+- Explore: `semantic-code-intelligence explore <symbol> [-f file] [--json]`
+- Definitions: `semantic-code-intelligence find <symbol> [-f file] [--json]`
+- References: `semantic-code-intelligence references <symbol> [-f file] [--json]`
+- Planner: `semantic-code-intelligence symbol-map <symbol> [-f file] [--json]`
+- Plan rename: `semantic-code-intelligence plan-rename <old> <new> [-f file] [--json]`
 - Workflows:
-  - Generic: `ontology-lsp workflow <name> --args '<json>' [--json]`
-  - Rename safely: `ontology-lsp rename-safely <old> <new> [-f file] [--no-checks] [--cmd <...>] [-t sec] [--json]`
-  - Patch + checks (snapshot‑safe): `ontology-lsp patch-checks-in-snapshot [-s snapshot] [-p patch.diff] [--cmd <...>] [-t sec] [--only-touched] [--json]`
+  - Generic: `semantic-code-intelligence workflow <name> --args '<json>' [--json]`
+  - Rename safely: `semantic-code-intelligence rename-safely <old> <new> [-f file] [--no-checks] [--cmd <...>] [-t sec] [--json]`
+  - Patch + checks (snapshot‑safe): `semantic-code-intelligence patch-checks-in-snapshot [-s snapshot] [-p patch.diff] [--cmd <...>] [-t sec] [--only-touched] [--json]`
   - Pipelines (L5):
-    - List: `ontology-lsp pipelines list [--json]`
-    - Run: `ontology-lsp pipelines run <id> [--json]`
-    - Runs: `ontology-lsp pipelines runs <id> --limit 5 [--json]`
+    - List: `semantic-code-intelligence pipelines list [--json]`
+    - Run: `semantic-code-intelligence pipelines run <id> [--json]`
+    - Runs: `semantic-code-intelligence pipelines runs <id> --limit 5 [--json]`
 
 See `CONFIG.md` for env defaults like `FAST_STDIO_CHECKS=touched` and `SNAPSHOT_PARTIAL=1`.
 

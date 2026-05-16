@@ -11,7 +11,7 @@ Type "rm -rf /tmp/ontology-demo && mkdir -p /tmp/ontology-demo && cd /tmp/ontolo
 Enter
 Sleep 400ms
 
-Type "ontology-lsp init"
+Type "semantic-code-intelligence init"
 Enter
 Sleep 1500ms
 
@@ -19,10 +19,10 @@ Type "ls -la"
 Enter
 Sleep 1000ms
 
-Type "echo --- .ontology-lsp-config.yaml --- && sed -n '1,60p' .ontology-lsp-config.yaml"
+Type "echo --- .semantic-code-intelligence-config.yaml --- && sed -n '1,60p' .semantic-code-intelligence-config.yaml"
 Enter
 Sleep 1600ms
 
-Type "echo --- .ontologyignore --- && sed -n '1,60p' .ontologyignore"
+Type "echo --- .semantic-code-ignore --- && sed -n '1,60p' .semantic-code-ignore"
 Enter
 Sleep 1600ms

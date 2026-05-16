@@ -10,7 +10,7 @@ type: "reference"
 
 ## Overview
 
-The Ontology LSP system uses a centralized configuration approach to prevent port conflicts and ensure consistent settings across all components.
+The Semantic Code Intelligence system uses a centralized configuration approach to prevent port conflicts and ensure consistent settings across all components.
 
 ## Configuration File
 
@@ -51,7 +51,7 @@ Settings are loaded in this priority order:
 ### Storage (Layer 4) Selection
 - `LAYER4_ADAPTER` or `ONTOLOGY_STORAGE_ADAPTER` or `STORAGE_ADAPTER`
   - Values: `sqlite` (default) | `postgres` | `triplestore` (scaffold)
-- `ONTOLOGY_DB_PATH` or `LAYER4_DB_PATH`
+- `SEMANTIC_CODE_DB_PATH` or `LAYER4_DB_PATH`
   - Path to SQLite DB file (applies to Layers 3/4/5 when set)
 - `ONTOLOGY_PG_URL` / `DATABASE_URL` / `PG_URL`
   - Postgres connection string (only required if using `postgres` adapter)
@@ -235,7 +235,7 @@ scrape_configs:
   - job_name: 'ontology-http'
     static_configs:
       - targets: ['localhost:7000']
-  - job_name: 'ontology-mcp-http'
+  - job_name: 'semantic-code-mcp-http'
     static_configs:
       - targets: ['localhost:7001']
 ```
@@ -282,14 +282,14 @@ Layer 4 persists concepts and relations through a pluggable StoragePort. Select 
 
 ### CLI Workflows
 
-- Generic: `ontology-lsp workflow <name> --args '<json>' [--args-file file] [--json]`
-  - Example: `ontology-lsp workflow locate_confirm_definition --args '{"symbol":"TestClass","file":"tests/fixtures/example.ts"}'`
+- Generic: `semantic-code-intelligence workflow <name> --args '<json>' [--args-file file] [--json]`
+  - Example: `semantic-code-intelligence workflow locate_confirm_definition --args '{"symbol":"TestClass","file":"tests/fixtures/example.ts"}'`
 
 - Rename safely (alias of `rename_safely` tool):
-  - `ontology-lsp rename-safely <oldName> <newName> [-f file] [--no-checks] [--cmd <command...>] [-t sec] [--json]`
+  - `semantic-code-intelligence rename-safely <oldName> <newName> [-f file] [--no-checks] [--cmd <command...>] [-t sec] [--json]`
 
 - Patch checks in snapshot (alias of `patch_checks_in_snapshot`):
-  - `ontology-lsp patch-checks-in-snapshot [-s snapshot] [-p patch.diff] [--cmd <command...>] [-t sec] [--only-touched] [--json]`
+  - `semantic-code-intelligence patch-checks-in-snapshot [-s snapshot] [-p patch.diff] [--cmd <command...>] [-t sec] [--only-touched] [--json]`
 
 ### Dev UX Env Defaults
 
@@ -302,13 +302,13 @@ Layer 4 persists concepts and relations through a pluggable StoragePort. Select 
 Pipelines are enabled by default in dev. They persist to the same SQLite database used by L4/L5 and are safe to run locally.
 
 - List pipelines:
-  - CLI: `ontology-lsp pipelines list`
+  - CLI: `semantic-code-intelligence pipelines list`
   - HTTP: `POST /api/v1/tools/call` body `{ "name": "list_pipelines", "arguments": {} }`
 - Run a pipeline manually (returns a run id):
-  - CLI: `ontology-lsp pipelines run pattern_feedback_cycle`
+  - CLI: `semantic-code-intelligence pipelines run pattern_feedback_cycle`
   - HTTP: `POST /api/v1/tools/call` body `{ "name": "run_pipeline", "arguments": { "id": "pattern_feedback_cycle" } }`
 - Inspect recent runs:
-  - CLI: `ontology-lsp pipelines runs pattern_feedback_cycle --limit 5`
+  - CLI: `semantic-code-intelligence pipelines runs pattern_feedback_cycle --limit 5`
   - HTTP: `POST /api/v1/tools/call` body `{ "name": "list_pipeline_runs", "arguments": { "id": "pattern_feedback_cycle", "limit": 5 } }`
 
 - Inspect status and run details (HTTP endpoints):
@@ -371,7 +371,7 @@ Guidance:
 
 ## CLI Stats
 
-- `ontology-lsp stats` prints a concise per-layer metrics summary:
+- `semantic-code-intelligence stats` prints a concise per-layer metrics summary:
   - L1 searches/cache hits/fallbacks/timeouts/average latency, plus async pool size and default timeout
   - L2 parse counts/errors and p50/p95
   - L4 storage operation counts/errors and duration quantiles

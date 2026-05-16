@@ -103,7 +103,7 @@ const createConsistencyTestContext = async (): Promise<ConsistencyTestContext> =
     // Initialize all adapters
     const lspAdapter = new LSPAdapter(codeAnalyzer, {
         serverInfo: {
-            name: 'ontology-lsp-consistency-test',
+            name: 'semantic-code-intelligence-consistency-test',
             version: '1.0.0-test',
         },
         capabilities: {
@@ -115,7 +115,7 @@ const createConsistencyTestContext = async (): Promise<ConsistencyTestContext> =
     });
 
     const mcpAdapter = new MCPAdapter(codeAnalyzer, {
-        serverName: 'ontology-lsp-mcp-consistency-test',
+        serverName: 'semantic-code-intelligence-mcp-consistency-test',
         version: '1.0.0-test',
         tools: {
             searchFiles: true,
@@ -142,7 +142,7 @@ const createConsistencyTestContext = async (): Promise<ConsistencyTestContext> =
     });
 
     const cliAdapter = new CLIAdapter(codeAnalyzer, {
-        appName: 'ontology-lsp-consistency-test',
+        appName: 'semantic-code-intelligence-consistency-test',
         version: '1.0.0-test',
     });
 
@@ -1046,7 +1046,7 @@ describe('Cross-Protocol Consistency', () => {
             // Recreate adapters
             const newLspAdapter = new LSPAdapter(context.codeAnalyzer, {
                 serverInfo: {
-                    name: 'ontology-lsp-restart-test',
+                    name: 'semantic-code-intelligence-restart-test',
                     version: '1.0.0-test',
                 },
                 capabilities: {
@@ -1058,7 +1058,7 @@ describe('Cross-Protocol Consistency', () => {
             });
 
             const newMcpAdapter = new MCPAdapter(context.codeAnalyzer, {
-                serverName: 'ontology-lsp-mcp-restart-test',
+                serverName: 'semantic-code-intelligence-mcp-restart-test',
                 version: '1.0.0-test',
                 tools: {
                     searchFiles: true,

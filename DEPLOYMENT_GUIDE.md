@@ -1,12 +1,12 @@
 ---
-summary: "Ontology-LSP Production Deployment Guide for the Semantic Code Intelligence repo."
+summary: "Semantic Code Intelligence Production Deployment Guide for the Semantic Code Intelligence repo."
 read_when:
   - "You need DEPLOYMENT GUIDE information for Semantic Code Intelligence."
   - "You are changing DEPLOYMENT_GUIDE.md or related behavior."
 type: "reference"
 ---
 
-# Ontology-LSP Production Deployment Guide
+# Semantic Code Intelligence Production Deployment Guide
 
 ## 🚀 Deployment Status: PRODUCTION READY ✅
 
@@ -24,7 +24,7 @@ type: "reference"
 - **Memory usage**: Stable at 607MB under load
 - **Docker configuration**: Multi-stage production Dockerfile ready
 
-This guide covers all deployment options for the Ontology-LSP system, from local development to production Kubernetes clusters.
+This guide covers all deployment options for the Semantic Code Intelligence system, from local development to production Kubernetes clusters.
 
 ## Quick Start
 
@@ -134,10 +134,10 @@ just stop
 docker-compose up -d
 
 # View logs
-docker-compose logs -f ontology-lsp
+docker-compose logs -f semantic-code-intelligence
 
 # Scale services
-docker-compose up -d --scale ontology-lsp=3
+docker-compose up -d --scale semantic-code-intelligence=3
 
 # Stop and cleanup
 docker-compose down -v
@@ -148,12 +148,12 @@ docker-compose down -v
 #### Kubernetes with Helm (Recommended)
 ```bash
 # Add Helm chart repository
-helm repo add ontology-lsp https://charts.ontology-lsp.com
+helm repo add semantic-code-intelligence https://charts.semantic-code-intelligence.com
 helm repo update
 
 # Install to staging
-helm install ontology-lsp-staging ontology-lsp/ontology-lsp \
-  --namespace ontology-lsp-staging \
+helm install semantic-code-intelligence-staging semantic-code-intelligence/semantic-code-intelligence \
+  --namespace semantic-code-intelligence-staging \
   --create-namespace \
   --values config/environments/staging-values.yaml
 ```
@@ -187,17 +187,17 @@ kubectl apply -f k8s/hpa.yaml
 1. **Prepare configuration:**
    ```bash
    # Create production secrets
-   kubectl create secret generic ontology-lsp-secrets \
+   kubectl create secret generic semantic-code-intelligence-secrets \
      --from-literal=DATABASE_URL="postgres://..." \
      --from-literal=REDIS_URL="redis://..." \
      --from-literal=JWT_SECRET="..." \
-     -n ontology-lsp
+     -n semantic-code-intelligence
    
    # Create TLS certificate
-   kubectl create secret tls ontology-lsp-tls \
+   kubectl create secret tls semantic-code-intelligence-tls \
      --cert=tls.crt \
      --key=tls.key \
-     -n ontology-lsp
+     -n semantic-code-intelligence
    ```
 
 2. **Deploy infrastructure:**
@@ -209,8 +209,8 @@ kubectl apply -f k8s/hpa.yaml
    kubectl apply -f k8s/redis.yaml
    
    # Wait for databases
-   kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=postgres -n ontology-lsp --timeout=300s
-   kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=redis -n ontology-lsp --timeout=120s
+   kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=postgres -n semantic-code-intelligence --timeout=300s
+   kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=redis -n semantic-code-intelligence --timeout=120s
    ```
 
 3. **Deploy application:**
@@ -219,7 +219,7 @@ kubectl apply -f k8s/hpa.yaml
    kubectl apply -f k8s/production.yaml
    
    # Monitor rollout
-   kubectl rollout status deployment/ontology-lsp -n ontology-lsp --timeout=600s
+   kubectl rollout status deployment/semantic-code-intelligence -n semantic-code-intelligence --timeout=600s
    ```
 
 4. **Configure ingress:**
@@ -228,7 +228,7 @@ kubectl apply -f k8s/hpa.yaml
    kubectl apply -f k8s/ingress.yaml
    
    # Verify TLS certificate
-   kubectl get certificate -n ontology-lsp
+   kubectl get certificate -n semantic-code-intelligence
    ```
 
 ## Configuration Management
@@ -255,7 +255,7 @@ database:
 database:
   type: "postgresql"
   host: "postgres-service"
-  database: "ontology_lsp"
+  database: "semantic_code_intelligence"
   username: "ontology"
 ```
 
@@ -289,13 +289,13 @@ performance:
 
 ```bash
 # Application health
-curl https://api.ontology-lsp.example.com/health
+curl https://api.semantic-code-intelligence.example.com/health
 
 # Detailed status
-curl https://api.ontology-lsp.example.com/status
+curl https://api.semantic-code-intelligence.example.com/status
 
 # Metrics endpoint
-curl https://api.ontology-lsp.example.com/metrics
+curl https://api.semantic-code-intelligence.example.com/metrics
 ```
 
 ### Logging
@@ -306,7 +306,7 @@ Logs are structured JSON in production:
 {
   "timestamp": "2024-01-01T12:00:00Z",
   "level": "info",
-  "service": "ontology-lsp",
+  "service": "semantic-code-intelligence",
   "component": "pattern-learner",
   "correlation_id": "req-123456",
   "message": "Pattern applied successfully",
@@ -417,34 +417,34 @@ Automatically scales based on:
 #### Services Not Starting
 ```bash
 # Check pod status
-kubectl get pods -n ontology-lsp
+kubectl get pods -n semantic-code-intelligence
 
 # View pod logs
-kubectl logs -f deployment/ontology-lsp -n ontology-lsp
+kubectl logs -f deployment/semantic-code-intelligence -n semantic-code-intelligence
 
 # Debug failed pods
-kubectl describe pod <pod-name> -n ontology-lsp
+kubectl describe pod <pod-name> -n semantic-code-intelligence
 ```
 
 #### Database Connection Issues
 ```bash
 # Test PostgreSQL connection
-kubectl exec -it postgres-0 -n ontology-lsp -- psql -U ontology -d ontology_lsp
+kubectl exec -it postgres-0 -n semantic-code-intelligence -- psql -U ontology -d semantic_code_intelligence
 
 # Check Redis connection
-kubectl exec -it redis-0 -n ontology-lsp -- redis-cli ping
+kubectl exec -it redis-0 -n semantic-code-intelligence -- redis-cli ping
 ```
 
 #### Performance Issues
 ```bash
 # Check metrics
-curl https://api.ontology-lsp.example.com/metrics | grep layer_processing
+curl https://api.semantic-code-intelligence.example.com/metrics | grep layer_processing
 
 # View Grafana dashboards
 # Navigate to http://grafana.example.com
 
 # Check resource usage
-kubectl top pods -n ontology-lsp
+kubectl top pods -n semantic-code-intelligence
 ```
 
 ### Debug Mode
@@ -471,30 +471,30 @@ backup:
   retention_days: 30
   storage:
     type: "s3"
-    bucket: "ontology-lsp-backups"
+    bucket: "semantic-code-intelligence-backups"
 ```
 
 ### Manual Backup
 
 ```bash
 # Database backup
-kubectl exec postgres-0 -n ontology-lsp -- pg_dump -U ontology ontology_lsp > backup.sql
+kubectl exec postgres-0 -n semantic-code-intelligence -- pg_dump -U ontology semantic_code_intelligence > backup.sql
 
 # Pattern data backup
-kubectl exec deployment/ontology-lsp -n ontology-lsp -- tar -czf patterns.tar.gz /app/data/patterns
+kubectl exec deployment/semantic-code-intelligence -n semantic-code-intelligence -- tar -czf patterns.tar.gz /app/data/patterns
 ```
 
 ### Recovery Procedure
 
 ```bash
 # Stop application
-kubectl scale deployment/ontology-lsp --replicas=0 -n ontology-lsp
+kubectl scale deployment/semantic-code-intelligence --replicas=0 -n semantic-code-intelligence
 
 # Restore database
-kubectl exec -i postgres-0 -n ontology-lsp -- psql -U ontology ontology_lsp < backup.sql
+kubectl exec -i postgres-0 -n semantic-code-intelligence -- psql -U ontology semantic_code_intelligence < backup.sql
 
 # Restart application
-kubectl scale deployment/ontology-lsp --replicas=3 -n ontology-lsp
+kubectl scale deployment/semantic-code-intelligence --replicas=3 -n semantic-code-intelligence
 ```
 
 ## Migration Guide
@@ -539,7 +539,7 @@ Set up alerts for:
 
 ### Getting Help
 
-- **Documentation**: https://ontology-lsp.com/docs
+- **Documentation**: https://semantic-code-intelligence.com/docs
 - **Issues**: https://github.com/tryingET/semantic-code-intelligence/issues
 - **Discussions**: https://github.com/tryingET/semantic-code-intelligence/discussions
-- **Support Email**: support@ontology-lsp.com
+- **Support Email**: support@semantic-code-intelligence.com

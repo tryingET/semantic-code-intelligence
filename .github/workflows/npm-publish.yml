@@ -59,12 +59,12 @@ jobs:
             
             Install via npm:
             ```bash
-            npm install -g ontology-lsp-proxy
+            npm install -g semantic-code-intelligence
             ```
             
             Or use with bunx:
             ```bash
-            bunx ontology-lsp-proxy init
+            bunx semantic-code-intelligence init
             ```
             
             ## What's Changed

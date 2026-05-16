@@ -10,7 +10,7 @@ type: "reference"
 
 ## Executive Summary
 
-The Ontology-LSP Plugin System provides a secure, performant, and developer-friendly extension framework that allows third-party developers to enhance the core intelligence system without compromising security or performance.
+The Semantic Code Intelligence Plugin System provides a secure, performant, and developer-friendly extension framework that allows third-party developers to enhance the core intelligence system without compromising security or performance.
 
 ## Core Philosophy
 
@@ -36,7 +36,7 @@ The Ontology-LSP Plugin System provides a secure, performant, and developer-frie
 
 ```mermaid
 graph TB
-  subgraph CORE["🧠 Ontology-LSP Core (Protected)"]
+  subgraph CORE["🧠 Semantic Code Intelligence Core (Protected)"]
     UA["Unified Analyzer"]
     LM["Layer Manager"] 
     SS["Shared Services"]
@@ -293,7 +293,7 @@ ontology-plugin test ./my-plugin --target-dir=/path/to/test-project
 ontology-plugin package ./my-plugin --output=my-plugin-v1.0.0.opl
 
 # Publish to marketplace
-ontology-plugin publish my-plugin-v1.0.0.opl --registry=https://plugins.ontology-lsp.dev
+ontology-plugin publish my-plugin-v1.0.0.opl --registry=https://plugins.semantic-code-intelligence.dev
 ```
 
 ### 2. Development Templates
@@ -309,7 +309,7 @@ Pre-built templates for common plugin types:
 Built-in testing utilities:
 
 ```typescript
-import { PluginTestHarness } from '@ontology-lsp/plugin-testing';
+import { PluginTestHarness } from '@semantic-code-intelligence/plugin-testing';
 
 describe('My Layer Plugin', () => {
   let harness: PluginTestHarness;
@@ -605,4 +605,4 @@ Maintain compatibility with older plugins:
 - Distribution system
 - Community features
 
-This plugin architecture transforms Ontology-LSP from a static system into a vibrant, extensible ecosystem while maintaining the core principles of security, performance, and developer experience excellence.
+This plugin architecture transforms Semantic Code Intelligence from a static system into a vibrant, extensible ecosystem while maintaining the core principles of security, performance, and developer experience excellence.

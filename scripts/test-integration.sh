@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Comprehensive Integration Test Runner for Ontology-LSP Unified Architecture
+# Comprehensive Integration Test Runner for Semantic Code Intelligence Unified Architecture
 # This script runs all integration tests and provides detailed reporting
 
 set -e
@@ -22,7 +22,7 @@ TIMEOUT_PERFORMANCE=300000
 # Create results directory
 mkdir -p "$RESULTS_DIR"
 
-echo -e "${BLUE}🧪 Ontology-LSP Integration Test Suite${NC}"
+echo -e "${BLUE}🧪 Semantic Code Intelligence Integration Test Suite${NC}"
 echo "=================================================="
 echo "Running comprehensive integration tests for unified architecture"
 echo ""

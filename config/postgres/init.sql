@@ -1,4 +1,4 @@
--- Ontology-LSP PostgreSQL Initialization Script
+-- Semantic Code Intelligence PostgreSQL Initialization Script
 -- Creates database schema for knowledge storage and vector embeddings
 
 -- Enable required extensions
@@ -283,4 +283,4 @@ GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA ontology TO ontology;
 GRANT ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA ontology TO ontology;
 
 -- Set default search path
-ALTER DATABASE ontology_lsp SET search_path TO ontology, public;
+ALTER DATABASE semantic_code_intelligence SET search_path TO ontology, public;

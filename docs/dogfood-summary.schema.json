@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ontology-lsp.local/schemas/dogfood-summary.schema.json",
+  "$id": "https://semantic-code-intelligence.local/schemas/dogfood-summary.schema.json",
   "title": "Dogfood CI Summary",
   "type": "object",
   "additionalProperties": false,

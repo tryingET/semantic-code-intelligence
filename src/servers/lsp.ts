@@ -61,8 +61,8 @@ export class LSPServer {
             // Redirect non-error console output to stderr to avoid contaminating LSP stdio stream.
             try {
                 const g: any = globalThis as any;
-                if (!g.__ONTOLOGY_LSP_CONSOLE_PATCHED) {
-                    g.__ONTOLOGY_LSP_CONSOLE_PATCHED = true;
+                if (!g.__SEMANTIC_CODE_INTELLIGENCE_CONSOLE_PATCHED) {
+                    g.__SEMANTIC_CODE_INTELLIGENCE_CONSOLE_PATCHED = true;
                     const write = (label: string, args: any[]) => {
                         try {
                             const msg = args
@@ -114,7 +114,7 @@ export class LSPServer {
             if (this.hasConfigurationCapability) {
                 this.connection.client.register(DidChangeConfigurationNotification.type, undefined);
             }
-            log('Ontology LSP Server initialized');
+            log('Semantic Code Intelligence Server initialized');
 
             // Start metrics endpoint for LSP on loopback
             try {
@@ -539,7 +539,7 @@ export class LSPServer {
      */
     async start(): Promise<void> {
         // Avoid stdout logging in stdio mode
-        console.error('Starting Ontology LSP Server...');
+        console.error('Starting Semantic Code Intelligence Server...');
         // Connection starts listening automatically
     }
 
@@ -550,7 +550,7 @@ export class LSPServer {
         if (this.coreAnalyzer) {
             await this.coreAnalyzer.dispose();
         }
-        console.error('Ontology LSP Server shut down');
+        console.error('Semantic Code Intelligence Server shut down');
     }
 }
 

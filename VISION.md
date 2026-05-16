@@ -204,7 +204,7 @@ These tools should replace unbounded grep/read/sed behavior in harnessed-LLM wor
 
 The repo is named **Semantic Code Intelligence** because the durable product is not the transport. LSP is one adapter. MCP is one adapter. HTTP and CLI are adapters. The durable asset is the code brain: a semantic, snapshot-aware intelligence layer for software repositories.
 
-Package and command names may retain compatibility aliases such as `ontology-lsp` where useful, but new documentation should prefer **Semantic Code Intelligence** for the product and repo identity.
+Package and command names may retain compatibility aliases such as `semantic-code-intelligence` where useful, but new documentation should prefer **Semantic Code Intelligence** for the product and repo identity.
 
 ## The Vision Realized
 

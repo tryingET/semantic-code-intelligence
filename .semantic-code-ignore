@@ -1,4 +1,4 @@
-# Ontology LSP ignore patterns
+# Semantic Code Intelligence ignore patterns
 node_modules/
 .git/
 dist/

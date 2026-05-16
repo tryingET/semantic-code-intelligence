@@ -50,7 +50,7 @@ Examples
 - CLI (stdio):
   ```bash
   echo "console.log('oops')" > not-a-diff.txt
-  ontology-lsp patch-checks-in-snapshot --patch-file not-a-diff.txt
+  semantic-code-intelligence patch-checks-in-snapshot --patch-file not-a-diff.txt
   # → {"ok":false,"reason":"invalid_patch","message":"Expected unified diff or apply_patch format. Use apply_patch heredoc or pass a diff file (-f)."}
   ```
 - HTTP:
@@ -84,9 +84,9 @@ Examples
 - Stream run output (NDJSON): `POST /api/v1/pipelines/run-stream` and incrementally read lines.
 
 - CLI:
-  - `ontology-lsp pipelines list`
-  - `ontology-lsp pipelines run pattern_feedback_cycle`
-  - `ontology-lsp pipelines runs pattern_feedback_cycle --limit 5`
+  - `semantic-code-intelligence pipelines list`
+  - `semantic-code-intelligence pipelines run pattern_feedback_cycle`
+  - `semantic-code-intelligence pipelines runs pattern_feedback_cycle --limit 5`
 
 #### Troubleshooting (timeouts & budgets)
 - `run-stream` times out client-side after `timeoutSec` (default: 30, max: 600); re-run with a larger `timeoutSec` or tune `pollMs` (100–2000).

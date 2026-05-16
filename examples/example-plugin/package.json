@@ -1,25 +1,25 @@
 {
-  "name": "@ontology-lsp/example-enhanced-search",
+  "name": "@semantic-code-intelligence/example-enhanced-search",
   "version": "1.0.0",
   "description": "Example layer plugin demonstrating enhanced search capabilities",
   "keywords": [
-    "ontology-lsp",
+    "semantic-code-intelligence",
     "plugin",
     "search",
     "fuzzy-matching",
     "layer-enhancement"
   ],
   "author": {
-    "name": "Ontology-LSP Team",
-    "email": "plugins@ontology-lsp.dev",
-    "url": "https://ontology-lsp.dev"
+    "name": "Semantic Code Intelligence Team",
+    "email": "plugins@semantic-code-intelligence.dev",
+    "url": "https://semantic-code-intelligence.dev"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ontology-lsp/plugin-enhanced-search.git"
+    "url": "https://github.com/semantic-code-intelligence/plugin-enhanced-search.git"
   },
-  "homepage": "https://ontology-lsp.dev/plugins/enhanced-search",
+  "homepage": "https://semantic-code-intelligence.dev/plugins/enhanced-search",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
@@ -56,12 +56,12 @@
     "typescript": "^5.0.0"
   },
   "peerDependencies": {
-    "@ontology-lsp/core": "^1.0.0"
+    "@semantic-code-intelligence/core": "^1.0.0"
   },
   "engines": {
     "node": ">=18.0.0"
   },
-  "ontology-lsp": {
+  "semantic-code-intelligence": {
     "plugin": true,
     "type": "layer",
     "targetLayer": "layer1"

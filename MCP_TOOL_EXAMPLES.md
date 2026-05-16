@@ -8,7 +8,7 @@ type: "reference"
 
 # MCP Tool Usage Examples
 
-This document provides examples of how to use each of the 16 MCP tools exposed by the Ontology LSP server.
+This document provides examples of how to use each of the 16 MCP tools exposed by the Semantic Code Intelligence server.
 
 ## Architecture Overview
 

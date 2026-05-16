@@ -1,4 +1,4 @@
-// .ontologyignore file support
+// .semantic-code-ignore file support
 import * as fs from 'fs';
 import { minimatch } from 'minimatch';
 import * as path from 'path';
@@ -39,13 +39,13 @@ export class IgnoreFileManager {
     }
 
     private loadIgnoreFile(workspaceRoot: string): void {
-        const ignoreFilePath = path.join(workspaceRoot, '.ontologyignore');
+        const ignoreFilePath = path.join(workspaceRoot, '.semantic-code-ignore');
 
         // Start with default patterns
         this.patterns = [...this.defaultPatterns];
 
         if (!fs.existsSync(ignoreFilePath)) {
-            // Create a default .ontologyignore file
+            // Create a default .semantic-code-ignore file
             this.createDefaultIgnoreFile(ignoreFilePath);
             return;
         }
@@ -55,7 +55,7 @@ export class IgnoreFileManager {
             const customPatterns = this.parseIgnoreFile(content);
             this.patterns = [...this.defaultPatterns, ...customPatterns];
         } catch (error) {
-            console.error('Error reading .ontologyignore:', error);
+            console.error('Error reading .semantic-code-ignore:', error);
         }
     }
 
@@ -82,7 +82,7 @@ export class IgnoreFileManager {
     }
 
     private createDefaultIgnoreFile(filePath: string): void {
-        const defaultContent = `# Ontology LSP Ignore File
+        const defaultContent = `# Semantic Code Intelligence Ignore File
 # This file specifies patterns for files and directories that should be
 # excluded from ontology analysis and indexing.
 
@@ -163,9 +163,9 @@ docs/api/
 
         try {
             fs.writeFileSync(filePath, defaultContent, 'utf-8');
-            console.log('Created default .ontologyignore file');
+            console.log('Created default .semantic-code-ignore file');
         } catch (error) {
-            console.error('Error creating .ontologyignore file:', error);
+            console.error('Error creating .semantic-code-ignore file:', error);
         }
     }
 

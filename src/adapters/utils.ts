@@ -25,7 +25,7 @@ export function pathToUri(filePath: string): string {
 
 export function uriToPath(uri: string): string {
     const WORKSPACE_PREFIX = 'file://workspace';
-    const getWorkspaceRoot = () => process.env.ONTOLOGY_WORKSPACE || process.env.WORKSPACE_ROOT || process.cwd();
+    const getWorkspaceRoot = () => process.env.SEMANTIC_CODE_WORKSPACE || process.env.WORKSPACE_ROOT || process.cwd();
     if (uri.startsWith(WORKSPACE_PREFIX)) {
         const ws = getWorkspaceRoot();
         const sub = uri.length > WORKSPACE_PREFIX.length ? uri.substring(WORKSPACE_PREFIX.length) : '';
@@ -305,7 +305,7 @@ export function createDefaultCoreConfig(): CoreConfig {
             (cfg as any).layers = (cfg as any).layers || {};
             (cfg as any).layers.layer4 = { ...(cfg as any).layers.layer4, adapter: adapterEnv };
         }
-        const dbPathEnv = process.env.ONTOLOGY_DB_PATH || process.env.LAYER4_DB_PATH;
+        const dbPathEnv = process.env.SEMANTIC_CODE_DB_PATH || process.env.LAYER4_DB_PATH;
         if (dbPathEnv) {
             (cfg as any).layers = (cfg as any).layers || {};
             (cfg as any).layers.layer4 = { ...(cfg as any).layers.layer4, dbPath: dbPathEnv };
@@ -427,7 +427,7 @@ export function completionKindToLspKind(kind: unknown): number | undefined {
         operator: 24,
         typeParameter: 25,
 
-        // Ontology-LSP extensions: best-effort mapping
+        // Semantic Code Intelligence extensions: best-effort mapping
         pattern: 15,
     };
 

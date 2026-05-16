@@ -8,7 +8,7 @@ type: "reference"
 
 # Comprehensive Integration Tests for Unified Architecture
 
-This directory contains comprehensive integration tests for the Ontology-LSP unified architecture. These tests verify that all components work together correctly and meet the performance targets outlined in VISION.md.
+This directory contains comprehensive integration tests for the Semantic Code Intelligence unified architecture. These tests verify that all components work together correctly and meet the performance targets outlined in VISION.md.
 
 ## Test Suite Overview
 

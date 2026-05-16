@@ -40,7 +40,7 @@ export class EnhancedMCPServer {
     constructor() {
         this.server = new Server(
             {
-                name: 'ontology-lsp',
+                name: 'semantic-code-intelligence',
                 version: '1.0.0',
             },
             {
@@ -292,7 +292,7 @@ export class EnhancedMCPServer {
 
                 // Create optimized config
                 const config = createDefaultCoreConfig();
-                const workspaceRoot = process.env.ONTOLOGY_WORKSPACE || process.env.WORKSPACE_ROOT || process.cwd();
+                const workspaceRoot = process.env.SEMANTIC_CODE_WORKSPACE || process.env.WORKSPACE_ROOT || process.cwd();
 
                 // Optimize for fast initialization
                 config.optimization = {
@@ -354,7 +354,7 @@ export class EnhancedMCPServer {
                 mcpLogger.info('Enhanced MCP Server running on stdio', {
                     version: '1.0.0',
                     pid: process.pid,
-                    workspaceRoot: process.env.ONTOLOGY_WORKSPACE || process.cwd(),
+                    workspaceRoot: process.env.SEMANTIC_CODE_WORKSPACE || process.cwd(),
                 });
             },
             {

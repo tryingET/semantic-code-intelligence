@@ -46,7 +46,7 @@ async function main() {
 
   // Ensure snapshot materialization respects bounded workspace
   process.env.WORKSPACE_ROOT = workspaceRoot;
-  process.env.ONTOLOGY_WORKSPACE = workspaceRoot;
+  process.env.SEMANTIC_CODE_WORKSPACE = workspaceRoot;
   const analyzer = await createCodeAnalyzer({ ...cfg, workspaceRoot });
   await analyzer.initialize();
   const mcp = new MCPAdapter(analyzer);

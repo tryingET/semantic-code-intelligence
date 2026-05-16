@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Start all Ontology LSP servers
+# Start all Semantic Code Intelligence servers
 
-echo "🚀 Starting Ontology LSP Servers..."
+echo "🚀 Starting Semantic Code Intelligence Servers..."
 echo "=================================="
 
 # Kill any existing servers on our ports
@@ -12,7 +12,7 @@ lsof -ti:7001 | xargs -r kill -9 2>/dev/null
 lsof -ti:7002 | xargs -r kill -9 2>/dev/null
 
 # Set environment
-export ONTOLOGY_WORKSPACE="$(pwd)"
+export SEMANTIC_CODE_WORKSPACE="$(pwd)"
 export BUN_PATH="${HOME}/.bun/bin/bun"
 
 # Check Bun installation

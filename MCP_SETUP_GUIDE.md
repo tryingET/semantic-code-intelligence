@@ -58,7 +58,7 @@ cp claude-desktop-config.json ~/.config/Claude/claude_desktop_config.json
 2. Restart Claude Desktop
 
 3. Test by asking Claude:
-   - "Use the ontology-lsp tool to find the definition of CodeAnalyzer"
+   - "Use the semantic-code-intelligence tool to find the definition of CodeAnalyzer"
    - "Find all references to findDefinition"
    - "Get concepts related to 'Layer'"
 

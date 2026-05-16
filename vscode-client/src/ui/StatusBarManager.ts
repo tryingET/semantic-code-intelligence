@@ -57,23 +57,23 @@ export class StatusBarManager {
     
     setActive(message?: string): void {
         this.currentStatus = 'active';
-        this.statusBarItem.text = `$(symbol-class) ${message || 'Ontology LSP'}`;
+        this.statusBarItem.text = `$(symbol-class) ${message || 'Semantic Code Intelligence'}`;
         this.statusBarItem.backgroundColor = undefined;
-        this.statusBarItem.tooltip = 'Ontology LSP is active\nClick for statistics';
+        this.statusBarItem.tooltip = 'Semantic Code Intelligence is active\nClick for statistics';
         this.updateDisplay();
     }
     
     setInactive(): void {
         this.currentStatus = 'inactive';
-        this.statusBarItem.text = '$(symbol-class) Ontology LSP (Inactive)';
+        this.statusBarItem.text = '$(symbol-class) Semantic Code Intelligence (Inactive)';
         this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-        this.statusBarItem.tooltip = 'Ontology LSP is inactive\nClick to restart';
+        this.statusBarItem.tooltip = 'Semantic Code Intelligence is inactive\nClick to restart';
         this.updateDisplay();
     }
     
     setError(message: string): void {
         this.currentStatus = 'error';
-        this.statusBarItem.text = `$(error) Ontology LSP: ${message}`;
+        this.statusBarItem.text = `$(error) Semantic Code Intelligence: ${message}`;
         this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
         this.statusBarItem.tooltip = `Error: ${message}\nClick for details`;
         this.updateDisplay();

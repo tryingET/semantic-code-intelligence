@@ -5,7 +5,7 @@ import { promisify } from 'util';
 const execAsync = promisify(exec);
 
 describe('Layer 1 Text Search - Edge Cases', () => {
-    const CLI = './ontology-lsp';
+    const CLI = './semantic-code-intelligence';
 
     test('word-boundary kind finds exact word matches (limit to src)', async () => {
         const { stdout } = await execAsync(`${CLI} text-search "CodeAnalyzer" -k word -p src -n 10 -j`);

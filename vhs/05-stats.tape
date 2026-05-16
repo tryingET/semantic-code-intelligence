@@ -14,6 +14,6 @@ Sleep 400ms
 Type "echo 'System statistics with verbose output'"
 Enter
 Sleep 500ms
-Type "ontology-lsp stats -v"
+Type "semantic-code-intelligence stats -v"
 Enter
 Sleep 2200ms

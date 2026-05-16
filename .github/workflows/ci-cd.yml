@@ -1,4 +1,4 @@
-# Ontology-LSP CI/CD Pipeline
+# Semantic Code Intelligence CI/CD Pipeline
 # Comprehensive workflow for build, test, and deployment
 
 name: CI/CD Pipeline
@@ -313,7 +313,7 @@ jobs:
       - name: Deploy to staging
         run: |
           # Update image in deployment
-          sed -i "s|ontology-lsp:2.0.0|${{ needs.build.outputs.image }}|g" k8s/production.yaml
+          sed -i "s|semantic-code-intelligence:2.0.0|${{ needs.build.outputs.image }}|g" k8s/production.yaml
           
           # Apply manifests
           kubectl apply -f k8s/namespace.yaml
@@ -322,15 +322,15 @@ jobs:
           kubectl apply -f k8s/production.yaml
           
           # Wait for rollout
-          kubectl rollout status deployment/ontology-lsp -n ontology-lsp --timeout=300s
+          kubectl rollout status deployment/semantic-code-intelligence -n semantic-code-intelligence --timeout=300s
       
       - name: Verify deployment
         run: |
           # Check service health
-          kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=ontology-lsp -n ontology-lsp --timeout=120s
+          kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=semantic-code-intelligence -n semantic-code-intelligence --timeout=120s
           
           # Test endpoints
-          kubectl port-forward -n ontology-lsp svc/ontology-lsp-http 7000:7000 &
+          kubectl port-forward -n semantic-code-intelligence svc/semantic-code-intelligence-http 7000:7000 &
           sleep 5
           curl -f http://localhost:7000/health || exit 1
           curl -f http://localhost:7000/ready || exit 1
@@ -342,7 +342,7 @@ jobs:
           echo "Stats response: $response"
           
           # MCP endpoint test
-          kubectl port-forward -n ontology-lsp svc/ontology-lsp-mcp 7001:7001 &
+          kubectl port-forward -n semantic-code-intelligence svc/semantic-code-intelligence-mcp 7001:7001 &
           sleep 2
           curl -f http://localhost:7001/health || exit 1
 
@@ -373,12 +373,12 @@ jobs:
       
       - name: Create deployment backup
         run: |
-          kubectl get deployment ontology-lsp -n ontology-lsp -o yaml > deployment-backup.yaml || echo "No existing deployment"
+          kubectl get deployment semantic-code-intelligence -n semantic-code-intelligence -o yaml > deployment-backup.yaml || echo "No existing deployment"
       
       - name: Deploy to production
         run: |
           # Update image in deployment
-          sed -i "s|ontology-lsp:2.0.0|${{ needs.build.outputs.image }}|g" k8s/production.yaml
+          sed -i "s|semantic-code-intelligence:2.0.0|${{ needs.build.outputs.image }}|g" k8s/production.yaml
           
           # Apply with gradual rollout
           kubectl apply -f k8s/namespace.yaml
@@ -387,25 +387,25 @@ jobs:
           kubectl apply -f k8s/production.yaml
           
           # Wait for rollout with extended timeout
-          kubectl rollout status deployment/ontology-lsp -n ontology-lsp --timeout=600s
+          kubectl rollout status deployment/semantic-code-intelligence -n semantic-code-intelligence --timeout=600s
       
       - name: Verify production deployment
         run: |
           # Comprehensive health checks
-          kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=ontology-lsp -n ontology-lsp --timeout=300s
+          kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=semantic-code-intelligence -n semantic-code-intelligence --timeout=300s
           
           # Test all endpoints through ingress
-          curl -f https://ontology-lsp.example.com/health || exit 1
-          curl -f https://api.ontology-lsp.example.com/ready || exit 1
-          curl -f https://mcp.ontology-lsp.example.com/health || exit 1
+          curl -f https://semantic-code-intelligence.example.com/health || exit 1
+          curl -f https://api.semantic-code-intelligence.example.com/ready || exit 1
+          curl -f https://mcp.semantic-code-intelligence.example.com/health || exit 1
       
       - name: Run production smoke tests
         run: |
           # Performance test
-          curl -f https://api.ontology-lsp.example.com/stats
+          curl -f https://api.semantic-code-intelligence.example.com/stats
           
           # Pattern learning test
-          curl -X POST https://api.ontology-lsp.example.com/analyze \
+          curl -X POST https://api.semantic-code-intelligence.example.com/analyze \
             -H "Content-Type: application/json" \
             -d '{"code":"function test() { return true; }", "language":"typescript"}' \
             || exit 1
@@ -439,7 +439,7 @@ jobs:
       - name: Check application metrics
         run: |
           # Check Prometheus metrics
-          response=$(curl -s "https://monitoring.ontology-lsp.example.com/api/v1/query?query=up{job=~\"ontology.*\"}")
+          response=$(curl -s "https://monitoring.semantic-code-intelligence.example.com/api/v1/query?query=up{job=~\"ontology.*\"}")
           echo "Metrics response: $response"
           
           # Verify all services are up
@@ -451,7 +451,7 @@ jobs:
       - name: Performance baseline check
         run: |
           # Check response times
-          avg_response=$(curl -s "https://monitoring.ontology-lsp.example.com/api/v1/query?query=rate(http_request_duration_seconds_sum[5m])/rate(http_request_duration_seconds_count[5m])" | jq -r '.data.result[0].value[1]')
+          avg_response=$(curl -s "https://monitoring.semantic-code-intelligence.example.com/api/v1/query?query=rate(http_request_duration_seconds_sum[5m])/rate(http_request_duration_seconds_count[5m])" | jq -r '.data.result[0].value[1]')
           
           if (( $(echo "$avg_response > 0.2" | bc -l) )); then
             echo "Response time too high: ${avg_response}s"

@@ -31,7 +31,7 @@ export class MCPServer {
     constructor() {
         this.server = new Server(
             {
-                name: 'ontology-lsp',
+                name: 'semantic-code-intelligence',
                 version: '1.0.0',
             },
             {

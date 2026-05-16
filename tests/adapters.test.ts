@@ -175,7 +175,7 @@ const createAdapterTestContext = async (): Promise<AdapterTestContext> => {
     });
 
     const cliAdapter = new CLIAdapter(codeAnalyzer, {
-        appName: 'ontology-lsp-test',
+        appName: 'semantic-code-intelligence-test',
         version: '1.0.0-test',
         maxResults: 50,
     });

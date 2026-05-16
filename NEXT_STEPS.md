@@ -330,7 +330,7 @@ Proceed with staged rollout while storage adapters and type-safety improvements 
 **Tooling (Core & Adapters)**:
 - [ ] Add `prime_ontology` to ToolRegistry with schema & defaults (MCP stdio/HTTP, HTTP, CLI)
 - [ ] MCP stdio/HTTP handlers: stream progress and return summary JSON; enforce budgets
-- [ ] HTTP: `POST /api/v1/ontology/prime` endpoint; CLI alias `ontology-lsp ontology prime`
+- [ ] HTTP: `POST /api/v1/ontology/prime` endpoint; CLI alias `semantic-code-intelligence ontology prime`
 
 **PrimeEngine (Layered, budgeted)**:
 - [ ] Scaffold `src/ontology/prime/engine.ts` (batching, layer timings, dryRun support)
@@ -393,11 +393,11 @@ Proceed with staged rollout while storage adapters and type-safety improvements 
   - Single slice: `just test-sliced <N> <K>`
   - Stop-at-first-failure: `bun test --bail=1`
 - Verify Layer 1/CLI:
-  - `timeout 20s ./ontology-lsp find <Symbol> -n 50 -l 20 --json`
-  - `timeout 20s ./ontology-lsp references <Symbol> -n 50 -l 20 --json`
-  - `timeout 20s ./ontology-lsp explore <Symbol> -n 100 -l 10 --json`
-  - `timeout 20s ./ontology-lsp symbol-map <Symbol> --max-files 10 --json`
-  - `timeout 20s ./ontology-lsp plan-rename <Old> <New> --json`
+  - `timeout 20s ./semantic-code-intelligence find <Symbol> -n 50 -l 20 --json`
+  - `timeout 20s ./semantic-code-intelligence references <Symbol> -n 50 -l 20 --json`
+  - `timeout 20s ./semantic-code-intelligence explore <Symbol> -n 100 -l 10 --json`
+  - `timeout 20s ./semantic-code-intelligence symbol-map <Symbol> --max-files 10 --json`
+  - `timeout 20s ./semantic-code-intelligence plan-rename <Old> <New> --json`
 
 ---
 

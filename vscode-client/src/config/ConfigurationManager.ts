@@ -11,7 +11,7 @@ export class ConfigurationManager {
     private listeners: Map<string, ((value: any) => void)[]> = new Map();
     
     constructor(private context: vscode.ExtensionContext) {
-        this.config = vscode.workspace.getConfiguration('ontologyLSP');
+        this.config = vscode.workspace.getConfiguration('semanticCodeIntelligence');
     }
     
     async initialize(): Promise<void> {
@@ -24,8 +24,8 @@ export class ConfigurationManager {
         // Setup configuration change listener
         this.context.subscriptions.push(
             vscode.workspace.onDidChangeConfiguration((e) => {
-                if (e.affectsConfiguration('ontologyLSP')) {
-                    this.config = vscode.workspace.getConfiguration('ontologyLSP');
+                if (e.affectsConfiguration('semanticCodeIntelligence')) {
+                    this.config = vscode.workspace.getConfiguration('semanticCodeIntelligence');
                     this.cache.clear();
                     this.notifyListeners();
                 }

@@ -1,14 +1,14 @@
 ---
-summary: "Ontology-LSP Web UI Dashboard for the Semantic Code Intelligence repo."
+summary: "Semantic Code Intelligence Web UI Dashboard for the Semantic Code Intelligence repo."
 read_when:
   - "You need README information for Semantic Code Intelligence."
   - "You are changing web-ui/README.md or related behavior."
 type: "reference"
 ---
 
-# Ontology-LSP Web UI Dashboard
+# Semantic Code Intelligence Web UI Dashboard
 
-A real-time monitoring dashboard for the Ontology-LSP system, providing insights into system health, performance metrics, and learning statistics.
+A real-time monitoring dashboard for the Semantic Code Intelligence system, providing insights into system health, performance metrics, and learning statistics.
 
 ## Features
 
@@ -38,7 +38,7 @@ web-ui/
 ### Option 1: Direct File Access
 Open the dashboard directly in your browser:
 ```bash
-# From the ontology-lsp root directory
+# From the semantic-code-intelligence root directory
 open web-ui/dist/index.html
 # or
 xdg-open web-ui/dist/index.html
@@ -61,7 +61,7 @@ python3 -m http.server 8080
 
 ## API Integration
 
-The dashboard connects to the Ontology-LSP HTTP API on port 7000:
+The dashboard connects to the Semantic Code Intelligence HTTP API on port 7000:
 
 ### Required Endpoints
 - `GET /health` - System health check
@@ -73,7 +73,7 @@ The dashboard automatically connects to `http://localhost:7000`. For different c
 1. Edit `web-ui/dist/index.html`
 2. Update the `apiBase` property in the `OntologyDashboard` class:
    ```javascript
-   this.apiBase = 'http://your-ontology-lsp-host:7000';
+   this.apiBase = 'http://your-semantic-code-intelligence-host:7000';
    ```
 
 ## Testing
@@ -86,7 +86,7 @@ node test-dashboard.cjs
 
 Expected output:
 ```
-🧪 Testing Ontology-LSP Dashboard API Connectivity
+🧪 Testing Semantic Code Intelligence Dashboard API Connectivity
 
 Testing Health Check (/health)...
 ✅ Success: 3 keys
@@ -186,7 +186,7 @@ The dashboard only reads data from the API and does not expose any write operati
 ## Troubleshooting
 
 ### Dashboard Not Loading
-1. Check if Ontology-LSP HTTP server is running on port 7000
+1. Check if Semantic Code Intelligence HTTP server is running on port 7000
 2. Test API connectivity: `curl http://localhost:7000/health`
 3. Check browser console for JavaScript errors
 

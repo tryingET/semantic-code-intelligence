@@ -14,13 +14,13 @@ Sleep 400ms
 Type "echo 'References for Python function (include declaration)'"
 Enter
 Sleep 500ms
-Type "ontology-lsp references get_user -d -n 10"
+Type "semantic-code-intelligence references get_user -d -n 10"
 Enter
 Sleep 2200ms
 
 Type "echo 'References for TS class method'"
 Enter
 Sleep 500ms
-Type "ontology-lsp references fetchUser -n 10"
+Type "semantic-code-intelligence references fetchUser -n 10"
 Enter
 Sleep 2200ms

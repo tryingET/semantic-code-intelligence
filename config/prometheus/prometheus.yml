@@ -1,18 +1,18 @@
-# Ontology-LSP Prometheus Configuration
+# Semantic Code Intelligence Prometheus Configuration
 # Monitoring and metrics collection
 
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
   external_labels:
-    cluster: 'ontology-lsp-local'
+    cluster: 'semantic-code-intelligence-local'
     replica: 'prometheus-01'
 
 # Rule files
 rule_files:
   - "alert_rules.yml"
 
-# Scraping configuration  
+# Scraping configuration
 scrape_configs:
   # Prometheus self-monitoring
   - job_name: 'prometheus'
@@ -21,20 +21,20 @@ scrape_configs:
     scrape_interval: 30s
     metrics_path: /metrics
 
-  # Ontology-LSP HTTP API Server
+  # Semantic Code Intelligence HTTP API Server
   - job_name: 'ontology-http-api'
     static_configs:
-      - targets: ['ontology-lsp:7000']
+      - targets: ['semantic-code-intelligence:7000']
     scrape_interval: 10s
     metrics_path: /metrics
     scrape_timeout: 5s
     params:
       format: ['prometheus']
 
-  # Ontology-LSP MCP HTTP Server  
-  - job_name: 'ontology-mcp-http'
+  # Semantic Code Intelligence MCP HTTP Server
+  - job_name: 'semantic-code-mcp-http'
     static_configs:
-      - targets: ['ontology-lsp:7001']
+      - targets: ['semantic-code-intelligence:7001']
     scrape_interval: 10s
     metrics_path: /metrics
     scrape_timeout: 5s

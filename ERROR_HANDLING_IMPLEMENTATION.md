@@ -10,7 +10,7 @@ type: "reference"
 
 ## Overview
 
-This document describes the comprehensive error handling and connection recovery implementation for the Ontology-LSP MCP server. The system provides robust error handling, connection state management, proper signal handling, and file-based logging for debugging.
+This document describes the comprehensive error handling and connection recovery implementation for the Semantic Code Intelligence MCP server. The system provides robust error handling, connection state management, proper signal handling, and file-based logging for debugging.
 
 ## Implementation Summary
 

@@ -27,8 +27,8 @@ class MCPClient {
             STDIO_MODE: 'true',
             BUN_DISABLE_ANALYTICS: '1',
             BUN_DISABLE_TRANSPILER_CACHE: '1',
-            ONTOLOGY_DB_PATH: path.resolve(process.cwd(), '.ontology/ontology.db'),
-            ONTOLOGY_WORKSPACE: process.cwd(),
+            SEMANTIC_CODE_DB_PATH: path.resolve(process.cwd(), '.ontology/ontology.db'),
+            SEMANTIC_CODE_WORKSPACE: process.cwd(),
         };
 
         this.process = spawn(this.command, this.args, {

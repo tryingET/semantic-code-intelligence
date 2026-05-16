@@ -31,11 +31,11 @@ suite('Extension Integration Test Suite', () => {
     });
     
     test('Extension should be present', () => {
-        assert.ok(vscode.extensions.getExtension('ontology-team.ontology-lsp'));
+        assert.ok(vscode.extensions.getExtension('tryingET.semantic-code-intelligence'));
     });
     
     test('Extension should activate', async () => {
-        const ext = vscode.extensions.getExtension('ontology-team.ontology-lsp');
+        const ext = vscode.extensions.getExtension('tryingET.semantic-code-intelligence');
         assert.ok(ext);
         
         const api = await ext.activate();
@@ -72,7 +72,7 @@ suite('Extension Integration Test Suite', () => {
     });
     
     test('Configuration should have correct defaults', () => {
-        const config = vscode.workspace.getConfiguration('ontologyLSP');
+        const config = vscode.workspace.getConfiguration('semanticCodeIntelligence');
         
         assert.strictEqual(config.get('enable'), true);
         assert.strictEqual(config.get('fuzzyMatching.enabled'), true);
@@ -83,7 +83,7 @@ suite('Extension Integration Test Suite', () => {
     });
     
     test('Status bar should be visible when enabled', async () => {
-        const config = vscode.workspace.getConfiguration('ontologyLSP');
+        const config = vscode.workspace.getConfiguration('semanticCodeIntelligence');
         await config.update('ui.showStatusBar', true, vscode.ConfigurationTarget.Workspace);
         
         // Give time for status bar to update
@@ -98,7 +98,7 @@ suite('Extension Integration Test Suite', () => {
     });
     
     test('Language client should connect to server', async () => {
-        const ext = vscode.extensions.getExtension('ontology-team.ontology-lsp');
+        const ext = vscode.extensions.getExtension('tryingET.semantic-code-intelligence');
         const api = await ext!.activate();
         
         // Get the language client

@@ -1,5 +1,5 @@
 
-// Test file for Ontology LSP
+// Test file for Semantic Code Intelligence
 function getUserData(userId: string): Promise<User> {
     return fetch(`/api/users/${userId}`)
         .then(response => response.json());

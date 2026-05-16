@@ -1,4 +1,4 @@
-# Ontology-LSP Grafana Datasource Configuration
+# Semantic Code Intelligence Grafana Datasource Configuration
 
 apiVersion: 1
 
@@ -21,7 +21,7 @@ datasources:
     type: postgres
     access: proxy  
     url: postgres:5432
-    database: ontology_lsp
+    database: semantic_code_intelligence
     user: ontology
     secureJsonData:
       password: ontology_dev_password

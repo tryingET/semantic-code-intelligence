@@ -5,7 +5,7 @@ import { promisify } from 'util';
 const execAsync = promisify(exec);
 
 describe('Layer Validation - L1→L5 Working Paths', () => {
-    const CLI = './ontology-lsp';
+    const CLI = './semantic-code-intelligence';
 
     // L1 Fast Search
     test('L1: text_search should return results within 2000ms', async () => {

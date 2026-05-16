@@ -5,7 +5,7 @@ allowed-tools: Read, Write, Edit, MultiEdit, TodoWrite, Bash, Grep, Glob, LS, We
 
 ## Session Workflow - Continue Development
 
-Follow this workflow to continue development on the Ontology-LSP project:
+Follow this workflow to continue development on the Semantic Code Intelligence project:
 
 ### 1. Initialize Context
 Read the following documents in order to understand the current state:

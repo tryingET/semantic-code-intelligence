@@ -4,7 +4,7 @@
 const fetch = require('http').get;
 const url = require('url');
 
-console.log('🧪 Testing Ontology-LSP Dashboard API Connectivity\n');
+console.log('🧪 Testing Semantic Code Intelligence Dashboard API Connectivity\n');
 
 function makeRequest(endpoint) {
     return new Promise((resolve, reject) => {

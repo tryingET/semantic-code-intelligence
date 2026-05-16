@@ -10,8 +10,8 @@ MCP_PORT="${MCP_SSE_PORT:-7001}"
 MCP_HOST="${MCP_SSE_HOST:-localhost}"
 MCP_SERVER_DIR="$CLAUDE_PROJECT_DIR/mcp-ontology-server"
 BUN_PATH="${HOME}/.bun/bin/bun"
-PID_FILE="/tmp/ontology-mcp-server-${MCP_PORT}.pid"
-LOG_FILE="/tmp/ontology-mcp-server-${MCP_PORT}.log"
+PID_FILE="/tmp/semantic-code-mcp-server-${MCP_PORT}.pid"
+LOG_FILE="/tmp/semantic-code-mcp-server-${MCP_PORT}.log"
 
 # Colors for output
 GREEN='\033[0;32m'

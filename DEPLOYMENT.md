@@ -133,7 +133,7 @@ export class MCPAdapter {
     
     this.server = new Server(
       {
-        name: "ontology-lsp",
+        name: "semantic-code-intelligence",
         version: "2.0.0"
       },
       {
@@ -455,7 +455,7 @@ MAX_CONCURRENT_REQUESTS=100
 
 # Paths
 WORKSPACE_ROOT=/workspace/projects
-ONTOLOGY_DATA_DIR=.ontology
+SEMANTIC_CODE_DATA_DIR=.ontology
 
 # Feature Flags
 ENABLE_LEARNING=true
@@ -512,11 +512,11 @@ export const defaultConfig = {
 ```json
 {
   "mcpServers": {
-    "ontology-lsp": {
+    "semantic-code-intelligence": {
       "command": "bun",
       "args": [
         "run",
-        "/path/to/ontology-lsp/dist/adapters/mcp/index.js"
+        "/path/to/semantic-code-intelligence/dist/adapters/mcp/index.js"
       ],
       "env": {
         "LOG_LEVEL": "info",
@@ -537,7 +537,7 @@ export const defaultConfig = {
 
 set -e
 
-echo "🚀 Deploying Ontology-LSP..."
+echo "🚀 Deploying Semantic Code Intelligence..."
 
 # Build
 echo "📦 Building..."
@@ -549,17 +549,17 @@ just test
 
 # Build Docker image
 echo "🐳 Building Docker image..."
-docker build -t ontology-lsp:latest .
+docker build -t semantic-code-intelligence:latest .
 
 # Tag for registry
 echo "🏷️ Tagging..."
-docker tag ontology-lsp:latest registry.example.com/ontology-lsp:latest
-docker tag ontology-lsp:latest registry.example.com/ontology-lsp:$(git rev-parse --short HEAD)
+docker tag semantic-code-intelligence:latest registry.example.com/semantic-code-intelligence:latest
+docker tag semantic-code-intelligence:latest registry.example.com/semantic-code-intelligence:$(git rev-parse --short HEAD)
 
 # Push to registry
 echo "📤 Pushing to registry..."
-docker push registry.example.com/ontology-lsp:latest
-docker push registry.example.com/ontology-lsp:$(git rev-parse --short HEAD)
+docker push registry.example.com/semantic-code-intelligence:latest
+docker push registry.example.com/semantic-code-intelligence:$(git rev-parse --short HEAD)
 
 # Deploy to Kubernetes
 echo "☸️ Deploying to Kubernetes..."
@@ -567,7 +567,7 @@ kubectl apply -f k8s/
 
 # Wait for rollout
 echo "⏳ Waiting for rollout..."
-kubectl rollout status deployment/ontology-lsp
+kubectl rollout status deployment/semantic-code-intelligence
 
 echo "✅ Deployment complete!"
 ```
@@ -578,22 +578,22 @@ echo "✅ Deployment complete!"
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ontology-lsp
+  name: semantic-code-intelligence
   labels:
-    app: ontology-lsp
+    app: semantic-code-intelligence
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: ontology-lsp
+      app: semantic-code-intelligence
   template:
     metadata:
       labels:
-        app: ontology-lsp
+        app: semantic-code-intelligence
     spec:
       containers:
-      - name: ontology-lsp
-        image: registry.example.com/ontology-lsp:latest
+      - name: semantic-code-intelligence
+        image: registry.example.com/semantic-code-intelligence:latest
         ports:
         - containerPort: 7000
           name: http
@@ -629,10 +629,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: ontology-lsp
+  name: semantic-code-intelligence
 spec:
   selector:
-    app: ontology-lsp
+    app: semantic-code-intelligence
   ports:
   - name: http
     port: 7000

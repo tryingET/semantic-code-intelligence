@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Ontology LSP - Session Start Hook
+# Semantic Code Intelligence - Session Start Hook
 # Starts all servers using the justfile
 
 set -euo pipefail
@@ -21,7 +21,7 @@ if ! command -v just &> /dev/null; then
 fi
 
 # Start all servers using justfile
-echo "🚀 Starting Ontology LSP System..."
+echo "🚀 Starting Semantic Code Intelligence System..."
 just start
 
 # Show status

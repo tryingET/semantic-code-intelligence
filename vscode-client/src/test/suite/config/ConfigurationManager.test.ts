@@ -81,7 +81,7 @@ suite('ConfigurationManager Test Suite', () => {
     
     test('Should migrate old configuration keys', async () => {
         // Setup old config
-        const config = vscode.workspace.getConfiguration('ontologyLSP');
+        const config = vscode.workspace.getConfiguration('semanticCodeIntelligence');
         sandbox.stub(config, 'has').returns(true);
         sandbox.stub(config, 'get').returns(true);
         const updateStub = sandbox.stub(config, 'update');

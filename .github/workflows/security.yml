@@ -137,12 +137,12 @@ jobs:
       
       - name: Build test image
         run: |
-          docker build -t ontology-lsp:scan-test .
+          docker build -t semantic-code-intelligence:scan-test .
       
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ontology-lsp:scan-test
+          image-ref: semantic-code-intelligence:scan-test
           format: 'sarif'
           output: 'trivy-results.sarif'
           severity: 'CRITICAL,HIGH,MEDIUM'
@@ -156,7 +156,7 @@ jobs:
       - name: Run Syft SBOM generation
         uses: anchore/sbom-action@v0
         with:
-          image: ontology-lsp:scan-test
+          image: semantic-code-intelligence:scan-test
           format: spdx-json
           output-file: sbom.spdx.json
       

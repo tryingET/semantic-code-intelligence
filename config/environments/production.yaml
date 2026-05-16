@@ -1,10 +1,10 @@
-# Ontology-LSP Production Configuration
+# Semantic Code Intelligence Production Configuration
 
 # ================================
 # Application Settings
 # ================================
 app:
-  name: "Ontology-LSP"
+  name: "Semantic Code Intelligence"
   version: "2.0.0"
   environment: "production"
   debug: false
@@ -28,8 +28,8 @@ server:
   # Security
   cors:
     origins: 
-      - "https://ontology-lsp.example.com"
-      - "https://api.ontology-lsp.example.com"
+      - "https://semantic-code-intelligence.example.com"
+      - "https://api.semantic-code-intelligence.example.com"
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     credentials: true
   
@@ -47,9 +47,9 @@ database:
   # Primary database
   primary:
     type: "postgresql"
-    host: "postgres-service.ontology-lsp.svc.cluster.local"
+    host: "postgres-service.semantic-code-intelligence.svc.cluster.local"
     port: 5432
-    database: "ontology_lsp"
+    database: "semantic_code_intelligence"
     username: "ontology"
     # password from environment variable
     ssl: true
@@ -73,11 +73,11 @@ database:
 cache:
   # Redis configuration
   redis:
-    host: "redis-service.ontology-lsp.svc.cluster.local"
+    host: "redis-service.semantic-code-intelligence.svc.cluster.local"
     port: 6379
     # password from environment variable
     db: 0
-    key_prefix: "ontology_lsp:"
+    key_prefix: "semantic_code_intelligence:"
     
   # Cache behavior
   ttl:
@@ -188,7 +188,7 @@ observability:
   # OpenTelemetry
   tracing:
     enabled: true
-    service_name: "ontology-lsp"
+    service_name: "semantic-code-intelligence"
     service_version: "2.0.0"
     exporter:
       type: "otlp"
@@ -211,7 +211,7 @@ observability:
 # ================================
 filesystem:
   # Directories
-  temp_dir: "/tmp/ontology-lsp"
+  temp_dir: "/tmp/semantic-code-intelligence"
   data_dir: "/app/data"
   cache_dir: "/app/cache"
   logs_dir: "/app/logs"
@@ -262,7 +262,7 @@ backup:
   retention_days: 30
   storage:
     type: "s3"
-    bucket: "ontology-lsp-backups"
+    bucket: "semantic-code-intelligence-backups"
     region: "us-east-1"
   
   # What to backup

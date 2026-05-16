@@ -1,19 +1,19 @@
 ---
-summary: "Memory Profile Report - Ontology-LSP System for the Semantic Code Intelligence repo."
+summary: "Memory Profile Report - Semantic Code Intelligence System for the Semantic Code Intelligence repo."
 read_when:
   - "You need MEMORY PROFILE REPORT information for Semantic Code Intelligence."
   - "You are changing MEMORY_PROFILE_REPORT.md or related behavior."
 type: "reference"
 ---
 
-# Memory Profile Report - Ontology-LSP System
+# Memory Profile Report - Semantic Code Intelligence System
 
 **Generated:** 2025-08-25T15:24:08.803Z  
 **System:** Linux WSL2 (15.62 GB total system memory)
 
 ## Executive Summary
 
-The Ontology-LSP system demonstrates **good overall memory efficiency** with a score of 10/10, using only 607.62 MB of physical memory (3.80% of system memory) across 7 processes. However, there are several optimization opportunities identified.
+The Semantic Code Intelligence system demonstrates **good overall memory efficiency** with a score of 10/10, using only 607.62 MB of physical memory (3.80% of system memory) across 7 processes. However, there are several optimization opportunities identified.
 
 ## Current Memory Usage
 
@@ -245,7 +245,7 @@ Usage: `bun scripts/memory-profile.js`
 
 ## Conclusion
 
-The Ontology-LSP system shows **excellent memory efficiency** for its functionality scope. The current memory usage of 607.62 MB across 7 processes is reasonable, but there are clear optimization opportunities:
+The Semantic Code Intelligence system shows **excellent memory efficiency** for its functionality scope. The current memory usage of 607.62 MB across 7 processes is reasonable, but there are clear optimization opportunities:
 
 1. **Immediate Impact:** Reduce concurrent processes (potential 300 MB savings)
 2. **System Health:** Implement better monitoring and alerting

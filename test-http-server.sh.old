@@ -9,8 +9,8 @@ echo "[TEST] Bun version: $(bun --version)"
 # Set up environment
 export ONTOLOGY_API_PORT=7000
 export ONTOLOGY_API_HOST=localhost
-export ONTOLOGY_WORKSPACE="$(pwd)"
-export ONTOLOGY_DB_PATH=".ontology/test-api.db"
+export SEMANTIC_CODE_WORKSPACE="$(pwd)"
+export SEMANTIC_CODE_DB_PATH=".ontology/test-api.db"
 export ONTOLOGY_API_CORS=true
 
 # Clean up any existing test database
@@ -19,8 +19,8 @@ rm -rf .ontology/test-api.db
 echo "[TEST] Configuration:"
 echo "  Port: $ONTOLOGY_API_PORT"
 echo "  Host: $ONTOLOGY_API_HOST"
-echo "  Workspace: $ONTOLOGY_WORKSPACE"
-echo "  Database: $ONTOLOGY_DB_PATH"
+echo "  Workspace: $SEMANTIC_CODE_WORKSPACE"
+echo "  Database: $SEMANTIC_CODE_DB_PATH"
 echo ""
 
 # Start the server in background

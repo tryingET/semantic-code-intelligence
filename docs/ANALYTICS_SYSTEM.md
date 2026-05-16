@@ -10,7 +10,7 @@ type: "reference"
 
 ## Overview
 
-The Analytics System provides comprehensive insights into code health, team productivity, and system performance. It transforms raw data from the Ontology-LSP core into actionable intelligence that drives better decisions and continuous improvement.
+The Analytics System provides comprehensive insights into code health, team productivity, and system performance. It transforms raw data from the Semantic Code Intelligence core into actionable intelligence that drives better decisions and continuous improvement.
 
 ## Core Concept: Measure Everything, Act on Insights
 

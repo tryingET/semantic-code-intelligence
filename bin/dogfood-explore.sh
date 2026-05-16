@@ -43,5 +43,5 @@ ARGS=("explore" "$SYMBOL" "-n" "100" "-l" "$LIMIT")
 [[ $PRECISE -eq 1 ]] && ARGS+=("--precise")
 [[ $JSON -eq 1 ]] && ARGS+=("--json")
 
-ontology-lsp "${ARGS[@]}"
+semantic-code-intelligence "${ARGS[@]}"
 

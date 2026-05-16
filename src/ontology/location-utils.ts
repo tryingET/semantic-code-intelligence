@@ -26,7 +26,7 @@ export function normalizeUri(uri: string): string {
         // Support workspace pseudo-URI: file://workspace[/subpath]
         const WORKSPACE_PREFIX = 'file://workspace';
         if (uri.startsWith(WORKSPACE_PREFIX)) {
-            const ws = process.env.ONTOLOGY_WORKSPACE || process.env.WORKSPACE_ROOT || process.cwd();
+            const ws = process.env.SEMANTIC_CODE_WORKSPACE || process.env.WORKSPACE_ROOT || process.cwd();
             const sub = uri.length > WORKSPACE_PREFIX.length ? uri.substring(WORKSPACE_PREFIX.length) : '';
             const rel = sub.replace(/^\/+/, '');
             const p = rel ? path.join(ws, rel) : ws;

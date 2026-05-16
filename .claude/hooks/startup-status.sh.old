@@ -12,9 +12,9 @@ sleep 3
 MCP_PORT="${MCP_SSE_PORT:-7001}"
 MCP_HOST="${MCP_SSE_HOST:-localhost}"
 HTTP_API_PORT="${ONTOLOGY_API_PORT:-7000}"
-MCP_PID_FILE="/tmp/ontology-mcp-server-${MCP_PORT}.pid"
+MCP_PID_FILE="/tmp/semantic-code-mcp-server-${MCP_PORT}.pid"
 API_PID_FILE="/tmp/ontology-api-server-${HTTP_API_PORT}.pid"
-LSP_PID_FILE="/tmp/ontology-lsp-server.pid"
+LSP_PID_FILE="/tmp/semantic-code-intelligence-server.pid"
 
 # ANSI color codes
 BOLD='\033[1m'
@@ -70,13 +70,13 @@ fi
 # Display status
 echo
 if [ $servers_running -eq $servers_total ]; then
-    echo -e "${BRIGHT_GREEN}${CHECK_MARK}${NC} ${BOLD}${BRIGHT_GREEN}Ontology LSP Suite Ready!${NC} ${ROCKET}"
+    echo -e "${BRIGHT_GREEN}${CHECK_MARK}${NC} ${BOLD}${BRIGHT_GREEN}Semantic Code Intelligence Suite Ready!${NC} ${ROCKET}"
     echo -e "   ${DIM}All $servers_total servers running successfully${NC}"
 elif [ $servers_running -gt 0 ]; then
-    echo -e "${BRIGHT_YELLOW}${INFO}${NC} ${BOLD}${BRIGHT_YELLOW}Ontology LSP Suite Partial${NC}"
+    echo -e "${BRIGHT_YELLOW}${INFO}${NC} ${BOLD}${BRIGHT_YELLOW}Semantic Code Intelligence Suite Partial${NC}"
     echo -e "   ${DIM}$servers_running of $servers_total servers running${NC}"
 else
-    echo -e "${BRIGHT_RED}${CROSS_MARK}${NC} ${BOLD}${BRIGHT_RED}Ontology LSP Suite Not Started${NC}"
+    echo -e "${BRIGHT_RED}${CROSS_MARK}${NC} ${BOLD}${BRIGHT_RED}Semantic Code Intelligence Suite Not Started${NC}"
     echo -e "   ${DIM}Check /tmp/ontology-*.log for details${NC}"
 fi
 

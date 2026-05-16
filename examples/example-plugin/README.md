@@ -8,7 +8,7 @@ type: "reference"
 
 # Enhanced Search Plugin
 
-An example Ontology-LSP plugin that demonstrates how to enhance Layer 1 (Fast Search) with advanced fuzzy matching, caching optimizations, and real-time indexing.
+An example Semantic Code Intelligence plugin that demonstrates how to enhance Layer 1 (Fast Search) with advanced fuzzy matching, caching optimizations, and real-time indexing.
 
 ## Features
 
@@ -23,20 +23,20 @@ An example Ontology-LSP plugin that demonstrates how to enhance Layer 1 (Fast Se
 ### From Plugin Marketplace
 
 ```bash
-ontology-lsp plugin install enhanced-search
+semantic-code-intelligence plugin install enhanced-search
 ```
 
 ### Manual Installation
 
 1. Clone or download this plugin
-2. Copy to your plugins directory: `~/.ontology-lsp/plugins/enhanced-search/`
+2. Copy to your plugins directory: `~/.semantic-code-intelligence/plugins/enhanced-search/`
 3. Restart your LSP server or reload plugins
 
 ### Development Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/ontology-lsp/plugin-enhanced-search.git
+git clone https://github.com/semantic-code-intelligence/plugin-enhanced-search.git
 cd plugin-enhanced-search
 
 # Install dependencies
@@ -46,12 +46,12 @@ npm install
 npm run build
 
 # Link for development
-ontology-lsp plugin link .
+semantic-code-intelligence plugin link .
 ```
 
 ## Configuration
 
-Add to your `.ontology-lsp-config.yaml`:
+Add to your `.semantic-code-intelligence-config.yaml`:
 
 ```yaml
 plugins:
@@ -109,7 +109,7 @@ graph TD
 ### For Plugin Developers
 
 ```typescript
-import { EnhancedSearchPlugin } from '@ontology-lsp/enhanced-search';
+import { EnhancedSearchPlugin } from '@semantic-code-intelligence/enhanced-search';
 
 // The plugin automatically integrates with Layer 1
 // No direct API usage required - works through core LSP methods
@@ -252,10 +252,10 @@ describe('Enhanced Search Plugin', () => {
 **Plugin not loading:**
 ```bash
 # Check plugin validation
-ontology-lsp plugin validate enhanced-search
+semantic-code-intelligence plugin validate enhanced-search
 
 # Check logs
-ontology-lsp logs --plugin=enhanced-search
+semantic-code-intelligence logs --plugin=enhanced-search
 ```
 
 **Poor search performance:**
@@ -315,10 +315,10 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## Support
 
-- **Documentation**: https://ontology-lsp.dev/plugins/enhanced-search
-- **Issues**: https://github.com/ontology-lsp/plugin-enhanced-search/issues
-- **Discord**: https://discord.gg/ontology-lsp
-- **Email**: plugins@ontology-lsp.dev
+- **Documentation**: https://semantic-code-intelligence.dev/plugins/enhanced-search
+- **Issues**: https://github.com/semantic-code-intelligence/plugin-enhanced-search/issues
+- **Discord**: https://discord.gg/semantic-code-intelligence
+- **Email**: plugins@semantic-code-intelligence.dev
 
 ## Related Plugins
 
@@ -329,4 +329,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-*This plugin demonstrates the power and flexibility of the Ontology-LSP plugin system. Use it as a template for building your own enhancements!*
+*This plugin demonstrates the power and flexibility of the Semantic Code Intelligence plugin system. Use it as a template for building your own enhancements!*

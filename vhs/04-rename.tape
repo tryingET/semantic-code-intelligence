@@ -14,14 +14,14 @@ Sleep 400ms
 Type "echo 'Dry-run rename with change preview (default)'"
 Enter
 Sleep 500ms
-Type "ontology-lsp rename getProduct fetchProductById"
+Type "semantic-code-intelligence rename getProduct fetchProductById"
 Enter
 Sleep 2400ms
 
 Type "echo 'Apply changes (no-dry-run)'"
 Enter
 Sleep 500ms
-Type "ontology-lsp rename get_product fetch_product_by_id --no-dry-run"
+Type "semantic-code-intelligence rename get_product fetch_product_by_id --no-dry-run"
 Enter
 Sleep 2600ms
 

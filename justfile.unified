@@ -1,4 +1,4 @@
-# Ontology-LSP Unified System - Command Center
+# Semantic Code Intelligence Unified System - Command Center
 # This is the new Justfile for the unified core + adapters architecture
 
 # Default: Show available commands
@@ -11,7 +11,7 @@ default:
 
 # Initialize the unified system (run this first!)
 init:
-    @echo "🚀 Initializing Ontology-LSP Unified System..."
+    @echo "🚀 Initializing Semantic Code Intelligence Unified System..."
     @echo "📁 Creating directory structure..."
     @mkdir -p core/{analyzer,layers,services,types}
     @mkdir -p adapters/{mcp,lsp,http,shared}
@@ -242,7 +242,7 @@ configure-claude:
     @cat > ~/.config/claude/mcp.json << 'EOF'
     {
       "mcpServers": {
-        "ontology-lsp": {
+        "semantic-code-intelligence": {
           "command": "bun",
           "args": ["run", "$(pwd)/dist/adapters/mcp/index.js"],
           "env": {
@@ -398,14 +398,14 @@ lint:
 # Build Docker image
 docker-build:
     @echo "🐳 Building Docker image..."
-    docker build -t ontology-lsp:latest .
+    docker build -t semantic-code-intelligence:latest .
 
 # Run in Docker
 docker-run:
     @echo "🐳 Running in Docker..."
     docker run -p 7000:7000 -p 7001:7001 -p 7002:7002 \
         -v ~/.ontology:/data \
-        ontology-lsp:latest
+        semantic-code-intelligence:latest
 
 # Deploy to production
 deploy env="production":
@@ -413,8 +413,8 @@ deploy env="production":
     @just build-prod
     @just docker-build
     @echo "📤 Pushing to registry..."
-    docker tag ontology-lsp:latest registry.example.com/ontology-lsp:latest
-    docker push registry.example.com/ontology-lsp:latest
+    docker tag semantic-code-intelligence:latest registry.example.com/semantic-code-intelligence:latest
+    docker push registry.example.com/semantic-code-intelligence:latest
     @echo "✅ Deployment complete"
 
 # ═══════════════════════════════════════════════════════════════
@@ -423,7 +423,7 @@ deploy env="production":
 
 # Show current version
 version:
-    @echo "Ontology-LSP Unified System"
+    @echo "Semantic Code Intelligence Unified System"
     @echo "Version: $(cat package.json | jq -r '.version')"
     @echo "Core: $(cat core/package.json | jq -r '.version' 2>/dev/null || echo 'dev')"
     @echo "MCP Adapter: $(cat adapters/mcp/package.json | jq -r '.version' 2>/dev/null || echo 'dev')"
@@ -453,7 +453,7 @@ quick-test:
 
 # Show help
 help:
-    @echo "Ontology-LSP Unified System - Command Reference"
+    @echo "Semantic Code Intelligence Unified System - Command Reference"
     @echo "═══════════════════════════════════════════════"
     @echo ""
     @echo "Quick Start:"

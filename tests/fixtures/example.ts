@@ -1,5 +1,5 @@
 /**
- * Test fixture file for ontology-lsp integration tests
+ * Test fixture file for semantic-code-intelligence integration tests
  */
 
 export class TestClass {

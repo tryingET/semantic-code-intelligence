@@ -1,10 +1,10 @@
 {
     "name": "ontology-test-workspace",
     "version": "1.0.0",
-    "description": "Test workspace for Ontology LSP",
+    "description": "Test workspace for Semantic Code Intelligence",
     "main": "sample.js",
     "scripts": {
-        "test": "echo \"Test workspace for Ontology LSP\""
+        "test": "echo \"Test workspace for Semantic Code Intelligence\""
     },
     "dependencies": {},
     "devDependencies": {

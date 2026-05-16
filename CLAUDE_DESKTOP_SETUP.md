@@ -22,7 +22,7 @@ curl -fsSL https://bun.sh/install | bash
 
 # Or start manually:
 bun run src/api/http-server.ts &  # LSP API Server on port 7000
-cd ontology-lsp && bun run dist/mcp-http/mcp-http.js &  # MCP Server (Streamable HTTP) on port 7001
+cd semantic-code-intelligence && bun run dist/mcp-http/mcp-http.js &  # MCP Server (Streamable HTTP) on port 7001
 ```
 
 3. **Add to Claude Desktop configuration**:
@@ -36,21 +36,21 @@ Copy the following to your Claude Desktop config file:
   "mcpServers": {
     "ontology": {
       "command": "bun",
-      "args": ["run", "/path/to/ontology-lsp/dist/mcp-http/mcp-http.js"],
+      "args": ["run", "/path/to/semantic-code-intelligence/dist/mcp-http/mcp-http.js"],
       "env": {
         "MCP_HTTP_HOST": "localhost",
         "MCP_HTTP_PORT": "7001",
-        "ONTOLOGY_LSP_HOST": "localhost",
-        "ONTOLOGY_LSP_PORT": "7000",
-        "ONTOLOGY_DB_PATH": "/path/to/ontology-lsp/.ontology/ontology.db",
-        "ONTOLOGY_WORKSPACE": "/path/to/your/workspace"
+        "SEMANTIC_CODE_INTELLIGENCE_HOST": "localhost",
+        "SEMANTIC_CODE_INTELLIGENCE_PORT": "7000",
+        "SEMANTIC_CODE_DB_PATH": "/path/to/semantic-code-intelligence/.ontology/ontology.db",
+        "SEMANTIC_CODE_WORKSPACE": "/path/to/your/workspace"
       }
     }
   }
 }
 ```
 
-**Important**: Replace `/path/to/ontology-lsp` with your actual path.
+**Important**: Replace `/path/to/semantic-code-intelligence` with your actual path.
 
 Note: The MCP server now uses Streamable HTTP (replaces the former SSE-only transport). Initialize sessions with a POST to `/mcp` to receive an `Mcp-Session-Id` response header. Use that header for subsequent POSTs and for the GET `/mcp` notification stream.
 
@@ -120,7 +120,7 @@ curl http://localhost:7001/health
 ### View logs
 ```bash
 # MCP server logs
-tail -f /tmp/ontology-mcp-server-7001.log
+tail -f /tmp/semantic-code-mcp-server-7001.log
 
 # API server logs
 tail -f /tmp/ontology-api-server-7000.log

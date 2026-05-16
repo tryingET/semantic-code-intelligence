@@ -1,4 +1,4 @@
-// Sample JavaScript file for testing Ontology LSP
+// Sample JavaScript file for testing Semantic Code Intelligence
 class DataManager {
     constructor() {
         this.items = [];

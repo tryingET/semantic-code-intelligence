@@ -24,19 +24,26 @@ else
 fi
 
 # 2. Tracked local/generated artifacts that should not be canonical.
-tracked_artifacts="$(git ls-files | grep -E '(^|/)(node_modules|dist|logs|temp|tmp|\.ontology|\.semantic-graph|\.test-results)(/|$)|(^|/).*\.(db|db-wal|db-shm|sqlite|sqlite3|pid|log|orig|bak)$|(^|/)package\.json\.orig$|(^|/)ontology-lsp\.orig$' || true)"
+tracked_artifacts="$(git ls-files | grep -E '(^|/)(node_modules|dist|logs|temp|tmp|\.ontology|\.semantic-graph|\.test-results)(/|$)|(^|/).*\.(db|db-wal|db-shm|sqlite|sqlite3|pid|log|orig|bak)$|(^|/)package\.json\.orig$|(^|/)semantic-code-intelligence\.orig$' || true)"
 if [[ -n "$tracked_artifacts" ]]; then
   fail "tracked generated/local artifacts found:\n$tracked_artifacts"
 else
   info "no tracked generated/local artifacts"
 fi
 
-# 3. Old owner/path placeholders. Keep ontology-lsp command/config compatibility, but reject stale owners and absolute migrated homes.
+# 3. Old owner/path placeholders and historical product identity should not survive alpha rename.
 placeholder_hits="$(git grep -n -E '(/home/[^[:space:]"]+|yourusername|your-org|lightningRalf|github\.com/lightningRalf)' -- ':!.git/**' ':!scripts/migration-hygiene.sh' || true)"
 if [[ -n "$placeholder_hits" ]]; then
   fail "stale owner/path placeholders found:\n$placeholder_hits"
 else
   info "no stale owner/path placeholders"
+fi
+
+old_identity_hits="$(git grep -n -E '(ontology-lsp|ontology_mcp|ontology-mcp|ontology_lsp|Ontology-LSP|Ontology LSP|ontologyLSP|ONTOLOGY_LSP|ONTOLOGY_WORKSPACE|ONTOLOGY_DB_PATH|ontology-team|@ontology-lsp)' -- ':!.git/**' ':!scripts/migration-hygiene.sh' ':!docs/project/identity-and-compatibility.md' || true)"
+if [[ -n "$old_identity_hits" ]]; then
+  fail "old ontology-lsp identity strings found:\n$old_identity_hits"
+else
+  info "no old ontology-lsp identity strings"
 fi
 
 # 4. Applyable Kubernetes secrets with placeholder credentials are unsafe. Templates must not be .yaml under k8s/.

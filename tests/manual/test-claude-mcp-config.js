@@ -20,10 +20,10 @@ try {
     process.exit(1);
 }
 
-// Extract ontology-lsp server config
-const ontologyConfig = config.mcpServers['ontology-lsp'];
+// Extract semantic-code-intelligence server config
+const ontologyConfig = config.mcpServers['semantic-code-intelligence'];
 if (!ontologyConfig) {
-    console.error('❌ ontology-lsp server not found in configuration');
+    console.error('❌ semantic-code-intelligence server not found in configuration');
     process.exit(1);
 }
 

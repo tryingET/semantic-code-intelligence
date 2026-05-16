@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd $CLAUDE_PROJECT_DIR && command -v just >/dev/null 2>&1 && (echo '🚀 Starting Ontology LSP...' && just start > /tmp/ontology-startup.log 2>&1 &) || echo '⚠️  Install just: cargo install just'",
+            "command": "cd $CLAUDE_PROJECT_DIR && command -v just >/dev/null 2>&1 && (echo '🚀 Starting Semantic Code Intelligence...' && just start > /tmp/ontology-startup.log 2>&1 &) || echo '⚠️  Install just: cargo install just'",
             "comment": "Start servers using justfile",
             "timeout": 1
           }

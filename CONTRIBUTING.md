@@ -1,14 +1,14 @@
 ---
-summary: "Contributing to Ontology LSP for the Semantic Code Intelligence repo."
+summary: "Contributing to Semantic Code Intelligence for the Semantic Code Intelligence repo."
 read_when:
   - "You need CONTRIBUTING information for Semantic Code Intelligence."
   - "You are changing CONTRIBUTING.md or related behavior."
 type: "reference"
 ---
 
-# Contributing to Ontology LSP
+# Contributing to Semantic Code Intelligence
 
-Thank you for your interest in contributing to Ontology LSP! This document provides guidelines and instructions for contributing to the project.
+Thank you for your interest in contributing to Semantic Code Intelligence! This document provides guidelines and instructions for contributing to the project.
 
 ## Table of Contents
 
@@ -42,7 +42,7 @@ By participating in this project, you agree to abide by our Code of Conduct:
    ```
 3. Add the upstream remote:
    ```bash
-   git remote add upstream https://github.com/originalowner/ontology-lsp.git
+   git remote add upstream https://github.com/originalowner/semantic-code-intelligence.git
    ```
 
 ## Development Setup
@@ -283,8 +283,8 @@ We use Semantic Versioning (MAJOR.MINOR.PATCH):
 
 If you have questions, please:
 1. Check the [documentation](./docs/)
-2. Search [existing issues](https://github.com/originalowner/ontology-lsp/issues)
-3. Ask in [discussions](https://github.com/originalowner/ontology-lsp/discussions)
+2. Search [existing issues](https://github.com/originalowner/semantic-code-intelligence/issues)
+3. Ask in [discussions](https://github.com/originalowner/semantic-code-intelligence/discussions)
 4. Open a new issue if needed
 
-Thank you for contributing to Ontology LSP! 🎉
+Thank you for contributing to Semantic Code Intelligence! 🎉

@@ -39,7 +39,7 @@
     // Path Mapping
     "baseUrl": ".",
     "paths": {
-      "@ontology-lsp/*": ["../../../src/*"],
+      "@semantic-code-intelligence/*": ["../../../src/*"],
       "@/*": ["./src/*"]
     },
     

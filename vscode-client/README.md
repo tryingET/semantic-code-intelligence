@@ -1,14 +1,14 @@
 ---
-summary: "Ontology LSP VS Code Extension for the Semantic Code Intelligence repo."
+summary: "Semantic Code Intelligence VS Code Extension for the Semantic Code Intelligence repo."
 read_when:
   - "You need README information for Semantic Code Intelligence."
   - "You are changing vscode-client/README.md or related behavior."
 type: "reference"
 ---
 
-# Ontology LSP VS Code Extension
+# Semantic Code Intelligence VS Code Extension
 
-A comprehensive VS Code extension that connects to the Ontology Language Server, providing intelligent code navigation with semantic understanding, pattern learning, and knowledge propagation.
+A comprehensive VS Code extension that connects to the Semantic Code Intelligence Language Server, providing intelligent code navigation with semantic understanding, pattern learning, and knowledge propagation.
 
 ## Features
 
@@ -51,7 +51,7 @@ vsce package
 
 3. **Install in VS Code:**
 ```bash
-code --install-extension ontology-lsp-1.0.0.vsix
+code --install-extension semantic-code-intelligence-1.0.0.vsix
 ```
 
 ### Development Mode
@@ -67,34 +67,34 @@ Access settings through VS Code Settings or edit `settings.json`:
 ```json
 {
     // Enable/disable the extension
-    "ontologyLSP.enable": true,
+    "semanticCodeIntelligence.enable": true,
     
     // Fuzzy matching settings
-    "ontologyLSP.fuzzyMatching.enabled": true,
-    "ontologyLSP.fuzzyMatching.threshold": 0.7,
+    "semanticCodeIntelligence.fuzzyMatching.enabled": true,
+    "semanticCodeIntelligence.fuzzyMatching.threshold": 0.7,
     
     // Pattern learning
-    "ontologyLSP.patternLearning.enabled": true,
-    "ontologyLSP.patternLearning.minConfidence": 0.8,
+    "semanticCodeIntelligence.patternLearning.enabled": true,
+    "semanticCodeIntelligence.patternLearning.minConfidence": 0.8,
     
     // Knowledge propagation
-    "ontologyLSP.propagation.enabled": true,
-    "ontologyLSP.propagation.autoApply": false,
-    "ontologyLSP.propagation.maxDepth": 3,
+    "semanticCodeIntelligence.propagation.enabled": true,
+    "semanticCodeIntelligence.propagation.autoApply": false,
+    "semanticCodeIntelligence.propagation.maxDepth": 3,
     
     // Performance tuning
-    "ontologyLSP.performance.cacheSize": 500,
-    "ontologyLSP.performance.parallelWorkers": 4,
+    "semanticCodeIntelligence.performance.cacheSize": 500,
+    "semanticCodeIntelligence.performance.parallelWorkers": 4,
     
     // UI preferences
-    "ontologyLSP.ui.showStatusBar": true,
-    "ontologyLSP.ui.showInlineHints": true,
+    "semanticCodeIntelligence.ui.showStatusBar": true,
+    "semanticCodeIntelligence.ui.showInlineHints": true,
     
     // Privacy settings
-    "ontologyLSP.telemetry.enabled": false,
+    "semanticCodeIntelligence.telemetry.enabled": false,
     
     // Experimental features
-    "ontologyLSP.experimental.aiSuggestions": false
+    "semanticCodeIntelligence.experimental.aiSuggestions": false
 }
 ```
 
@@ -157,10 +157,10 @@ This extension was designed with deep architectural considerations:
 
 ## API for Extension Developers
 
-Other extensions can integrate with Ontology LSP:
+Other extensions can integrate with Semantic Code Intelligence:
 
 ```typescript
-const ontologyAPI = vscode.extensions.getExtension('ontology-team.ontology-lsp')?.exports;
+const ontologyAPI = vscode.extensions.getExtension('tryingET.semantic-code-intelligence')?.exports;
 
 // Get concept information
 const concept = await ontologyAPI.getConcept(uri, position);
@@ -212,8 +212,8 @@ MIT - See LICENSE in the repository root
 ## Support
 
 - GitHub Issues: [Report bugs and request features](https://github.com/tryingET/semantic-code-intelligence/issues)
-- Documentation: [Full documentation](https://docs.ontology-lsp.dev)
-- Discord: [Join our community](https://discord.gg/ontology-lsp)
+- Documentation: [Full documentation](https://docs.semantic-code-intelligence.dev)
+- Discord: [Join our community](https://discord.gg/semantic-code-intelligence)
 
 ---
 

@@ -5,8 +5,8 @@
   "type": "module",
   "main": "dist/core/analyzer.js",
   "bin": {
-    "ontology-lsp": "./bin/ontology-lsp",
-    "ontology-mcp": "./bin/ontology-mcp"
+    "semantic-code-intelligence": "./bin/semantic-code-intelligence",
+    "semantic-code-mcp": "./bin/semantic-code-mcp"
   },
   "repository": {
     "type": "git",

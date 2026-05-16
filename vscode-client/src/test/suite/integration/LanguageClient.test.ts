@@ -47,13 +47,13 @@ suite('Language Client Integration Test Suite', () => {
                 { scheme: 'file', language: 'python' }
             ],
             synchronize: {
-                configurationSection: 'ontologyLSP'
+                configurationSection: 'semanticCodeIntelligence'
             }
         };
         
         client = new LanguageClient(
-            'ontologyLSP-test',
-            'Ontology LSP Test Client',
+            'semanticCodeIntelligence-test',
+            'Semantic Code Intelligence Test Client',
             serverOptions,
             clientOptions
         );
@@ -245,7 +245,7 @@ suite('Language Client Integration Test Suite', () => {
         await assert.doesNotReject(async () => {
             await client.sendNotification('workspace/didChangeConfiguration', {
                 settings: {
-                    ontologyLSP: {
+                    semanticCodeIntelligence: {
                         enable: true,
                         fuzzyMatching: { enabled: true }
                     }

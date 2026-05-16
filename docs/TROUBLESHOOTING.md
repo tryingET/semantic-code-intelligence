@@ -1,14 +1,14 @@
 ---
-summary: "Ontology-LSP Troubleshooting Guide for the Semantic Code Intelligence repo."
+summary: "Semantic Code Intelligence Troubleshooting Guide for the Semantic Code Intelligence repo."
 read_when:
   - "You need TROUBLESHOOTING information for Semantic Code Intelligence."
   - "You are changing docs/TROUBLESHOOTING.md or related behavior."
 type: "reference"
 ---
 
-# Ontology-LSP Troubleshooting Guide
+# Semantic Code Intelligence Troubleshooting Guide
 
-This comprehensive troubleshooting guide will help you diagnose and resolve common issues with the Ontology-LSP system.
+This comprehensive troubleshooting guide will help you diagnose and resolve common issues with the Semantic Code Intelligence system.
 
 ## 🚨 Emergency Quick Start
 
@@ -427,7 +427,7 @@ TEST_ENV=debug bun test tests/performance.test.ts
 3. **Check Extension Logs:**
    - Open VS Code
    - Go to Output panel
-   - Select "Ontology Language Server" from dropdown
+   - Select "Semantic Code Intelligence Language Server" from dropdown
 
 #### MCP Protocol Issues
 
@@ -499,17 +499,17 @@ For production issues:
 
 ```bash
 # Check deployment health
-kubectl get pods -n ontology-lsp
-kubectl logs -f deployment/ontology-lsp -n ontology-lsp
+kubectl get pods -n semantic-code-intelligence
+kubectl logs -f deployment/semantic-code-intelligence -n semantic-code-intelligence
 
 # Port forward for debugging
-kubectl port-forward svc/ontology-lsp-http 7000:7000 -n ontology-lsp
+kubectl port-forward svc/semantic-code-intelligence-http 7000:7000 -n semantic-code-intelligence
 
 # Check resource usage
-kubectl top pods -n ontology-lsp
+kubectl top pods -n semantic-code-intelligence
 
 # Dump configuration
-kubectl get configmap ontology-lsp-config -o yaml -n ontology-lsp
+kubectl get configmap semantic-code-intelligence-config -o yaml -n semantic-code-intelligence
 ```
 
 ### Performance Profiling
@@ -731,7 +731,7 @@ Run this diagnostic script and include the output:
 cat > collect-diagnostics.sh << 'EOF'
 #!/bin/bash
 
-echo "🔍 Ontology-LSP Diagnostic Report"
+echo "🔍 Semantic Code Intelligence Diagnostic Report"
 echo "================================"
 echo "Date: $(date)"
 echo "System: $(uname -a)"
@@ -799,7 +799,7 @@ chmod +x collect-diagnostics.sh
 
 ### Support Channels
 
-1. **GitHub Issues**: https://github.com/your-username/ontology-lsp/issues
+1. **GitHub Issues**: https://github.com/your-username/semantic-code-intelligence/issues
    - Include diagnostic output
    - Specify version and environment
    - Provide minimal reproduction steps

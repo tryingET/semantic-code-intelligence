@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * Memory Profiler for Ontology-LSP
+ * Memory Profiler for Semantic Code Intelligence
  * Analyzes memory usage and provides optimization recommendations
  */
 
@@ -162,7 +162,7 @@ function getDatabaseSize() {
 
 // Main profiling function
 async function profileMemory() {
-    console.log('🔍 Memory Profile Report for Ontology-LSP');
+    console.log('🔍 Memory Profile Report for Semantic Code Intelligence');
     console.log('=' .repeat(60));
     console.log(`Report generated: ${new Date().toISOString()}\n`);
     
@@ -170,7 +170,7 @@ async function profileMemory() {
     const processes = getProcessInfo();
     
     if (processes.length === 0) {
-        console.log('❌ No Ontology-LSP processes found');
+        console.log('❌ No Semantic Code Intelligence processes found');
         return;
     }
     
@@ -222,7 +222,7 @@ async function profileMemory() {
         console.log(`Available: ${formatBytes(systemMemory.MemAvailable)}`);
         console.log(`Free: ${formatBytes(systemMemory.MemFree)}`);
         console.log(`Used by System: ${formatBytes(systemMemory.MemTotal - systemMemory.MemAvailable)}`);
-        console.log(`Ontology-LSP Usage: ${((totalRSS / systemMemory.MemTotal) * 100).toFixed(2)}% of total system memory`);
+        console.log(`Semantic Code Intelligence Usage: ${((totalRSS / systemMemory.MemTotal) * 100).toFixed(2)}% of total system memory`);
         console.log('');
     }
     

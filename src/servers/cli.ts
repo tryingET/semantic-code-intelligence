@@ -79,7 +79,7 @@ class CLI {
     }
 
     private setupCommands(): void {
-        this.program.name('ontology-lsp').description('Ontology-enhanced Language Server CLI').version('1.0.0');
+        this.program.name('semantic-code-intelligence').description('Semantic Code Intelligence CLI').version('1.0.0');
 
         // Find command
         this.program
@@ -849,7 +849,7 @@ class CLI {
     }
 
     private async handleInit(options: any): Promise<void> {
-        const configPath = path.join(process.cwd(), '.ontology-lsp-config.yaml');
+        const configPath = path.join(process.cwd(), '.semantic-code-intelligence-config.yaml');
         const dbPath = path.join(process.cwd(), '.ontology');
 
         if (fs.existsSync(configPath) && !options.force) {
@@ -863,7 +863,7 @@ class CLI {
         }
 
         // Create basic config
-        const config = `# Ontology LSP Configuration
+        const config = `# Semantic Code Intelligence Configuration
 workspaceRoot: .
 database:
   path: .ontology/ontology.db
@@ -897,10 +897,10 @@ performance:
 
         fs.writeFileSync(configPath, config);
 
-        // Create .ontologyignore if it doesn't exist
-        const ignorePath = path.join(process.cwd(), '.ontologyignore');
+        // Create .semantic-code-ignore if it doesn't exist
+        const ignorePath = path.join(process.cwd(), '.semantic-code-ignore');
         if (!fs.existsSync(ignorePath)) {
-            const ignoreContent = `# Ontology LSP ignore patterns
+            const ignoreContent = `# Semantic Code Intelligence ignore patterns
 node_modules/
 .git/
 dist/
@@ -914,16 +914,16 @@ build/
             fs.writeFileSync(ignorePath, ignoreContent);
         }
 
-        console.log('✓ Ontology LSP initialized');
+        console.log('✓ Semantic Code Intelligence initialized');
         console.log(`✓ Configuration written to ${configPath}`);
         console.log(`✓ Database directory created at ${dbPath}`);
         console.log(`✓ Ignore file created at ${ignorePath}`);
         console.log('\nYou can now use other commands like:');
-        console.log('  ontology-lsp find <symbol>');
-        console.log('  ontology-lsp references <symbol>');
-        console.log('  ontology-lsp symbol-map <symbol>');
-        console.log('  ontology-lsp plan-rename <old> <new>');
-        console.log('  ontology-lsp stats');
+        console.log('  semantic-code-intelligence find <symbol>');
+        console.log('  semantic-code-intelligence references <symbol>');
+        console.log('  semantic-code-intelligence symbol-map <symbol>');
+        console.log('  semantic-code-intelligence plan-rename <old> <new>');
+        console.log('  semantic-code-intelligence stats');
     }
 
     private findWorkspaceRoot(): string {
@@ -931,7 +931,7 @@ build/
 
         while (current !== path.dirname(current)) {
             // Check for common project root indicators
-            const indicators = ['package.json', '.git', 'tsconfig.json', '.ontology-lsp-config.yaml'];
+            const indicators = ['package.json', '.git', 'tsconfig.json', '.semantic-code-intelligence-config.yaml'];
 
             for (const indicator of indicators) {
                 if (fs.existsSync(path.join(current, indicator))) {

@@ -12,8 +12,8 @@ export SILENT_MODE="${SILENT_MODE:-true}"
 export STDIO_MODE="${STDIO_MODE:-true}"
 export BUN_DISABLE_ANALYTICS="${BUN_DISABLE_ANALYTICS:-1}"
 export BUN_DISABLE_TRANSPILER_CACHE="${BUN_DISABLE_TRANSPILER_CACHE:-1}"
-export ONTOLOGY_DB_PATH="${ONTOLOGY_DB_PATH:-$REPO_ROOT/.ontology/ontology.db}"
-export ONTOLOGY_WORKSPACE="${ONTOLOGY_WORKSPACE:-$REPO_ROOT}"
+export SEMANTIC_CODE_DB_PATH="${SEMANTIC_CODE_DB_PATH:-$REPO_ROOT/.ontology/ontology.db}"
+export SEMANTIC_CODE_WORKSPACE="${SEMANTIC_CODE_WORKSPACE:-$REPO_ROOT}"
 
 # Codex stdio defaults: publish workflows, include prompts/resources, allow apply in dev.
 export FAST_STDIO_LIST_MODE="${FAST_STDIO_LIST_MODE:-workflows}"

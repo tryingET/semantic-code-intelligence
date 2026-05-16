@@ -34,7 +34,7 @@ async function main() {
   if (!original.includes('const WORKSPACE_PREFIX =')) {
     hardened = hardened.replace(
       marker,
-      `const WORKSPACE_PREFIX = 'file://workspace';\nfunction getWorkspaceRoot(): string {\n  return process.env.ONTOLOGY_WORKSPACE || process.env.WORKSPACE_ROOT || process.cwd();\n}\n\n${marker}`
+      `const WORKSPACE_PREFIX = 'file://workspace';\nfunction getWorkspaceRoot(): string {\n  return process.env.SEMANTIC_CODE_WORKSPACE || process.env.WORKSPACE_ROOT || process.cwd();\n}\n\n${marker}`
     );
   }
 

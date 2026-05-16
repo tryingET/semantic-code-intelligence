@@ -1,5 +1,5 @@
 /**
- * Ontology LSP VS Code Extension
+ * Semantic Code Intelligence VS Code Extension
  * 
  * Architecture considerations:
  * - First-order: Basic LSP protocol implementation
@@ -50,7 +50,7 @@ let teamSync: TeamSyncManager;
 let extensionAPI: ExtensionAPI;
 
 export async function activate(context: vscode.ExtensionContext): Promise<ExtensionAPI> {
-    console.log('[Ontology LSP] Extension activating...');
+    console.log('[Semantic Code Intelligence] Extension activating...');
     
     try {
         // Initialize configuration manager first
@@ -62,7 +62,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
         
         // Check if extension is enabled
         if (!configManager.get<boolean>('enable')) {
-            console.log('[Ontology LSP] Extension is disabled by configuration');
+            console.log('[Semantic Code Intelligence] Extension is disabled by configuration');
             return createMinimalAPI();
         }
         
@@ -148,11 +148,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
             ],
             synchronize: {
                 // Synchronize configuration changes
-                configurationSection: 'ontologyLSP',
+                configurationSection: 'semanticCodeIntelligence',
                 // Watch for .ontology config files
                 fileEvents: [
                     vscode.workspace.createFileSystemWatcher('**/.ontology'),
-                    vscode.workspace.createFileSystemWatcher('**/.ontologyignore'),
+                    vscode.workspace.createFileSystemWatcher('**/.semantic-code-ignore'),
                     vscode.workspace.createFileSystemWatcher('**/ontology.config.{json,yaml,yml}')
                 ]
             },
@@ -215,8 +215,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
         if (!isTestMode || process.env.ONTOLOGY_TEST_WITH_SERVER === 'true') {
             // Create the language client
             client = new LanguageClient(
-                'ontologyLSP',
-                'Ontology Language Server',
+                'semanticCodeIntelligence',
+                'Semantic Code Intelligence Language Server',
                 serverOptions,
                 clientOptions
             );
@@ -249,7 +249,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
         // Setup configuration change listener
         context.subscriptions.push(
             vscode.workspace.onDidChangeConfiguration(async (e) => {
-                if (e.affectsConfiguration('ontologyLSP')) {
+                if (e.affectsConfiguration('semanticCodeIntelligence')) {
                     await handleConfigurationChange(e);
                 }
             })
@@ -269,21 +269,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
             mode: context.extensionMode === vscode.ExtensionMode.Development ? 'dev' : 'prod'
         });
         
-        statusBar.setActive('Ontology LSP Ready');
-        console.log('[Ontology LSP] Extension activated successfully');
+        statusBar.setActive('Semantic Code Intelligence Ready');
+        console.log('[Semantic Code Intelligence] Extension activated successfully');
         
         return extensionAPI;
         
     } catch (error) {
-        console.error('[Ontology LSP] Failed to activate extension:', error);
+        console.error('[Semantic Code Intelligence] Failed to activate extension:', error);
         telemetry?.logError('activation.failed', error);
-        vscode.window.showErrorMessage(`Failed to activate Ontology LSP: ${error}`);
+        vscode.window.showErrorMessage(`Failed to activate Semantic Code Intelligence: ${error}`);
         throw error;
     }
 }
 
 export async function deactivate(): Promise<void> {
-    console.log('[Ontology LSP] Extension deactivating...');
+    console.log('[Semantic Code Intelligence] Extension deactivating...');
     
     try {
         // Save learned patterns before shutdown
@@ -308,9 +308,9 @@ export async function deactivate(): Promise<void> {
             await client.stop();
         }
         
-        console.log('[Ontology LSP] Extension deactivated successfully');
+        console.log('[Semantic Code Intelligence] Extension deactivated successfully');
     } catch (error) {
-        console.error('[Ontology LSP] Error during deactivation:', error);
+        console.error('[Semantic Code Intelligence] Error during deactivation:', error);
     }
 }
 
@@ -335,13 +335,13 @@ function getServerPath(context: vscode.ExtensionContext): string {
     const fs = require('fs');
     for (const location of serverLocations) {
         if (fs.existsSync(location)) {
-            console.log(`[Ontology LSP] Found server at: ${location}`);
+            console.log(`[Semantic Code Intelligence] Found server at: ${location}`);
             return location;
         }
     }
     
     // Default fallback
-    console.error('[Ontology LSP] Server not found in expected locations');
+    console.error('[Semantic Code Intelligence] Server not found in expected locations');
     return serverLocations[0];
 }
 
@@ -391,11 +391,11 @@ async function handleConfigurationChange(e: vscode.ConfigurationChangeEvent): Pr
     
     // Notify server of configuration change
     await client.sendNotification(DidChangeConfigurationNotification.type, {
-        settings: vscode.workspace.getConfiguration('ontologyLSP')
+        settings: vscode.workspace.getConfiguration('semanticCodeIntelligence')
     });
     
     // Handle specific configuration changes
-    if (e.affectsConfiguration('ontologyLSP.enable')) {
+    if (e.affectsConfiguration('semanticCodeIntelligence.enable')) {
         const enabled = configManager.get<boolean>('enable');
         if (enabled && client.state === State.Stopped) {
             await client.start();
@@ -404,7 +404,7 @@ async function handleConfigurationChange(e: vscode.ConfigurationChangeEvent): Pr
         }
     }
     
-    if (e.affectsConfiguration('ontologyLSP.ui.showStatusBar')) {
+    if (e.affectsConfiguration('semanticCodeIntelligence.ui.showStatusBar')) {
         if (configManager.get<boolean>('ui.showStatusBar')) {
             statusBar.show();
         } else {
@@ -412,7 +412,7 @@ async function handleConfigurationChange(e: vscode.ConfigurationChangeEvent): Pr
         }
     }
     
-    if (e.affectsConfiguration('ontologyLSP.telemetry.enabled')) {
+    if (e.affectsConfiguration('semanticCodeIntelligence.telemetry.enabled')) {
         if (configManager.get<boolean>('telemetry.enabled')) {
             await telemetry.initialize();
         } else {

@@ -1,10 +1,10 @@
-# Ontology-LSP Development Configuration
+# Semantic Code Intelligence Development Configuration
 
 # ================================
 # Application Settings
 # ================================
 app:
-  name: "Ontology-LSP"
+  name: "Semantic Code Intelligence"
   version: "2.0.0"
   environment: "development"
   debug: true
@@ -58,7 +58,7 @@ database:
     type: "postgresql" 
     host: "localhost"
     port: 5432
-    database: "ontology_lsp_dev"
+    database: "semantic_code_intelligence_dev"
     username: "ontology"
     # password from environment variable
     ssl: false
@@ -84,7 +84,7 @@ cache:
     host: "localhost"
     port: 6379
     db: 1  # Different DB than production
-    key_prefix: "ontology_lsp_dev:"
+    key_prefix: "semantic_code_intelligence_dev:"
     
   # Shorter TTL for development
   ttl:
@@ -189,7 +189,7 @@ observability:
   # Local tracing
   tracing:
     enabled: true
-    service_name: "ontology-lsp-dev"
+    service_name: "semantic-code-intelligence-dev"
     service_version: "2.0.0-dev"
     exporter:
       type: "console"     # Log traces to console

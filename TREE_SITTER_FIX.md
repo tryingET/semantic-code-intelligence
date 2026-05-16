@@ -10,7 +10,7 @@ type: "reference"
 
 ## Problem Description
 
-The Ontology-LSP system uses Tree-sitter for AST (Abstract Syntax Tree) analysis of TypeScript, JavaScript, and Python code. Tree-sitter requires native modules (`.node` files) that are platform-specific binary files. 
+The Semantic Code Intelligence system uses Tree-sitter for AST (Abstract Syntax Tree) analysis of TypeScript, JavaScript, and Python code. Tree-sitter requires native modules (`.node` files) that are platform-specific binary files.
 
 During production deployment, the following error occurred:
 ```
@@ -84,7 +84,7 @@ The system correctly declares tree-sitter modules as trusted dependencies:
 ```json
 "trustedDependencies": [
   "tree-sitter",
-  "tree-sitter-javascript", 
+  "tree-sitter-javascript",
   "tree-sitter-python",
   "tree-sitter-typescript"
 ]
@@ -106,7 +106,7 @@ Created and ran a test script to verify tree-sitter functionality:
 ```javascript
 const Parser = require('tree-sitter');
 const TypeScript = require('tree-sitter-typescript').typescript;
-const JavaScript = require('tree-sitter-typescript').javascript;  
+const JavaScript = require('tree-sitter-typescript').javascript;
 const Python = require('tree-sitter-python');
 
 // Test parsing functionality
@@ -122,7 +122,7 @@ Result: ✅ All tree-sitter modules load and parse correctly
 With these fixes, the production container should:
 
 1. ✅ Include all necessary native modules in `/app/node_modules/*/prebuilds/linux-x64/`
-2. ✅ Load tree-sitter parsers without bundling conflicts  
+2. ✅ Load tree-sitter parsers without bundling conflicts
 3. ✅ Successfully perform AST analysis for TypeScript, JavaScript, and Python files
 4. ✅ Enable full functionality of the Tree-sitter layer in the system
 
@@ -154,10 +154,10 @@ To test this fix:
 
 ```bash
 # Build the Docker image
-docker build -t ontology-lsp .
+docker build -t semantic-code-intelligence .
 
 # Run and test tree-sitter functionality
-docker run -it ontology-lsp bun -e "
+docker run -it semantic-code-intelligence bun -e "
 const Parser = require('tree-sitter');
 const TS = require('tree-sitter-typescript').typescript;
 const parser = new Parser();

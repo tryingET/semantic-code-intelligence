@@ -1,6 +1,6 @@
 {
     "name": "semantic-code-intelligence",
-    "displayName": "Ontology Language Server",
+    "displayName": "Semantic Code Intelligence Language Server",
     "description": "Intelligent code navigation with semantic understanding, pattern learning, and knowledge propagation",
     "version": "1.0.0",
     "publisher": "tryingET",
@@ -36,17 +36,17 @@
             "type": "object",
             "title": "Semantic Code Intelligence Configuration",
             "properties": {
-                "ontologyLSP.enable": {
+                "semanticCodeIntelligence.enable": {
                     "type": "boolean",
                     "default": true,
                     "description": "Enable/disable Semantic Code Intelligence"
                 },
-                "ontologyLSP.server.path": {
+                "semanticCodeIntelligence.server.path": {
                     "type": "string",
                     "default": "",
                     "description": "Path to the Semantic Code Intelligence LSP server executable (leave empty for bundled)"
                 },
-                "ontologyLSP.trace.server": {
+                "semanticCodeIntelligence.trace.server": {
                     "type": "string",
                     "enum": [
                         "off",
@@ -56,75 +56,75 @@
                     "default": "off",
                     "description": "Trace communication between VS Code and the language server"
                 },
-                "ontologyLSP.fuzzyMatching.enabled": {
+                "semanticCodeIntelligence.fuzzyMatching.enabled": {
                     "type": "boolean",
                     "default": true,
                     "description": "Enable fuzzy matching for code navigation"
                 },
-                "ontologyLSP.fuzzyMatching.threshold": {
+                "semanticCodeIntelligence.fuzzyMatching.threshold": {
                     "type": "number",
                     "default": 0.7,
                     "minimum": 0,
                     "maximum": 1,
                     "description": "Similarity threshold for fuzzy matching (0-1)"
                 },
-                "ontologyLSP.patternLearning.enabled": {
+                "semanticCodeIntelligence.patternLearning.enabled": {
                     "type": "boolean",
                     "default": true,
                     "description": "Enable automatic pattern learning from refactoring actions"
                 },
-                "ontologyLSP.patternLearning.minConfidence": {
+                "semanticCodeIntelligence.patternLearning.minConfidence": {
                     "type": "number",
                     "default": 0.8,
                     "minimum": 0,
                     "maximum": 1,
                     "description": "Minimum confidence threshold for applying learned patterns"
                 },
-                "ontologyLSP.propagation.enabled": {
+                "semanticCodeIntelligence.propagation.enabled": {
                     "type": "boolean",
                     "default": true,
                     "description": "Enable knowledge propagation for related changes"
                 },
-                "ontologyLSP.propagation.autoApply": {
+                "semanticCodeIntelligence.propagation.autoApply": {
                     "type": "boolean",
                     "default": false,
                     "description": "Automatically apply high-confidence propagated changes"
                 },
-                "ontologyLSP.propagation.maxDepth": {
+                "semanticCodeIntelligence.propagation.maxDepth": {
                     "type": "number",
                     "default": 2,
                     "minimum": 1,
                     "maximum": 10,
                     "description": "Maximum depth for propagation search"
                 },
-                "ontologyLSP.performance.cacheSize": {
+                "semanticCodeIntelligence.performance.cacheSize": {
                     "type": "number",
                     "default": 250,
                     "description": "Maximum cache size in MB"
                 },
-                "ontologyLSP.performance.parallelWorkers": {
+                "semanticCodeIntelligence.performance.parallelWorkers": {
                     "type": "number",
                     "default": 2,
                     "minimum": 1,
                     "maximum": 16,
                     "description": "Number of parallel workers for analysis"
                 },
-                "ontologyLSP.ui.showStatusBar": {
+                "semanticCodeIntelligence.ui.showStatusBar": {
                     "type": "boolean",
                     "default": true,
                     "description": "Show Ontology status in the status bar"
                 },
-                "ontologyLSP.ui.showInlineHints": {
+                "semanticCodeIntelligence.ui.showInlineHints": {
                     "type": "boolean",
                     "default": true,
                     "description": "Show inline hints for concept relationships"
                 },
-                "ontologyLSP.telemetry.enabled": {
+                "semanticCodeIntelligence.telemetry.enabled": {
                     "type": "boolean",
                     "default": false,
                     "description": "Enable anonymous telemetry to improve the extension"
                 },
-                "ontologyLSP.experimental.aiSuggestions": {
+                "semanticCodeIntelligence.experimental.aiSuggestions": {
                     "type": "boolean",
                     "default": false,
                     "description": "Enable experimental AI-powered suggestions"

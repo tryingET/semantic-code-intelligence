@@ -7,26 +7,26 @@ Output docs/videos/00-help.gif
 
 Type "clear"
 Enter
-Type "ontology-lsp --help"
+Type "semantic-code-intelligence --help"
 Enter
 Sleep 1500ms
 
-Type "ontology-lsp find --help"
+Type "semantic-code-intelligence find --help"
 Enter
 Sleep 1200ms
 
-Type "ontology-lsp references --help"
+Type "semantic-code-intelligence references --help"
 Enter
 Sleep 1200ms
 
-Type "ontology-lsp rename --help"
+Type "semantic-code-intelligence rename --help"
 Enter
 Sleep 1200ms
 
-Type "ontology-lsp stats --help"
+Type "semantic-code-intelligence stats --help"
 Enter
 Sleep 1200ms
 
-Type "ontology-lsp init --help"
+Type "semantic-code-intelligence init --help"
 Enter
 Sleep 1200ms

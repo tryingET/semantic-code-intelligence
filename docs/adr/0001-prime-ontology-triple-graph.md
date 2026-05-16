@@ -10,7 +10,7 @@ type: "reference"
 
 Status: Proposed
 Date: 2025-09-04
-Authors: Ontology-LSP Team
+Authors: Semantic Code Intelligence Team
 
 ## Context
 
@@ -124,7 +124,7 @@ Security:
 - ToolRegistry: define `prime_ontology` once; visible to MCP stdio, MCP HTTP, HTTP, CLI; optional LSP command.
 - MCP stdio + HTTP: handlers call PrimeEngine; return streamable progress and final summary.
 - HTTP: `POST /api/v1/ontology/prime` returns the same summary; bounded synchronous run.
-- CLI: `ontology-lsp ontology prime ...` convenience wrapper.
+- CLI: `semantic-code-intelligence ontology prime ...` convenience wrapper.
 
 ## OpenTelemetry
 

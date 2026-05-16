@@ -182,7 +182,7 @@ async function createMcpServer(desiredSid?: string): Promise<SessionRecord> {
     const adapter = new MCPAdapter(analyzer);
     const executor = new ToolExecutor();
     const server = new Server(
-        { name: 'ontology-lsp', version: '1.0.0' },
+        { name: 'semantic-code-intelligence', version: '1.0.0' },
         { capabilities: { tools: {}, resources: {}, prompts: {} } }
     );
 

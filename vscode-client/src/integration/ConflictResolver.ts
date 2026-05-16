@@ -18,7 +18,7 @@ export class ConflictResolver {
             const skip = await this.context.globalState.get<boolean>('ontology.skipTsConflict');
             if (!skip) {
                 vscode.window.showInformationMessage(
-                    'Ontology LSP will augment the built-in TypeScript features. You can change this behavior in settings.',
+                    'Semantic Code Intelligence will augment the built-in TypeScript features. You can change this behavior in settings.',
                     'OK', 'Don\'t show again'
                 ).then(async (choice) => {
                     if (choice === "Don't show again") {
