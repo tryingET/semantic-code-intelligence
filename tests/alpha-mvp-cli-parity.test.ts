@@ -131,6 +131,18 @@ describe('Alpha MVP CLI fallback parity', () => {
         expect(checked.payload.next_actions.join('\n')).toContain('snapshot://');
         expect(checked.payload.checks?.commands).toEqual(['true']);
 
+        const artifacts = await workflow('extract_snapshot_artifacts', {
+            snapshot: checked.payload.snapshot,
+            includeContent: true,
+            maxBytes: 4096,
+        });
+        expect(artifacts.payload.status?.exists).toBe(true);
+        expect(artifacts.payload.status?.diffCount).toBeGreaterThan(0);
+        expect(artifacts.payload.contents?.overlayDiff?.text).toContain('structuralPatchTarget');
+        expect(artifacts.payload.links?.map((link: any) => link.uri)).toContain(
+            `snapshot://${checked.payload.snapshot}/overlay.diff`,
+        );
+
         const defaultChecks = await workflow('structural_patch_checks', {
             language: 'typescript',
             pattern: 'const patchPlanningTarget = $VALUE',

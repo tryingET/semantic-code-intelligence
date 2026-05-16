@@ -38,7 +38,7 @@ The Alpha MVP tool surface is:
 
 | Operation | Required behavior | Minimum evidence |
 |---|---|---|
-| `get_snapshot` | Return an identifier for the repository state or overlay state used by later calls. | Snapshot id or explicit state descriptor. |
+| `get_snapshot` | Return an identifier for the repository state or overlay state used by later calls. | Snapshot id or explicit state descriptor; snapshot metadata/artifacts are narrowly persisted for later artifact inspection. |
 | `read_file` | Read bounded file ranges from the requested snapshot/workspace state. | Path, range, and content or structured error. |
 | `text_search` | Search text with caps, ignore handling, and deterministic result shape. | Query, result count, capped results. |
 | `symbol_search` | Find likely symbols with path/language hints where available. | Query, candidates, confidence/ranking fields when available. |

@@ -38,6 +38,75 @@ export class OverlayStore {
         }
     }
 
+    private snapshotsRoot(): string {
+        return path.resolve('.ontology', 'snapshots');
+    }
+
+    private snapshotDir(id: string): string {
+        this.assertValidId(id);
+        return path.join(this.snapshotsRoot(), id);
+    }
+
+    private metadataPath(id: string): string {
+        return path.join(this.snapshotDir(id), 'metadata.json');
+    }
+
+    private serializeSnapshot(snap: Snapshot): Record<string, unknown> {
+        return {
+            id: snap.id,
+            createdAt: snap.createdAt,
+            diffs: snap.diffs,
+            touchedFiles: snap.touchedFiles ? Array.from(snap.touchedFiles) : [],
+            lastApply: snap.lastApply || null,
+        };
+    }
+
+    private hydrateSnapshot(raw: any): Snapshot | null {
+        const id = String(raw?.id || '').trim();
+        if (!this.isValidSnapshotId(id)) return null;
+        const createdAt = Number(raw?.createdAt || Date.now());
+        const diffs = Array.isArray(raw?.diffs) ? raw.diffs.filter((d: any) => typeof d === 'string') : [];
+        const touched = Array.isArray(raw?.touchedFiles) ? raw.touchedFiles.filter((f: any) => typeof f === 'string') : [];
+        const snap: Snapshot = { id, createdAt, diffs };
+        if (touched.length) snap.touchedFiles = new Set(touched);
+        if (raw?.lastApply && typeof raw.lastApply === 'object') snap.lastApply = raw.lastApply;
+        return snap;
+    }
+
+    private persistSnapshotSync(snap: Snapshot): void {
+        try {
+            const dir = this.snapshotDir(snap.id);
+            fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(this.metadataPath(snap.id), JSON.stringify(this.serializeSnapshot(snap), null, 2), 'utf8');
+        } catch {
+            // Snapshot metadata is best-effort; in-memory behavior remains authoritative for current process.
+        }
+    }
+
+    private loadSnapshotFromDisk(id: string): Snapshot | null {
+        try {
+            this.assertValidId(id);
+            const raw = JSON.parse(fs.readFileSync(this.metadataPath(id), 'utf8'));
+            const snap = this.hydrateSnapshot(raw);
+            if (!snap) return null;
+            this.snapshots.set(snap.id, snap);
+            return snap;
+        } catch {
+            return null;
+        }
+    }
+
+    private loadAllSnapshotsFromDisk(): void {
+        try {
+            const root = this.snapshotsRoot();
+            if (!fs.existsSync(root)) return;
+            for (const ent of fs.readdirSync(root, { withFileTypes: true })) {
+                if (!ent.isDirectory() || !this.isValidSnapshotId(ent.name) || this.snapshots.has(ent.name)) continue;
+                this.loadSnapshotFromDisk(ent.name);
+            }
+        } catch {}
+    }
+
     private isValidSnapshotId(id: string): boolean {
         return typeof id === 'string' && /^[0-9a-fA-F-]{8,}$/.test(id.trim());
     }
@@ -51,12 +120,14 @@ export class OverlayStore {
     createSnapshot(preferExisting = true): Snapshot {
         // Optionally reuse the most recent snapshot to avoid churn
         if (preferExisting) {
+            this.loadAllSnapshotsFromDisk();
             const last = Array.from(this.snapshots.values()).sort((a, b) => b.createdAt - a.createdAt)[0];
             if (last) return last;
         }
         const id = randomUUID();
         const snap: Snapshot = { id, createdAt: Date.now(), diffs: [] };
         this.snapshots.set(id, snap);
+        this.persistSnapshotSync(snap);
         // Best-effort cleanup after creating a snapshot
         void this.cleanup().catch(() => {});
         return snap;
@@ -68,7 +139,7 @@ export class OverlayStore {
         }
         const trimmed = String(id).trim();
         this.assertValidId(trimmed);
-        const found = this.snapshots.get(trimmed);
+        const found = this.snapshots.get(trimmed) || this.loadSnapshotFromDisk(trimmed);
         if (!found) {
             throw new Error('Unknown snapshot id');
         }
@@ -76,6 +147,7 @@ export class OverlayStore {
     }
 
     list(): Snapshot[] {
+        this.loadAllSnapshotsFromDisk();
         return Array.from(this.snapshots.values()).sort((a, b) => b.createdAt - a.createdAt);
     }
 
@@ -97,7 +169,7 @@ export class OverlayStore {
             const excess = snaps.slice(maxKeep);
             for (const s of excess) if (!toDelete.includes(s)) toDelete.push(s);
         }
-        const snapsRoot = path.resolve('.ontology', 'snapshots');
+        const snapsRoot = this.snapshotsRoot();
         for (const s of toDelete) {
             this.snapshots.delete(s.id);
             try {
@@ -147,6 +219,7 @@ export class OverlayStore {
                 for (const f of touched) snap.touchedFiles.add(f);
             }
         } catch {}
+        this.persistSnapshotSync(snap);
         return { accepted: true };
     }
 
@@ -186,14 +259,15 @@ export class OverlayStore {
         this.assertValidId(snapshotId);
         // Respect workspace root if provided to avoid copying entire repo for snapshots
         const base = this.resolveWorkspaceBase();
-        const snapsRoot = path.resolve('.ontology', 'snapshots');
+        const snapsRoot = this.snapshotsRoot();
         const dir = path.join(snapsRoot, snapshotId);
         await fsp.mkdir(snapsRoot, { recursive: true }).catch(() => {});
-        const exists = fs.existsSync(dir);
+        const materializedMarker = path.join(dir, '.materialized');
+        const isMaterialized = fs.existsSync(materializedMarker);
         const preferPartial = process.env.SNAPSHOT_PARTIAL === '1';
-        const snap = this.snapshots.get(snapshotId);
+        const snap = this.snapshots.get(snapshotId) || this.loadSnapshotFromDisk(snapshotId);
         const touched = snap?.touchedFiles ? Array.from(snap.touchedFiles) : [];
-        if (!exists) {
+        if (!isMaterialized) {
             await this.logProgress(snapshotId, 'materialize:start');
             await fsp.mkdir(dir, { recursive: true });
             if (preferPartial && touched.length > 0) {
@@ -243,6 +317,8 @@ export class OverlayStore {
                     }
                 }
             }
+            await fsp.writeFile(materializedMarker, new Date().toISOString(), 'utf8').catch(() => {});
+            if (snap) this.persistSnapshotSync(snap);
             await this.logProgress(snapshotId, 'materialize:done');
         }
         // Apply staged diffs if any

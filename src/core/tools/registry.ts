@@ -585,6 +585,8 @@ export class ToolRegistry {
                 type: 'object',
                 properties: {
                     snapshot: { type: 'string' },
+                    includeContent: { type: 'boolean', default: false },
+                    maxBytes: { type: 'number', default: 65536 },
                 },
                 required: ['snapshot'],
             },

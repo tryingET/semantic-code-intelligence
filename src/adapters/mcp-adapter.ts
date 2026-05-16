@@ -718,13 +718,48 @@ export class MCPAdapter {
     private async handleExtractSnapshotArtifacts(args: Record<string, any>) {
         const snapshot = String(args?.snapshot || '').trim();
         if (!snapshot) return { content: [{ type: 'text', text: 'snapshot required' }], isError: true };
+        const includeContent = args?.includeContent === true;
+        const maxBytes = Math.max(1, Math.min(262_144, Number(args?.maxBytes || 65_536)));
         const links = [
             { uri: `snapshot://${snapshot}/overlay.diff`, name: 'overlay.diff', mimeType: 'text/plain' },
             { uri: `snapshot://${snapshot}/status`, name: 'status', mimeType: 'application/json' },
             { uri: `snapshot://${snapshot}/progress`, name: 'progress', mimeType: 'text/plain' },
         ];
-        const payload = { snapshot, links };
-        return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: false };
+        let status: any = { id: snapshot, exists: false, diffCount: 0, createdAt: null };
+        let contents: any = undefined;
+        try {
+            const snap = overlayStore.ensureSnapshot(snapshot);
+            status = {
+                id: snapshot,
+                exists: true,
+                diffCount: Array.isArray((snap as any).diffs) ? (snap as any).diffs.length : 0,
+                createdAt: (snap as any).createdAt || null,
+                touchedFiles: (snap as any).touchedFiles ? Array.from((snap as any).touchedFiles) : [],
+                materialized: false,
+            };
+            const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
+            const dir = ensure ? await ensure(snapshot) : null;
+            status.materialized = !!dir;
+            if (includeContent && dir) {
+                const readBounded = async (file: string) => {
+                    try {
+                        const text = await fs.readFile(path.join(dir, file), 'utf8');
+                        const truncated = Buffer.byteLength(text, 'utf8') > maxBytes;
+                        return { text: truncated ? text.slice(0, maxBytes) : text, truncated };
+                    } catch {
+                        return { text: '', truncated: false };
+                    }
+                };
+                contents = {
+                    overlayDiff: await readBounded('overlay.diff'),
+                    progress: await readBounded('progress.log'),
+                };
+            }
+        } catch (error) {
+            status.error = error instanceof Error ? error.message : String(error);
+        }
+        const payload = { snapshot, links, status, contents };
+        return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: !status.exists };
     }
 
     private async handleApplyAfterChecks(args: Record<string, any>) {

@@ -82,7 +82,7 @@ Raw shell tools are still appropriate for git status, deterministic validation c
 
 ## Known limitation
 
-CLI workflow invocations are process-local. A snapshot id created by one CLI process is not durable across a later CLI process. For multi-step snapshot work through CLI, use composite workflow tools such as `patch_checks_in_snapshot`, or use MCP/HTTP when a long-lived server/session is needed.
+CLI workflow invocations are process-local for live adapter state, but snapshot metadata/artifacts are narrowly persisted under `.ontology/snapshots/<id>/`. A later CLI process can call `extract_snapshot_artifacts` with a snapshot id to inspect status plus bounded `overlay.diff`/progress content. For multi-step mutation planning, still prefer composite workflow tools such as `patch_checks_in_snapshot` or `structural_patch_checks`, or use MCP/HTTP when a long-lived server/session is needed.
 
 ## What this proves
 
