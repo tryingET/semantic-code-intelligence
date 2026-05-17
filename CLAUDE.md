@@ -11,7 +11,7 @@ type: "reference"
 This file provides guidance for MCP-compatible coding assistants working with this repository.
 
 @.claude/docs/software-principles.md  
-@.claude/docs/tech-stack-ts.md
+@.claude/docs/engineering-ts.md
 
 ## SESSION WORKFLOW (MANDATORY)
 

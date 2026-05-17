@@ -1,12 +1,12 @@
 ---
 summary: "Bun configuration for the Semantic Code Intelligence repo."
 read_when:
-  - "You need tech stack ts information for Semantic Code Intelligence."
-  - "You are changing docs/tech-stack-ts.md or related behavior."
+  - "You need engineering guidance ts information for Semantic Code Intelligence."
+  - "You are changing docs/engineering-ts.md or related behavior."
 type: "reference"
 ---
 
-### **The Definitive 2025 TypeScript Tech Stack**
+### **The Definitive 2025 TypeScript Engineering Guidance**
 
 The philosophy remains: **Everything is a file.** The state of your project is declarative, version-controlled, and instantly reproducible. Following Matt Pocock's type-safe patterns: **Make impossible states impossible.**
 

@@ -66,12 +66,12 @@ See `CONFIG.md` for env defaults like `FAST_STDIO_CHECKS=touched` and `SNAPSHOT_
 - Stdio (preferred for Codex/Claude): `./mcp-wrapper.sh`
 - HTTP (Streamable): initialize at `POST /mcp`, use `Mcp-Session-Id` header; SDKs set `Accept: application/json, text/event-stream` automatically.
 
-## Language Tech Stack
+## Language Engineering Guidance
 
 - Software Principles: ./software-principles.md
-- TypeScript: ./tech-stack-ts.md
-- Python: ./tech-stack-py.md
-- Go: ./tech-stack-go.md
+- TypeScript: ./engineering-ts.md
+- Python: ./engineering-py.md
+- Go: ./engineering-go.md
 
 ## Project posture and Phase 1 contract
 

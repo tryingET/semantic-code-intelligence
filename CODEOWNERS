@@ -1,7 +1,7 @@
 # Core + org context snapshots
 docs/_core/** @core-owner
 docs/org_context/** @org-owners
-docs/tech-stack.local.md @tryinget
+docs/engineering.local.md @tryinget
 
 # Monorepo control plane + governance
 governance/** @tryinget

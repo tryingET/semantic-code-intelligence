@@ -10,7 +10,7 @@ system4d:
   fog: "Root workspace ergonomics can be mistaken for package-level stack authority unless documented explicitly."
 ---
 
-# tech-stack.local (monorepo root)
+# engineering.local (monorepo root)
 
 Primary model:
 
@@ -19,12 +19,12 @@ Primary model:
 
 Executable contract surface:
 
-- root `docs/tech-stack.local.md` explains monorepo control-plane deltas
-- package/app `policy/stack-lane.json` declares the upstream `tech-stack-core` lane reference when one exists
-- package/app `docs/tech-stack.local.md` records local overrides
+- root `docs/engineering.local.md` explains monorepo control-plane deltas
+- package/app `policy/engineering-lane.json` declares the upstream `engineering-core` lane reference when one exists
+- package/app `docs/engineering.local.md` records local overrides
 
 Practical rule:
 
 - Use root commands for monorepo-wide validation.
 - Use package/app local checks for language-specific validation.
-- Use each package/app `policy/stack-lane.json` as the source of truth for the declared upstream lane command; root docs should not hardcode package lane commands.
+- Use each package/app `policy/engineering-lane.json` as the source of truth for the declared upstream lane command; root docs should not hardcode package lane commands.

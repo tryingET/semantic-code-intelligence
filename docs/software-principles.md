@@ -22,6 +22,6 @@ type: "reference"
 〔This mirrors your 6E structure (Constraints/Boundaries/Edges/Assumptions/Dependencies/Exceptions) feeding CLARITY’s constraints‑first loop.〕 :contentReference[oaicite:10]{index=10} :contentReference[oaicite:11]{index=11} :contentReference[oaicite:12]{index=12}
 
 ## Tech‑stack (default lane)
-@docs/tech-stack-py.md # default
+@docs/engineering-py.md # default
 
-> To switch lanes later, replace the import above with **@docs/tech-stack-ts.md** or **@docs/tech-stack-go.md**. (Keep only one imported at a time to avoid conflicting defaults.)
+> To switch lanes later, replace the import above with **@docs/engineering-ts.md** or **@docs/engineering-go.md**. (Keep only one imported at a time to avoid conflicting defaults.)

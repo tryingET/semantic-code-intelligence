@@ -40,7 +40,7 @@ layer mapping, safety rules, and delivery expectations.
 - Ontology DB path comes from `layers.layer4.dbPath`.
 - Pattern learner config is under `layers.layer5.*`.
 - Use Drizzle ORM for TypeScript data access when adding new
-  persistence modules; align choices with the tech stack document
+  persistence modules; align choices with the engineering guidance document
   referenced below.
 
 4) Pluggable storage mindset
@@ -92,7 +92,7 @@ At a glance (local testing quick path): use `just test` for fast, sliced + batch
   - 📝 docs(vision): align storage adapters roadmap
 - Note breaking changes in the commit body; update docs accordingly.
 
-@docs/tech-stack-ts.md
+@docs/engineering-ts.md
 
 Tip: for a quick workspace overview, use `eza -T -L 3 --git-ignore --only-dirs` (or `tree -L 3`).
 
