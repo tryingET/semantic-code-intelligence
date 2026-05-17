@@ -76,7 +76,9 @@ describe('Alpha MVP tool contract', () => {
         expect(specs.get('safe_write')?.inputSchema?.properties?.apply?.type).toBe('boolean');
         expect(specs.get('safe_write')?.inputSchema?.properties?.brief?.type).toBe('boolean');
         expect(specs.get('safe_write')?.inputSchema?.properties?.recommendChecks?.type).toBe('boolean');
+        expect(specs.get('safe_write')?.inputSchema?.properties?.impactSummary?.type).toBe('object');
         expect(specs.get('patch_checks_in_snapshot')?.inputSchema?.properties?.recommendChecks?.type).toBe('boolean');
+        expect(specs.get('patch_checks_in_snapshot')?.inputSchema?.properties?.impactSummary?.type).toBe('object');
     });
 });
 

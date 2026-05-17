@@ -803,8 +803,9 @@ export class MCPAdapter {
         const apply = args?.apply === true;
         const brief = args?.brief === true;
         const risk = this.classifyPatchRisk(patch);
+        const impactSummary = args?.impactSummary && typeof args.impactSummary === 'object' ? args.impactSummary : null;
         const checkRecommendations = args?.recommendChecks === true
-            ? this.safeParseContent(await this.handleRecommendChecks({ patch, files: risk.files, mode: 'minimum' }))
+            ? this.safeParseContent(await this.handleRecommendChecks({ patch, files: risk.files, impactSummary, mode: 'minimum' }))
             : null;
         const requested = typeof args?.snapshot === 'string' ? String(args.snapshot).trim() : '';
         let snapshot: string | undefined = requested || undefined;
@@ -854,6 +855,21 @@ export class MCPAdapter {
             command: `git apply -R .ontology/snapshots/${snapshot}/overlay.diff`,
             artifact: snapshotArtifacts.overlayDiff,
         };
+        const validationPlan = this.buildValidationPlan({
+            workflow: 'safe_write',
+            mode: apply ? 'apply_after_checks' : 'preview_validate',
+            snapshot,
+            snapshotArtifacts,
+            risk,
+            commands,
+            checksOk: !!checksOut?.ok,
+            checksElapsedMs: checksOut?.elapsedMs || null,
+            checkRecommendations,
+            impactSummary,
+            applied,
+            applyGuardSatisfied: verification.applyGuardSatisfied,
+            rollback,
+        });
         const summary = {
             ok,
             workflow: 'safe_write',
@@ -861,6 +877,7 @@ export class MCPAdapter {
             risk,
             snapshot,
             checkRecommendations,
+            validationPlan,
             checks: { ok: !!checksOut?.ok, commands, elapsedMs: checksOut?.elapsedMs || null },
             verification,
             applied,
@@ -1088,8 +1105,10 @@ export class MCPAdapter {
         if (!patch) return { content: [{ type: 'text', text: 'patch required' }], isError: true };
         const commands = Array.isArray(args?.commands) ? (args.commands as string[]) : ['bun run typecheck'];
         const timeoutSec = typeof args?.timeoutSec === 'number' ? args.timeoutSec : 240;
+        const files = this.extractFilesFromPatch(patch);
+        const impactSummary = args?.impactSummary && typeof args.impactSummary === 'object' ? args.impactSummary : null;
         const checkRecommendations = args?.recommendChecks === true
-            ? this.safeParseContent(await this.handleRecommendChecks({ patch, files: this.extractFilesFromPatch(patch), mode: 'minimum' }))
+            ? this.safeParseContent(await this.handleRecommendChecks({ patch, files, impactSummary, mode: 'minimum' }))
             : null;
 
         const requested = typeof args?.snapshot === 'string' ? String(args.snapshot).trim() : '';
@@ -1107,12 +1126,28 @@ export class MCPAdapter {
         const checks = await this.handleRunChecks({ snapshot: snapId, commands, timeoutSec });
         const checksOut = this.safeParseContent(checks);
         const ok = !!checksOut?.ok;
+        const snapshotArtifacts = this.structuralSnapshotLinks(snapId);
+        const validationPlan = this.buildValidationPlan({
+            workflow: 'patch_checks_in_snapshot',
+            mode: 'preview_validate',
+            snapshot: snapId,
+            snapshotArtifacts,
+            risk: this.classifyPatchRisk(patch),
+            commands,
+            checksOk: ok,
+            checksElapsedMs: checksOut?.elapsedMs || null,
+            checkRecommendations,
+            impactSummary,
+            applied: false,
+            applyGuardSatisfied: false,
+        });
         const out = {
             workflow: 'patch_checks_in_snapshot',
             ok,
             snapshot: snapId,
             stage: staged,
             checkRecommendations,
+            validationPlan,
             checks: checksOut,
             next_actions: ok ? ['Apply patch in working tree'] : ['Review failing checks; adjust and re-run'],
         };
@@ -1997,6 +2032,57 @@ export class MCPAdapter {
     private hasGraphImpact(impactSummary: any): boolean {
         const counts = impactSummary?.counts && typeof impactSummary.counts === 'object' ? impactSummary.counts : {};
         return ['imports', 'exports', 'callers', 'callees'].some((edge) => Number(counts?.[edge] || 0) > 0);
+    }
+
+    private buildValidationPlan(args: {
+        workflow: string;
+        mode: string;
+        snapshot?: string;
+        snapshotArtifacts?: any;
+        risk?: any;
+        commands: string[];
+        checksOk: boolean;
+        checksElapsedMs: number | null;
+        checkRecommendations?: any;
+        impactSummary?: any;
+        applied: boolean;
+        applyGuardSatisfied: boolean;
+        rollback?: any;
+    }) {
+        const recommendedMinimum = Array.isArray(args.checkRecommendations?.minimum) ? args.checkRecommendations.minimum.map(String) : [];
+        const recommendedBroader = Array.isArray(args.checkRecommendations?.broader) ? args.checkRecommendations.broader.map(String) : [];
+        const rationale = Array.isArray(args.checkRecommendations?.rationale) ? args.checkRecommendations.rationale : [];
+        const impactCounts = args.impactSummary?.counts && typeof args.impactSummary.counts === 'object' ? args.impactSummary.counts : null;
+        return {
+            schema: 'semantic-code-intelligence.validation_plan.v1',
+            workflow: args.workflow,
+            mode: args.mode,
+            snapshot: args.snapshot || null,
+            status: args.checksOk ? 'checks_passed' : 'checks_failed',
+            touchedFiles: Array.isArray(args.risk?.files) ? args.risk.files : [],
+            risk: args.risk ? { level: args.risk.level, category: args.risk.category, fileCount: args.risk.fileCount } : null,
+            commands: {
+                selected: args.commands,
+                recommendedMinimum,
+                recommendedBroader,
+                recommendationsAppliedToSelected: false,
+            },
+            rationale,
+            graphImpact: args.impactSummary
+                ? {
+                      hasImpactEvidence: args.impactSummary?.hasImpactEvidence === true,
+                      counts: impactCounts,
+                      planningHints: Array.isArray(args.impactSummary?.planningHints) ? args.impactSummary.planningHints : [],
+                  }
+                : null,
+            checks: { ok: args.checksOk, elapsedMs: args.checksElapsedMs },
+            artifacts: args.snapshotArtifacts
+                ? { overlayDiff: args.snapshotArtifacts.overlayDiff, status: args.snapshotArtifacts.status, progress: args.snapshotArtifacts.progress }
+                : null,
+            apply: { applied: args.applied, guardSatisfied: args.applyGuardSatisfied },
+            rollback: args.rollback ? { available: !!args.rollback.available, command: args.rollback.command, artifact: args.rollback.artifact } : null,
+            note: 'Evidence summary only; it does not select, append, or enforce validation commands.',
+        };
     }
 
     private async handleRecommendChecks(args: Record<string, any>) {

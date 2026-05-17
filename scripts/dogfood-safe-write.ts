@@ -132,6 +132,7 @@ const evidence = {
     preview.payload?.ok === true &&
     preview.payload?.applied === false &&
     preview.payload?.checkRecommendations?.workflow === 'recommend_checks' &&
+    preview.payload?.validationPlan?.schema === 'semantic-code-intelligence.validation_plan.v1' &&
     afterPreview === original &&
     failedApply.payload?.ok === false &&
     failedApply.payload?.applied === false &&
@@ -155,6 +156,7 @@ const evidence = {
   assertions: {
     previewUnchanged: afterPreview === original,
     previewIncludesAdvisoryRecommendations: preview.payload?.checkRecommendations?.workflow === 'recommend_checks',
+    previewIncludesValidationPlan: preview.payload?.validationPlan?.schema === 'semantic-code-intelligence.validation_plan.v1',
     failedChecksBlockedApply: failedApply.payload?.ok === false && afterFailedApply === original,
     guardedApplyChangedFixture: applied.payload?.applied === true && afterApply.includes(marker),
     appliedDiffMatchesSnapshot: applied.payload?.verification?.appliedDiffMatchesSnapshot === true,
@@ -176,6 +178,7 @@ const evidence = {
       risk: call.payload?.risk,
       applied: call.payload?.applied,
       checkRecommendations: call.payload?.checkRecommendations,
+      validationPlan: call.payload?.validationPlan,
       checks: call.payload?.checks,
       verification: call.payload?.verification,
       applyResult: call.payload?.applyResult,

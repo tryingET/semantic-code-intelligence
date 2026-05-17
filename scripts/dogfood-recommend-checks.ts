@@ -115,6 +115,9 @@ const assertions = {
     patchChecksThreadRecommendations:
         byCase.patch_checks_recommendations_threaded.payload?.checkRecommendations?.workflow === 'recommend_checks' &&
         byCase.patch_checks_recommendations_threaded.payload?.checks?.ok === true,
+    patchChecksValidationPlanPresent:
+        byCase.patch_checks_recommendations_threaded.payload?.validationPlan?.schema === 'semantic-code-intelligence.validation_plan.v1' &&
+        byCase.patch_checks_recommendations_threaded.payload?.validationPlan?.commands?.recommendationsAppliedToSelected === false,
 };
 
 const evidence = {
@@ -142,6 +145,7 @@ const evidence = {
             confidence: call.payload?.confidence,
             checks: call.payload?.checks,
             checkRecommendations: call.payload?.checkRecommendations,
+            validationPlan: call.payload?.validationPlan,
         },
     })),
     interpretation: {
@@ -149,6 +153,7 @@ const evidence = {
             'recommend_checks returns transparent command recommendations without running checks.',
             'Docs-only, TS source, test-file, and graph-impact cases produce expected minimum/broader command rationale.',
             'patch_checks_in_snapshot can surface advisory recommendations without changing caller-supplied check commands.',
+            'patch_checks_in_snapshot returns a compact validationPlan evidence summary.',
         ],
         does_not_prove: ['Complete test selection accuracy.', 'A hidden policy gate; recommendations are advisory.'],
     },

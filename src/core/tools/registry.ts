@@ -104,6 +104,7 @@ export class ToolRegistry {
                         default: false,
                         description: 'Include advisory recommend_checks output without changing the commands that run',
                     },
+                    impactSummary: { type: 'object', description: 'Optional graph_expand impactSummary to include in recommendations/validationPlan' },
                     onlyTouched: {
                         type: 'boolean',
                         description: 'Restrict checks to touched files when possible',
@@ -575,6 +576,7 @@ export class ToolRegistry {
                         default: false,
                         description: 'Include advisory recommend_checks output without changing the commands that run',
                     },
+                    impactSummary: { type: 'object', description: 'Optional graph_expand impactSummary to include in recommendations/validationPlan' },
                     timeoutSec: {
                         type: 'number',
                         default: 240,
@@ -634,6 +636,7 @@ export class ToolRegistry {
                         default: false,
                         description: 'Include advisory recommend_checks output without changing the commands that run',
                     },
+                    impactSummary: { type: 'object', description: 'Optional graph_expand impactSummary to include in recommendations/validationPlan' },
                     timeoutSec: { type: 'number', default: 240 },
                     apply: { type: 'boolean', default: false },
                     brief: { type: 'boolean', default: false },

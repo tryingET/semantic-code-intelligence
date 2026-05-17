@@ -107,6 +107,8 @@ const packet = {
         structuralCalls: summarizeCalls(Array.isArray(structural?.calls) ? structural.calls : []),
         safeWritePreviewPresent: !!preview,
         safeWritePreviewRecommendationsPresent: safeWriteCalls.some((call) => call?.payload?.mode === 'preview_validate' && call?.payload?.checkRecommendations?.workflow === 'recommend_checks'),
+        safeWritePreviewValidationPlanPresent: safeWriteCalls.some((call) => call?.payload?.mode === 'preview_validate' && call?.payload?.validationPlan?.schema === 'semantic-code-intelligence.validation_plan.v1'),
+        validationPlanSample: preview?.payload?.validationPlan || null,
         safeWriteFixtureCleanAfterRollback: safeWrite?.assertions?.fixtureCleanAfterRollback === true,
     },
     safeWriteVerification: {
@@ -138,7 +140,7 @@ const packet = {
             'Self-hosted maintenance starts with SCI discovery/navigation evidence.',
             'Graph impact dogfood exposes import/export/callee/caller edge status and planning hints.',
             'Impact-aware check recommendation dogfood maps docs, source, test, and graph-impact cases to explicit advisory commands.',
-            'Patch-check and safe-write previews can surface advisory check recommendations without changing check/apply policy.',
+            'Patch-check and safe-write previews can surface advisory check recommendations and compact validationPlan summaries without changing check/apply policy.',
             'Patch planning remains preview-first by default.',
             'safe_write has clean apply exact-diff verification and dirty mismatch fail-closed evidence.',
             'Generated dogfood evidence passes the lightweight Alpha evidence gate.',
@@ -149,7 +151,7 @@ const packet = {
             'Complete whole-program call graph accuracy or rich semantic graph behavior for every language.',
             'A durable long-lived session database beyond narrow snapshot artifacts and generated evidence files.',
         ],
-        nextRecommendedWave: 'Use check recommendation evidence to thread optional recommendations into preview/check UX without making hidden policy gates.',
+        nextRecommendedWave: 'Use validationPlan summaries to compare evidence across runs and flag check-plan regressions.'
     },
     loadErrors: Object.fromEntries(
         Object.entries(loaded)

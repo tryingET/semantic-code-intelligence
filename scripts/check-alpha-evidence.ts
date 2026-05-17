@@ -143,7 +143,8 @@ if (recommendChecks) {
             recommendChecks?.assertions?.tsSourceTypecheck === true &&
             recommendChecks?.assertions?.testFileNarrowTest === true &&
             recommendChecks?.assertions?.graphImpactBroaderRationale === true &&
-            recommendChecks?.assertions?.patchChecksThreadRecommendations === true,
+            recommendChecks?.assertions?.patchChecksThreadRecommendations === true &&
+            recommendChecks?.assertions?.patchChecksValidationPlanPresent === true,
         detail: recommendChecks?.assertions || null,
     });
     checks.push({
@@ -157,11 +158,13 @@ if (safeWrite) {
     const calls = Array.isArray(safeWrite.calls) ? safeWrite.calls : [];
     const preview = calls.some((call) => call?.payload?.mode === 'preview_validate' && call?.payload?.applied === false);
     const previewRecommendations = calls.some((call) => call?.payload?.mode === 'preview_validate' && call?.payload?.checkRecommendations?.workflow === 'recommend_checks');
+    const previewValidationPlan = calls.some((call) => call?.payload?.mode === 'preview_validate' && call?.payload?.validationPlan?.schema === 'semantic-code-intelligence.validation_plan.v1');
     const cleanApplyVerified = calls.some((call) => call?.payload?.applied === true && call?.payload?.verification?.appliedDiffMatchesSnapshot === true);
     const mismatchFailsClosed = calls.some((call) => call?.payload?.applied === true && call?.payload?.ok === false && call?.payload?.verification?.appliedDiffMatchesSnapshot === false);
     checks.push({ name: 'safe_write_dogfood_ok', ok: safeWrite.ok === true, detail: { schema: safeWrite.schema } });
     checks.push({ name: 'safe_write_preview_first', ok: preview });
     checks.push({ name: 'safe_write_preview_recommendations_threaded', ok: previewRecommendations });
+    checks.push({ name: 'safe_write_preview_validation_plan', ok: previewValidationPlan });
     checks.push({ name: 'safe_write_exact_apply_verified', ok: cleanApplyVerified });
     checks.push({ name: 'safe_write_mismatch_fails_closed', ok: mismatchFailsClosed });
     checks.push({
@@ -180,7 +183,7 @@ const report = {
     interpretation: {
         proves: [
             'Generated dogfood evidence preserves the documented Alpha MVP safety posture.',
-            'SCI-first discovery, graph impact summaries, impact-aware check recommendations, preview-first patching, exact safe_write verification, and bounded latency remain present.',
+            'SCI-first discovery, graph impact summaries, impact-aware check recommendations, validationPlan summaries, preview-first patching, exact safe_write verification, and bounded latency remain present.',
         ],
         does_not_prove: ['Production readiness.', 'Comprehensive performance characterization.'],
     },
