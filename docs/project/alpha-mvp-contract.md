@@ -74,6 +74,7 @@ Alpha mutation posture is **preview first**.
 - SCI orchestrates structural workflow safety and evidence; `ast-grep` performs deterministic structural matching and rewrite generation.
 - `recommend_checks` may suggest `bun run typecheck`, narrow `bun test <file>` commands, or a no-op `true` for docs-only changes, with explicit rationale. Suggestions are not hidden policy gates.
 - `patch_checks_in_snapshot` and `safe_write` return a compact `validationPlan` summary with selected commands, recommendation evidence, check result, snapshot artifacts, apply posture, and rollback links where applicable.
+- Generated `validationPlan` evidence is compared on stable fields to flag check-plan drift while ignoring volatile snapshot ids and timing.
 - `patch_checks_in_snapshot` and `safe_write` may include check suggestions when `recommendChecks:true`; suggestions and `validationPlan` summaries do not replace, append to, or enforce the explicit `commands` that actually run.
 - Default structural checks use `bun run typecheck`, which is the tsgo-primary TypeScript validation lane. Do not reintroduce `build:tsc`; `bun run typecheck:fallback` remains the tsc fallback.
 

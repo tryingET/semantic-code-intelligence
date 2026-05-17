@@ -14,6 +14,7 @@ const evidenceFiles = {
     graph: '.test-results/graph-impact-dogfood.json',
     recommendChecks: '.test-results/recommend-checks-dogfood.json',
     safeWrite: '.test-results/safe-write-dogfood.json',
+    validationPlanComparison: '.test-results/validation-plan-comparison.json',
 };
 
 const budgetsMs: Record<string, number> = {
@@ -48,6 +49,7 @@ let structural: any = null;
 let graph: any = null;
 let recommendChecks: any = null;
 let safeWrite: any = null;
+let validationPlanComparison: any = null;
 
 try {
     alpha = readJson(evidenceFiles.alpha);
@@ -56,6 +58,7 @@ try {
     graph = readJson(evidenceFiles.graph);
     recommendChecks = readJson(evidenceFiles.recommendChecks);
     safeWrite = readJson(evidenceFiles.safeWrite);
+    validationPlanComparison = readJson(evidenceFiles.validationPlanComparison);
 } catch (error) {
     checks.push({ name: 'evidence_files_readable', ok: false, detail: { message: error instanceof Error ? error.message : String(error) } });
 }
@@ -154,6 +157,14 @@ if (recommendChecks) {
     });
 }
 
+if (validationPlanComparison) {
+    checks.push({
+        name: 'validation_plan_comparison_ok',
+        ok: validationPlanComparison.ok === true && Number(validationPlanComparison.comparedPlanCount || 0) >= 2,
+        detail: { schema: validationPlanComparison.schema, comparedPlanCount: validationPlanComparison.comparedPlanCount, drift: validationPlanComparison.drift || [] },
+    });
+}
+
 if (safeWrite) {
     const calls = Array.isArray(safeWrite.calls) ? safeWrite.calls : [];
     const preview = calls.some((call) => call?.payload?.mode === 'preview_validate' && call?.payload?.applied === false);
@@ -183,7 +194,7 @@ const report = {
     interpretation: {
         proves: [
             'Generated dogfood evidence preserves the documented Alpha MVP safety posture.',
-            'SCI-first discovery, graph impact summaries, impact-aware check recommendations, validationPlan summaries, preview-first patching, exact safe_write verification, and bounded latency remain present.',
+            'SCI-first discovery, graph impact summaries, impact-aware check recommendations, validationPlan summaries and comparison, preview-first patching, exact safe_write verification, and bounded latency remain present.',
         ],
         does_not_prove: ['Production readiness.', 'Comprehensive performance characterization.'],
     },
