@@ -120,6 +120,8 @@ const packet = {
         stableFields: validationPlanComparison?.stableFields || [],
         ignoredVolatileFields: validationPlanComparison?.ignoredVolatileFields || [],
         drift: validationPlanComparison?.drift || [],
+        operatorSummary: validationPlanComparison?.operatorSummary || null,
+        remediationCatalog: validationPlanComparison?.remediationCatalog || null,
     },
     safeWriteVerification: {
         ok: safeWrite?.ok === true,
@@ -152,7 +154,7 @@ const packet = {
             'Graph impact dogfood exposes import/export/callee/caller edge status and planning hints.',
             'Impact-aware check recommendation dogfood maps docs, source, test, and graph-impact cases to explicit advisory commands.',
             'Patch-check and safe-write previews can surface advisory check recommendations and compact validationPlan summaries without changing check/apply policy.',
-            'ValidationPlan comparison flags stable-field check-plan drift while ignoring volatile snapshot/timing fields.',
+            'ValidationPlan comparison flags stable-field check-plan drift while ignoring volatile snapshot/timing fields and includes remediation hints for failures.',
             'Patch planning remains preview-first by default.',
             'safe_write has clean apply exact-diff verification and dirty mismatch fail-closed evidence.',
             'Generated dogfood evidence passes the lightweight Alpha evidence gate.',
@@ -163,7 +165,7 @@ const packet = {
             'Complete whole-program call graph accuracy or rich semantic graph behavior for every language.',
             'A durable long-lived session database beyond narrow snapshot artifacts and generated evidence files.',
         ],
-        nextRecommendedWave: 'Use validationPlan comparison evidence to add operator-facing check-plan drift explanations and remediation hints.'
+        nextRecommendedWave: 'Promote validationPlan evidence into targeted operator UX only after more external-repo dogfood.'
     },
     loadErrors: Object.fromEntries(
         Object.entries(loaded)

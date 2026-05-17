@@ -52,6 +52,41 @@ const safeWrite = readJson('.test-results/safe-write-dogfood.json');
 const plans = [...fromRecommendChecksEvidence(recommendChecks), ...fromSafeWriteEvidence(safeWrite)];
 const normalized = plans.map((item) => ({ source: item.source, ...normalize(item.plan) }));
 
+const failureGuidance: Record<string, { explanation: string; remediation: string }> = {
+  schema_changed: {
+    explanation: 'The validationPlan schema changed, so downstream harnesses may not recognize the evidence shape.',
+    remediation: 'Confirm the schema change is intentional; update docs, packet readers, and alpha evidence checks in the same wave.',
+  },
+  recommendations_started_mutating_selected_commands: {
+    explanation: 'Advisory recommendations appear to have changed the selected commands, which would turn suggestions into hidden policy.',
+    remediation: 'Keep selected commands sourced from caller input/defaults; expose recommendations separately under recommendedMinimum/recommendedBroader.',
+  },
+  checks_outcome_changed_for_selected_commands: {
+    explanation: 'The check result no longer matches the known dogfood command outcome.',
+    remediation: 'Inspect the selected command and check runner output; update the fixture only if the command semantics intentionally changed.',
+  },
+  selected_commands_missing: {
+    explanation: 'The validation plan no longer records which commands actually ran.',
+    remediation: 'Populate validationPlan.commands.selected from the exact commands passed to run_checks/safe_write.',
+  },
+  snapshot_artifact_link_missing: {
+    explanation: 'The validation plan no longer links snapshot artifacts, weakening preview/rollback inspectability.',
+    remediation: 'Ensure snapshot artifact links are built after snapshot creation and included in validationPlan.artifacts.',
+  },
+  safe_write_rollback_missing: {
+    explanation: 'safe_write validation evidence no longer exposes rollback posture.',
+    remediation: 'Restore rollback command/artifact fields for safe_write validationPlan output.',
+  },
+};
+
+function explainFailures(failures: string[]) {
+  return failures.map((failure) => ({
+    failure,
+    explanation: failureGuidance[failure]?.explanation || 'Unexpected validation-plan drift.',
+    remediation: failureGuidance[failure]?.remediation || 'Inspect validationPlan output and update comparison expectations only if the drift is intentional.',
+  }));
+}
+
 const comparisons = normalized.map((item) => {
   const expectedChecksOk = item.selectedCommands.includes('false') ? false : true;
   const expected: Record<string, unknown> = {
@@ -66,10 +101,17 @@ const comparisons = normalized.map((item) => {
   if (!item.selectedCommands.length) failures.push('selected_commands_missing');
   if (!item.hasArtifacts) failures.push('snapshot_artifact_link_missing');
   if (item.workflow === 'safe_write' && !item.hasRollback) failures.push('safe_write_rollback_missing');
-  return { source: item.source, ok: failures.length === 0, failures, expected, actual: item };
+  return { source: item.source, ok: failures.length === 0, failures, guidance: explainFailures(failures), expected, actual: item };
 });
 
 const drift = comparisons.filter((item) => !item.ok);
+const operatorSummary = {
+  status: drift.length === 0 ? 'no_validation_plan_drift' : 'validation_plan_drift_detected',
+  summary: drift.length === 0
+    ? 'Stable validationPlan fields match current dogfood expectations.'
+    : `${drift.length} validationPlan comparison(s) drifted; inspect remediation hints before trusting check-plan evidence.`,
+  remediationHints: drift.flatMap((item) => item.guidance.map((hint: any) => ({ source: item.source, ...hint }))),
+};
 const evidence = {
   schema: 'semantic-code-intelligence.validation_plan_comparison.v1',
   ok: plans.length >= 2 && drift.length === 0,
@@ -78,6 +120,8 @@ const evidence = {
   ignoredVolatileFields: ['snapshot', 'elapsedMs', 'artifact paths with snapshot ids', 'generatedAt'],
   comparisons,
   drift,
+  operatorSummary,
+  remediationCatalog: failureGuidance,
   interpretation: {
     proves: [
       'Current generated validationPlan evidence preserves stable safety/check-planning fields.',
