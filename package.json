@@ -48,7 +48,8 @@
     "structural:dogfood": "mkdir -p .test-results && bun run scripts/dogfood-structural-workflow.ts --json >/dev/null",
     "safe-write:dogfood": "mkdir -p .test-results && bun run scripts/dogfood-safe-write.ts --json >/dev/null",
     "alpha:evidence:check": "bun run scripts/check-alpha-evidence.ts > .test-results/alpha-evidence-check.json",
-    "alpha:mvp:check": "bun run typecheck && bun run alpha:mvp:test && mkdir -p .test-results && bun run scripts/dogfood-alpha-mvp.ts --json > .test-results/alpha-mvp-dogfood.json && bun run self:dogfood:cli && bun run structural:dogfood && bun run safe-write:dogfood && bun run alpha:evidence:check && ./scripts/migration-hygiene.sh",
+    "alpha:evidence:packet": "bun run scripts/build-alpha-evidence-packet.ts > .test-results/alpha-evidence-packet.json",
+    "alpha:mvp:check": "bun run typecheck && bun run alpha:mvp:test && mkdir -p .test-results && bun run scripts/dogfood-alpha-mvp.ts --json > .test-results/alpha-mvp-dogfood.json && bun run self:dogfood:cli && bun run structural:dogfood && bun run safe-write:dogfood && bun run alpha:evidence:check && bun run alpha:evidence:packet && ./scripts/migration-hygiene.sh",
     "typecheck": "tsgo --project tsconfig.build.json --noEmit --pretty false",
     "typecheck:fallback": "tsc -p tsconfig.build.json"
   },

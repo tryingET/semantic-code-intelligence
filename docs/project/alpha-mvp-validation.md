@@ -27,6 +27,7 @@ The Phase 1 Alpha MVP validation bundle proves the first-user path for harnessed
 - target-repo CLI usage is documented and has been exercised as an installed/global command invoked from a non-SCI repository cwd by a harnessed `pi -p` session;
 - repeatable dogfood evidence can be emitted as machine-readable JSON;
 - `alpha:evidence:check` gates generated dogfood evidence for SCI-first discovery, preview-first mutation posture, safe-write exact verification, and coarse latency budgets;
+- `alpha:evidence:packet` emits an operator-facing evidence packet that summarizes tool coverage, SCI-first discovery, preview-first mutation, safe-write verification, validation commands, and remaining gaps;
 - migration hygiene still rejects stale identity drift and unsafe local artifacts.
 
 ## Local commands
@@ -51,6 +52,7 @@ bun run self:dogfood:cli
 bun run structural:dogfood
 bun run safe-write:dogfood
 bun run alpha:evidence:check
+bun run alpha:evidence:packet
 ```
 
 Test-only subset:
@@ -103,6 +105,8 @@ The `interpretation.does_not_prove` section is intentional. Passing this bundle 
 
 `bun run alpha:evidence:check` reads the generated dogfood JSON files under `.test-results/` and emits `.test-results/alpha-evidence-check.json`. It is intentionally a lightweight evidence gate, not a historical database: it checks that current evidence still contains SCI-first discovery, preview-first mutation posture, safe-write exact apply verification plus mismatch fail-closed behavior, and coarse per-call latency budgets.
 
+`bun run alpha:evidence:packet` reads the same generated evidence plus the gate result and emits `.test-results/alpha-evidence-packet.json`. The packet is the concise operator-facing summary: what evidence passed, what safety posture was proven, which validation commands matter, and what Phase 1 still does not prove.
+
 ## Navigation parity scope
 
 Navigation parity currently means the same bounded tool names are exercised through HTTP tools/call, direct MCPAdapter calls, MCP HTTP JSON-RPC, and an MCP stdio smoke path. It does not mean every parser or graph backend returns rich semantic results in every environment; fallback shapes remain valid alpha evidence when they are structured and non-throwing.
@@ -129,6 +133,7 @@ When the Alpha MVP contract changes, update all of these in the same wave:
 - `scripts/dogfood-structural-workflow.ts`
 - `scripts/dogfood-safe-write.ts`
 - `scripts/check-alpha-evidence.ts`
+- `scripts/build-alpha-evidence-packet.ts`
 - target-repo/global CLI usage docs such as `docs/project/target-repo-cli-usage.md`
 - Alpha MVP tests under `tests/alpha-mvp-*.test.ts`, including CLI fallback coverage
 - `.github/workflows/alpha-mvp.yml`
