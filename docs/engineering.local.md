@@ -20,11 +20,17 @@ Primary model:
 Executable contract surface:
 
 - root `docs/engineering.local.md` explains monorepo control-plane deltas
+- root `policy/engineering-lane.json` declares the upstream `engineering-core` lane, catalog, discipline, and template recognition for this repo
 - package/app `policy/engineering-lane.json` declares the upstream `engineering-core` lane reference when one exists
 - package/app `docs/engineering.local.md` records local overrides
+- upstream catalog inspection commands:
+  - `uv tool -n run --from ~/ai-society/core/engineering-core engineering-core catalog --pretty`
+  - `uv tool -n run --from ~/ai-society/core/engineering-core engineering-core list-disciplines`
+  - `uv tool -n run --from ~/ai-society/core/engineering-core engineering-core list-templates`
 
 Practical rule:
 
 - Use root commands for monorepo-wide validation.
 - Use package/app local checks for language-specific validation.
 - Use each package/app `policy/engineering-lane.json` as the source of truth for the declared upstream lane command; root docs should not hardcode package lane commands.
+- Use `design-system` only for browser/workbench UI surfaces and generated visual/operator-facing affordances.
