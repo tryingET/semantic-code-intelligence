@@ -1,0 +1,141 @@
+#!/usr/bin/env bun
+import { readFileSync } from 'node:fs';
+
+type Check = {
+    name: string;
+    ok: boolean;
+    detail?: Record<string, unknown>;
+};
+
+const evidenceFiles = {
+    alpha: '.test-results/alpha-mvp-dogfood.json',
+    selfHosted: '.test-results/self-hosted-cli-dogfood.json',
+    structural: '.test-results/structural-workflow-dogfood.json',
+    safeWrite: '.test-results/safe-write-dogfood.json',
+};
+
+const budgetsMs: Record<string, number> = {
+    alphaCall: 15_000,
+    selfHostedCall: 15_000,
+    structuralCall: 20_000,
+    safeWriteCall: 15_000,
+};
+
+function readJson(path: string): any {
+    try {
+        return JSON.parse(readFileSync(path, 'utf8'));
+    } catch (error) {
+        throw new Error(`Failed to read ${path}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+}
+
+function maxElapsed(calls: any[]): number {
+    return Math.max(0, ...calls.map((call) => Number(call?.elapsedMs || 0)).filter((value) => Number.isFinite(value)));
+}
+
+function names(calls: any[]): string[] {
+    return calls.map((call) => String(call?.name || '')).filter(Boolean);
+}
+
+const checks: Check[] = [];
+let alpha: any = null;
+let selfHosted: any = null;
+let structural: any = null;
+let safeWrite: any = null;
+
+try {
+    alpha = readJson(evidenceFiles.alpha);
+    selfHosted = readJson(evidenceFiles.selfHosted);
+    structural = readJson(evidenceFiles.structural);
+    safeWrite = readJson(evidenceFiles.safeWrite);
+} catch (error) {
+    checks.push({ name: 'evidence_files_readable', ok: false, detail: { message: error instanceof Error ? error.message : String(error) } });
+}
+
+if (alpha) {
+    const summary = Array.isArray(alpha.summary) ? alpha.summary : [];
+    const required = ['get_snapshot', 'read_file', 'text_search', 'symbol_search', 'find_definition', 'find_references', 'ast_query', 'graph_expand', 'propose_patch', 'run_checks'];
+    const actual = names(summary);
+    checks.push({ name: 'alpha_dogfood_ok', ok: alpha.ok === true, detail: { schema: alpha.schema } });
+    checks.push({
+        name: 'alpha_required_tools_present',
+        ok: required.every((tool) => actual.includes(tool)),
+        detail: { required, actual },
+    });
+    checks.push({
+        name: 'alpha_latency_budget',
+        ok: maxElapsed(summary) <= budgetsMs.alphaCall,
+        detail: { maxElapsedMs: maxElapsed(summary), budgetMs: budgetsMs.alphaCall },
+    });
+}
+
+if (selfHosted) {
+    const sciFirst = selfHosted?.selfHosting?.sciFirstDiscovery;
+    const calls = Array.isArray(selfHosted.calls) ? selfHosted.calls : [];
+    checks.push({ name: 'self_hosted_dogfood_ok', ok: selfHosted.ok === true, detail: { schema: selfHosted.schema } });
+    checks.push({
+        name: 'sci_first_discovery_complete',
+        ok: sciFirst?.complete === true,
+        detail: { expectedFirstTools: sciFirst?.expectedFirstTools, actualFirstTools: sciFirst?.actualFirstTools },
+    });
+    checks.push({
+        name: 'self_hosted_workspace_unchanged',
+        ok: selfHosted?.selfHosting?.workspaceUnchanged === true,
+    });
+    checks.push({
+        name: 'self_hosted_latency_budget',
+        ok: maxElapsed(calls) <= budgetsMs.selfHostedCall,
+        detail: { maxElapsedMs: maxElapsed(calls), budgetMs: budgetsMs.selfHostedCall },
+    });
+}
+
+if (structural) {
+    const calls = Array.isArray(structural.calls) ? structural.calls : [];
+    const actual = names(calls);
+    const hasPreviewPatch = calls.some((call) => call?.name === 'structural_patch_checks' && call?.sample?.payload?.applied === false);
+    checks.push({ name: 'structural_dogfood_ok', ok: structural.ok === true, detail: { schema: structural.schema } });
+    checks.push({
+        name: 'structural_preview_first',
+        ok: actual.includes('structural_search') && actual.includes('structural_patch_checks') && hasPreviewPatch,
+        detail: { actual, hasPreviewPatch },
+    });
+    checks.push({
+        name: 'structural_latency_budget',
+        ok: maxElapsed(calls) <= budgetsMs.structuralCall,
+        detail: { maxElapsedMs: maxElapsed(calls), budgetMs: budgetsMs.structuralCall },
+    });
+}
+
+if (safeWrite) {
+    const calls = Array.isArray(safeWrite.calls) ? safeWrite.calls : [];
+    const preview = calls.some((call) => call?.payload?.mode === 'preview_validate' && call?.payload?.applied === false);
+    const cleanApplyVerified = calls.some((call) => call?.payload?.applied === true && call?.payload?.verification?.appliedDiffMatchesSnapshot === true);
+    const mismatchFailsClosed = calls.some((call) => call?.payload?.applied === true && call?.payload?.ok === false && call?.payload?.verification?.appliedDiffMatchesSnapshot === false);
+    checks.push({ name: 'safe_write_dogfood_ok', ok: safeWrite.ok === true, detail: { schema: safeWrite.schema } });
+    checks.push({ name: 'safe_write_preview_first', ok: preview });
+    checks.push({ name: 'safe_write_exact_apply_verified', ok: cleanApplyVerified });
+    checks.push({ name: 'safe_write_mismatch_fails_closed', ok: mismatchFailsClosed });
+    checks.push({
+        name: 'safe_write_latency_budget',
+        ok: maxElapsed(calls) <= budgetsMs.safeWriteCall,
+        detail: { maxElapsedMs: maxElapsed(calls), budgetMs: budgetsMs.safeWriteCall },
+    });
+}
+
+const ok = checks.length > 0 && checks.every((check) => check.ok);
+const report = {
+    schema: 'semantic-code-intelligence.alpha_evidence_check.v1',
+    ok,
+    budgetsMs,
+    checks,
+    interpretation: {
+        proves: [
+            'Generated dogfood evidence preserves the documented Alpha MVP safety posture.',
+            'SCI-first discovery, preview-first patching, exact safe_write verification, and bounded latency remain present.',
+        ],
+        does_not_prove: ['Production readiness.', 'Comprehensive performance characterization.'],
+    },
+};
+
+console.log(JSON.stringify(report, null, 2));
+if (!ok) process.exitCode = 1;

@@ -26,6 +26,7 @@ The Phase 1 Alpha MVP validation bundle proves the first-user path for harnessed
 - self-hosted structural dogfood records machine-readable evidence for structural search, snapshot patch artifacts, default tsgo checks, apply-guard refusal, and unchanged working tree posture;
 - target-repo CLI usage is documented and has been exercised as an installed/global command invoked from a non-SCI repository cwd by a harnessed `pi -p` session;
 - repeatable dogfood evidence can be emitted as machine-readable JSON;
+- `alpha:evidence:check` gates generated dogfood evidence for SCI-first discovery, preview-first mutation posture, safe-write exact verification, and coarse latency budgets;
 - migration hygiene still rejects stale identity drift and unsafe local artifacts.
 
 ## Local commands
@@ -49,6 +50,7 @@ bun run alpha:mvp:dogfood > .test-results/alpha-mvp-dogfood.json
 bun run self:dogfood:cli
 bun run structural:dogfood
 bun run safe-write:dogfood
+bun run alpha:evidence:check
 ```
 
 Test-only subset:
@@ -99,6 +101,8 @@ The dogfood harness emits JSON with this high-level shape:
 
 The `interpretation.does_not_prove` section is intentional. Passing this bundle proves the Phase 1 harnessed-LLM Alpha MVP path, not production readiness or Phase 2+ surfaces.
 
+`bun run alpha:evidence:check` reads the generated dogfood JSON files under `.test-results/` and emits `.test-results/alpha-evidence-check.json`. It is intentionally a lightweight evidence gate, not a historical database: it checks that current evidence still contains SCI-first discovery, preview-first mutation posture, safe-write exact apply verification plus mismatch fail-closed behavior, and coarse per-call latency budgets.
+
 ## Navigation parity scope
 
 Navigation parity currently means the same bounded tool names are exercised through HTTP tools/call, direct MCPAdapter calls, MCP HTTP JSON-RPC, and an MCP stdio smoke path. It does not mean every parser or graph backend returns rich semantic results in every environment; fallback shapes remain valid alpha evidence when they are structured and non-throwing.
@@ -124,6 +128,7 @@ When the Alpha MVP contract changes, update all of these in the same wave:
 - `scripts/dogfood-self-hosted-cli.ts`
 - `scripts/dogfood-structural-workflow.ts`
 - `scripts/dogfood-safe-write.ts`
+- `scripts/check-alpha-evidence.ts`
 - target-repo/global CLI usage docs such as `docs/project/target-repo-cli-usage.md`
 - Alpha MVP tests under `tests/alpha-mvp-*.test.ts`, including CLI fallback coverage
 - `.github/workflows/alpha-mvp.yml`
