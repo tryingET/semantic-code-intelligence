@@ -66,7 +66,7 @@ Phase 1 has moved from posture to a repeatable Alpha MVP validation bundle. The 
 - self-hosted CLI dogfood uses SCI's own CLI workflow surface against this repo for navigation and preview-first patch planning;
 - self-hosted structural dogfood records JSON evidence for ast-grep search, snapshot patch artifacts, tsgo-default checks, apply guard refusal, and unchanged working-tree posture;
 - dogfood evidence is emitted as JSON and verifies that preview-first patch planning does not mutate the working tree;
-- target-repo CLI usage is now framed as an installed/global command invoked from the repository being inspected, not as SCI knowing target repo paths;
+- target-repo CLI usage is now proven as an installed/global command invoked from a non-SCI repository cwd through a harnessed `pi -p` session, without SCI knowing target repo paths;
 - migration hygiene continues to reject pre-rename identity drift, machine-local path coupling, and unsafe local artifacts.
 
 The current one-command validation paths are:
@@ -82,7 +82,6 @@ This is credible Alpha MVP evidence for the first-user substrate. It is not yet 
 
 Before treating Phase 1 as broadly proven, keep pressure on:
 
-- proving the installed/global CLI path from at least one target repo cwd without baking that target into SCI;
 - richer semantic graph behavior beyond stable fallback shapes;
 - evidence comparison across runs so regressions are easier to spot;
 - clearer performance budgets for harnessed-LLM interactive use;
@@ -119,7 +118,7 @@ Promotion criteria before treating these as supported:
 
 - stable contracts;
 - repeatable install and startup;
-- dogfood evidence on at least one nontrivial repo;
+- dogfood evidence on at least one nontrivial repo through the installed CLI target-cwd model;
 - documented rollback and data-retention posture;
 - clear owner boundaries for task/evidence/governance state.
 

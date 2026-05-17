@@ -24,7 +24,7 @@ The Phase 1 Alpha MVP validation bundle proves the first-user path for harnessed
 - HTTP, direct MCP, and MCP HTTP now include structural search parity coverage when `ast-grep` is available;
 - self-hosted CLI dogfood uses SCI's own CLI workflow surface against this repo for SCI-first navigation/discovery and preview-first patch planning;
 - self-hosted structural dogfood records machine-readable evidence for structural search, snapshot patch artifacts, default tsgo checks, apply-guard refusal, and unchanged working tree posture;
-- target-repo CLI usage is documented as an installed/global command invoked from the repository being inspected;
+- target-repo CLI usage is documented and has been exercised as an installed/global command invoked from a non-SCI repository cwd by a harnessed `pi -p` session;
 - repeatable dogfood evidence can be emitted as machine-readable JSON;
 - migration hygiene still rejects stale identity drift and unsafe local artifacts.
 
@@ -111,7 +111,7 @@ CLI fallback parity currently means local command-line execution can call the sa
 
 Self-hosted CLI dogfood currently means SCI CLI is used as a practical work loop on the SCI repo itself, not only as a protocol smoke test. The self-hosted loop records `selfHosting.sciFirstDiscovery` evidence that bounded reads, text search, symbol search, definition/reference lookup, and graph context happen through SCI workflow calls before snapshot patch planning. Structural dogfood extends that with `scripts/dogfood-structural-workflow.ts`, which writes `.test-results/structural-workflow-dogfood.json` and proves preview-first ast-grep structural workflows without adding external target-repo assumptions. CLI parity tests also prove a later CLI process can read snapshot artifacts produced by `structural_patch_checks`. See `docs/project/self-hosted-cli-dogfood.md`.
 
-Target-repo CLI usage means an installed/global `semantic-code-intelligence` command is invoked from the repository being inspected, with target-repo-relative paths. SCI should not commit machine-local paths for external repositories. See `docs/project/target-repo-cli-usage.md`.
+Target-repo CLI usage means an installed/global `semantic-code-intelligence` command is invoked from the repository being inspected, with target-repo-relative paths. Current evidence includes a harnessed `pi -p` read/search/preview-patch proof from a non-SCI repository cwd, with the target left clean afterward. SCI should not commit machine-local paths for external repositories. See `docs/project/target-repo-cli-usage.md`.
 
 ## Maintenance rule
 

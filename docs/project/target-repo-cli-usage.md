@@ -97,3 +97,5 @@ Not acceptable:
 Earlier external dogfood against a Pi extension package showed useful navigation and preview-first patch-check behavior, but it also exposed the wrong coupling: SCI carried target-repo knowledge.
 
 The corrected product direction is installed/global SCI CLI usage from the target repository's cwd. Current local development support is `just install-cli-local`, which builds the CLI and registers package bins so target repos can invoke `sci` directly, with `semantic-code-intelligence` available as the long-form alias.
+
+Current target-cwd proof: a harnessed `pi -p` session in a non-SCI repository invoked installed `sci` for bounded `read_file`, `text_search`, and preview-first `patch_checks_in_snapshot`, then cleaned generated snapshot artifacts and confirmed the target working tree was unchanged. The proof is recorded as AK evidence rather than committed with a machine-local target path.
