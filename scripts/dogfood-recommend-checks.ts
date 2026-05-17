@@ -25,9 +25,9 @@ function parseWorkflowStdout(stdout: string) {
     return typeof text === 'string' ? JSON.parse(text) : raw;
 }
 
-function workflow(caseName: string, args: Record<string, unknown>, observation: string): CallEvidence {
+function workflowTool(tool: string, caseName: string, args: Record<string, unknown>, observation: string): CallEvidence {
     const started = Date.now();
-    const proc = spawnSync('bun', ['run', 'src/servers/cli.ts', 'workflow', 'recommend_checks', '--args', JSON.stringify(args), '--json'], {
+    const proc = spawnSync('bun', ['run', 'src/servers/cli.ts', 'workflow', tool, '--args', JSON.stringify(args), '--json'], {
         encoding: 'utf8',
         env: { ...process.env, SILENT_MODE: 'true', STDIO_MODE: 'true' },
     });
@@ -40,11 +40,11 @@ function workflow(caseName: string, args: Record<string, unknown>, observation: 
     }
     const stderrClean = !stderr.includes('[HTTP Server]') && !stderr.includes('Error:');
     return {
-        name: 'recommend_checks',
+        name: tool,
         caseName,
         args,
         exitCode: proc.status,
-        success: proc.status === 0 && stderrClean && payload?.workflow === 'recommend_checks' && payload?.ok === true,
+        success: proc.status === 0 && stderrClean && payload?.ok === true,
         elapsedMs: Date.now() - started,
         payload,
         stderrClean,
@@ -76,17 +76,25 @@ const impactSummary = {
 };
 
 const calls: CallEvidence[] = [
-    workflow('docs_only_patch', { patch: docsPatch }, 'Docs-only patch should recommend a no-op minimum check with explicit docs rationale.'),
-    workflow('ts_source_patch', { patch: sourcePatch }, 'TypeScript source patch should recommend bun run typecheck.'),
-    workflow(
+    workflowTool('recommend_checks', 'docs_only_patch', { patch: docsPatch }, 'Docs-only patch should recommend a no-op minimum check with explicit docs rationale.'),
+    workflowTool('recommend_checks', 'ts_source_patch', { patch: sourcePatch }, 'TypeScript source patch should recommend bun run typecheck.'),
+    workflowTool(
+        'recommend_checks',
         'test_file_change',
         { files: ['tests/alpha-mvp-cli-parity.test.ts'] },
         'Test-file change should recommend a narrow bun test invocation for that file.'
     ),
-    workflow(
+    workflowTool(
+        'recommend_checks',
         'graph_impact_source_change',
         { files: ['src/adapters/mcp-adapter.ts'], impactSummary, mode: 'broader' },
         'Graph impact with source edges should add broader-validation rationale while preserving typecheck.'
+    ),
+    workflowTool(
+        'patch_checks_in_snapshot',
+        'patch_checks_recommendations_threaded',
+        { patch: sourcePatch, commands: ['true'], timeoutSec: 30, recommendChecks: true },
+        'Patch-check workflow should surface advisory recommendations while still running caller-supplied commands.'
     ),
 ];
 
@@ -104,6 +112,9 @@ const assertions = {
     tsSourceTypecheck: commands(byCase.ts_source_patch, 'minimum').includes('bun run typecheck'),
     testFileNarrowTest: commands(byCase.test_file_change, 'minimum').includes('bun test tests/alpha-mvp-cli-parity.test.ts'),
     graphImpactBroaderRationale: reasons(byCase.graph_impact_source_change).includes('graph_impact_edges_present') && commands(byCase.graph_impact_source_change, 'broader').includes('bun run typecheck'),
+    patchChecksThreadRecommendations:
+        byCase.patch_checks_recommendations_threaded.payload?.checkRecommendations?.workflow === 'recommend_checks' &&
+        byCase.patch_checks_recommendations_threaded.payload?.checks?.ok === true,
 };
 
 const evidence = {
@@ -129,12 +140,15 @@ const evidence = {
             broader: call.payload?.broader,
             rationale: call.payload?.rationale,
             confidence: call.payload?.confidence,
+            checks: call.payload?.checks,
+            checkRecommendations: call.payload?.checkRecommendations,
         },
     })),
     interpretation: {
         proves: [
             'recommend_checks returns transparent command recommendations without running checks.',
             'Docs-only, TS source, test-file, and graph-impact cases produce expected minimum/broader command rationale.',
+            'patch_checks_in_snapshot can surface advisory recommendations without changing caller-supplied check commands.',
         ],
         does_not_prove: ['Complete test selection accuracy.', 'A hidden policy gate; recommendations are advisory.'],
     },

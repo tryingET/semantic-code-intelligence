@@ -106,6 +106,7 @@ const packet = {
         structuralOk: structural?.ok === true,
         structuralCalls: summarizeCalls(Array.isArray(structural?.calls) ? structural.calls : []),
         safeWritePreviewPresent: !!preview,
+        safeWritePreviewRecommendationsPresent: safeWriteCalls.some((call) => call?.payload?.mode === 'preview_validate' && call?.payload?.checkRecommendations?.workflow === 'recommend_checks'),
         safeWriteFixtureCleanAfterRollback: safeWrite?.assertions?.fixtureCleanAfterRollback === true,
     },
     safeWriteVerification: {
@@ -137,6 +138,7 @@ const packet = {
             'Self-hosted maintenance starts with SCI discovery/navigation evidence.',
             'Graph impact dogfood exposes import/export/callee/caller edge status and planning hints.',
             'Impact-aware check recommendation dogfood maps docs, source, test, and graph-impact cases to explicit advisory commands.',
+            'Patch-check and safe-write previews can surface advisory check recommendations without changing check/apply policy.',
             'Patch planning remains preview-first by default.',
             'safe_write has clean apply exact-diff verification and dirty mismatch fail-closed evidence.',
             'Generated dogfood evidence passes the lightweight Alpha evidence gate.',

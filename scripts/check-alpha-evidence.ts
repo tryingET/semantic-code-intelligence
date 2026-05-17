@@ -142,7 +142,8 @@ if (recommendChecks) {
             recommendChecks?.assertions?.docsOnlyMinimumNoop === true &&
             recommendChecks?.assertions?.tsSourceTypecheck === true &&
             recommendChecks?.assertions?.testFileNarrowTest === true &&
-            recommendChecks?.assertions?.graphImpactBroaderRationale === true,
+            recommendChecks?.assertions?.graphImpactBroaderRationale === true &&
+            recommendChecks?.assertions?.patchChecksThreadRecommendations === true,
         detail: recommendChecks?.assertions || null,
     });
     checks.push({
@@ -155,10 +156,12 @@ if (recommendChecks) {
 if (safeWrite) {
     const calls = Array.isArray(safeWrite.calls) ? safeWrite.calls : [];
     const preview = calls.some((call) => call?.payload?.mode === 'preview_validate' && call?.payload?.applied === false);
+    const previewRecommendations = calls.some((call) => call?.payload?.mode === 'preview_validate' && call?.payload?.checkRecommendations?.workflow === 'recommend_checks');
     const cleanApplyVerified = calls.some((call) => call?.payload?.applied === true && call?.payload?.verification?.appliedDiffMatchesSnapshot === true);
     const mismatchFailsClosed = calls.some((call) => call?.payload?.applied === true && call?.payload?.ok === false && call?.payload?.verification?.appliedDiffMatchesSnapshot === false);
     checks.push({ name: 'safe_write_dogfood_ok', ok: safeWrite.ok === true, detail: { schema: safeWrite.schema } });
     checks.push({ name: 'safe_write_preview_first', ok: preview });
+    checks.push({ name: 'safe_write_preview_recommendations_threaded', ok: previewRecommendations });
     checks.push({ name: 'safe_write_exact_apply_verified', ok: cleanApplyVerified });
     checks.push({ name: 'safe_write_mismatch_fails_closed', ok: mismatchFailsClosed });
     checks.push({

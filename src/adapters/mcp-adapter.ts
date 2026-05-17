@@ -803,6 +803,9 @@ export class MCPAdapter {
         const apply = args?.apply === true;
         const brief = args?.brief === true;
         const risk = this.classifyPatchRisk(patch);
+        const checkRecommendations = args?.recommendChecks === true
+            ? this.safeParseContent(await this.handleRecommendChecks({ patch, files: risk.files, mode: 'minimum' }))
+            : null;
         const requested = typeof args?.snapshot === 'string' ? String(args.snapshot).trim() : '';
         let snapshot: string | undefined = requested || undefined;
         if (!snapshot) {
@@ -857,6 +860,7 @@ export class MCPAdapter {
             mode: apply ? 'apply_after_checks' : 'preview_validate',
             risk,
             snapshot,
+            checkRecommendations,
             checks: { ok: !!checksOut?.ok, commands, elapsedMs: checksOut?.elapsedMs || null },
             verification,
             applied,
@@ -1084,6 +1088,9 @@ export class MCPAdapter {
         if (!patch) return { content: [{ type: 'text', text: 'patch required' }], isError: true };
         const commands = Array.isArray(args?.commands) ? (args.commands as string[]) : ['bun run typecheck'];
         const timeoutSec = typeof args?.timeoutSec === 'number' ? args.timeoutSec : 240;
+        const checkRecommendations = args?.recommendChecks === true
+            ? this.safeParseContent(await this.handleRecommendChecks({ patch, files: this.extractFilesFromPatch(patch), mode: 'minimum' }))
+            : null;
 
         const requested = typeof args?.snapshot === 'string' ? String(args.snapshot).trim() : '';
         let snapId: string | undefined = requested || undefined;
@@ -1105,6 +1112,7 @@ export class MCPAdapter {
             ok,
             snapshot: snapId,
             stage: staged,
+            checkRecommendations,
             checks: checksOut,
             next_actions: ok ? ['Apply patch in working tree'] : ['Review failing checks; adjust and re-run'],
         };

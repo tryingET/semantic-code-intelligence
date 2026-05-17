@@ -79,7 +79,7 @@ const mismatchMarker = 'Safe Write Dogfood Fixture Verified';
 const mismatchPatch = unifiedPatch(original, original.replace('Safe Write Dogfood Fixture', mismatchMarker));
 const calls: CallEvidence[] = [];
 
-const preview = callSafeWrite({ patch, commands: ['true'], timeoutSec: 30, brief: true });
+const preview = callSafeWrite({ patch, commands: ['true'], timeoutSec: 30, recommendChecks: true, brief: true });
 calls.push(preview);
 const afterPreview = await Bun.file(target).text();
 
@@ -131,6 +131,7 @@ const evidence = {
   ok:
     preview.payload?.ok === true &&
     preview.payload?.applied === false &&
+    preview.payload?.checkRecommendations?.workflow === 'recommend_checks' &&
     afterPreview === original &&
     failedApply.payload?.ok === false &&
     failedApply.payload?.applied === false &&
@@ -153,6 +154,7 @@ const evidence = {
   target,
   assertions: {
     previewUnchanged: afterPreview === original,
+    previewIncludesAdvisoryRecommendations: preview.payload?.checkRecommendations?.workflow === 'recommend_checks',
     failedChecksBlockedApply: failedApply.payload?.ok === false && afterFailedApply === original,
     guardedApplyChangedFixture: applied.payload?.applied === true && afterApply.includes(marker),
     appliedDiffMatchesSnapshot: applied.payload?.verification?.appliedDiffMatchesSnapshot === true,
@@ -173,6 +175,7 @@ const evidence = {
       mode: call.payload?.mode,
       risk: call.payload?.risk,
       applied: call.payload?.applied,
+      checkRecommendations: call.payload?.checkRecommendations,
       checks: call.payload?.checks,
       verification: call.payload?.verification,
       applyResult: call.payload?.applyResult,

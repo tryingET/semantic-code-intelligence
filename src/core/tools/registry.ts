@@ -99,6 +99,11 @@ export class ToolRegistry {
                     patch: { type: 'string', description: 'Unified diff (git format) to stage' },
                     snapshot: { type: 'string', description: 'Optional snapshot id; if absent a snapshot is created' },
                     commands: { type: 'array', items: { type: 'string' }, default: ['bun run typecheck'] },
+                    recommendChecks: {
+                        type: 'boolean',
+                        default: false,
+                        description: 'Include advisory recommend_checks output without changing the commands that run',
+                    },
                     onlyTouched: {
                         type: 'boolean',
                         description: 'Restrict checks to touched files when possible',
@@ -565,6 +570,11 @@ export class ToolRegistry {
                     patch: { type: 'string' },
                     snapshot: { type: 'string' },
                     commands: { type: 'array', items: { type: 'string' }, default: ['bun run typecheck'] },
+                    recommendChecks: {
+                        type: 'boolean',
+                        default: false,
+                        description: 'Include advisory recommend_checks output without changing the commands that run',
+                    },
                     timeoutSec: {
                         type: 'number',
                         default: 240,
@@ -619,6 +629,11 @@ export class ToolRegistry {
                     patch: { type: 'string' },
                     snapshot: { type: 'string' },
                     commands: { type: 'array', items: { type: 'string' }, default: ['bun run typecheck'] },
+                    recommendChecks: {
+                        type: 'boolean',
+                        default: false,
+                        description: 'Include advisory recommend_checks output without changing the commands that run',
+                    },
                     timeoutSec: { type: 'number', default: 240 },
                     apply: { type: 'boolean', default: false },
                     brief: { type: 'boolean', default: false },
