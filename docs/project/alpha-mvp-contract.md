@@ -45,7 +45,7 @@ The Alpha MVP tool surface is:
 | `ast_query` | Run structural language-aware queries where parser support exists. | Language, query, matched ranges, parser/fallback status. |
 | `find_definition` | Resolve likely definition locations without requiring a long-lived editor process. | Symbol/query, file/range candidates, fallback status. |
 | `find_references` | Return bounded reference candidates. | Symbol/query, file/range candidates, cap metadata. |
-| `graph_expand` | Expand file/symbol neighborhoods through imports, exports, callers, callees, or semantic edges where available. | Node id, edge types, depth, neighbors, fallback status. |
+| `graph_expand` | Expand file/symbol neighborhoods through imports, exports, callers, callees, or semantic edges where available, with a concise impact summary for change planning. | Node id, edge types, depth, neighbors, fallback status, edge counts, impact evidence status, and planning hints. |
 | `propose_patch` | Accept a patch proposal as a reviewable diff and reject invalid patch shapes. | Patch id or structured result; invalid-patch diagnostics on failure. |
 | `run_checks` | Run explicit validation commands or configured checks and return outcomes. | Commands, exit codes, stdout/stderr summaries, duration. |
 | `structural_search` | Run ast-grep-backed structural search over bounded repo-relative paths with explicit result, timeout, and output-buffer limits. | Workflow/backend availability, language, pattern, paths, limits, match count, cap status, file/range/snippet matches. |

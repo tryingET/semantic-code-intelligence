@@ -11,6 +11,7 @@ const evidenceFiles = {
     alpha: '.test-results/alpha-mvp-dogfood.json',
     selfHosted: '.test-results/self-hosted-cli-dogfood.json',
     structural: '.test-results/structural-workflow-dogfood.json',
+    graph: '.test-results/graph-impact-dogfood.json',
     safeWrite: '.test-results/safe-write-dogfood.json',
 };
 
@@ -18,6 +19,7 @@ const budgetsMs: Record<string, number> = {
     alphaCall: 15_000,
     selfHostedCall: 15_000,
     structuralCall: 20_000,
+    graphCall: 15_000,
     safeWriteCall: 15_000,
 };
 
@@ -41,12 +43,14 @@ const checks: Check[] = [];
 let alpha: any = null;
 let selfHosted: any = null;
 let structural: any = null;
+let graph: any = null;
 let safeWrite: any = null;
 
 try {
     alpha = readJson(evidenceFiles.alpha);
     selfHosted = readJson(evidenceFiles.selfHosted);
     structural = readJson(evidenceFiles.structural);
+    graph = readJson(evidenceFiles.graph);
     safeWrite = readJson(evidenceFiles.safeWrite);
 } catch (error) {
     checks.push({ name: 'evidence_files_readable', ok: false, detail: { message: error instanceof Error ? error.message : String(error) } });
@@ -106,6 +110,25 @@ if (structural) {
     });
 }
 
+if (graph) {
+    const calls = Array.isArray(graph.calls) ? graph.calls : [];
+    checks.push({ name: 'graph_impact_dogfood_ok', ok: graph.ok === true, detail: { schema: graph.schema } });
+    checks.push({
+        name: 'graph_impact_summary_present',
+        ok:
+            graph?.assertions?.fileImpactHasImports === true &&
+            graph?.assertions?.fileImpactHasCallees === true &&
+            graph?.assertions?.fileImpactHasPlanningHints === true &&
+            graph?.assertions?.symbolImpactHasCallerStatus === true,
+        detail: graph?.assertions || null,
+    });
+    checks.push({
+        name: 'graph_latency_budget',
+        ok: maxElapsed(calls) <= budgetsMs.graphCall,
+        detail: { maxElapsedMs: maxElapsed(calls), budgetMs: budgetsMs.graphCall },
+    });
+}
+
 if (safeWrite) {
     const calls = Array.isArray(safeWrite.calls) ? safeWrite.calls : [];
     const preview = calls.some((call) => call?.payload?.mode === 'preview_validate' && call?.payload?.applied === false);
@@ -131,7 +154,7 @@ const report = {
     interpretation: {
         proves: [
             'Generated dogfood evidence preserves the documented Alpha MVP safety posture.',
-            'SCI-first discovery, preview-first patching, exact safe_write verification, and bounded latency remain present.',
+            'SCI-first discovery, graph impact summaries, preview-first patching, exact safe_write verification, and bounded latency remain present.',
         ],
         does_not_prove: ['Production readiness.', 'Comprehensive performance characterization.'],
     },

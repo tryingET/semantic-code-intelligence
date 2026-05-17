@@ -1979,6 +1979,31 @@ export class MCPAdapter {
         return { content: [{ type: 'text', text: JSON.stringify(out, null, 2) }], isError: false };
     }
 
+    private summarizeGraphImpact(out: any, args: Record<string, any>) {
+        const neighbors = out?.neighbors && typeof out.neighbors === 'object' ? out.neighbors : {};
+        const counts = Object.fromEntries(
+            ['imports', 'exports', 'callers', 'callees'].map((edge) => [edge, Array.isArray(neighbors[edge]) ? neighbors[edge].length : 0])
+        );
+        const requestedEdges = Array.isArray(args?.edges) ? args.edges.map(String) : ['imports', 'exports'];
+        const evidence = requestedEdges.map((edge: string) => ({
+            edge,
+            count: Number((counts as any)[edge] || 0),
+            status: Number((counts as any)[edge] || 0) > 0 ? 'evidence' : 'empty_or_unavailable',
+        }));
+        return {
+            seed: typeof args?.file === 'string' ? { kind: 'file', value: args.file } : { kind: 'symbol', value: String(args?.symbol || '') },
+            requestedEdges,
+            counts,
+            evidence,
+            hasImpactEvidence: evidence.some((item: any) => item.count > 0),
+            planningHints: [
+                'Inspect non-empty edges before editing touched files or exported symbols.',
+                'Use find_references for symbol-specific caller confirmation when caller evidence is sparse.',
+                'Use patch_checks_in_snapshot or safe_write after graph-informed patch planning.',
+            ],
+        };
+    }
+
     private async handleGraphExpand(args: Record<string, any>) {
         const edges = Array.isArray(args?.edges) ? (args.edges as string[]) : ['imports', 'exports'];
         const file = typeof args?.file === 'string' ? (args.file as string) : undefined;
@@ -2015,14 +2040,13 @@ export class MCPAdapter {
                 limit: args?.limit,
                 seedFiles,
             });
-            const payload = { schemaVersion: 2, ...out };
+            const payload = { schemaVersion: 2, ...out, impactSummary: this.summarizeGraphImpact(out, args) };
             return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: false };
         } catch {
             const neighbors: Record<string, any[]> = { imports: [], exports: [], callers: [], callees: [] };
             const note = 'fallback: graph expand unavailable; returning empty neighbors';
-            const payload = file
-                ? { schemaVersion: 2, file, neighbors, note }
-                : { schemaVersion: 2, symbol: symbol || '', neighbors, note };
+            const out = file ? { file, neighbors, note } : { symbol: symbol || '', neighbors, note };
+            const payload = { schemaVersion: 2, ...out, impactSummary: this.summarizeGraphImpact(out, args) };
             return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: false };
         }
     }
