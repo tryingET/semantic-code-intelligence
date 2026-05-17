@@ -29,6 +29,7 @@ const alphaMvpTools = [
     'find_definition',
     'find_references',
     'graph_expand',
+    'recommend_checks',
     'propose_patch',
     'run_checks',
     'structural_search',
@@ -64,6 +65,8 @@ describe('Alpha MVP tool contract', () => {
         expect(specs.get('find_references')?.inputSchema?.properties?.includeDeclaration?.type).toBe('boolean');
         expect(specs.get('ast_query')?.inputSchema?.properties?.limit?.type).toBe('number');
         expect(specs.get('graph_expand')?.inputSchema?.properties?.limit?.type).toBe('number');
+        expect(specs.get('recommend_checks')?.inputSchema?.properties?.files?.type).toBe('array');
+        expect(specs.get('recommend_checks')?.inputSchema?.properties?.mode?.enum).toContain('broader');
         expect(specs.get('structural_search')?.inputSchema?.properties?.maxResults?.type).toBe('number');
         expect(specs.get('structural_search')?.inputSchema?.properties?.timeoutMs?.type).toBe('number');
         expect(specs.get('structural_search')?.inputSchema?.properties?.maxBuffer?.type).toBe('number');

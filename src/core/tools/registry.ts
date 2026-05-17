@@ -207,6 +207,22 @@ export class ToolRegistry {
             },
         },
         {
+            name: 'recommend_checks',
+            title: 'Recommend Checks (Impact-Aware)',
+            description:
+                'Recommend transparent validation commands from a patch, touched files, and optional graph impact summary. Heuristic only; does not run checks.',
+            category: 'workflow',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    patch: { type: 'string', description: 'Optional unified diff used to infer touched files' },
+                    files: { type: 'array', items: { type: 'string' }, description: 'Optional repo-relative touched files' },
+                    impactSummary: { type: 'object', description: 'Optional graph_expand impactSummary' },
+                    mode: { type: 'string', enum: ['minimum', 'broader'], default: 'minimum' },
+                },
+            },
+        },
+        {
             name: 'propose_patch',
             description: 'Validate and stage a patch against a snapshot (diff-only, no write to disk)',
             inputSchema: {

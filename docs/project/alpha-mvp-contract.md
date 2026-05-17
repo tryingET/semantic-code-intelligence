@@ -46,6 +46,7 @@ The Alpha MVP tool surface is:
 | `find_definition` | Resolve likely definition locations without requiring a long-lived editor process. | Symbol/query, file/range candidates, fallback status. |
 | `find_references` | Return bounded reference candidates. | Symbol/query, file/range candidates, cap metadata. |
 | `graph_expand` | Expand file/symbol neighborhoods through imports, exports, callers, callees, or semantic edges where available, with a concise impact summary for change planning. | Node id, edge types, depth, neighbors, fallback status, edge counts, impact evidence status, and planning hints. |
+| `recommend_checks` | Recommend transparent validation commands from touched files, a patch, and optional graph impact summary. It is advisory and does not run checks. | Minimum and broader command lists, rationale items tied to files/reasons, confidence, and input summary. |
 | `propose_patch` | Accept a patch proposal as a reviewable diff and reject invalid patch shapes. | Patch id or structured result; invalid-patch diagnostics on failure. |
 | `run_checks` | Run explicit validation commands or configured checks and return outcomes. | Commands, exit codes, stdout/stderr summaries, duration. |
 | `structural_search` | Run ast-grep-backed structural search over bounded repo-relative paths with explicit result, timeout, and output-buffer limits. | Workflow/backend availability, language, pattern, paths, limits, match count, cap status, file/range/snippet matches. |
@@ -71,6 +72,7 @@ Alpha mutation posture is **preview first**.
 - `structural_patch_checks` and `safe_write` follow the same preview-first posture: `apply` defaults to `false`, and `apply: true` is honored only when `ALLOW_SNAPSHOT_APPLY=1` is set and checks pass.
 - When `safe_write` applies, it verifies the applied working-tree state against the reviewed snapshot `overlay.diff` with a reverse `git apply --check` proof and reports `verification.appliedDiffMatchesSnapshot`; unverifiable shapes are structured non-success verification states rather than silent success.
 - SCI orchestrates structural workflow safety and evidence; `ast-grep` performs deterministic structural matching and rewrite generation.
+- `recommend_checks` may suggest `bun run typecheck`, narrow `bun test <file>` commands, or a no-op `true` for docs-only changes, with explicit rationale. Suggestions are not hidden policy gates.
 - Default structural checks use `bun run typecheck`, which is the tsgo-primary TypeScript validation lane. Do not reintroduce `build:tsc`; `bun run typecheck:fallback` remains the tsc fallback.
 
 ## One-command validation

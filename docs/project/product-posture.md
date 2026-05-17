@@ -46,6 +46,7 @@ Alpha-supported operations are specified in `docs/project/alpha-mvp-contract.md`
 - `find_definition`
 - `find_references`
 - `graph_expand`
+- `recommend_checks`
 - `propose_patch`
 - `run_checks`
 
@@ -66,6 +67,7 @@ Phase 1 has moved from posture to a repeatable Alpha MVP validation bundle. The 
 - self-hosted CLI dogfood uses SCI's own CLI workflow surface against this repo for navigation and preview-first patch planning;
 - self-hosted structural dogfood records JSON evidence for ast-grep search, snapshot patch artifacts, tsgo-default checks, apply guard refusal, and unchanged working-tree posture;
 - dogfood evidence is emitted as JSON and verifies that preview-first patch planning does not mutate the working tree;
+- impact-aware check recommendation dogfood records JSON evidence that docs-only, TS source, test-file, and graph-impact inputs produce explicit advisory validation commands;
 - target-repo CLI usage is now proven as an installed/global command invoked from a non-SCI repository cwd through a harnessed `pi -p` session, without SCI knowing target repo paths;
 - migration hygiene continues to reject pre-rename identity drift, machine-local path coupling, and unsafe local artifacts.
 

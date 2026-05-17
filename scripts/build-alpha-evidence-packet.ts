@@ -6,6 +6,7 @@ const files = {
     selfHosted: '.test-results/self-hosted-cli-dogfood.json',
     structural: '.test-results/structural-workflow-dogfood.json',
     graph: '.test-results/graph-impact-dogfood.json',
+    recommendChecks: '.test-results/recommend-checks-dogfood.json',
     safeWrite: '.test-results/safe-write-dogfood.json',
     gate: '.test-results/alpha-evidence-check.json',
 };
@@ -40,6 +41,7 @@ const alpha = loaded.alpha.ok ? loaded.alpha.value : null;
 const selfHosted = loaded.selfHosted.ok ? loaded.selfHosted.value : null;
 const structural = loaded.structural.ok ? loaded.structural.value : null;
 const graph = loaded.graph.ok ? loaded.graph.value : null;
+const recommendChecks = loaded.recommendChecks.ok ? loaded.recommendChecks.value : null;
 const safeWrite = loaded.safeWrite.ok ? loaded.safeWrite.value : null;
 const gate = loaded.gate.ok ? loaded.gate.value : null;
 
@@ -63,6 +65,7 @@ const packet = {
         selfHosted?.ok === true &&
         structural?.ok === true &&
         graph?.ok === true &&
+        recommendChecks?.ok === true &&
         safeWrite?.ok === true &&
         gate?.ok === true,
     sourceFiles: files,
@@ -93,6 +96,12 @@ const packet = {
         symbolImpact: graph?.impact?.symbol || null,
         maxCallElapsedMs: Array.isArray(graph?.calls) ? maxElapsed(graph.calls) : 0,
     },
+    checkRecommendations: {
+        ok: recommendChecks?.ok === true,
+        assertions: recommendChecks?.assertions || null,
+        calls: summarizeCalls(Array.isArray(recommendChecks?.calls) ? recommendChecks.calls : []),
+        maxCallElapsedMs: Array.isArray(recommendChecks?.calls) ? maxElapsed(recommendChecks.calls) : 0,
+    },
     previewFirstMutation: {
         structuralOk: structural?.ok === true,
         structuralCalls: summarizeCalls(Array.isArray(structural?.calls) ? structural.calls : []),
@@ -116,6 +125,7 @@ const packet = {
         'bun run self:dogfood:cli',
         'bun run structural:dogfood',
         'bun run graph:dogfood',
+        'bun run recommend-checks:dogfood',
         'bun run safe-write:dogfood',
         'bun run alpha:evidence:check',
         'bun run alpha:evidence:packet',
@@ -126,6 +136,7 @@ const packet = {
             'SCI exposes the Alpha MVP tool surface across tested interfaces.',
             'Self-hosted maintenance starts with SCI discovery/navigation evidence.',
             'Graph impact dogfood exposes import/export/callee/caller edge status and planning hints.',
+            'Impact-aware check recommendation dogfood maps docs, source, test, and graph-impact cases to explicit advisory commands.',
             'Patch planning remains preview-first by default.',
             'safe_write has clean apply exact-diff verification and dirty mismatch fail-closed evidence.',
             'Generated dogfood evidence passes the lightweight Alpha evidence gate.',
@@ -136,7 +147,7 @@ const packet = {
             'Complete whole-program call graph accuracy or rich semantic graph behavior for every language.',
             'A durable long-lived session database beyond narrow snapshot artifacts and generated evidence files.',
         ],
-        nextRecommendedWave: 'Use graph impact evidence to recommend targeted checks/tests for patch planning.',
+        nextRecommendedWave: 'Use check recommendation evidence to thread optional recommendations into preview/check UX without making hidden policy gates.',
     },
     loadErrors: Object.fromEntries(
         Object.entries(loaded)

@@ -122,10 +122,15 @@ try {
         { language: 'typescript', query: '(program) @root', paths: ['src/adapters/mcp-adapter.ts'], limit: 5 },
         'Exercise structural query behavior and parser/fallback stability.'
     );
-    await callTool(
+    const graphResult = await callTool(
         'graph_expand',
         { file: 'src/adapters/mcp-adapter.ts', edges: ['imports', 'exports'], depth: 1, limit: 20 },
         'Inspect graph-neighborhood behavior and fallback stability.'
+    );
+    await callTool(
+        'recommend_checks',
+        { files: ['src/adapters/mcp-adapter.ts'], impactSummary: graphResult?.impactSummary, mode: 'broader' },
+        'Recommend explicit advisory validation commands from touched source files and graph impact evidence.'
     );
 
     const beforePatchPlanning = await Bun.file(patchPlanningTarget).text();
@@ -187,7 +192,7 @@ try {
             proves: [
                 'HTTP tools/call can execute the Phase 1 navigation loop deterministically.',
                 'read_file provides bounded path/range retrieval for harnessed LLM context gathering.',
-                'Search, symbol, definition, reference, AST, and graph tools compose into a code-navigation workflow.',
+                'Search, symbol, definition, reference, AST, graph, and check-recommendation tools compose into a code-navigation and validation-planning workflow.',
                 'propose_patch and run_checks support preview-first patch planning without mutating the working tree.',
                 'The CLI workflow command provides a machine-readable local fallback for bounded tool calls.',
             ],

@@ -25,6 +25,7 @@ The Phase 1 Alpha MVP validation bundle proves the first-user path for harnessed
 - self-hosted CLI dogfood uses SCI's own CLI workflow surface against this repo for SCI-first navigation/discovery and preview-first patch planning;
 - self-hosted structural dogfood records machine-readable evidence for structural search, snapshot patch artifacts, default tsgo checks, apply-guard refusal, and unchanged working tree posture;
 - graph impact dogfood records machine-readable evidence for `graph_expand` impact summaries, edge counts/status, and planning hints;
+- impact-aware check recommendation dogfood records machine-readable evidence that `recommend_checks` maps docs-only, TS source, test-file, and graph-impact inputs to explicit advisory validation commands;
 - target-repo CLI usage is documented and has been exercised as an installed/global command invoked from a non-SCI repository cwd by a harnessed `pi -p` session;
 - repeatable dogfood evidence can be emitted as machine-readable JSON;
 - `alpha:evidence:check` gates generated dogfood evidence for SCI-first discovery, preview-first mutation posture, safe-write exact verification, and coarse latency budgets;
@@ -52,6 +53,7 @@ bun run alpha:mvp:dogfood > .test-results/alpha-mvp-dogfood.json
 bun run self:dogfood:cli
 bun run structural:dogfood
 bun run graph:dogfood
+bun run recommend-checks:dogfood
 bun run safe-write:dogfood
 bun run alpha:evidence:check
 bun run alpha:evidence:packet
@@ -105,9 +107,9 @@ The dogfood harness emits JSON with this high-level shape:
 
 The `interpretation.does_not_prove` section is intentional. Passing this bundle proves the Phase 1 harnessed-LLM Alpha MVP path, not production readiness or Phase 2+ surfaces.
 
-`bun run alpha:evidence:check` reads the generated dogfood JSON files under `.test-results/` and emits `.test-results/alpha-evidence-check.json`. It is intentionally a lightweight evidence gate, not a historical database: it checks that current evidence still contains SCI-first discovery, preview-first mutation posture, safe-write exact apply verification plus mismatch fail-closed behavior, and coarse per-call latency budgets.
+`bun run alpha:evidence:check` reads the generated dogfood JSON files under `.test-results/` and emits `.test-results/alpha-evidence-check.json`. It is intentionally a lightweight evidence gate, not a historical database: it checks that current evidence still contains SCI-first discovery, graph impact summaries, impact-aware check recommendations, preview-first mutation posture, safe-write exact apply verification plus mismatch fail-closed behavior, and coarse per-call latency budgets.
 
-`bun run alpha:evidence:packet` reads the same generated evidence plus the gate result and emits `.test-results/alpha-evidence-packet.json`. The packet is the concise operator-facing summary: what evidence passed, what safety posture was proven, which validation commands matter, and what Phase 1 still does not prove.
+`bun run alpha:evidence:packet` reads the same generated evidence plus the gate result and emits `.test-results/alpha-evidence-packet.json`. The packet is the concise operator-facing summary: what evidence passed, what safety posture and check-recommendation behavior were proven, which validation commands matter, and what Phase 1 still does not prove.
 
 ## Navigation parity scope
 
@@ -119,7 +121,7 @@ Patch-planning parity currently means `propose_patch` accepts a reviewable diff 
 
 CLI fallback parity currently means local command-line execution can call the same tool registry through the generic `workflow` command with JSON arguments and machine-readable stdout. Snapshot ids are now backed by narrow metadata/artifacts under `.ontology/snapshots/<id>/`, so a later CLI process can use `extract_snapshot_artifacts` to inspect status and bounded `overlay.diff`/progress content. Multi-step mutation planning should still prefer composite workflow tools such as `patch_checks_in_snapshot` or `structural_patch_checks`; SCI has not added a large cross-process session state layer.
 
-Self-hosted CLI dogfood currently means SCI CLI is used as a practical work loop on the SCI repo itself, not only as a protocol smoke test. The self-hosted loop records `selfHosting.sciFirstDiscovery` evidence that bounded reads, text search, symbol search, definition/reference lookup, and graph context happen through SCI workflow calls before snapshot patch planning. Structural dogfood extends that with `scripts/dogfood-structural-workflow.ts`, which writes `.test-results/structural-workflow-dogfood.json` and proves preview-first ast-grep structural workflows without adding external target-repo assumptions. Graph impact dogfood writes `.test-results/graph-impact-dogfood.json` and proves `graph_expand` emits edge counts/status plus planning hints for harnessed LLM change planning. CLI parity tests also prove a later CLI process can read snapshot artifacts produced by `structural_patch_checks`. See `docs/project/self-hosted-cli-dogfood.md`.
+Self-hosted CLI dogfood currently means SCI CLI is used as a practical work loop on the SCI repo itself, not only as a protocol smoke test. The self-hosted loop records `selfHosting.sciFirstDiscovery` evidence that bounded reads, text search, symbol search, definition/reference lookup, and graph context happen through SCI workflow calls before snapshot patch planning. Structural dogfood extends that with `scripts/dogfood-structural-workflow.ts`, which writes `.test-results/structural-workflow-dogfood.json` and proves preview-first ast-grep structural workflows without adding external target-repo assumptions. Graph impact dogfood writes `.test-results/graph-impact-dogfood.json` and proves `graph_expand` emits edge counts/status plus planning hints for harnessed LLM change planning. Recommend-checks dogfood writes `.test-results/recommend-checks-dogfood.json` and proves `recommend_checks` emits advisory minimum/broader validation commands for docs-only, TS source, test-file, and graph-impact cases. CLI parity tests also prove a later CLI process can read snapshot artifacts produced by `structural_patch_checks`. See `docs/project/self-hosted-cli-dogfood.md`.
 
 Target-repo CLI usage means an installed/global `semantic-code-intelligence` command is invoked from the repository being inspected, with target-repo-relative paths. Current evidence includes a harnessed `pi -p` read/search/preview-patch proof from a non-SCI repository cwd, with the target left clean afterward. SCI should not commit machine-local paths for external repositories. See `docs/project/target-repo-cli-usage.md`.
 
@@ -134,6 +136,7 @@ When the Alpha MVP contract changes, update all of these in the same wave:
 - `scripts/dogfood-self-hosted-cli.ts`
 - `scripts/dogfood-structural-workflow.ts`
 - `scripts/dogfood-graph-impact.ts`
+- `scripts/dogfood-recommend-checks.ts`
 - `scripts/dogfood-safe-write.ts`
 - `scripts/check-alpha-evidence.ts`
 - `scripts/build-alpha-evidence-packet.ts`

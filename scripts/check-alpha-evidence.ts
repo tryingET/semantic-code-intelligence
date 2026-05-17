@@ -12,6 +12,7 @@ const evidenceFiles = {
     selfHosted: '.test-results/self-hosted-cli-dogfood.json',
     structural: '.test-results/structural-workflow-dogfood.json',
     graph: '.test-results/graph-impact-dogfood.json',
+    recommendChecks: '.test-results/recommend-checks-dogfood.json',
     safeWrite: '.test-results/safe-write-dogfood.json',
 };
 
@@ -20,6 +21,7 @@ const budgetsMs: Record<string, number> = {
     selfHostedCall: 15_000,
     structuralCall: 20_000,
     graphCall: 15_000,
+    recommendChecksCall: 15_000,
     safeWriteCall: 15_000,
 };
 
@@ -44,6 +46,7 @@ let alpha: any = null;
 let selfHosted: any = null;
 let structural: any = null;
 let graph: any = null;
+let recommendChecks: any = null;
 let safeWrite: any = null;
 
 try {
@@ -51,6 +54,7 @@ try {
     selfHosted = readJson(evidenceFiles.selfHosted);
     structural = readJson(evidenceFiles.structural);
     graph = readJson(evidenceFiles.graph);
+    recommendChecks = readJson(evidenceFiles.recommendChecks);
     safeWrite = readJson(evidenceFiles.safeWrite);
 } catch (error) {
     checks.push({ name: 'evidence_files_readable', ok: false, detail: { message: error instanceof Error ? error.message : String(error) } });
@@ -58,7 +62,7 @@ try {
 
 if (alpha) {
     const summary = Array.isArray(alpha.summary) ? alpha.summary : [];
-    const required = ['get_snapshot', 'read_file', 'text_search', 'symbol_search', 'find_definition', 'find_references', 'ast_query', 'graph_expand', 'propose_patch', 'run_checks'];
+    const required = ['get_snapshot', 'read_file', 'text_search', 'symbol_search', 'find_definition', 'find_references', 'ast_query', 'graph_expand', 'recommend_checks', 'propose_patch', 'run_checks'];
     const actual = names(summary);
     checks.push({ name: 'alpha_dogfood_ok', ok: alpha.ok === true, detail: { schema: alpha.schema } });
     checks.push({
@@ -129,6 +133,25 @@ if (graph) {
     });
 }
 
+if (recommendChecks) {
+    const calls = Array.isArray(recommendChecks.calls) ? recommendChecks.calls : [];
+    checks.push({ name: 'recommend_checks_dogfood_ok', ok: recommendChecks.ok === true, detail: { schema: recommendChecks.schema } });
+    checks.push({
+        name: 'recommend_checks_cases_present',
+        ok:
+            recommendChecks?.assertions?.docsOnlyMinimumNoop === true &&
+            recommendChecks?.assertions?.tsSourceTypecheck === true &&
+            recommendChecks?.assertions?.testFileNarrowTest === true &&
+            recommendChecks?.assertions?.graphImpactBroaderRationale === true,
+        detail: recommendChecks?.assertions || null,
+    });
+    checks.push({
+        name: 'recommend_checks_latency_budget',
+        ok: maxElapsed(calls) <= budgetsMs.recommendChecksCall,
+        detail: { maxElapsedMs: maxElapsed(calls), budgetMs: budgetsMs.recommendChecksCall },
+    });
+}
+
 if (safeWrite) {
     const calls = Array.isArray(safeWrite.calls) ? safeWrite.calls : [];
     const preview = calls.some((call) => call?.payload?.mode === 'preview_validate' && call?.payload?.applied === false);
@@ -154,7 +177,7 @@ const report = {
     interpretation: {
         proves: [
             'Generated dogfood evidence preserves the documented Alpha MVP safety posture.',
-            'SCI-first discovery, graph impact summaries, preview-first patching, exact safe_write verification, and bounded latency remain present.',
+            'SCI-first discovery, graph impact summaries, impact-aware check recommendations, preview-first patching, exact safe_write verification, and bounded latency remain present.',
         ],
         does_not_prove: ['Production readiness.', 'Comprehensive performance characterization.'],
     },

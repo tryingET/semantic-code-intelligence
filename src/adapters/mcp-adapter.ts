@@ -269,6 +269,8 @@ export class MCPAdapter {
                         return this.handleAstQuery(arguments_);
                     case 'graph_expand':
                         return this.handleGraphExpand(arguments_);
+                    case 'recommend_checks':
+                        return this.handleRecommendChecks(arguments_);
                     case 'find_definition':
                         result = await this.handleFindDefinition(arguments_, context);
                         break;
@@ -1962,6 +1964,116 @@ export class MCPAdapter {
                           ? 'Set ALLOW_SNAPSHOT_APPLY=1 only when intentionally applying'
                           : 'Apply separately only after review',
                   ],
+        };
+        return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: false };
+    }
+
+    private extractFilesFromPatch(patch: string): string[] {
+        const files = new Set<string>();
+        for (const line of patch.split(/\r?\n/)) {
+            const match = /^(?:\+\+\+|---)\s+(?:a\/|b\/)?(.+)$/.exec(line.trim());
+            if (!match) continue;
+            const file = match[1]?.trim();
+            if (!file || file === '/dev/null') continue;
+            files.add(file);
+        }
+        return [...files].sort();
+    }
+
+    private normalizeRecommendationFiles(args: Record<string, any>): string[] {
+        const explicit = Array.isArray(args?.files) ? args.files.filter((file: any) => typeof file === 'string') : [];
+        const patchFiles = typeof args?.patch === 'string' ? this.extractFilesFromPatch(args.patch) : [];
+        return [...new Set([...explicit, ...patchFiles].map((file) => file.trim()).filter(Boolean))].sort();
+    }
+
+    private hasGraphImpact(impactSummary: any): boolean {
+        const counts = impactSummary?.counts && typeof impactSummary.counts === 'object' ? impactSummary.counts : {};
+        return ['imports', 'exports', 'callers', 'callees'].some((edge) => Number(counts?.[edge] || 0) > 0);
+    }
+
+    private async handleRecommendChecks(args: Record<string, any>) {
+        const files = this.normalizeRecommendationFiles(args);
+        const mode = args?.mode === 'broader' ? 'broader' : 'minimum';
+        const impactSummary = args?.impactSummary && typeof args.impactSummary === 'object' ? args.impactSummary : null;
+        const rationale: Array<{ reason: string; files?: string[]; command?: string; detail?: string }> = [];
+        const minimum = new Set<string>();
+        const broader = new Set<string>();
+        const addMinimum = (command: string) => {
+            minimum.add(command);
+            broader.add(command);
+        };
+        const addBroader = (command: string) => broader.add(command);
+
+        const docs = files.filter((file) => /(^|\/)docs\//.test(file) || /\.mdx?$/.test(file));
+        const docsProject = docs.filter((file) => file.startsWith('docs/project/'));
+        const tsSource = files.filter((file) => /^src\/.*\.[cm]?tsx?$/.test(file));
+        const tests = files.filter((file) => /(^|\/)(tests?|__tests__)\//.test(file) || /(?:^|[.\/-])(test|spec)\.[cm]?[tj]sx?$/.test(file));
+        const configs = files.filter((file) => /(^package\.json$|^bun\.lockb?$|^tsconfig.*\.json$|^justfile$|^Justfile$|^\.github\/workflows\/|^scripts\/.*\.[cm]?tsx?$)/.test(file));
+        const nonDocs = files.filter((file) => !docs.includes(file));
+
+        if (files.length === 0) {
+            addMinimum('bun run typecheck');
+            rationale.push({ reason: 'no_touched_files_supplied', command: 'bun run typecheck', detail: 'Conservative default when neither files nor parseable patch paths are supplied.' });
+        }
+
+        if (files.length > 0 && nonDocs.length === 0) {
+            addMinimum('true');
+            rationale.push({ reason: docsProject.length > 0 ? 'docs_project_changed' : 'markdown_only_changed', files: docs, command: 'true' });
+        }
+
+        if (tsSource.length > 0) {
+            addMinimum('bun run typecheck');
+            rationale.push({ reason: 'typescript_source_changed', files: tsSource, command: 'bun run typecheck' });
+        }
+
+        for (const file of tests) {
+            const command = `bun test ${file}`;
+            addMinimum(command);
+            rationale.push({ reason: 'test_file_changed', files: [file], command });
+        }
+        if (tests.length > 0) {
+            addBroader('bun run typecheck');
+        }
+
+        if (configs.length > 0) {
+            addMinimum('bun run typecheck');
+            addBroader('bun test');
+            rationale.push({ reason: 'package_or_config_changed', files: configs, command: 'bun run typecheck' });
+        }
+
+        if (impactSummary && this.hasGraphImpact(impactSummary) && (tsSource.length > 0 || files.some((file) => /\.[cm]?[tj]sx?$/.test(file)))) {
+            addBroader('bun run typecheck');
+            rationale.push({
+                reason: 'graph_impact_edges_present',
+                command: 'consider broader validation',
+                detail: 'graph_expand impactSummary has non-empty imports/exports/callers/callees counts for a source-adjacent change.',
+            });
+        }
+
+        if (minimum.size === 0) {
+            addMinimum('bun run typecheck');
+            rationale.push({ reason: 'fallback_unknown_change_shape', files, command: 'bun run typecheck' });
+        }
+
+        const minimumCommands = [...minimum];
+        const broaderCommands = [...broader];
+        const commands = mode === 'broader' ? broaderCommands : minimumCommands;
+        const confidence = files.length === 0 ? 'low' : impactSummary && this.hasGraphImpact(impactSummary) ? 'medium' : 'medium';
+        const payload = {
+            workflow: 'recommend_checks',
+            ok: true,
+            mode,
+            commands,
+            minimum: minimumCommands,
+            broader: broaderCommands,
+            rationale,
+            confidence,
+            inputs: {
+                files,
+                hasPatch: typeof args?.patch === 'string' && args.patch.trim().length > 0,
+                hasImpactSummary: !!impactSummary,
+            },
+            note: 'Heuristic recommendation only; callers remain responsible for choosing and running validation.',
         };
         return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: false };
     }
