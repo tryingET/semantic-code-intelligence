@@ -108,7 +108,7 @@ The dogfood harness emits JSON with this high-level shape:
 
 The `interpretation.does_not_prove` section is intentional. Passing this bundle proves the Phase 1 harnessed-LLM Alpha MVP path, not production readiness or Phase 2+ surfaces.
 
-`bun run validation-plan:compare` reads generated validation plans and emits `.test-results/validation-plan-comparison.json`, comparing stable fields while ignoring volatile snapshot ids and timing. When drift is detected, the comparison includes operator-facing explanations and remediation hints. `bun run alpha:evidence:check` reads the generated dogfood JSON files under `.test-results/` and emits `.test-results/alpha-evidence-check.json`. It is intentionally a lightweight evidence gate, not a historical database: it checks that current evidence still contains SCI-first discovery, graph impact summaries, impact-aware check recommendations, validationPlan summaries/comparison, preview-first mutation posture, safe-write exact apply verification plus mismatch fail-closed behavior, and coarse per-call latency budgets.
+`bun run validation-plan:compare` reads generated validation plans and emits `.test-results/validation-plan-comparison.json`, comparing stable fields while ignoring volatile snapshot ids and timing. When drift is detected, the comparison includes operator-facing explanations and remediation hints. `bun run alpha:evidence:check` reads the generated dogfood JSON files under `.test-results/` and emits `.test-results/alpha-evidence-check.json`. It is intentionally a lightweight evidence gate, not a historical database: it checks that current evidence still contains SCI-first discovery, graph impact summaries, impact-aware check recommendations, validationPlan summaries/comparison, preview-first mutation posture, safe-write exact apply verification plus mismatch fail-closed behavior, and coarse per-call latency budgets. Operator-facing latency bands are documented in `docs/project/interactive-slo-guidance.md`.
 
 `bun run alpha:evidence:packet` reads the same generated evidence plus the gate result and emits `.test-results/alpha-evidence-packet.json`. The packet is the concise operator-facing summary: what evidence passed, what safety posture and check-recommendation behavior were proven, which validation commands matter, and what Phase 1 still does not prove. For choosing among CLI, MCP HTTP, MCP stdio, HTTP tools/call, and direct adapter tests, see `docs/project/interface-choice-guide.md`.
 
@@ -134,6 +134,7 @@ When the Alpha MVP contract changes, update all of these in the same wave:
 - package scripts in `package.json`
 - `just alpha-mvp-check`
 - `docs/project/interface-choice-guide.md`
+- `docs/project/interactive-slo-guidance.md`
 - `scripts/dogfood-alpha-mvp.ts`
 - `scripts/dogfood-self-hosted-cli.ts`
 - `scripts/dogfood-structural-workflow.ts`

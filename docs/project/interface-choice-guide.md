@@ -11,7 +11,7 @@ type: "guide"
 
 ## Rule of thumb
 
-Use the interface that matches the operator context, not the one with the most features.
+Use the interface that matches the operator context, not the one with the most features. For latency expectations and what to do when workflows feel slow, see `docs/project/interactive-slo-guidance.md`.
 
 For Phase 1, the first user is a harnessed LLM coding session. The safest default is:
 
@@ -140,6 +140,6 @@ The interface evidence is credible for Alpha MVP, but not enough for production 
 After this guide, prefer one of:
 
 1. repeat external validationPlan dogfood on a meaningfully different target repo; or
-2. add explicit interactive latency/SLO guidance for harnessed-LLM use.
+2. collect more external latency evidence across larger or less TypeScript-centric targets.
 
 Do not start Phase 2 UI/workbench polish solely because the Alpha MVP interface set is documented.
