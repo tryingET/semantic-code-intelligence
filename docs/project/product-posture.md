@@ -68,6 +68,8 @@ Phase 1 has moved from posture to a repeatable Alpha MVP validation bundle. The 
 - self-hosted structural dogfood records JSON evidence for ast-grep search, snapshot patch artifacts, tsgo-default checks, apply guard refusal, and unchanged working-tree posture;
 - dogfood evidence is emitted as JSON and verifies that preview-first patch planning does not mutate the working tree;
 - impact-aware check recommendation dogfood records JSON evidence that docs-only, TS source, test-file, and graph-impact inputs produce explicit advisory validation commands;
+- validation-plan evidence summarizes selected commands, recommendations, check results, snapshot artifacts, apply/rollback posture, and stable-field drift comparison with remediation hints;
+- IW40 readiness review (`docs/project/phase-1-readiness-review.md`) concludes the Phase 1 Alpha MVP substrate is credible for the first user, but should continue with external-repo validationPlan dogfood before broader closure or Phase 2 prioritization;
 - target-repo CLI usage is now proven as an installed/global command invoked from a non-SCI repository cwd through a harnessed `pi -p` session, without SCI knowing target repo paths;
 - migration hygiene continues to reject pre-rename identity drift, machine-local path coupling, and unsafe local artifacts.
 
@@ -84,8 +86,9 @@ This is credible Alpha MVP evidence for the first-user substrate. It is not yet 
 
 Before treating Phase 1 as broadly proven, keep pressure on:
 
+- external-repo validationPlan dogfood for the current safety spine;
 - richer semantic graph behavior beyond stable fallback shapes;
-- evidence comparison across runs so regressions are easier to spot;
+- durable evidence history beyond current-run stable-field comparison;
 - clearer performance budgets for harnessed-LLM interactive use;
 - durable snapshot/session semantics where process-local CLI or adapter state is insufficient;
 - operator-readable explanation of when to use HTTP, MCP HTTP, MCP stdio, direct adapter tests, or CLI fallback.
