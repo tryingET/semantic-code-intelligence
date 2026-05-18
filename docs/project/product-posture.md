@@ -86,7 +86,7 @@ This is credible Alpha MVP evidence for the first-user substrate. It is not yet 
 
 Before treating Phase 1 as broadly proven, keep pressure on:
 
-- external-repo validationPlan dogfood for the current safety spine;
+- more external-repo validationPlan dogfood across less TypeScript-centric targets;
 - richer semantic graph behavior beyond stable fallback shapes;
 - durable evidence history beyond current-run stable-field comparison;
 - clearer performance budgets for harnessed-LLM interactive use;
