@@ -76,6 +76,22 @@ sci workflow structural_patch_checks \
 
 Use target-repo relative paths in `--args`. Avoid absolute paths unless the operator is doing an uncommitted one-off investigation. Structural patch workflows are preview-first; `apply` defaults to `false`, and `apply: true` requires `ALLOW_SNAPSHOT_APPLY=1` and passing checks. Omit `commands` to use the repo's default `bun run typecheck` path; in SCI that path is tsgo-primary, while `bun run typecheck:fallback` remains the explicit tsc fallback. Do not use or reintroduce a `build:tsc` alias.
 
+## External validation-plan dogfood
+
+SCI includes a generic external dogfood harness that requires an explicit target cwd and does not default to any machine-local repository:
+
+```bash
+bun run target-validation-plan:dogfood -- --target-cwd /path/to/non-sci-repo
+```
+
+The script invokes installed/global `semantic-code-intelligence` from the target repository cwd, uses target-repo-relative paths, records `.test-results/target-validation-plan-dogfood.json` in the SCI repo, and cleans generated target snapshot artifacts before checking the target working tree.
+
+It proves the current safety spine on a non-SCI target:
+
+```text
+read/discover -> graph impact -> recommend checks -> patch_checks_in_snapshot -> validationPlan -> clean target posture
+```
+
 ## External dogfood evidence rule
 
 External dogfood is valuable, but it should be captured as evidence of the target-repo usage model, not as a target-specific default inside SCI.
@@ -98,4 +114,4 @@ Earlier external dogfood against a Pi extension package showed useful navigation
 
 The corrected product direction is installed/global SCI CLI usage from the target repository's cwd. Current local development support is `just install-cli-local`, which builds the CLI and registers package bins so target repos can invoke `sci` directly, with `semantic-code-intelligence` available as the long-form alias.
 
-Current target-cwd proof: a harnessed `pi -p` session in a non-SCI repository invoked installed `sci` for bounded `read_file`, `text_search`, and preview-first `patch_checks_in_snapshot`, then cleaned generated snapshot artifacts and confirmed the target working tree was unchanged. The proof is recorded as AK evidence rather than committed with a machine-local target path.
+Current target-cwd proof: a non-SCI repository invoked installed/global SCI for bounded `read_file`, `graph_expand`, `recommend_checks`, and preview-first `patch_checks_in_snapshot` with `validationPlan` evidence, then cleaned generated target snapshot artifacts and confirmed the target working tree was unchanged. The proof is recorded as AK evidence and `.test-results/target-validation-plan-dogfood.json`; committed docs/scripts do not contain a machine-local target path.

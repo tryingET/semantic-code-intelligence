@@ -66,7 +66,7 @@ Generated evidence surfaces reviewed:
 | Interface coverage | Credible alpha coverage | HTTP, MCP HTTP, MCP stdio, direct adapter tests, and CLI fallback are all exercised. |
 | Evidence quality | Credible but current-run scoped | Evidence packet and validation-plan comparison are repeatable, but not yet historical trend analysis. |
 | Graph semantics | Partial | File-scoped graph impact is useful; symbol caller/callee evidence can still be sparse or fallback-shaped. |
-| External target proof | Needs another pass | Prior installed/global CLI target-repo proof exists, but the newer validationPlan/check-recommendation spine has mainly been self-hosted. |
+| External target proof | Improved after IW41 | Installed/global CLI from a non-SCI cwd now exercises graph impact, check recommendation, preview/check, validationPlan evidence, cleanup, and clean target posture. More target diversity is still needed before broad closure. |
 | Performance | Coarse budget only | Per-call latency budgets catch obvious regressions but are not a full interactive SLO characterization. |
 | Durable session semantics | Not closed | Snapshot metadata/artifacts are persisted narrowly; no long-lived cross-process session DB is claimed. |
 | Production readiness | Not ready | Kubernetes, marketplace, analytics, production deployment, and broad human IDE polish remain non-goals for alpha. |
@@ -83,7 +83,7 @@ It is **not** yet truthful to say:
 
 ## Remaining gaps before broader Phase 1 closure
 
-1. **External-repo validationPlan dogfood** — exercise installed/global CLI from a non-SCI repository using `graph_expand`, `recommend_checks`, `patch_checks_in_snapshot` or `safe_write` preview, and `validationPlan` evidence.
+1. **External-repo diversity** — IW41 proved the validationPlan spine in one non-SCI repo; repeat across at least one larger/less TypeScript-centric target before broad closure.
 2. **Graph richness** — improve or characterize symbol-level caller/callee limitations so fallback shapes are clearer to harnesses.
 3. **Performance posture** — add explicit operator-facing interactive budgets beyond coarse per-call gates.
 4. **Evidence history** — current comparison is current-run stable-field comparison, not a durable historical regression store.
@@ -91,22 +91,12 @@ It is **not** yet truthful to say:
 
 ## Recommended next wave
 
-**IW41 — External target validation-plan dogfood**
+**IW42 — Target diversity / interface guidance hardening**
 
-Goal: use installed/global `semantic-code-intelligence` from a non-SCI repository cwd to produce evidence for the current safety spine:
+Goal: either repeat the external validationPlan spine on a second, meaningfully different target repo or write concise operator guidance for choosing CLI, MCP HTTP, MCP stdio, direct adapter tests, and HTTP tools/call.
 
-```text
-discover -> graph impact -> recommend checks -> preview/check -> validationPlan -> evidence packet
-```
-
-Acceptance sketch:
-
-- target repo remains clean;
-- commands use target-repo-relative paths;
-- SCI does not bake target paths into source/docs;
-- evidence records graph impact, recommendations, validationPlan, and preview-first posture;
-- alpha docs are updated only if the proof changes claims.
+Preference: run a second external target proof if a clean target is available; otherwise document interface choice guidance from current evidence.
 
 ## Closeout conclusion
 
-Stop adding SCI-internal feature increments for Phase 1 until the external target validation-plan proof is done. The current alpha bundle is strong enough to support that dogfood wave and weak enough that skipping it would overstate readiness.
+IW41 completed the first external target validationPlan proof. Continue to avoid SCI-internal feature accretion until either a second external target proof or concise interface-choice guidance reduces the remaining readiness ambiguity.
