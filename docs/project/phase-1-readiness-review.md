@@ -87,16 +87,16 @@ It is **not** yet truthful to say:
 2. **Graph richness** — improve or characterize symbol-level caller/callee limitations so fallback shapes are clearer to harnesses.
 3. **Performance posture** — add explicit operator-facing interactive budgets beyond coarse per-call gates.
 4. **Evidence history** — current comparison is current-run stable-field comparison, not a durable historical regression store.
-5. **Interface guidance** — operators still need a concise explanation for when to choose MCP HTTP, MCP stdio, direct adapter tests, HTTP tools/call, or CLI fallback.
+5. **Interface guidance** — IW42 added `docs/project/interface-choice-guide.md`; future work should validate it with more external target sessions.
 
 ## Recommended next wave
 
-**IW42 — Target diversity / interface guidance hardening**
+**IW43 — Target diversity or interactive SLO guidance**
 
-Goal: either repeat the external validationPlan spine on a second, meaningfully different target repo or write concise operator guidance for choosing CLI, MCP HTTP, MCP stdio, direct adapter tests, and HTTP tools/call.
+Goal: either repeat the external validationPlan spine on a second, meaningfully different target repo or add explicit interactive latency/SLO guidance for harnessed-LLM use.
 
-Preference: run a second external target proof if a clean target is available; otherwise document interface choice guidance from current evidence.
+Preference: run a second external target proof if a clean target is available; otherwise document latency/SLO expectations from the current evidence bundle.
 
 ## Closeout conclusion
 
-IW41 completed the first external target validationPlan proof. Continue to avoid SCI-internal feature accretion until either a second external target proof or concise interface-choice guidance reduces the remaining readiness ambiguity.
+IW41 completed the first external target validationPlan proof and IW42 documented interface choice guidance. Continue to avoid SCI-internal feature accretion until either a second external target proof or explicit interactive SLO guidance reduces the remaining readiness ambiguity.

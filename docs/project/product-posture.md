@@ -91,7 +91,7 @@ Before treating Phase 1 as broadly proven, keep pressure on:
 - durable evidence history beyond current-run stable-field comparison;
 - clearer performance budgets for harnessed-LLM interactive use;
 - durable snapshot/session semantics where process-local CLI or adapter state is insufficient;
-- operator-readable explanation of when to use HTTP, MCP HTTP, MCP stdio, direct adapter tests, or CLI fallback.
+- validating the new interface choice guidance (`docs/project/interface-choice-guide.md`) across more external target sessions.
 
 ## Phase 2: Developer workbench
 
