@@ -145,6 +145,42 @@ Implementations may normalize input into this shape before rendering:
     "schema": "semantic-code-intelligence.validation_plan.v1",
     "workflow": "patch_checks_in_snapshot"
   },
+  "evidenceArtifacts": [
+    {
+      "id": "validation-execution",
+      "kind": "validation_execution",
+      "schema": null,
+      "observedStatus": "observed | failed | unavailable | unknown | inapplicable"
+    }
+  ],
+  "claims": [
+    {
+      "id": "checks-result",
+      "claim": "Selected validation checks passed.",
+      "status": "supported | weakened | contradicted | unresolved",
+      "supportedBy": ["validation-execution"],
+      "limitedBy": [],
+      "warrant": "Executed command evidence, not recommendation text, determines this claim.",
+      "authorityBoundaries": ["not-production-readiness"],
+      "operatorDecisionPoints": ["continue-or-stop"]
+    }
+  ],
+  "authorityBoundaries": [
+    {
+      "id": "not-production-readiness",
+      "boundary": "Alpha evidence is not production readiness.",
+      "affectedScope": "readiness"
+    }
+  ],
+  "operatorDecisionPoints": [
+    {
+      "id": "continue-or-stop",
+      "options": ["continue", "stop", "inspect limitations"],
+      "supportingClaims": ["checks-result"],
+      "limitingClaims": [],
+      "residualUncertainty": "Recommended commands remain advisory unless executed."
+    }
+  ],
   "outcome": {
     "ok": true,
     "status": "checks_passed",
@@ -186,6 +222,8 @@ Implementations may normalize input into this shape before rendering:
   "operatorQuestions": []
 }
 ```
+
+The first-class `evidenceArtifacts`, `claims`, `authorityBoundaries`, and `operatorDecisionPoints` fields are required to prevent the review from collapsing artifacts into claims, claims into authority, or recommendations into executed commands.
 
 ## Validation checks for an implementation wave
 

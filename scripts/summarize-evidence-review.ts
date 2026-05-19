@@ -24,6 +24,19 @@ function strings(value: any): string[] {
   return arr(value).map(String).filter(Boolean);
 }
 
+type EvidenceAbsenceState = 'failed' | 'unavailable' | 'unknown' | 'inapplicable';
+
+function evidenceState(kind: string, observed: boolean, failed: boolean, applicable = true): EvidenceAbsenceState | 'observed' {
+  if (!applicable) return 'inapplicable';
+  if (failed) return 'failed';
+  if (observed) return 'observed';
+  return kind === 'required' ? 'unavailable' : 'unknown';
+}
+
+function claim(id: string, text: string, status: 'supported' | 'weakened' | 'contradicted' | 'unresolved', supportedBy: string[], limitedBy: string[], warrant: string, authorityBoundaries: string[], operatorDecisionPoints: string[]) {
+  return { id, claim: text, status, supportedBy, limitedBy, warrant, authorityBoundaries, operatorDecisionPoints };
+}
+
 function firstValidationPlan(packet: any): any | null {
   const candidates = [
     packet?.previewFirstMutation?.validationPlanSample,
@@ -151,11 +164,87 @@ function normalizeTargetDogfood(evidence: any) {
   };
 }
 
+function withConceptualModel(review: any) {
+  const selectedCommands = strings(review?.commands?.selected);
+  const recommendedMinimum = strings(review?.commands?.recommendedMinimum);
+  const recommendedBroader = strings(review?.commands?.recommendedBroader);
+  const limitations = strings(review?.graphImpact?.limitations);
+  const hasArtifacts = Object.values(review?.artifacts || {}).some(Boolean);
+  const rollbackAvailable = review?.rollback?.available === true;
+  const checksFailed = review?.checks?.ok === false || strings(review?.checks?.failedGateChecks).length > 0;
+  const graphObserved = review?.graphImpact?.hasImpactEvidence === true;
+  const graphApplicable = review?.source?.kind !== 'target_dogfood' || review?.scope?.sourceKind !== 'unknown';
+
+  const evidenceArtifacts = [
+    { id: 'source', kind: review?.source?.kind || 'unknown', schema: review?.source?.schema || null, observedStatus: 'observed' },
+    { id: 'validation-execution', kind: 'validation_execution', schema: null, observedStatus: evidenceState('required', selectedCommands.length > 0, checksFailed) },
+    { id: 'graph-impact', kind: 'graph_impact', schema: null, observedStatus: evidenceState('optional', graphObserved, false, graphApplicable) },
+    { id: 'snapshot-artifacts', kind: 'snapshot_artifacts', schema: null, observedStatus: evidenceState('optional', hasArtifacts, false) },
+    { id: 'rollback', kind: 'rollback', schema: null, observedStatus: rollbackAvailable ? 'observed' : 'unavailable' },
+  ];
+
+  const authorityBoundaries = [
+    { id: 'not-canonical-authority', boundary: review?.safety?.authorityBoundary || 'This review is not canonical task/evidence authority.', affectedScope: 'governance' },
+    { id: 'not-production-readiness', boundary: review?.safety?.productionBoundary || 'Alpha evidence is not production readiness.', affectedScope: 'readiness' },
+    { id: 'no-implicit-mutation', boundary: 'Rendering evidence review output must not mutate source, snapshots, target repos, AK, or databases.', affectedScope: 'mutation' },
+  ];
+
+  const operatorDecisionPoints = [
+    { id: 'continue-or-stop', options: ['continue', 'stop', 'inspect limitations'], supportingClaims: ['checks-result'], limitingClaims: limitations.length ? ['graph-limitations'] : [], residualUncertainty: limitations.length ? 'Graph or impact evidence has visible limitations.' : 'No graph limitation recorded in this review.' },
+    { id: 'run-stronger-checks', options: ['accept selected checks', 'run recommended minimum', 'run recommended broader'], supportingClaims: ['command-distinction'], limitingClaims: [], residualUncertainty: recommendedMinimum.length || recommendedBroader.length ? 'Recommended commands remain advisory unless executed.' : 'No additional recommendations recorded.' },
+  ];
+
+  const claims = [
+    claim(
+      'checks-result',
+      review?.checks?.ok === true ? 'Selected validation checks passed.' : 'Selected validation checks did not prove a clean pass.',
+      review?.checks?.ok === true ? 'supported' : checksFailed ? 'contradicted' : 'unresolved',
+      ['validation-execution'],
+      checksFailed ? ['validation-execution'] : [],
+      'Executed command evidence, not recommendation text, determines this claim.',
+      ['not-production-readiness', 'not-canonical-authority'],
+      ['continue-or-stop', 'run-stronger-checks'],
+    ),
+    claim(
+      'command-distinction',
+      'Selected commands remain distinct from recommended commands.',
+      selectedCommands.join('\n') !== recommendedMinimum.concat(recommendedBroader).join('\n') ? 'supported' : 'weakened',
+      ['validation-execution'],
+      [],
+      'Recommendations are advisory unless also present in observed selected/executed command evidence.',
+      ['not-canonical-authority'],
+      ['run-stronger-checks'],
+    ),
+    claim(
+      'graph-limitations',
+      limitations.length ? 'Graph or impact evidence includes visible limitations.' : 'No graph limitation was recorded in this review.',
+      limitations.length ? 'weakened' : graphObserved ? 'supported' : 'unresolved',
+      ['graph-impact'],
+      limitations.length ? ['graph-impact'] : [],
+      'Missing or fallback-shaped graph evidence qualifies continuation decisions; it does not imply no impact.',
+      ['not-production-readiness'],
+      ['continue-or-stop'],
+    ),
+    claim(
+      'preview-boundary',
+      review?.outcome?.previewOnly ? 'This evidence remains preview-only and does not prove apply safety.' : 'This evidence includes apply posture.',
+      review?.outcome?.previewOnly ? 'weakened' : 'supported',
+      ['source', 'snapshot-artifacts'],
+      review?.outcome?.previewOnly ? ['rollback'] : [],
+      'Preview evidence can support continued review, not production readiness or governance acceptance.',
+      ['not-production-readiness', 'no-implicit-mutation'],
+      ['continue-or-stop'],
+    ),
+  ];
+
+  return { ...review, evidenceArtifacts, claims, authorityBoundaries, operatorDecisionPoints };
+}
+
 function normalize(raw: any) {
   const detected = detectInput(raw);
-  if (detected.kind === 'validation_plan') return normalizeValidationPlan(detected.payload, detected.packet);
-  if (detected.kind === 'alpha_packet') return normalizeAlphaPacket(detected.payload);
-  if (detected.kind === 'target_dogfood') return normalizeTargetDogfood(detected.payload);
+  if (detected.kind === 'validation_plan') return withConceptualModel(normalizeValidationPlan(detected.payload, detected.packet));
+  if (detected.kind === 'alpha_packet') return withConceptualModel(normalizeAlphaPacket(detected.payload));
+  if (detected.kind === 'target_dogfood') return withConceptualModel(normalizeTargetDogfood(detected.payload));
   throw new Error(`Unsupported kind: ${detected.kind}`);
 }
 
@@ -178,6 +267,12 @@ function renderMarkdown(review: any): string {
     `- Applied: ${review.outcome.applied}\n` +
     `- Production-ready: false — Alpha evidence is not production readiness.\n\n` +
     `Operator question: Is this evidence enough to continue, or should the operator stop and inspect details?\n\n` +
+    `### Review claims\n\n` +
+    `${arr(review.claims).map((c: any) => `- ${c.id}: ${c.status} — ${c.claim}`).join('\n') || '- none'}\n\n` +
+    `### Authority boundaries\n\n` +
+    `${arr(review.authorityBoundaries).map((b: any) => `- ${b.id}: ${b.boundary}`).join('\n') || '- none'}\n\n` +
+    `### Operator decision points\n\n` +
+    `${arr(review.operatorDecisionPoints).map((p: any) => `- ${p.id}: ${strings(p.options).join(', ')}; uncertainty: ${p.residualUncertainty || 'not recorded'}`).join('\n') || '- none'}\n\n` +
     `## 2. Changed or affected scope\n\n` +
     `- Touched files:\n${bullet(strings(review.scope.touchedFiles))}\n` +
     `- Risk: ${review.scope.risk ? JSON.stringify(review.scope.risk) : 'not recorded'}\n` +

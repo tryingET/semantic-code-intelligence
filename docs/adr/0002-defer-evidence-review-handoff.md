@@ -160,4 +160,4 @@ Observed result:
 
 ## Follow-up
 
-Next implementation work should align `semantic-code-intelligence.evidence_review.v1` with the conceptual claim model before any handoff or UI work.
+IW64 begins aligning `semantic-code-intelligence.evidence_review.v1` with the conceptual claim model by adding first-class evidence artifacts, claims, authority boundaries, and operator decision points to the summary output. Handoff or UI work remains blocked until the reconsideration gates above are satisfied.
