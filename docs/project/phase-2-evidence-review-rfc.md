@@ -396,7 +396,7 @@ Later implementation evidence:
 
 - the summary output now exposes first-class `evidenceArtifacts`, `limitations`, `claims`, `authorityBoundaries`, and `operatorDecisionPoints` fields;
 - `tests/fixtures/evidence-review-claim-model-sample.json` provides a committed normalized sample;
-- `tests/evidence-review-claim-model.test.ts` covers read-only rendering, selected-vs-recommended command separation, absence states, first-class graph limitation visibility, rollback absence, production-readiness caveats, and non-authority-durable local validation execution.
+- `tests/evidence-review-claim-model.test.ts` covers read-only rendering, selected-vs-recommended command separation, absence states, first-class graph limitation visibility, limitation reference integrity, markdown-forgery neutralization, oversized-input refusal, rollback absence, production-readiness caveats, and non-authority-durable local validation execution.
 
 Interpretation:
 

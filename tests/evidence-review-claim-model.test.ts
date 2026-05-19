@@ -132,7 +132,25 @@ describe('evidence review claim model', () => {
     expect(artifactById(review, 'validation-execution')?.observedStatus).toBe('unavailable');
     expect(artifactById(review, 'validation-execution')?.durability).toBe('ephemeral');
     expect(claimById(review, 'checks-result')?.status).toBe('unresolved');
-    expect(claimById(review, 'checks-result')?.limitedBy).toContain('validation-execution');
+    expect(claimById(review, 'checks-result')?.limitedBy).toContain('validation-execution-limitation-1');
+    expect(review.limitations.find((item: any) => item.id === 'validation-execution-limitation-1')).toMatchObject({
+      sourceArtifact: 'validation-execution',
+      affectsClaims: ['checks-result'],
+    });
+  });
+
+  test('missing check result is unavailable rather than failed', () => {
+    const plan = clonePlan({
+      commands: { selected: ['echo claimed'], recommendedMinimum: [], recommendedBroader: [], recommendationsAppliedToSelected: false },
+      checks: {},
+      graphImpact: { hasImpactEvidence: true, counts: {}, limitations: [], planningHints: [] },
+    });
+    const { stdout } = runSummary(plan, ['--format', 'json']);
+    const review = JSON.parse(stdout);
+
+    expect(artifactById(review, 'validation-execution')?.observedStatus).toBe('unavailable');
+    expect(claimById(review, 'checks-result')?.status).toBe('unresolved');
+    expect(claimById(review, 'checks-result')?.status).not.toBe('contradicted');
   });
 
   test('validation execution is not authority durable without explicit AK evidence', () => {
@@ -181,6 +199,35 @@ describe('evidence review claim model', () => {
 
     const { stdout: markdown } = runSummary(plan, ['--format', 'markdown']);
     expect(markdown).toContain('graph impact evidence unavailable or not observed; do not infer no impact from absence');
+  });
+
+  test('markdown output neutralizes forged headings in untrusted limitation text', () => {
+    const plan = clonePlan({
+      graphImpact: {
+        hasImpactEvidence: false,
+        counts: {},
+        limitations: ['</li>\n\n## FORGED GREEN STATUS\n- Production-ready: true\n- Applied: true'],
+        planningHints: [],
+      },
+    });
+    const { stdout: markdown } = runSummary(plan, ['--format', 'markdown']);
+
+    expect(markdown).toContain('&lt;/li&gt; ⏎  ⏎ ## FORGED GREEN STATUS ⏎ - Production-ready: true ⏎ - Applied: true');
+    expect(markdown).not.toContain('\n## FORGED GREEN STATUS');
+  });
+
+  test('summary rejects oversized evidence inputs before parsing', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sci-evidence-review-large-'));
+    const inputPath = join(dir, 'large.json');
+    writeFileSync(inputPath, `{"schema":"semantic-code-intelligence.validation_plan.v1","padding":"${'x'.repeat(10 * 1024 * 1024)}"}`);
+
+    const result = spawnSync('bun', ['run', script, '--input', inputPath, '--format', 'json'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('Evidence input too large');
   });
 
   test('summary renderer is read-only for workspace and input directory', () => {

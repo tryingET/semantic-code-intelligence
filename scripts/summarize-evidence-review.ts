@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 
 function argValue(name: string): string | null {
   const idx = process.argv.indexOf(name);
@@ -11,8 +11,13 @@ function argValue(name: string): string | null {
 const inputPath = argValue('--input') || '.test-results/alpha-evidence-packet.json';
 const format = argValue('--format') || 'markdown';
 const extract = argValue('--extract');
+const maxInputBytes = 10 * 1024 * 1024;
 
 function readJson(path: string): any {
+  const size = statSync(path).size;
+  if (size > maxInputBytes) {
+    throw new Error(`Evidence input too large: ${size} bytes exceeds ${maxInputBytes} byte limit`);
+  }
   return JSON.parse(readFileSync(path, 'utf8'));
 }
 
@@ -25,25 +30,67 @@ function strings(value: any): string[] {
 }
 
 type EvidenceAbsenceState = 'failed' | 'unavailable' | 'unknown' | 'inapplicable';
+type EvidenceObservedState = EvidenceAbsenceState | 'observed';
 type EvidenceDurability = 'ephemeral' | 'reproducible_local' | 'materialized_local' | 'repo_durable' | 'authority_durable';
+type ClaimStatus = 'supported' | 'weakened' | 'contradicted' | 'unresolved';
+type LimitationSeverity = 'info' | 'warning' | 'blocking';
 
-function evidenceState(kind: string, observed: boolean, failed: boolean, applicable = true): EvidenceAbsenceState | 'observed' {
+type EvidenceArtifact = {
+  id: string;
+  kind: string;
+  schema: string | null;
+  observedStatus: EvidenceObservedState;
+  durability: EvidenceDurability;
+  uriOrPath: string | null;
+  citationRequirement: string;
+};
+
+type ReviewLimitation = {
+  id: string;
+  limitation: string;
+  sourceArtifact: string;
+  affectsClaims: string[];
+  affectsDecisionPoints: string[];
+  severity: LimitationSeverity;
+};
+
+type ReviewClaim = {
+  id: string;
+  claim: string;
+  status: ClaimStatus;
+  supportedBy: string[];
+  limitedBy: string[];
+  warrant: string;
+  authorityBoundaries: string[];
+  operatorDecisionPoints: string[];
+};
+
+type AuthorityBoundary = { id: string; boundary: string; affectedScope: string };
+type OperatorDecisionPoint = { id: string; options: string[]; supportingClaims: string[]; limitingClaims: string[]; residualUncertainty: string };
+
+function evidenceState(kind: string, observed: boolean, failed: boolean, applicable = true): EvidenceObservedState {
   if (!applicable) return 'inapplicable';
   if (failed) return 'failed';
   if (observed) return 'observed';
   return kind === 'required' ? 'unavailable' : 'unknown';
 }
 
-function claim(id: string, text: string, status: 'supported' | 'weakened' | 'contradicted' | 'unresolved', supportedBy: string[], limitedBy: string[], warrant: string, authorityBoundaries: string[], operatorDecisionPoints: string[]) {
+function claim(id: string, text: string, status: ClaimStatus, supportedBy: string[], limitedBy: string[], warrant: string, authorityBoundaries: string[], operatorDecisionPoints: string[]): ReviewClaim {
   return { id, claim: text, status, supportedBy, limitedBy, warrant, authorityBoundaries, operatorDecisionPoints };
 }
 
-function artifact(id: string, kind: string, schema: string | null, observedStatus: EvidenceAbsenceState | 'observed', durability: EvidenceDurability, uriOrPath: string | null, citationRequirement: string) {
+function artifact(id: string, kind: string, schema: string | null, observedStatus: EvidenceObservedState, durability: EvidenceDurability, uriOrPath: string | null, citationRequirement: string): EvidenceArtifact {
   return { id, kind, schema, observedStatus, durability, uriOrPath, citationRequirement };
 }
 
-function limitation(id: string, text: string, sourceArtifact: string, affectsClaims: string[], affectsDecisionPoints: string[], severity: 'info' | 'warning' | 'blocking' = 'warning') {
+function limitation(id: string, text: string, sourceArtifact: string, affectsClaims: string[], affectsDecisionPoints: string[], severity: LimitationSeverity = 'warning'): ReviewLimitation {
   return { id, limitation: text, sourceArtifact, affectsClaims, affectsDecisionPoints, severity };
+}
+
+function mdInline(value: unknown): string {
+  return String(value ?? '')
+    .replace(/\r?\n/g, ' ⏎ ')
+    .replace(/[<>]/g, (ch) => (ch === '<' ? '&lt;' : '&gt;'));
 }
 
 function firstString(values: unknown[]): string | null {
@@ -51,6 +98,36 @@ function firstString(values: unknown[]): string | null {
     if (typeof value === 'string' && value.length > 0) return value;
   }
   return null;
+}
+
+function requireKnownReferences(label: string, ownerId: string, refs: string[], known: Set<string>) {
+  for (const ref of refs) {
+    if (!known.has(ref)) throw new Error(`${label} ${ownerId} references unknown id ${ref}`);
+  }
+}
+
+function validateReferenceIntegrity(review: any) {
+  const artifactIds = new Set(arr(review?.evidenceArtifacts).map((item: EvidenceArtifact) => item.id));
+  const limitationIds = new Set(arr(review?.limitations).map((item: ReviewLimitation) => item.id));
+  const claimIds = new Set(arr(review?.claims).map((item: ReviewClaim) => item.id));
+  const boundaryIds = new Set(arr(review?.authorityBoundaries).map((item: AuthorityBoundary) => item.id));
+  const decisionIds = new Set(arr(review?.operatorDecisionPoints).map((item: OperatorDecisionPoint) => item.id));
+
+  for (const limitationItem of arr(review?.limitations) as ReviewLimitation[]) {
+    requireKnownReferences('limitation.sourceArtifact', limitationItem.id, [limitationItem.sourceArtifact], artifactIds);
+    requireKnownReferences('limitation.affectsClaims', limitationItem.id, limitationItem.affectsClaims, claimIds);
+    requireKnownReferences('limitation.affectsDecisionPoints', limitationItem.id, limitationItem.affectsDecisionPoints, decisionIds);
+  }
+  for (const claimItem of arr(review?.claims) as ReviewClaim[]) {
+    requireKnownReferences('claim.supportedBy', claimItem.id, claimItem.supportedBy, artifactIds);
+    requireKnownReferences('claim.limitedBy', claimItem.id, claimItem.limitedBy, limitationIds);
+    requireKnownReferences('claim.authorityBoundaries', claimItem.id, claimItem.authorityBoundaries, boundaryIds);
+    requireKnownReferences('claim.operatorDecisionPoints', claimItem.id, claimItem.operatorDecisionPoints, decisionIds);
+  }
+  for (const decisionPoint of arr(review?.operatorDecisionPoints) as OperatorDecisionPoint[]) {
+    requireKnownReferences('operatorDecisionPoint.supportingClaims', decisionPoint.id, decisionPoint.supportingClaims, claimIds);
+    requireKnownReferences('operatorDecisionPoint.limitingClaims', decisionPoint.id, decisionPoint.limitingClaims, claimIds);
+  }
 }
 
 function firstValidationPlan(packet: any): any | null {
@@ -99,7 +176,7 @@ function normalizeValidationPlan(plan: any, packet?: any) {
       rationale: arr(plan?.rationale),
     },
     checks: {
-      ok: plan?.checks?.ok === true,
+      ok: typeof plan?.checks?.ok === 'boolean' ? plan.checks.ok : null,
       elapsedMs: typeof plan?.checks?.elapsedMs === 'number' ? plan.checks.elapsedMs : null,
       commands: plan?.checks?.commands || null,
     },
@@ -148,7 +225,7 @@ function normalizeAlphaPacket(packet: any) {
     },
     checks: {
       ...base.checks,
-      ok: packet?.evidenceGate?.ok === true,
+      ok: typeof packet?.evidenceGate?.ok === 'boolean' ? packet.evidenceGate.ok : null,
       failedGateChecks: strings(packet?.evidenceGate?.failedChecks),
       budgetsMs: packet?.evidenceGate?.budgetsMs || null,
     },
@@ -186,8 +263,11 @@ function withConceptualModel(review: any) {
   const recommendedBroader = strings(review?.commands?.recommendedBroader);
   const hasArtifacts = Object.values(review?.artifacts || {}).some(Boolean);
   const rollbackAvailable = review?.rollback?.available === true;
-  const checksFailed = review?.checks?.ok === false || strings(review?.checks?.failedGateChecks).length > 0;
+  const checkOkObserved = typeof review?.checks?.ok === 'boolean';
+  const failedGateChecks = strings(review?.checks?.failedGateChecks);
+  const checksFailed = (checkOkObserved && review.checks.ok === false) || failedGateChecks.length > 0;
   const checksPassedWithObservedCommands = review?.checks?.ok === true && selectedCommands.length > 0;
+  const validationExecutionObserved = selectedCommands.length > 0 && checkOkObserved;
   const graphObserved = review?.graphImpact?.hasImpactEvidence === true;
   const graphApplicable = review?.source?.kind !== 'target_dogfood' || review?.scope?.sourceKind !== 'unknown';
   const rawLimitations = strings(review?.graphImpact?.limitations);
@@ -203,7 +283,7 @@ function withConceptualModel(review: any) {
     },
   };
 
-  const validationExecutionState = evidenceState('required', selectedCommands.length > 0, checksFailed);
+  const validationExecutionState = evidenceState('required', validationExecutionObserved, checksFailed);
   const validationExecutionDurability: EvidenceDurability = validationExecutionState === 'observed' || validationExecutionState === 'failed'
     ? 'reproducible_local'
     : 'ephemeral';
@@ -222,18 +302,44 @@ function withConceptualModel(review: any) {
     { id: 'no-implicit-mutation', boundary: 'Rendering evidence review output must not mutate source, snapshots, target repos, AK, or databases.', affectedScope: 'mutation' },
   ];
 
-  const reviewLimitations = limitations.map((text, index) => limitation(
+  const validationLimitations = checksPassedWithObservedCommands ? [] : [limitation(
+    'validation-execution-limitation-1',
+    checksFailed ? 'Selected validation checks failed.' : 'Selected validation check evidence is unavailable or incomplete.',
+    'validation-execution',
+    ['checks-result'],
+    ['continue-or-stop', 'run-stronger-checks'],
+    checksFailed ? 'blocking' : 'warning',
+  )];
+  const graphLimitations = limitations.map((text, index) => limitation(
     `graph-impact-limitation-${index + 1}`,
     text,
     'graph-impact',
     ['graph-limitations'],
     ['continue-or-stop'],
   ));
-  const limitationIds = reviewLimitations.map((item) => item.id);
+  const previewLimitations = reviewWithLimitations?.outcome?.previewOnly ? [limitation(
+    'preview-boundary-limitation-1',
+    'Preview-only evidence does not prove apply safety or rollback availability.',
+    'rollback',
+    ['preview-boundary'],
+    ['continue-or-stop'],
+  )] : [];
+  const reviewLimitations = validationLimitations.concat(graphLimitations, previewLimitations);
+  const validationLimitationIds = validationLimitations.map((item) => item.id);
+  const graphLimitationIds = graphLimitations.map((item) => item.id);
+  const previewLimitationIds = previewLimitations.map((item) => item.id);
+  const continueLimitingClaims = [
+    ...(checksPassedWithObservedCommands ? [] : ['checks-result']),
+    ...(limitations.length ? ['graph-limitations'] : []),
+    ...(previewLimitations.length ? ['preview-boundary'] : []),
+  ];
+  const continueUncertainty = continueLimitingClaims.length
+    ? 'Review claims include visible limitations; inspect before continuing.'
+    : 'No graph, check, or preview limitation recorded in this review.';
 
   const operatorDecisionPoints = [
-    { id: 'continue-or-stop', options: ['continue', 'stop', 'inspect limitations'], supportingClaims: ['checks-result'], limitingClaims: limitations.length ? ['graph-limitations'] : [], residualUncertainty: limitations.length ? 'Graph or impact evidence has visible limitations.' : 'No graph limitation recorded in this review.' },
-    { id: 'run-stronger-checks', options: ['accept selected checks', 'run recommended minimum', 'run recommended broader'], supportingClaims: ['command-distinction'], limitingClaims: [], residualUncertainty: recommendedMinimum.length || recommendedBroader.length ? 'Recommended commands remain advisory unless executed.' : 'No additional recommendations recorded.' },
+    { id: 'continue-or-stop', options: ['continue', 'stop', 'inspect limitations'], supportingClaims: ['checks-result'], limitingClaims: continueLimitingClaims, residualUncertainty: continueUncertainty },
+    { id: 'run-stronger-checks', options: ['accept selected checks', 'run recommended minimum', 'run recommended broader'], supportingClaims: ['command-distinction'], limitingClaims: checksPassedWithObservedCommands ? [] : ['checks-result'], residualUncertainty: recommendedMinimum.length || recommendedBroader.length ? 'Recommended commands remain advisory unless executed.' : 'No additional recommendations recorded.' },
   ];
 
   const claims = [
@@ -242,7 +348,7 @@ function withConceptualModel(review: any) {
       checksPassedWithObservedCommands ? 'Selected validation checks passed.' : 'Selected validation checks did not prove a clean pass.',
       checksPassedWithObservedCommands ? 'supported' : checksFailed ? 'contradicted' : 'unresolved',
       ['validation-execution'],
-      checksPassedWithObservedCommands ? [] : ['validation-execution'],
+      validationLimitationIds,
       'Executed command evidence, not recommendation text, determines this claim; check success without selected command evidence is not enough.',
       ['not-production-readiness', 'not-canonical-authority'],
       ['continue-or-stop', 'run-stronger-checks'],
@@ -262,7 +368,7 @@ function withConceptualModel(review: any) {
       limitations.length ? 'Graph or impact evidence includes visible limitations.' : 'No graph limitation was recorded in this review.',
       limitations.length ? 'weakened' : graphObserved ? 'supported' : 'unresolved',
       ['graph-impact'],
-      limitationIds,
+      graphLimitationIds,
       'Missing or fallback-shaped graph evidence qualifies continuation decisions; it does not imply no impact.',
       ['not-production-readiness'],
       ['continue-or-stop'],
@@ -272,14 +378,16 @@ function withConceptualModel(review: any) {
       reviewWithLimitations?.outcome?.previewOnly ? 'This evidence remains preview-only and does not prove apply safety.' : 'This evidence includes apply posture.',
       reviewWithLimitations?.outcome?.previewOnly ? 'weakened' : 'supported',
       ['source', 'snapshot-artifacts'],
-      reviewWithLimitations?.outcome?.previewOnly ? ['rollback'] : [],
+      previewLimitationIds,
       'Preview evidence can support continued review, not production readiness or governance acceptance.',
       ['not-production-readiness', 'no-implicit-mutation'],
       ['continue-or-stop'],
     ),
   ];
 
-  return { ...reviewWithLimitations, evidenceArtifacts, limitations: reviewLimitations, claims, authorityBoundaries, operatorDecisionPoints };
+  const reviewWithConcepts = { ...reviewWithLimitations, evidenceArtifacts, limitations: reviewLimitations, claims, authorityBoundaries, operatorDecisionPoints };
+  validateReferenceIntegrity(reviewWithConcepts);
+  return reviewWithConcepts;
 }
 
 function normalize(raw: any) {
@@ -291,7 +399,7 @@ function normalize(raw: any) {
 }
 
 function bullet(items: string[]): string {
-  return items.length ? items.map((item) => `- ${item}`).join('\n') : '- none';
+  return items.length ? items.map((item) => `- ${mdInline(item)}`).join('\n') : '- none';
 }
 
 function renderMarkdown(review: any): string {
@@ -301,28 +409,28 @@ function renderMarkdown(review: any): string {
   const safety = review.safety || {};
   return `# SCI evidence review\n\n` +
     `## 1. Outcome banner\n\n` +
-    `- Source: ${review.source.kind} (${review.source.schema || 'unknown'})\n` +
-    `- Workflow: ${review.source.workflow || 'unknown'}\n` +
-    `- OK: ${review.outcome.ok}\n` +
-    `- Status: ${review.outcome.status || 'unknown'}\n` +
+    `- Source: ${mdInline(review.source.kind)} (${mdInline(review.source.schema || 'unknown')})\n` +
+    `- Workflow: ${mdInline(review.source.workflow || 'unknown')}\n` +
+    `- OK: ${mdInline(review.outcome.ok)}\n` +
+    `- Status: ${mdInline(review.outcome.status || 'unknown')}\n` +
     `- Preview-only: ${review.outcome.previewOnly}\n` +
     `- Applied: ${review.outcome.applied}\n` +
     `- Production-ready: false — Alpha evidence is not production readiness.\n\n` +
     `Operator question: Is this evidence enough to continue, or should the operator stop and inspect details?\n\n` +
     `### Review claims\n\n` +
-    `${arr(review.claims).map((c: any) => `- ${c.id}: ${c.status} — ${c.claim}`).join('\n') || '- none'}\n\n` +
+    `${arr(review.claims).map((c: any) => `- ${mdInline(c.id)}: ${mdInline(c.status)} — ${mdInline(c.claim)}`).join('\n') || '- none'}\n\n` +
     `### Authority boundaries\n\n` +
-    `${arr(review.authorityBoundaries).map((b: any) => `- ${b.id}: ${b.boundary}`).join('\n') || '- none'}\n\n` +
+    `${arr(review.authorityBoundaries).map((b: any) => `- ${mdInline(b.id)}: ${mdInline(b.boundary)}`).join('\n') || '- none'}\n\n` +
     `### Operator decision points\n\n` +
-    `${arr(review.operatorDecisionPoints).map((p: any) => `- ${p.id}: ${strings(p.options).join(', ')}; uncertainty: ${p.residualUncertainty || 'not recorded'}`).join('\n') || '- none'}\n\n` +
+    `${arr(review.operatorDecisionPoints).map((p: any) => `- ${mdInline(p.id)}: ${strings(p.options).map(mdInline).join(', ')}; uncertainty: ${mdInline(p.residualUncertainty || 'not recorded')}`).join('\n') || '- none'}\n\n` +
     `### Evidence artifact durability\n\n` +
-    `${arr(review.evidenceArtifacts).map((a: any) => `- ${a.id}: ${a.observedStatus}; durability=${a.durability}; cite=${a.citationRequirement}`).join('\n') || '- none'}\n\n` +
+    `${arr(review.evidenceArtifacts).map((a: any) => `- ${mdInline(a.id)}: ${mdInline(a.observedStatus)}; durability=${mdInline(a.durability)}; cite=${mdInline(a.citationRequirement)}`).join('\n') || '- none'}\n\n` +
     `### First-class limitations\n\n` +
-    `${arr(review.limitations).map((l: any) => `- ${l.id}: ${l.severity || 'warning'} — ${l.limitation}; source=${l.sourceArtifact || 'unknown'}`).join('\n') || '- none'}\n\n` +
+    `${arr(review.limitations).map((l: any) => `- ${mdInline(l.id)}: ${mdInline(l.severity || 'warning')} — ${mdInline(l.limitation)}; source=${mdInline(l.sourceArtifact || 'unknown')}`).join('\n') || '- none'}\n\n` +
     `## 2. Changed or affected scope\n\n` +
     `- Touched files:\n${bullet(strings(review.scope.touchedFiles))}\n` +
-    `- Risk: ${review.scope.risk ? JSON.stringify(review.scope.risk) : 'not recorded'}\n` +
-    `- Target: ${review.scope.target ? JSON.stringify(review.scope.target) : 'not a target-dogfood review'}\n\n` +
+    `- Risk: ${mdInline(review.scope.risk ? JSON.stringify(review.scope.risk) : 'not recorded')}\n` +
+    `- Target: ${mdInline(review.scope.target ? JSON.stringify(review.scope.target) : 'not a target-dogfood review')}\n\n` +
     `## 3. Validation commands\n\n` +
     `Selected commands actually run:\n${bullet(strings(commands.selected))}\n\n` +
     `Recommended minimum commands (advisory):\n${bullet(strings(commands.recommendedMinimum))}\n\n` +
@@ -341,16 +449,16 @@ function renderMarkdown(review: any): string {
     `- Limitations/fallback notes:\n${bullet(strings(graph.limitations))}\n` +
     `- Planning hints:\n${bullet(strings(graph.planningHints))}\n\n` +
     `## 6. Snapshot and artifacts\n\n` +
-    `- Overlay diff: ${artifacts.overlayDiff || 'not recorded'}\n` +
-    `- Status: ${artifacts.status || 'not recorded'}\n` +
-    `- Progress: ${artifacts.progress || 'not recorded'}\n` +
-    `- Rollback available: ${review.rollback.available}\n` +
-    `- Rollback command: ${review.rollback.command || 'not recorded'}\n\n` +
+    `- Overlay diff: ${mdInline(artifacts.overlayDiff || 'not recorded')}\n` +
+    `- Status: ${mdInline(artifacts.status || 'not recorded')}\n` +
+    `- Progress: ${mdInline(artifacts.progress || 'not recorded')}\n` +
+    `- Rollback available: ${mdInline(review.rollback.available)}\n` +
+    `- Rollback command: ${mdInline(review.rollback.command || 'not recorded')}\n\n` +
     `## 7. Safety and authority boundary\n\n` +
     `- Source mutated: ${safety.sourceMutated === true}\n` +
     `- Target status preserved: ${safety.targetStatusPreserved ?? 'not applicable'}\n` +
-    `- Authority: ${safety.authorityBoundary}\n` +
-    `- Boundary: ${safety.productionBoundary}\n`;
+    `- Authority: ${mdInline(safety.authorityBoundary)}\n` +
+    `- Boundary: ${mdInline(safety.productionBoundary)}\n`;
 }
 
 const raw = readJson(inputPath);

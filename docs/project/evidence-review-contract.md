@@ -236,7 +236,7 @@ Implementations may normalize input into this shape before rendering:
 }
 ```
 
-The first-class `evidenceArtifacts`, `limitations`, `claims`, `authorityBoundaries`, and `operatorDecisionPoints` fields are required to prevent the review from collapsing artifacts into claims, claims into authority, limitations into green status, or recommendations into executed commands. Evidence artifacts also carry durability and citation requirements so `snapshot://` pointers are not mistaken for durable proof.
+The first-class `evidenceArtifacts`, `limitations`, `claims`, `authorityBoundaries`, and `operatorDecisionPoints` fields are required to prevent the review from collapsing artifacts into claims, claims into authority, limitations into green status, or recommendations into executed commands. `ReviewClaim.limitedBy` must reference `limitations[].id` values, not artifact IDs. Evidence artifacts also carry durability and citation requirements so `snapshot://` pointers are not mistaken for durable proof. Markdown renderers must neutralize caller-controlled evidence text so limitation strings cannot forge headings, status banners, or completion claims.
 
 ## Validation checks for an implementation wave
 
@@ -249,8 +249,10 @@ Any implementation of this contract must validate:
 5. preview/apply posture is visible;
 6. rollback absence/presence is visible;
 7. production-readiness caveat is visible;
-8. docs strict and direction check pass;
-9. if runtime contracts change, `bun run alpha:mvp:check` still passes.
+8. untrusted evidence text cannot forge markdown headings/status;
+9. oversized evidence inputs fail closed before parsing;
+10. docs strict and direction check pass;
+11. if runtime contracts change, `bun run alpha:mvp:check` still passes.
 
 ## Non-goals
 

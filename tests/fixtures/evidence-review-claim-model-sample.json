@@ -138,6 +138,18 @@
         "continue-or-stop"
       ],
       "severity": "warning"
+    },
+    {
+      "id": "preview-boundary-limitation-1",
+      "limitation": "Preview-only evidence does not prove apply safety or rollback availability.",
+      "sourceArtifact": "rollback",
+      "affectsClaims": [
+        "preview-boundary"
+      ],
+      "affectsDecisionPoints": [
+        "continue-or-stop"
+      ],
+      "severity": "warning"
     }
   ],
   "claims": [
@@ -202,7 +214,7 @@
         "snapshot-artifacts"
       ],
       "limitedBy": [
-        "rollback"
+        "preview-boundary-limitation-1"
       ],
       "warrant": "Preview evidence can support continued review, not production readiness or governance acceptance.",
       "authorityBoundaries": [
@@ -243,9 +255,10 @@
         "checks-result"
       ],
       "limitingClaims": [
-        "graph-limitations"
+        "graph-limitations",
+        "preview-boundary"
       ],
-      "residualUncertainty": "Graph or impact evidence has visible limitations."
+      "residualUncertainty": "Review claims include visible limitations; inspect before continuing."
     },
     {
       "id": "run-stronger-checks",
