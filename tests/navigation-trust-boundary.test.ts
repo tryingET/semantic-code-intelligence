@@ -15,15 +15,19 @@ function uniqueWorkspacePath(prefix: string): string {
     return track(resolve(process.cwd(), `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`));
 }
 
-function outsideFileWith(content: string, ext = 'ts'): string {
+function outsideFileWith(content: string, ext = 'ts', stem = 'outside'): string {
     const outsideDir = track(mkdtempSync(join(tmpdir(), 'sci-navigation-outside-')));
-    const outsideFile = join(outsideDir, `outside.${ext}`);
+    const outsideFile = join(outsideDir, `${stem}.${ext}`);
     writeFileSync(outsideFile, content);
     return outsideFile;
 }
 
 function rendered(result: any): string {
     return JSON.stringify(result);
+}
+
+function parseToolJson(result: any): any {
+    return JSON.parse(result?.content?.[0]?.text || '{}');
 }
 
 afterEach(() => {
@@ -111,6 +115,33 @@ describe('navigation workspace trust boundary', () => {
         expect(body).not.toContain('OutsideDefinitionSecret() { return 1; }');
     });
 
+    test('find_definition filters out-of-workspace result URIs returned by core', async () => {
+        const secretName = `OutsideReturnedDefinitionSecret${Date.now()}${Math.random().toString(16).slice(2)}`;
+        const outsideFile = outsideFileWith(`export function ${secretName}() { return 1; }\n`, 'ts', secretName);
+        const mcp = new MCPAdapter({
+            async initialize() {},
+            async findDefinitionAsync() {
+                return {
+                    data: [{ uri: `file://${outsideFile}`, range: { start: { line: 0, character: 16 }, end: { line: 0, character: 16 + secretName.length } }, kind: 'function', name: secretName, confidence: 1 }],
+                    performance: { total: 0 },
+                };
+            },
+        } as any);
+
+        const result = await mcp.handleToolCall('find_definition', {
+            file: 'src/core/code-graph.ts',
+            symbol: secretName,
+        });
+        const payload = parseToolJson(result);
+        const body = rendered(result);
+
+        expect(result.isError).toBe(false);
+        expect(payload.definitions).toHaveLength(0);
+        expect(payload.count).toBe(0);
+        expect(body).not.toContain(outsideFile);
+        expect(body).not.toContain(`${secretName}() { return 1; }`);
+    });
+
     test('find_references rejects outside file before calling core', async () => {
         const outsideFile = outsideFileWith('OutsideReferencesSecret();\n');
         let called = false;
@@ -132,6 +163,33 @@ describe('navigation workspace trust boundary', () => {
         expect(rendered(result)).toContain('workspace');
     });
 
+    test('find_references filters out-of-workspace result URIs returned by core', async () => {
+        const secretName = `OutsideReturnedReferencesSecret${Date.now()}${Math.random().toString(16).slice(2)}`;
+        const outsideFile = outsideFileWith(`${secretName}();\n`);
+        const mcp = new MCPAdapter({
+            async initialize() {},
+            async findReferencesAsync() {
+                return {
+                    data: [{ uri: `file://${outsideFile}`, range: { start: { line: 0, character: 0 }, end: { line: 0, character: secretName.length } }, kind: 'reference', name: secretName }],
+                    performance: { total: 0 },
+                };
+            },
+        } as any);
+
+        const result = await mcp.handleToolCall('find_references', {
+            file: 'src/core/code-graph.ts',
+            symbol: secretName,
+        });
+        const payload = parseToolJson(result);
+        const body = rendered(result);
+
+        expect(result.isError).toBe(false);
+        expect(payload.references).toHaveLength(0);
+        expect(payload.count).toBe(0);
+        expect(body).not.toContain(outsideFile);
+        expect(body).not.toContain(secretName);
+    });
+
     test('explore_codebase rejects outside file before calling core', async () => {
         const outsideFile = outsideFileWith('export const outsideExploreSecret = true;\n');
         let called = false;
@@ -150,5 +208,36 @@ describe('navigation workspace trust boundary', () => {
         expect(result.isError).toBe(true);
         expect(called).toBe(false);
         expect(rendered(result)).toContain('workspace');
+    });
+
+    test('explore_codebase filters out-of-workspace definition and reference URIs returned by core', async () => {
+        const secretName = `outsideExploreReturnedSecret${Date.now()}${Math.random().toString(16).slice(2)}`;
+        const outsideFile = outsideFileWith(`export const ${secretName} = true;\n`);
+        const mcp = new MCPAdapter({
+            async exploreCodebase() {
+                return {
+                    symbol: secretName,
+                    contextUri: 'file://workspace/src/core/code-graph.ts',
+                    definitions: [{ uri: `file://${outsideFile}`, range: { start: { line: 0, character: 13 }, end: { line: 0, character: 13 + secretName.length } }, kind: 'variable', name: secretName }],
+                    references: [{ uri: `file://${outsideFile}`, range: { start: { line: 0, character: 13 }, end: { line: 0, character: 13 + secretName.length } }, kind: 'reference', name: secretName }],
+                    performance: {},
+                    diagnostics: [],
+                    timestamp: '',
+                };
+            },
+        } as any);
+
+        const result = await mcp.handleToolCall('explore_codebase', {
+            file: 'src/core/code-graph.ts',
+            symbol: secretName,
+        });
+        const payload = parseToolJson(result);
+        const body = rendered(result);
+
+        expect(result.isError).toBe(false);
+        expect(payload.definitions).toHaveLength(0);
+        expect(payload.references).toHaveLength(0);
+        expect(body).not.toContain(outsideFile);
+        expect(body).not.toContain(`${secretName} = true`);
     });
 });

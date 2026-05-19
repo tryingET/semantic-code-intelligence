@@ -158,6 +158,15 @@ export class MCPAdapter {
         }
     }
 
+    private async filterMcpWorkspaceItemsByUri<T extends { uri?: unknown }>(items: T[], inputLabel: string): Promise<T[]> {
+        const contained: T[] = [];
+        for (const item of items) {
+            const uri = typeof item?.uri === 'string' ? item.uri : '';
+            if (uri && (await this.containedMcpUriOrNull(uri, inputLabel))) contained.push(item);
+        }
+        return contained;
+    }
+
     /**
      * Get available MCP tools
      */
@@ -2559,7 +2568,7 @@ export class MCPAdapter {
 
             try {
                 // Quick explicit declaration scan to prefer true definitions in small workspaces
-                const wsRoot = (this.coreAnalyzer as any)?.config?.workspaceRoot || process.cwd();
+                const wsRoot = this.getWorkspaceRoot();
                 const explicit = await this.scanForExplicitDeclaration(wsRoot, symbol);
                 if (explicit) {
                     return {
@@ -2636,7 +2645,7 @@ export class MCPAdapter {
                     const name = String(args.symbol || '').toLowerCase();
                     const likelyTop = top ? toBase(top.uri).toLowerCase().includes(name) : false;
                     if (!likelyTop) {
-                        const wsRoot = (this.coreAnalyzer as any)?.config?.workspaceRoot || process.cwd();
+                        const wsRoot = this.getWorkspaceRoot();
                         const fallbackDefs = await this.fallbackScanForDefinition(wsRoot, args.symbol, 300);
                         const match = fallbackDefs.find((d) => toBase(d.uri).toLowerCase().includes(name));
                         if (match) {
@@ -2644,7 +2653,6 @@ export class MCPAdapter {
                         }
                         // As a final tie-breaker, inspect candidate lines to detect declarations
                         if (Array.isArray(prioritized) && prioritized.length) {
-                            const fs = await import('fs/promises');
                             const declRe = new RegExp(`\\b(class|function|interface|type)\\s+${args.symbol}\\b`);
                             for (const def of prioritized.slice(0, 200)) {
                                 try {
@@ -2658,19 +2666,26 @@ export class MCPAdapter {
                                     const containedUri = await this.containedMcpUriOrNull(filePath, 'find_definition result uri');
                                     if (!containedUri) continue;
                                     const containedPath = fileURLToPath(containedUri);
-                                    const text = await fs.readFile(containedPath, 'utf8');
-                                    const lines = text.split(/\r?\n/);
-                                    const line = lines[def.range?.start?.line ?? 0] || '';
-                                    if (declRe.test(line)) {
-                                        // Promote this as the top result
-                                        prioritized = [def, ...prioritized.filter((d: any) => d !== def)];
-                                        break;
+                                    let opened: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
+                                    try {
+                                        opened = await openWorkspaceFileForRead(containedPath, { workspaceRoot: this.getWorkspaceRoot(), inputLabel: 'find_definition result uri' });
+                                        const text = await opened.handle.readFile('utf8');
+                                        const lines = text.split(/\r?\n/);
+                                        const line = lines[def.range?.start?.line ?? 0] || '';
+                                        if (declRe.test(line)) {
+                                            // Promote this as the top result
+                                            prioritized = [def, ...prioritized.filter((d: any) => d !== def)];
+                                            break;
+                                        }
+                                    } finally {
+                                        await opened?.handle.close().catch(() => undefined);
                                     }
                                 } catch {}
                             }
                         }
                     }
                 } catch {}
+                const containedPrioritized = await this.filterMcpWorkspaceItemsByUri(Array.isArray(prioritized) ? prioritized : [], 'find_definition result uri');
                 return {
                     content: [
                         {
@@ -2678,10 +2693,10 @@ export class MCPAdapter {
                             text: JSON.stringify(
                                 {
                                     schemaVersion: 2,
-                                    definitions: prioritized.map((def: any) => definitionToApiResponse(def)),
+                                    definitions: containedPrioritized.map((def: any) => definitionToApiResponse(def)),
                                     performance: result.performance,
                                     requestId: result.requestId,
-                                    count: Array.isArray(prioritized) ? prioritized.length : 0,
+                                    count: containedPrioritized.length,
                                 },
                                 null,
                                 2
@@ -2692,8 +2707,9 @@ export class MCPAdapter {
                 };
             } catch (e) {
                 // Fallback: perform a very small, bounded scan in the configured workspace root
-                const wsRoot = (this.coreAnalyzer as any)?.config?.workspaceRoot || process.cwd();
+                const wsRoot = this.getWorkspaceRoot();
                 const fallbackDefs = await this.fallbackScanForDefinition(wsRoot, args.symbol, 200);
+                const containedFallbackDefs = await this.filterMcpWorkspaceItemsByUri(fallbackDefs, 'find_definition fallback result uri');
                 return {
                     content: [
                         {
@@ -2701,10 +2717,10 @@ export class MCPAdapter {
                             text: JSON.stringify(
                                 {
                                     schemaVersion: 2,
-                                    definitions: fallbackDefs.map((def: any) => definitionToApiResponse(def)),
+                                    definitions: containedFallbackDefs.map((def: any) => definitionToApiResponse(def)),
                                     performance: { layer1: 0, layer2: 0, layer3: 0, layer4: 0, layer5: 0, total: 0 },
                                     requestId: undefined,
-                                    count: fallbackDefs.length,
+                                    count: containedFallbackDefs.length,
                                     fallback: true,
                                 },
                                 null,
@@ -2751,6 +2767,7 @@ export class MCPAdapter {
               })
             : result.data;
 
+        const containedPrioritized = await this.filterMcpWorkspaceItemsByUri(Array.isArray(prioritized) ? prioritized : [], 'find_definition result uri');
         return {
             content: [
                 {
@@ -2758,10 +2775,10 @@ export class MCPAdapter {
                     text: JSON.stringify(
                         {
                             schemaVersion: 2,
-                            definitions: prioritized.map((def: any) => definitionToApiResponse(def)),
+                            definitions: containedPrioritized.map((def: any) => definitionToApiResponse(def)),
                             performance: result.performance,
                             requestId: result.requestId,
-                            count: Array.isArray(prioritized) ? prioritized.length : 0,
+                            count: containedPrioritized.length,
                         },
                         null,
                         2
@@ -2833,14 +2850,15 @@ export class MCPAdapter {
     }
 
     // Targeted scan to detect explicit declarations like class/function/interface/type <Symbol>
-    private async scanForExplicitDeclaration(root: string, symbol: string) {
+    private async scanForExplicitDeclaration(root: string, symbol: string, maxFiles = 300) {
         const fs = await import('fs/promises');
         const path = await import('path');
         const queue: string[] = [root];
         const visited: Set<string> = new Set();
         const declRe = new RegExp(`\\b(class|function|interface|type)\\s+${symbol}\\b`);
+        let filesScanned = 0;
 
-        while (queue.length) {
+        while (queue.length && filesScanned < maxFiles) {
             const dir = queue.shift()!;
             if (visited.has(dir)) continue;
             visited.add(dir);
@@ -2856,6 +2874,7 @@ export class MCPAdapter {
                     if (/node_modules|\.git|dist|coverage|out|build|venv|\.venv/.test(ent.name)) continue;
                     queue.push(p);
                 } else if (ent.isFile() && /\.(ts|tsx|js|jsx|md)$/.test(ent.name)) {
+                    filesScanned++;
                     try {
                         const text = await fs.readFile(p, 'utf8');
                         const lines = text.split(/\r?\n/);
@@ -2954,6 +2973,7 @@ export class MCPAdapter {
         });
 
         const result = await (this.coreAnalyzer as any).findReferencesAsync(request);
+        const containedReferences = await this.filterMcpWorkspaceItemsByUri(Array.isArray(result.data) ? result.data : [], 'find_references result uri');
 
         return {
             content: [
@@ -2962,10 +2982,10 @@ export class MCPAdapter {
                     text: JSON.stringify(
                         {
                             schemaVersion: 2,
-                            references: result.data.map((ref: any) => referenceToApiResponse(ref)),
+                            references: containedReferences.map((ref: any) => referenceToApiResponse(ref)),
                             performance: result.performance,
                             requestId: result.requestId,
-                            count: result.data.length,
+                            count: containedReferences.length,
                             scope: args.scope || 'workspace',
                         },
                         null,
@@ -3289,13 +3309,16 @@ export class MCPAdapter {
             conceptual: !!args.conceptual,
         });
 
+        const containedDefinitions = await this.filterMcpWorkspaceItemsByUri(Array.isArray(coreResult.definitions) ? coreResult.definitions : [], 'explore_codebase definition uri');
+        const containedReferences = await this.filterMcpWorkspaceItemsByUri(Array.isArray(coreResult.references) ? coreResult.references : [], 'explore_codebase reference uri');
+
         // Map definitions/references for MCP output while preserving performance/diagnostics
         const mapped = {
             schemaVersion: 2,
             symbol: coreResult.symbol,
             contextUri: coreResult.contextUri,
-            definitions: coreResult.definitions.map((def: any) => definitionToApiResponse(def)),
-            references: coreResult.references.map((ref: any) => referenceToApiResponse(ref)),
+            definitions: containedDefinitions.map((def: any) => definitionToApiResponse(def)),
+            references: containedReferences.map((ref: any) => referenceToApiResponse(ref)),
             performance: coreResult.performance,
             diagnostics: coreResult.diagnostics,
             timestamp: coreResult.timestamp,
