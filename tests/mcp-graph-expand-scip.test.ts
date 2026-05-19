@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { create } from '@bufbuild/protobuf';
 import {
@@ -124,5 +125,43 @@ describe('MCP graph_expand SCIP backend', () => {
         expect(obj.neighbors.exports[0].file).toBe('pkg/foo.go');
         expect(obj.impactSummary?.limitations).toContain('callers: SCIP backend returns symbol references, not proven call sites');
         expect(obj.impactSummary?.limitations).toContain('callees: SCIP reader does not infer callee edges yet');
+    });
+
+    test('fails closed for explicit invalid SCIP artifacts', async () => {
+        const malformedPath = join(process.cwd(), '.test-results', 'scip-graph-expand', 'not-scip.scip');
+        mkdirSync(join(process.cwd(), '.test-results', 'scip-graph-expand'), { recursive: true });
+        writeFileSync(malformedPath, 'not a scip index');
+
+        const malformed = await mcp.handleToolCall('graph_expand', {
+            file: 'pkg/foo.go',
+            edges: ['imports'],
+            scipIndexPath: malformedPath,
+        });
+        expect(malformed.isError).toBe(true);
+
+        const outsidePath = join(tmpdir(), 'outside-sci-index.scip');
+        writeFileSync(outsidePath, 'not a scip index');
+        const outside = await mcp.handleToolCall('graph_expand', {
+            file: 'pkg/foo.go',
+            edges: ['imports'],
+            scipIndexPath: outsidePath,
+        });
+        expect(outside.isError).toBe(true);
+        expect(String(outside.content?.[0]?.text || '')).toContain('scipIndexPath must stay within the workspace');
+    });
+
+    test('matches absolute file seeds against SCIP project root', async () => {
+        const scipIndexPath = writeSampleScipIndex();
+        const res = await mcp.handleToolCall('graph_expand', {
+            file: join(process.cwd(), 'pkg/foo.go'),
+            edges: ['imports', 'exports'],
+            scipIndexPath,
+            limit: 10,
+        });
+        const obj = await parse(res);
+
+        expect(obj.impactSummary?.backend).toBe('scip');
+        expect(obj.neighbors.imports).toHaveLength(1);
+        expect(obj.neighbors.exports).toHaveLength(1);
     });
 });

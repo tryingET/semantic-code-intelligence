@@ -848,170 +848,61 @@ export class HTTPServer {
                         }
                     }
 
-                    // Graph Expand endpoint (graceful fallback)
+                    // Graph Expand endpoint (HTTP parity with MCP graph_expand)
                     if (url.pathname === '/api/v1/graph-expand' && request.method === 'POST') {
-                        const raw = await this.getRequestBody(request);
-                        const body: any = raw ? JSON.parse(raw) : {};
-                        const edges: string[] =
-                            Array.isArray(body.edges) && body.edges.length ? body.edges : ['imports', 'exports'];
-	                        try {
-	                            const { expandNeighbors } = await import('../core/code-graph.js');
-	                            const t0 = Date.now();
-		                            const out = await expandNeighbors({
-		                                file: body.file,
-		                                symbol: body.symbol,
-		                                edges,
-		                                depth: body.depth,
-		                                limit: body.limit,
-		                            });
-		                            const payload = { schemaVersion: 2, ...out };
-                                    // Note incidence metric: returned a note/warning (best-effort / partial results)
-                                    if (typeof (payload as any)?.note === 'string' && String((payload as any).note).length) {
-                                        try {
-                                            (this.coreAnalyzer as any)?.sharedServices?.monitoring?.recordToolCall?.(
-                                                'graph_expand_note'
-                                            );
-                                        } catch {}
-                                        try {
-                                            recordToolEnd('http', 'graph_expand_note', 0, true);
-                                        } catch {}
-                                    }
-		                            // Record primary-path usage in monitoring counters (minimal)
-		                            try {
-		                                (this.coreAnalyzer as any)?.sharedServices?.monitoring?.recordToolCall?.(
-		                                    'graph_expand_primary'
-	                                );
-                            } catch {}
-                            try {
-                                recordToolEnd('http', 'graph_expand_primary', Date.now() - t0, true);
-                            } catch {}
-	                            return new Response(JSON.stringify({ success: true, data: payload }), {
-	                                status: 200,
-	                                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-	                            });
-	                        } catch (err) {
-                            // Record fallback usage in monitoring counters (minimal)
-                            try {
-                                (this.coreAnalyzer as any)?.sharedServices?.monitoring?.recordToolCall?.(
-                                    'graph_expand_fallback'
-                                );
-                            } catch {}
-                            try {
-                                recordToolEnd('http', 'graph_expand_fallback', 0, true);
-                            } catch {}
-                            // Fallback: never 500 — AST-only import/export extraction if possible, else regex; return empty neighbors if none
-                            const neighbors: Record<string, any[]> = {
-                                imports: [],
-                                exports: [],
-                                callers: [],
-                                callees: [],
-                            };
-                            let note = 'fallback: graph expand unavailable; returning empty neighbors';
-                            let astTried = false;
-                            // Try AST-only extraction for TS/JS if file path is provided
-                            try {
-                                if (typeof body.file === 'string') {
-                                    const abs = body.file as string;
-                                    const lower = abs.toLowerCase();
-                                    let language: 'typescript' | 'javascript' | 'python' | null = null;
-                                    if (/\.(ts|tsx)$/.test(lower)) language = 'typescript';
-                                    else if (/\.(js|jsx)$/.test(lower)) language = 'javascript';
-                                    if (language) {
-                                        const { runAstQuery } = await import('../core/ast-query.js');
-                                        const query = `
-                                            (import_statement) @ast.import
-                                            (export_statement) @ast.export
-                                        `;
-                                        const res: any = await runAstQuery({
-                                            language,
-                                            query,
-                                            paths: [abs],
-                                            limit: 2000,
-                                        });
-                                        astTried = true;
-                                        if (Array.isArray(res?.results) && res.results.length > 0) {
-                                            for (const r of res.results) {
-                                                const cap = String(r.capture || '');
-                                                const item = {
-                                                    capture: cap,
-                                                    text: r.snippet || '',
-                                                    start: r.start,
-                                                    end: r.end,
-                                                };
-                                                if (cap.includes('import') && edges.includes('imports'))
-                                                    neighbors.imports.push(item);
-                                                if (cap.includes('export') && edges.includes('exports'))
-                                                    neighbors.exports.push(item);
-                                            }
-                                        }
-                                    }
-                                }
-                            } catch {
-                                // ignore AST fallback errors
+                        const t0 = Date.now();
+                        try {
+                            const raw = await this.getRequestBody(request);
+                            const body: any = strictJsonParse(raw || '{}');
+                            const mcpAdapter = new MCPAdapter(this.coreAnalyzer);
+                            const executor = new ToolExecutor();
+                            const res: any = await executor.execute(mcpAdapter as any, 'graph_expand', body);
+                            const txt = res?.content?.[0]?.text;
+                            const payload = typeof txt === 'string' ? JSON.parse(txt) : res;
+
+                            if (res?.isError) {
+                                try {
+                                    recordToolEnd('http', 'graph_expand_fallback', Date.now() - t0, false);
+                                } catch {}
+                                const code = res?.error?.code;
+                                const status = code === 'InvalidParams' ? 400 : 500;
+                                return new Response(JSON.stringify({ success: false, error: res?.error || { message: 'graph_expand failed' } }), {
+                                    status,
+                                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                                });
                             }
 
-                            // If AST path didn't yield anything, fall back to simple regex scan of the file
-                            if (
-                                neighbors.imports.length + neighbors.exports.length === 0 &&
-                                typeof body.file === 'string'
-                            ) {
+                            if (typeof payload?.note === 'string' && payload.note.length) {
                                 try {
-                                    const f = Bun.file(body.file);
-                                    if (await f.exists()) {
-                                        const text = await f.text();
-                                        const lines = text.split(/\r?\n/);
-                                        if (edges.includes('imports')) {
-                                            const impRe = /^(\s*)(import\s+[^;]+;?)/;
-                                            for (let i = 0; i < lines.length; i++) {
-                                                const m = impRe.exec(lines[i]);
-                                                if (m)
-                                                    neighbors.imports.push({
-                                                        capture: 'fallback.import',
-                                                        text: m[2],
-                                                        start: { line: i, column: 0 },
-                                                        end: { line: i, column: lines[i].length },
-                                                    });
-                                            }
-                                        }
-                                        if (edges.includes('exports')) {
-                                            const expRe = /^(\s*)(export\s+[^;{]+|export\s+\{[^}]*\})/;
-                                            for (let i = 0; i < lines.length; i++) {
-                                                const m = expRe.exec(lines[i]);
-                                                if (m)
-                                                    neighbors.exports.push({
-                                                        capture: 'fallback.export',
-                                                        text: m[2],
-                                                        start: { line: i, column: 0 },
-                                                        end: { line: i, column: lines[i].length },
-                                                    });
-                                            }
-                                        }
-                                    }
+                                    (this.coreAnalyzer as any)?.sharedServices?.monitoring?.recordToolCall?.('graph_expand_note');
+                                } catch {}
+                                try {
+                                    recordToolEnd('http', 'graph_expand_note', 0, true);
                                 } catch {}
                             }
 
-                            // Build note reflecting which fallback path was used
-		                            if (astTried) {
-		                                note = 'fallback: graph expand unavailable; AST-only imports/exports used (or empty)';
-		                            }
-		                            const data = body.file
-		                                ? { schemaVersion: 2, file: body.file, neighbors, note }
-		                                : { schemaVersion: 2, symbol: String(body.symbol || ''), neighbors, note };
-                                    // Note incidence metric: fallback always includes a note describing what happened
-                                    try {
-                                        (this.coreAnalyzer as any)?.sharedServices?.monitoring?.recordToolCall?.(
-                                            'graph_expand_note'
-                                        );
-                                    } catch {}
-                                    try {
-                                        recordToolEnd('http', 'graph_expand_note', 0, true);
-                                    } catch {}
-		                            return new Response(JSON.stringify({ success: true, data }), {
-		                                status: 200,
-		                                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-		                            });
-		                        }
-		                    }
+                            const backend = payload?.impactSummary?.backend;
+                            const metricName = backend === 'fallback' ? 'graph_expand_fallback' : 'graph_expand_primary';
+                            try {
+                                (this.coreAnalyzer as any)?.sharedServices?.monitoring?.recordToolCall?.(metricName);
+                            } catch {}
+                            try {
+                                recordToolEnd('http', metricName, Date.now() - t0, true);
+                            } catch {}
+                            return new Response(JSON.stringify({ success: true, data: payload }), {
+                                status: 200,
+                                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                            });
+                        } catch (err: any) {
+                            try {
+                                recordToolEnd('http', 'graph_expand_fallback', Date.now() - t0, false);
+                            } catch {}
+                            return new Response(JSON.stringify({ success: false, error: err?.message || 'graph_expand failed' }), {
+                                status: 500,
+                                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                            });
+                        }
+                    }
 
                     // Snapshots - list
                     if (url.pathname === '/api/v1/snapshots' && request.method === 'GET') {

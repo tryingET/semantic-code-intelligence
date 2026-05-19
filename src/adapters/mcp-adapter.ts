@@ -2276,7 +2276,7 @@ export class MCPAdapter {
         if (!scipIndexPath) return null;
 
         const { loadScipIndex } = await import('../core/scip-reader.js');
-        const reader = await loadScipIndex(scipIndexPath);
+        const reader = await loadScipIndex(scipIndexPath, { workspaceRoot: process.cwd() });
         const summary = reader.summary();
         const limit = Math.max(1, Math.min(Number(args?.limit || 50) || 50, 1000));
         const neighbors: Record<string, any[]> = { imports: [], exports: [], callers: [], callees: [] };
@@ -2380,7 +2380,10 @@ export class MCPAdapter {
             });
             const payload = { schemaVersion: 2, ...out, impactSummary: this.summarizeGraphImpact(out, args) };
             return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: false };
-        } catch {
+        } catch (error) {
+            if (typeof args?.scipIndexPath === 'string' && args.scipIndexPath.trim()) {
+                return handleAdapterError(error, 'mcp');
+            }
             const neighbors: Record<string, any[]> = { imports: [], exports: [], callers: [], callees: [] };
             const note = 'fallback: graph expand unavailable; returning empty neighbors';
             const out = file ? { file, neighbors, note } : { symbol: symbol || '', neighbors, note };

@@ -54,7 +54,7 @@ Make `graph_expand` limitations predictable for harnessed LLM coding sessions. T
 }
 ```
 
-The provenance shape is forward-compatible with future `live_lsp` backends. Current automatic behavior remains tree-sitter or fallback only, while callers may opt into `backend: "scip"` by passing an explicit existing `scipIndexPath` artifact. SCI does not generate SCIP indexes from `graph_expand`.
+The provenance shape is forward-compatible with future `live_lsp` backends. Current automatic behavior remains tree-sitter or fallback only, while callers may opt into `backend: "scip"` by passing an explicit existing workspace-contained `scipIndexPath` artifact. Invalid or out-of-workspace explicit SCIP artifacts fail closed instead of silently returning fallback evidence. SCI does not generate SCIP indexes from `graph_expand`.
 
 Requested edges that are unsupported for the inferred language appear as `limited` evidence with limitations such as:
 

@@ -1,6 +1,8 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { deserializeSCIP, SymbolRole, type Index, type Occurrence } from '@c4312/scip';
+import { CoreError } from './errors.js';
 
 export type ScipRange = {
     start: { line: number; character: number };
@@ -34,6 +36,13 @@ export type ScipIndexSummary = {
     languages: string[];
 };
 
+export type ScipLoadOptions = {
+    workspaceRoot?: string;
+    maxBytes?: number;
+};
+
+const DEFAULT_MAX_SCIP_BYTES = 50 * 1024 * 1024;
+
 export class ScipIndexReader {
     readonly indexPath: string;
     readonly index: Index;
@@ -64,7 +73,7 @@ export class ScipIndexReader {
     }
 
     occurrencesForFile(file: string): ScipOccurrenceRecord[] {
-        const normalized = normalizeRelativePath(file);
+        const normalized = normalizeInputFilePath(file, this.index.metadata?.projectRoot || null);
         return this.occurrences.filter((occurrence) => occurrence.file === normalized);
     }
 
@@ -95,14 +104,68 @@ export class ScipIndexReader {
     }
 }
 
-export async function loadScipIndex(indexPath: string): Promise<ScipIndexReader> {
-    const bytes = await fs.readFile(indexPath);
+export async function loadScipIndex(indexPath: string, options: ScipLoadOptions = {}): Promise<ScipIndexReader> {
+    const resolved = await resolveScipArtifact(indexPath, options);
+    const bytes = await fs.readFile(resolved.path);
     const index = deserializeSCIP(bytes);
-    return new ScipIndexReader(index, indexPath);
+    return new ScipIndexReader(index, resolved.path);
+}
+
+export async function resolveScipArtifact(indexPath: string, options: ScipLoadOptions = {}): Promise<{ path: string; bytes: number }> {
+    const workspaceRoot = options.workspaceRoot ? path.resolve(options.workspaceRoot) : null;
+    const candidate = path.resolve(workspaceRoot || process.cwd(), indexPath);
+
+    if (workspaceRoot) {
+        const rel = path.relative(workspaceRoot, candidate);
+        if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) {
+            throw new CoreError('InvalidParams', 'scipIndexPath must stay within the workspace', { scipIndexPath: indexPath });
+        }
+    }
+
+    const stat = await fs.stat(candidate).catch((error) => {
+        throw new CoreError('InvalidParams', `Failed to stat SCIP index: ${error instanceof Error ? error.message : String(error)}`, { scipIndexPath: indexPath });
+    });
+    if (!stat.isFile()) {
+        throw new CoreError('InvalidParams', 'scipIndexPath must point to a file', { scipIndexPath: indexPath });
+    }
+
+    const maxBytes = Math.max(1, options.maxBytes ?? DEFAULT_MAX_SCIP_BYTES);
+    if (stat.size > maxBytes) {
+        throw new CoreError('InvalidParams', 'SCIP index exceeds maximum allowed size', { scipIndexPath: indexPath, bytes: stat.size, maxBytes });
+    }
+
+    return { path: candidate, bytes: stat.size };
 }
 
 function normalizeRelativePath(file: string): string {
     return file.split(path.sep).join('/').replace(/^\.\//, '');
+}
+
+function normalizeInputFilePath(file: string, projectRoot: string | null): string {
+    if (!path.isAbsolute(file)) return normalizeRelativePath(file);
+
+    const roots = [projectRoot, process.cwd()]
+        .map((root) => rootToPath(root))
+        .filter((root): root is string => !!root)
+        .map((root) => path.resolve(root));
+
+    for (const root of roots) {
+        const rel = path.relative(root, file);
+        if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) return normalizeRelativePath(rel);
+    }
+    return normalizeRelativePath(file);
+}
+
+function rootToPath(root: string | null | undefined): string | null {
+    if (!root) return null;
+    if (root.startsWith('file://')) {
+        try {
+            return fileURLToPath(root);
+        } catch {
+            return null;
+        }
+    }
+    return root;
 }
 
 function normalizeRange(occurrence: Occurrence): ScipRange {

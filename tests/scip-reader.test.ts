@@ -114,4 +114,18 @@ describe('SCIP reader', () => {
         expect(imported?.symbol).toBe('scip-go gomod fmt/');
         expect(imported?.roles.reference).toBe(true);
     });
+
+    test('normalizes absolute file seeds relative to SCIP project root', async () => {
+        const reader = await loadScipIndex(writeSampleScipIndex());
+        const occurrences = reader.occurrencesForFile('/tmp/sci-scip-reader/pkg/foo.go');
+
+        expect(occurrences).toHaveLength(3);
+        expect(occurrences[0].file).toBe('pkg/foo.go');
+    });
+
+    test('can enforce workspace containment and max artifact size', async () => {
+        const indexPath = writeSampleScipIndex();
+        await expect(loadScipIndex(indexPath, { workspaceRoot: process.cwd() })).rejects.toThrow('scipIndexPath must stay within the workspace');
+        await expect(loadScipIndex(indexPath, { maxBytes: 1 })).rejects.toThrow('SCIP index exceeds maximum allowed size');
+    });
 });
