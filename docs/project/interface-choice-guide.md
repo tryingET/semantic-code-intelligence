@@ -132,14 +132,14 @@ Regardless of interface:
 The interface evidence is credible for Alpha MVP, but not enough for production readiness:
 
 - self-hosted CLI, HTTP, MCP HTTP, MCP stdio, direct adapter, and target-repo CLI paths are all exercised;
-- external target validation-plan dogfood exists for multiple non-SCI repos, including a sibling JavaScript target and a clean worktree of mixed Python/Rust `agent-kernel`;
-- interactive SLO guidance and lightweight elapsed-time history exist, but closure still needs an explicit decision review or one more ecosystem-diverse proof.
+- external target validation-plan dogfood exists for multiple non-SCI repos, including a sibling JavaScript target, a clean worktree of mixed Python/Rust `agent-kernel`, and a clean Clojure worktree;
+- interactive SLO guidance and lightweight elapsed-time history exist, but closure still needs an explicit decision review.
 
 ## Next recommended hardening
 
 After this guide, prefer one of:
 
 1. perform a Phase 1 closure review that explicitly preserves remaining production-readiness gaps; or
-2. repeat external validationPlan dogfood on a clean Clojure/larger mixed-language target repo.
+2. only add more target dogfood if the closure review identifies a specific ecosystem gap.
 
 Do not start Phase 2 UI/workbench polish solely because the Alpha MVP interface set is documented.

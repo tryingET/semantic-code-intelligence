@@ -107,6 +107,7 @@ const languageCounts = {
   javascript: gitFiles("'*.js' 'src/**/*.js' 'web/**/*.js' 'internal/**/*.js'").length,
   python: gitFiles("'*.py' 'src/**/*.py' 'scripts/**/*.py'").length,
   rust: gitFiles("'*.rs' 'src/**/*.rs' 'crates/**/*.rs'").length,
+  clojure: gitFiles("'*.clj' '*.cljs' '*.cljc' 'src/**/*.clj' 'src/**/*.cljs' 'src/**/*.cljc'").length,
 };
 
 const markdown = gitFiles('README.md docs/*.md *.md');
@@ -116,6 +117,7 @@ const sourceCandidates = [
   ...gitFiles("'*.js' 'src/**/*.js' 'web/**/*.js' 'internal/**/*.js'"),
   ...gitFiles("'*.py' 'src/**/*.py' 'scripts/**/*.py'"),
   ...gitFiles("'*.rs' 'src/**/*.rs' 'crates/**/*.rs'"),
+  ...gitFiles("'*.clj' '*.cljs' '*.cljc' 'src/**/*.clj' 'src/**/*.cljs' 'src/**/*.cljc'"),
 ];
 const sourceFile = sourceCandidates[0];
 
@@ -135,7 +137,7 @@ if (!isGitRepo || (!allowDirtyTarget && beforeStatus) || !readPath || !sourceFil
       statusPreserved: false,
       hasReadPath: !!readPath,
       hasSourceFile: !!sourceFile,
-      supportedSourceExtensions: ['.ts', '.js', '.py', '.rs'],
+      supportedSourceExtensions: ['.ts', '.js', '.py', '.rs', '.clj', '.cljs', '.cljc'],
       languageCounts,
     },
     failure: !isGitRepo ? 'target_not_git_repo' : beforeStatus ? 'target_not_clean' : !readPath ? 'no_read_path' : 'no_source_file',
@@ -193,7 +195,11 @@ const evidence = {
     afterOntologyExists,
     cleanupAttempted,
   },
-  selectedPaths: { readPath, sourceFile, sourceKind: sourceFile.endsWith('.rs') ? 'rust' : sourceFile.endsWith('.py') ? 'python' : sourceFile.endsWith('.js') ? 'javascript' : 'typescript' },
+  selectedPaths: {
+    readPath,
+    sourceFile,
+    sourceKind: /\.clj[sc]?$/.test(sourceFile) ? 'clojure' : sourceFile.endsWith('.rs') ? 'rust' : sourceFile.endsWith('.py') ? 'python' : sourceFile.endsWith('.js') ? 'javascript' : 'typescript',
+  },
   cli: { command, cwdModel: 'target_repo_cwd', argsUseTargetRelativePaths: true },
   assertions: {
     graphImpactPresent: !!graph.payload?.impactSummary,
@@ -225,7 +231,7 @@ const evidence = {
   interpretation: {
     proves: [
       'Installed/global SCI can be invoked from a non-SCI target repository cwd.',
-      'Target-relative discovery, graph impact, check recommendation, preview/check, and validationPlan evidence compose across TypeScript/JavaScript/Python/Rust source targets without mutating target source.',
+      'Target-relative discovery, graph impact, check recommendation, preview/check, and validationPlan evidence compose across TypeScript/JavaScript/Python/Rust/Clojure source targets without mutating target source.',
       allowDirtyTarget ? 'Target working tree status is preserved after snapshot artifact cleanup.' : 'Target working tree remains clean after snapshot artifact cleanup.',
     ],
     does_not_prove: ['Broad external-repository coverage.', 'Production readiness.'],

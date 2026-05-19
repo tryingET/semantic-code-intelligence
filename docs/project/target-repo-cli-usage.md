@@ -92,7 +92,7 @@ It proves the current safety spine on a non-SCI target:
 read/discover -> graph impact -> recommend checks -> patch_checks_in_snapshot -> validationPlan -> clean target posture
 ```
 
-The target dogfood source-file selection supports TypeScript, JavaScript, Python, and Rust files so external proofs are not limited to TypeScript-only repositories. Graph evidence may still be fallback-shaped in a target environment; that is acceptable when the payload is structured, operator-readable, and the target remains clean.
+The target dogfood source-file selection supports TypeScript, JavaScript, Python, Rust, and Clojure files so external proofs are not limited to TypeScript-only repositories. Graph evidence may still be fallback-shaped in a target environment; that is acceptable when the payload is structured, operator-readable, and the target remains clean.
 
 If the intended target repo already has unrelated operator changes, use a temporary clean worktree or clone for the dogfood run. Do not run preview/check dogfood against a dirty owner repo unless the operator explicitly accepts dirty-preserving validation and the final target status is proven unchanged.
 
@@ -118,4 +118,4 @@ Earlier external dogfood against a Pi extension package showed useful navigation
 
 The corrected product direction is installed/global SCI CLI usage from the target repository's cwd. Current local development support is `just install-cli-local`, which builds the CLI and registers package bins so target repos can invoke `sci` directly, with `semantic-code-intelligence` available as the long-form alias.
 
-Current target-cwd proof: multiple non-SCI repositories, including a sibling JavaScript target under `../` and a clean temporary worktree of the mixed Python/Rust `agent-kernel` repo, have invoked installed/global SCI for bounded `read_file`, `graph_expand`, `recommend_checks`, and preview-first `patch_checks_in_snapshot` with `validationPlan` evidence, then cleaned generated target snapshot artifacts and confirmed the target working tree was unchanged. The proof is recorded as AK evidence and `.test-results/target-validation-plan-dogfood.json`; committed docs/scripts do not contain machine-local target paths.
+Current target-cwd proof: multiple non-SCI repositories, including a sibling JavaScript target under `../`, a clean temporary worktree of the mixed Python/Rust `agent-kernel` repo, and a clean temporary worktree of a sibling Clojure repo, have invoked installed/global SCI for bounded `read_file`, `graph_expand`, `recommend_checks`, and preview-first `patch_checks_in_snapshot` with `validationPlan` evidence, then cleaned generated target snapshot artifacts and confirmed the target working tree was unchanged. The proof is recorded as AK evidence and `.test-results/target-validation-plan-dogfood.json`; committed docs/scripts do not contain machine-local target paths.

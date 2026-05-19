@@ -86,7 +86,7 @@ This is credible Alpha MVP evidence for the first-user substrate. It is not yet 
 
 Before treating Phase 1 as broadly proven, keep pressure on:
 
-- either a Phase 1 closure review or one more external-repo validationPlan dogfood proof across Clojure/larger mixed-language targets after the JavaScript and mixed Python/Rust proofs;
+- a Phase 1 closure review now that JavaScript, mixed Python/Rust, and Clojure external validationPlan proofs exist;
 - richer semantic graph behavior beyond characterized fallback shapes and best-effort caller context;
 - durable evidence history beyond current-run stable-field and lightweight elapsed-time comparison;
 - production-grade p95/p99 performance evidence beyond the operator-facing latency bands and generated-evidence baseline in `docs/project/interactive-slo-guidance.md`;
