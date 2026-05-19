@@ -43,9 +43,9 @@ The Alpha MVP tool surface is:
 | `text_search` | Search text with caps, ignore handling, deterministic result shape, and workspace-contained search roots. | Query, result count, capped workspace-contained results. |
 | `symbol_search` | Find likely symbols with path/language hints where available; fallback file hints must stay workspace-contained. | Query, candidates, confidence/ranking fields when available. |
 | `ast_query` | Run structural language-aware queries where parser support exists; explicit paths and glob-expanded files must stay inside the workspace after lexical, realpath, and opened-file checks. | Language, query, matched ranges, parser/fallback status, and snippets only from workspace-contained files. |
-| `find_definition` | Resolve likely definition locations without requiring a long-lived editor process. | Symbol/query, file/range candidates, fallback status. |
-| `find_references` | Return bounded reference candidates. | Symbol/query, file/range candidates, cap metadata. |
-| `graph_expand` | Expand file/symbol neighborhoods through imports, exports, callers, callees, or semantic edges where available, with a concise impact summary for change planning. | Node id, edge types, depth, neighbors, fallback/limitation status, edge counts, best-effort caller context, impact evidence status, and planning hints. |
+| `find_definition` | Resolve likely definition locations without requiring a long-lived editor process; any supplied file context must stay workspace-contained before local symbol derivation or core delegation. | Symbol/query, file/range candidates, fallback status. |
+| `find_references` | Return bounded reference candidates; any supplied file or URI context must stay workspace-contained before core delegation. | Symbol/query, file/range candidates, cap metadata. |
+| `graph_expand` | Expand file/symbol neighborhoods through imports, exports, callers, callees, or semantic edges where available, with a concise impact summary for change planning; file seeds, symbol-derived seed files, and fallback grep reads must stay workspace-contained. | Node id, edge types, depth, neighbors, fallback/limitation status, edge counts, best-effort caller context, impact evidence status, and planning hints. |
 | `recommend_checks` | Recommend transparent validation commands from touched files, a patch, and optional graph impact summary. It is advisory and does not run checks. | Minimum and broader command lists, rationale items tied to files/reasons, confidence, and input summary. |
 | `propose_patch` | Accept a patch proposal as a reviewable diff and reject invalid patch shapes. | Patch id or structured result; invalid-patch diagnostics on failure. |
 | `run_checks` | Run explicit validation commands or configured checks and return outcomes. | Commands, exit codes, stdout/stderr summaries, duration. |
@@ -57,7 +57,7 @@ The Alpha MVP tool surface is:
 
 - MCP, HTTP, and CLI should use the same core behavior for the same operation.
 - Results should be bounded by limits rather than unbounded repository traversal.
-- File-reading, text-search roots, symbol fallback hints, and structural-snippet paths must be contained after lexical normalization and realpath resolution; direct file reads also verify opened descriptors so symlink or TOCTOU-shaped escapes fail closed.
+- File-reading, text-search roots, symbol fallback hints, structural-snippet paths, graph expansion seeds, and navigation file/URI contexts must be contained after lexical normalization and realpath resolution; direct file reads also verify opened descriptors so symlink or TOCTOU-shaped escapes fail closed.
 - Errors should be structured enough for a harnessed LLM to recover without guessing.
 - Stdio protocol paths must keep stdout clean.
 - Tool names and documentation use the canonical Semantic Code Intelligence identity; no pre-rename compatibility names are retained during alpha.

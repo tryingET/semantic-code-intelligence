@@ -13,6 +13,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { CoreError } from '../core/errors.js';
 import { overlayStore } from '../core/overlay-store.js';
 import { ToolRegistry } from '../core/tools/registry.js';
@@ -104,6 +105,57 @@ export class MCPAdapter {
             }
             return out;
         }) as any;
+    }
+
+    private getWorkspaceRoot(): string {
+        // MCP workspace containment follows the process workspace, matching existing
+        // read_file/text_search/symbol_search behavior and CLI/HTTP invocation cwd.
+        return path.resolve(process.cwd());
+    }
+
+    private pathInputFromMcpFile(value: string, workspaceRoot: string): string {
+        const raw = String(value || '').trim();
+        const workspacePrefix = 'file://workspace';
+        if (raw.startsWith(workspacePrefix)) {
+            const suffix = raw.slice(workspacePrefix.length).replace(/^\/+/, '');
+            return suffix ? path.join(workspaceRoot, decodeURIComponent(suffix)) : workspaceRoot;
+        }
+        if (raw.startsWith('file://')) return fileURLToPath(raw);
+        return raw;
+    }
+
+    private async resolveMcpWorkspaceFile(value: string, inputLabel: string) {
+        const workspaceRoot = this.getWorkspaceRoot();
+        const requestedPath = this.pathInputFromMcpFile(value, workspaceRoot);
+        const resolved = await resolveWorkspacePath(requestedPath, { workspaceRoot, inputLabel });
+        return {
+            path: resolved.realPath,
+            uri: normalizeUri(resolved.realPath),
+            relativePath: resolved.relativePath,
+        };
+    }
+
+    private resolveMcpWorkspaceLexicalPath(value: string, inputLabel: string) {
+        const workspaceRoot = this.getWorkspaceRoot();
+        const requestedPath = this.pathInputFromMcpFile(value, workspaceRoot);
+        const candidate = path.resolve(workspaceRoot, requestedPath);
+        const relativePath = path.relative(workspaceRoot, candidate);
+        if (!relativePath || relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+            throw new CoreError('InvalidParams', `${inputLabel} must stay within the workspace`, { path: value });
+        }
+        return {
+            path: candidate,
+            relativePath: relativePath.split(path.sep).join('/'),
+        };
+    }
+
+    private async containedMcpUriOrNull(value: string, inputLabel: string): Promise<string | null> {
+        try {
+            return (await this.resolveMcpWorkspaceFile(value, inputLabel)).uri;
+        } catch (error) {
+            if (error instanceof CoreError) return null;
+            throw error;
+        }
     }
 
     /**
@@ -2351,11 +2403,33 @@ export class MCPAdapter {
 
     private async handleGraphExpand(args: Record<string, any>) {
         const edges = Array.isArray(args?.edges) ? (args.edges as string[]) : ['imports', 'exports'];
-        const file = typeof args?.file === 'string' ? (args.file as string) : undefined;
+        const rawFile = typeof args?.file === 'string' ? (args.file as string) : undefined;
         const symbol = typeof args?.symbol === 'string' ? (args.symbol as string) : undefined;
-        if (!file && !symbol) return { content: [{ type: 'text', text: 'file or symbol required' }], isError: true };
+        if (!rawFile && !symbol) return { content: [{ type: 'text', text: 'file or symbol required' }], isError: true };
+        let file: string | undefined;
+        let scipFile: string | undefined;
+        let allowMissingWorkspaceFileFallback = false;
+        const hasScipIndex = typeof args?.scipIndexPath === 'string' && args.scipIndexPath.trim();
         try {
-            const scipOut = await this.expandGraphFromScip(args, edges, file, symbol);
+            if (rawFile && hasScipIndex) {
+                // SCIP documents use logical workspace-relative paths and may not exist
+                // in the current checkout. Contain them lexically before querying the
+                // index, then require realpath/opened-file containment for fallback AST reads.
+                scipFile = this.resolveMcpWorkspaceLexicalPath(rawFile, 'graph_expand file').relativePath;
+            } else if (rawFile) {
+                const lexicalFile = this.resolveMcpWorkspaceLexicalPath(rawFile, 'graph_expand file');
+                try {
+                    file = (await this.resolveMcpWorkspaceFile(rawFile, 'graph_expand file')).path;
+                } catch (error) {
+                    if (error instanceof CoreError && error.message.includes('does not exist or cannot be resolved')) {
+                        file = lexicalFile.path;
+                        allowMissingWorkspaceFileFallback = true;
+                    } else {
+                        throw error;
+                    }
+                }
+            }
+            const scipOut = await this.expandGraphFromScip(args, edges, scipFile || file, symbol);
             if (scipOut) {
                 const payload = { schemaVersion: 2, ...scipOut, impactSummary: this.summarizeGraphImpact(scipOut, args) };
                 return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: false };
@@ -2370,18 +2444,27 @@ export class MCPAdapter {
                         maxFiles: 50,
                         astOnly: true,
                     });
-                    seedFiles = Array.from(
-                        new Set(
-                            (sm?.declarations || []).map((d: any) => {
-                                try {
-                                    return new URL(d.uri).pathname;
-                                } catch {
-                                    return d.uri.replace(/^file:\/\//, '');
-                                }
-                            })
-                        )
-                    );
+                    const containedSeedFiles: string[] = [];
+                    for (const declaration of sm?.declarations || []) {
+                        const uri = typeof declaration?.uri === 'string' ? declaration.uri : '';
+                        const contained = uri ? await this.containedMcpUriOrNull(uri, 'graph_expand seedFile') : null;
+                        if (contained) containedSeedFiles.push(fileURLToPath(contained));
+                    }
+                    seedFiles = Array.from(new Set(containedSeedFiles));
                 } catch {}
+            }
+            if (rawFile && !file) {
+                const lexicalFile = this.resolveMcpWorkspaceLexicalPath(rawFile, 'graph_expand file');
+                try {
+                    file = (await this.resolveMcpWorkspaceFile(rawFile, 'graph_expand file')).path;
+                } catch (error) {
+                    if (error instanceof CoreError && error.message.includes('does not exist or cannot be resolved')) {
+                        file = lexicalFile.path;
+                        allowMissingWorkspaceFileFallback = true;
+                    } else {
+                        throw error;
+                    }
+                }
             }
             const out = await expandNeighbors({
                 file,
@@ -2390,11 +2473,12 @@ export class MCPAdapter {
                 depth: args?.depth,
                 limit: args?.limit,
                 seedFiles,
+                workspaceRoot: this.getWorkspaceRoot(),
             });
             const payload = { schemaVersion: 2, ...out, impactSummary: this.summarizeGraphImpact(out, args) };
             return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: false };
         } catch (error) {
-            if (typeof args?.scipIndexPath === 'string' && args.scipIndexPath.trim()) {
+            if ((error instanceof CoreError && !allowMissingWorkspaceFileFallback) || (typeof args?.scipIndexPath === 'string' && args.scipIndexPath.trim())) {
                 return handleAdapterError(error, 'mcp');
             }
             const neighbors: Record<string, any[]> = { imports: [], exports: [], callers: [], callees: [] };
@@ -2426,21 +2510,28 @@ export class MCPAdapter {
     private async handleFindDefinition(args: Record<string, any>, context: ErrorContext) {
         const position = args.position ? normalizePosition(args.position) : createPosition(0, 0);
         let symbol: string = typeof args.symbol === 'string' ? args.symbol : '';
-        // Try derive symbol from file+position when not provided
-        const uri = args.file ? normalizeUri(args.file) : null;
-        if (!symbol && uri) {
+        // Try derive symbol from file+position when not provided. File contexts are
+        // caller-controlled MCP input, so resolve them through workspace containment
+        // before any stat/read or before forwarding a URI to core analyzers.
+        let fileContext: { path: string; uri: string; relativePath: string } | null = null;
+        try {
+            fileContext = args.file ? await this.resolveMcpWorkspaceFile(args.file, 'find_definition file') : null;
+        } catch (error) {
+            if (error instanceof CoreError) return handleAdapterError(error, 'mcp');
+            throw error;
+        }
+        const uri = fileContext?.uri || null;
+        if (!symbol && fileContext) {
+            let opened: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
             try {
-                const fsPath = uri.startsWith('file://') ? uri.substring(7) : uri;
-                const exists = await fs
-                    .stat(fsPath)
-                    .then(() => true)
-                    .catch(() => false);
-                if (exists) {
-                    const text = await fs.readFile(fsPath, 'utf8');
-                    const derived = this.wordAt(text, position);
-                    if (derived) symbol = derived;
-                }
-            } catch {}
+                opened = await openWorkspaceFileForRead(fileContext.path, { workspaceRoot: this.getWorkspaceRoot(), inputLabel: 'find_definition file' });
+                const text = await opened.handle.readFile('utf8');
+                const derived = this.wordAt(text, position);
+                if (derived) symbol = derived;
+            } catch {
+            } finally {
+                await opened?.handle.close().catch(() => undefined);
+            }
         }
         if (!symbol && !uri) {
             throw new CoreError('InvalidParams', 'Missing required parameter: symbol');
@@ -2564,7 +2655,10 @@ export class MCPAdapter {
                                             return def.uri.replace(/^file:\/\//, '');
                                         }
                                     })();
-                                    const text = await fs.readFile(filePath, 'utf8');
+                                    const containedUri = await this.containedMcpUriOrNull(filePath, 'find_definition result uri');
+                                    if (!containedUri) continue;
+                                    const containedPath = fileURLToPath(containedUri);
+                                    const text = await fs.readFile(containedPath, 'utf8');
                                     const lines = text.split(/\r?\n/);
                                     const line = lines[def.range?.start?.line ?? 0] || '';
                                     if (declRe.test(line)) {
@@ -2627,7 +2721,7 @@ export class MCPAdapter {
         const request = buildFindDefinitionRequest({
             uri,
             position,
-            identifier: args.symbol,
+            identifier: symbol,
             maxResults,
             includeDeclaration: true,
         });
@@ -2841,9 +2935,17 @@ export class MCPAdapter {
                 isError: false,
             };
         }
-        // Use symbol-based search at provided file context
+        // Use symbol-based search at provided file context. The context path/URI is
+        // caller-controlled and must be contained before delegating to core analyzers.
+        let fileContext: { path: string; uri: string; relativePath: string };
+        try {
+            fileContext = await this.resolveMcpWorkspaceFile(String(args.file || args.uri), 'find_references file');
+        } catch (error) {
+            if (error instanceof CoreError) return handleAdapterError(error, 'mcp');
+            throw error;
+        }
         const request = buildFindReferencesRequest({
-            uri: normalizeUri(String(args.file || args.uri)),
+            uri: fileContext.uri,
             position: createPosition(0, 0),
             identifier: args.symbol,
             maxResults,
@@ -3151,7 +3253,13 @@ export class MCPAdapter {
         const maxResults = typeof args.maxResults === 'number' ? args.maxResults : this.config.maxResults;
         const includeDeclaration = args.includeDeclaration ?? true;
 
-        const uri = args.file ? normalizeUri(args.file) : normalizeUri('file://workspace');
+        let uri: string;
+        try {
+            uri = args.file ? (await this.resolveMcpWorkspaceFile(args.file, 'explore_codebase file')).uri : normalizeUri('file://workspace');
+        } catch (error) {
+            if (error instanceof CoreError) return handleAdapterError(error, 'mcp');
+            throw error;
+        }
         const position = createPosition(0, 0);
 
         const defReq = buildFindDefinitionRequest({

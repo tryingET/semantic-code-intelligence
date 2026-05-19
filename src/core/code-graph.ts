@@ -1,7 +1,7 @@
-import * as fs from 'fs/promises';
 import * as path from 'path';
 import Parser, { Query } from 'tree-sitter';
 import { AsyncEnhancedGrep } from '../layers/enhanced-search-tools-async.js';
+import { openWorkspaceFileForRead, resolveWorkspacePath } from './workspace-path.js';
 
 function findModulePath(moduleName: string): string {
     const candidates = [
@@ -64,12 +64,20 @@ export async function expandNeighbors(opts: {
     limit?: number;
     seedFiles?: string[];
     seedStrict?: boolean;
+    workspaceRoot?: string;
 }) {
     const edges = opts.edges && opts.edges.length ? opts.edges : ['imports', 'exports'];
+    const workspaceRoot = path.resolve(opts.workspaceRoot || process.cwd());
     if (opts.file) {
-        const res: any = { file: path.resolve(opts.file), neighbors: {} as Record<string, any[]> };
-        const text = await fs.readFile(res.file, 'utf8');
-        const { id, lang } = await loadLanguageForFile(res.file);
+        const opened = await openWorkspaceFileForRead(opts.file, { workspaceRoot, inputLabel: 'graph_expand file' });
+        const res: any = { file: opened.realPath, neighbors: {} as Record<string, any[]> };
+        let text: string;
+        try {
+            text = await opened.handle.readFile('utf8');
+        } finally {
+            await opened.handle.close().catch(() => undefined);
+        }
+        const { id, lang } = await loadLanguageForFile(opened.realPath);
         const parser = new Parser();
         parser.setLanguage(lang);
         const tree = parser.parse(text);
@@ -218,10 +226,16 @@ export async function expandNeighbors(opts: {
         const grep = new AsyncEnhancedGrep({ cacheSize: 500, cacheTTL: 30000 });
         const pattern = `\\b${symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`;
         const max = Math.min(opts.limit || 200, 1000);
-        const searchPaths: string[] =
-            opts.seedFiles && opts.seedFiles.length
-                ? Array.from(new Set(opts.seedFiles.map((f) => path.dirname(path.resolve(f)))))
-                : [process.cwd()];
+        const containedSeedFiles: string[] = [];
+        for (const seedFile of opts.seedFiles || []) {
+            try {
+                const resolved = await resolveWorkspacePath(seedFile, { workspaceRoot, inputLabel: 'graph_expand seedFile' });
+                containedSeedFiles.push(resolved.realPath);
+            } catch {}
+        }
+        const searchPaths: string[] = containedSeedFiles.length
+            ? Array.from(new Set(containedSeedFiles.map((f) => path.dirname(f))))
+            : [workspaceRoot];
         let accMatches: any[] = [];
         for (const p of searchPaths) {
             const perPathMax = opts.seedStrict ? max : Math.max(1, Math.floor(max / searchPaths.length));
@@ -239,8 +253,14 @@ export async function expandNeighbors(opts: {
         const files = Array.from(new Set(matches.map((m) => m.file))).slice(0, 200);
         for (const file of files) {
             try {
-                const text = await fs.readFile(file, 'utf8');
-                const { lang } = await loadLanguageForFile(file);
+                const opened = await openWorkspaceFileForRead(file, { workspaceRoot, inputLabel: 'graph_expand search result' });
+                let text: string;
+                try {
+                    text = await opened.handle.readFile('utf8');
+                } finally {
+                    await opened.handle.close().catch(() => undefined);
+                }
+                const { lang } = await loadLanguageForFile(opened.realPath);
                 const parser = new Parser();
                 parser.setLanguage(lang);
                 const tree = parser.parse(text);

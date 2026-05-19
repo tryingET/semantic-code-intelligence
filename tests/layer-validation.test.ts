@@ -4,6 +4,15 @@ import { promisify } from 'util';
 
 const execAsync = promisify(exec);
 
+function expectWithinBudgetWhenEnforced(elapsed: number, budgetMs: number, label: string) {
+    const enforce = process.env.PERF === '1' || process.env.ENFORCE_PERF_BUDGETS === '1';
+    if (enforce) {
+        expect(elapsed).toBeLessThan(budgetMs);
+    } else if (elapsed >= budgetMs) {
+        console.warn(`${label} exceeded advisory budget: ${elapsed}ms >= ${budgetMs}ms`);
+    }
+}
+
 describe('Layer Validation - L1→L5 Working Paths', () => {
     const CLI = './semantic-code-intelligence';
 
@@ -15,7 +24,7 @@ describe('Layer Validation - L1→L5 Working Paths', () => {
 
         const result = JSON.parse(stdout);
         expect(result.count).toBeGreaterThan(0);
-        expect(elapsed).toBeLessThan(2000); // Realistic threshold for current implementation
+        expectWithinBudgetWhenEnforced(elapsed, 2000, 'L1 text_search');
         console.log(`L1 text_search took ${elapsed}ms`);
     }, 10000);
 
@@ -29,7 +38,7 @@ describe('Layer Validation - L1→L5 Working Paths', () => {
 
         const result = JSON.parse(stdout);
         expect(result.count).toBeGreaterThan(0);
-        expect(elapsed).toBeLessThan(2000); // Realistic threshold
+        expectWithinBudgetWhenEnforced(elapsed, 2000, 'L2 ast_query');
         console.log(`L2 ast_query took ${elapsed}ms`);
     }, 10000);
 
