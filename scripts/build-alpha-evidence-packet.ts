@@ -164,7 +164,7 @@ const packet = {
         proves: [
             'SCI exposes the Alpha MVP tool surface across tested interfaces.',
             'Self-hosted maintenance starts with SCI discovery/navigation evidence.',
-            'Graph impact dogfood exposes import/export/callee/caller edge status and planning hints.',
+            'Graph impact dogfood exposes import/export/callee/caller edge status, sparse-edge limitations, best-effort caller context, and planning hints.',
             'Impact-aware check recommendation dogfood maps docs, source, test, and graph-impact cases to explicit advisory commands.',
             'Patch-check and safe-write previews can surface advisory check recommendations and compact validationPlan summaries without changing check/apply policy.',
             'ValidationPlan comparison flags stable-field check-plan drift while ignoring volatile snapshot/timing fields and includes remediation hints for failures.',

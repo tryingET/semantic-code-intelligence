@@ -139,7 +139,7 @@ The interface evidence is credible for Alpha MVP, but not enough for production 
 
 After this guide, prefer one of:
 
-1. improve or characterize graph caller/callee fallback behavior; or
-2. repeat external validationPlan dogfood on a larger or less TypeScript-centric target repo.
+1. repeat external validationPlan dogfood on a larger or less TypeScript-centric target repo; or
+2. deepen graph caller/callee accuracy if best-effort caller context is still insufficient.
 
 Do not start Phase 2 UI/workbench polish solely because the Alpha MVP interface set is documented.

@@ -77,10 +77,25 @@ const symbolImpact = workflow(
 );
 calls.push(symbolImpact);
 
+const callerContextImpact = workflow(
+    'graph_expand',
+    {
+        file: 'scripts/build-alpha-evidence-packet.ts',
+        symbol: 'readJson',
+        edges: ['callers'],
+        depth: 1,
+        limit: 20,
+    },
+    'Use graph_expand with file+symbol to return best-effort enclosing caller context for call sites.'
+);
+calls.push(callerContextImpact);
+
 const fileSummary = fileImpact.payload?.impactSummary || {};
 const symbolSummary = symbolImpact.payload?.impactSummary || {};
+const callerContextSummary = callerContextImpact.payload?.impactSummary || {};
 const fileCounts = fileSummary.counts || {};
 const symbolCounts = symbolSummary.counts || {};
+const callerContextCounts = callerContextSummary.counts || {};
 
 const evidence = {
     schema: 'semantic-code-intelligence.graph_impact_dogfood.v1',
@@ -93,7 +108,9 @@ const evidence = {
         fileSummary.planningHints.length > 0 &&
         Array.isArray(symbolSummary.evidence) &&
         symbolSummary.evidence.some((item: any) => item.edge === 'callers') &&
-        symbolSummary.evidence.some((item: any) => item.edge === 'callees'),
+        symbolSummary.evidence.some((item: any) => item.edge === 'callees') &&
+        Number(callerContextCounts.callers || 0) > 0 &&
+        Number(callerContextSummary.callerContextCount || 0) > 0,
     target: 'src/core/code-graph.ts',
     symbol: 'expandNeighbors',
     assertions: {
@@ -101,6 +118,8 @@ const evidence = {
         fileImpactHasCallees: Number(fileCounts.callees || 0) > 0,
         fileImpactHasPlanningHints: Array.isArray(fileSummary.planningHints) && fileSummary.planningHints.length > 0,
         symbolImpactHasCallerStatus: Array.isArray(symbolSummary.evidence) && symbolSummary.evidence.some((item: any) => item.edge === 'callers'),
+        symbolImpactHasLimitations: Array.isArray(symbolSummary.limitations) && symbolSummary.limitations.length > 0,
+        callerContextPresent: Number(callerContextCounts.callers || 0) > 0 && Number(callerContextSummary.callerContextCount || 0) > 0,
         summariesHaveRequestedEdges:
             Array.isArray(fileSummary.requestedEdges) &&
             fileSummary.requestedEdges.includes('imports') &&
@@ -111,6 +130,7 @@ const evidence = {
     impact: {
         file: fileSummary,
         symbol: symbolSummary,
+        callerContext: callerContextSummary,
     },
     calls: calls.map((call) => ({
         name: call.name,
@@ -133,6 +153,7 @@ const evidence = {
             'graph_expand returns operator-readable impactSummary evidence for harnessed LLM change planning.',
             'File-scoped graph expansion exposes import/callee evidence and planning hints.',
             'Symbol-scoped graph expansion exposes caller/callee edge status with structured limitations when evidence is sparse.',
+            'File+symbol caller expansion includes best-effort enclosing callable context for call sites.',
         ],
         does_not_prove: [
             'Complete whole-program call graph accuracy.',

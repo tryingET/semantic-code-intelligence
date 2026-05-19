@@ -87,7 +87,7 @@ This is credible Alpha MVP evidence for the first-user substrate. It is not yet 
 Before treating Phase 1 as broadly proven, keep pressure on:
 
 - more external-repo validationPlan dogfood across less TypeScript-centric targets;
-- richer semantic graph behavior beyond stable fallback shapes;
+- richer semantic graph behavior beyond characterized fallback shapes and best-effort caller context;
 - durable evidence history beyond current-run stable-field and lightweight elapsed-time comparison;
 - production-grade p95/p99 performance evidence beyond the operator-facing latency bands and generated-evidence baseline in `docs/project/interactive-slo-guidance.md`;
 - durable snapshot/session semantics where process-local CLI or adapter state is insufficient;

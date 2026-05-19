@@ -110,6 +110,22 @@ export async function expandNeighbors(opts: {
             }
         };
 
+        const enclosingCallable = (node: any): { name: string; kind: string } | null => {
+            let cur = node?.parent;
+            while (cur) {
+                if (cur.type === 'function_declaration' || cur.type === 'method_definition') {
+                    const nameNode = cur.childForFieldName?.('name');
+                    if (nameNode?.text) return { name: nameNode.text, kind: cur.type };
+                }
+                if (cur.type === 'variable_declarator') {
+                    const nameNode = cur.childForFieldName?.('name');
+                    if (nameNode?.text) return { name: nameNode.text, kind: cur.type };
+                }
+                cur = cur.parent;
+            }
+            return null;
+        };
+
         const by = (edge: string, qstr: string) => {
             const q = new Query(lang, qstr);
             const caps = q.captures(tree.rootNode);
@@ -176,9 +192,12 @@ export async function expandNeighbors(opts: {
                     const caps = Q.captures(tree.rootNode);
                     for (const cap of caps) {
                         const n = cap.node;
+                        const caller = enclosingCallable(n);
                         res.neighbors.callers.push({
                             file: res.file,
                             start: { line: n.startPosition.row, column: n.startPosition.column },
+                            caller: caller?.name || null,
+                            callerKind: caller?.kind || null,
                         });
                     }
                 } catch {
@@ -233,11 +252,29 @@ export async function expandNeighbors(opts: {
         `
                 );
                 const caps = Q.captures(tree.rootNode);
+                const enclosingCallable = (node: any): { name: string; kind: string } | null => {
+                    let cur = node?.parent;
+                    while (cur) {
+                        if (cur.type === 'function_declaration' || cur.type === 'method_definition') {
+                            const nameNode = cur.childForFieldName?.('name');
+                            if (nameNode?.text) return { name: nameNode.text, kind: cur.type };
+                        }
+                        if (cur.type === 'variable_declarator') {
+                            const nameNode = cur.childForFieldName?.('name');
+                            if (nameNode?.text) return { name: nameNode.text, kind: cur.type };
+                        }
+                        cur = cur.parent;
+                    }
+                    return null;
+                };
                 for (const cap of caps) {
                     const n = cap.node;
+                    const caller = enclosingCallable(n);
                     neighbors.callers.push({
                         file,
                         start: { line: n.startPosition.row, column: n.startPosition.column },
+                        caller: caller?.name || null,
+                        callerKind: caller?.kind || null,
                     });
                 }
                 if (neighbors.callers.length >= (opts.limit || 200)) break;

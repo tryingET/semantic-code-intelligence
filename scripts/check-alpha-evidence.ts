@@ -126,7 +126,9 @@ if (graph) {
             graph?.assertions?.fileImpactHasImports === true &&
             graph?.assertions?.fileImpactHasCallees === true &&
             graph?.assertions?.fileImpactHasPlanningHints === true &&
-            graph?.assertions?.symbolImpactHasCallerStatus === true,
+            graph?.assertions?.symbolImpactHasCallerStatus === true &&
+            graph?.assertions?.symbolImpactHasLimitations === true &&
+            graph?.assertions?.callerContextPresent === true,
         detail: graph?.assertions || null,
     });
     checks.push({

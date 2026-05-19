@@ -2191,21 +2191,40 @@ export class MCPAdapter {
             ['imports', 'exports', 'callers', 'callees'].map((edge) => [edge, Array.isArray(neighbors[edge]) ? neighbors[edge].length : 0])
         );
         const requestedEdges = Array.isArray(args?.edges) ? args.edges.map(String) : ['imports', 'exports'];
-        const evidence = requestedEdges.map((edge: string) => ({
-            edge,
-            count: Number((counts as any)[edge] || 0),
-            status: Number((counts as any)[edge] || 0) > 0 ? 'evidence' : 'empty_or_unavailable',
-        }));
+        const note = typeof out?.note === 'string' ? out.note : '';
+        const limitations = note
+            ? note
+                  .split(';')
+                  .map((part: string) => part.trim())
+                  .filter(Boolean)
+            : [];
+        const evidence = requestedEdges.map((edge: string) => {
+            const count = Number((counts as any)[edge] || 0);
+            const edgeLimitations = limitations.filter((item: string) => item.toLowerCase().startsWith(`${edge.toLowerCase()}:`));
+            return {
+                edge,
+                count,
+                status: count > 0 ? 'evidence' : edgeLimitations.length > 0 ? 'limited' : 'empty_or_unavailable',
+                limitations: edgeLimitations,
+            };
+        });
+        const callerContextCount = Array.isArray(neighbors.callers) ? neighbors.callers.filter((item: any) => typeof item?.caller === 'string' && item.caller).length : 0;
         return {
             seed: typeof args?.file === 'string' ? { kind: 'file', value: args.file } : { kind: 'symbol', value: String(args?.symbol || '') },
             requestedEdges,
             counts,
             evidence,
+            limitations,
+            callerContextCount,
             hasImpactEvidence: evidence.some((item: any) => item.count > 0),
             planningHints: [
                 'Inspect non-empty edges before editing touched files or exported symbols.',
-                'Use find_references for symbol-specific caller confirmation when caller evidence is sparse.',
-                'Use patch_checks_in_snapshot or safe_write after graph-informed patch planning.',
+                callerContextCount > 0
+                    ? 'Caller entries include best-effort enclosing callable context; verify with find_references before broad edits.'
+                    : 'Use find_references for symbol-specific caller confirmation when caller evidence is sparse.',
+                limitations.length > 0
+                    ? 'Treat limited edges as fallback-shaped evidence and narrow with file+symbol or explicit references before relying on them.'
+                    : 'Use patch_checks_in_snapshot or safe_write after graph-informed patch planning.',
             ],
         };
     }
