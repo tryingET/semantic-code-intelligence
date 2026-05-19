@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -33,8 +33,7 @@ function sampleValidationPlan() {
   };
 }
 
-function runSummary(input: unknown, args: string[]) {
-  const dir = mkdtempSync(join(tmpdir(), 'sci-evidence-review-'));
+function runSummary(input: unknown, args: string[], dir = mkdtempSync(join(tmpdir(), 'sci-evidence-review-'))) {
   const inputPath = join(dir, 'input.json');
   writeFileSync(inputPath, JSON.stringify(input, null, 2));
   const result = spawnSync('bun', ['run', script, '--input', inputPath, ...args], {
@@ -42,7 +41,7 @@ function runSummary(input: unknown, args: string[]) {
     encoding: 'utf8',
   });
   expect(result.status, result.stderr).toBe(0);
-  return result.stdout;
+  return { stdout: result.stdout, dir };
 }
 
 function assertClaimModel(review: any) {
@@ -67,8 +66,8 @@ function assertClaimModel(review: any) {
 
 describe('evidence review claim model', () => {
   test('JSON output exposes first-class claims, boundaries, decision points, and absence states', () => {
-    const output = runSummary(sampleValidationPlan(), ['--format', 'json']);
-    const review = JSON.parse(output);
+    const { stdout } = runSummary(sampleValidationPlan(), ['--format', 'json']);
+    const review = JSON.parse(stdout);
 
     assertClaimModel(review);
   });
@@ -81,7 +80,7 @@ describe('evidence review claim model', () => {
   });
 
   test('markdown output renders claim model sections', () => {
-    const output = runSummary(sampleValidationPlan(), ['--format', 'markdown']);
+    const { stdout: output } = runSummary(sampleValidationPlan(), ['--format', 'markdown']);
 
     expect(output).toContain('### Review claims');
     expect(output).toContain('checks-result: supported');
@@ -89,5 +88,33 @@ describe('evidence review claim model', () => {
     expect(output).toContain('not-production-readiness');
     expect(output).toContain('### Operator decision points');
     expect(output).toContain('continue-or-stop');
+  });
+
+  test('summary renderer is read-only for workspace, input directory, and AK DB', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sci-evidence-review-readonly-'));
+    const dbPath = '/home/tryinget/ai-society/society.v2.db';
+    const beforeDir = readdirSync(dir).sort();
+    const beforeGit = spawnSync('git', ['status', '--short'], { cwd: process.cwd(), encoding: 'utf8' }).stdout;
+    const beforeDb = existsSync(dbPath) ? statSync(dbPath).mtimeMs : null;
+
+    runSummary(sampleValidationPlan(), ['--format', 'json'], dir);
+    runSummary(sampleValidationPlan(), ['--format', 'markdown'], dir);
+
+    const afterDir = readdirSync(dir).sort();
+    const afterGit = spawnSync('git', ['status', '--short'], { cwd: process.cwd(), encoding: 'utf8' }).stdout;
+    const afterDb = existsSync(dbPath) ? statSync(dbPath).mtimeMs : null;
+
+    expect(afterDir).toEqual(beforeDir.concat('input.json').sort());
+    expect(afterGit).toBe(beforeGit);
+    expect(afterDb).toBe(beforeDb);
+  });
+
+  test('summary implementation does not import mutation-capable runtime surfaces', () => {
+    const source = readFileSync(script, 'utf8');
+    expect(source).not.toContain('writeFileSync');
+    expect(source).not.toContain('appendFileSync');
+    expect(source).not.toContain('spawnSync');
+    expect(source).not.toContain('child_process');
+    expect(source).not.toContain('bun:sqlite');
   });
 });
