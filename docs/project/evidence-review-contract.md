@@ -11,7 +11,7 @@ type: "contract"
 
 Date: 2026-05-19  
 Wave: IW53 — Evidence review contract design  
-Status: contract accepted for planning; implementation not started
+Status: contract accepted for planning; IW54 adds a non-mutating summary prototype
 
 ## Purpose
 
@@ -218,8 +218,13 @@ This contract does not authorize:
 
 Recommended next wave:
 
-**IW54 — Evidence review summary prototype**
+**IW55 — Evidence review contract integration decision**
 
-Goal: implement the smallest non-mutating renderer/summary producer for this contract, preferably as a CLI or script that reads existing `.test-results`/`validationPlan` input and emits a markdown or JSON review summary.
+IW54 implements the first non-mutating summary producer:
 
-Do not build a UI until the summary contract is proven with existing evidence samples.
+```bash
+bun run evidence-review:summary -- --input .test-results/alpha-evidence-packet.json --format markdown
+bun run evidence-review:summary -- --input .test-results/alpha-evidence-packet.json --extract validationPlan --format json
+```
+
+Next, decide whether to integrate the summary with an operator workbench/Pi rendering path or keep it as a CLI-only planning artifact.

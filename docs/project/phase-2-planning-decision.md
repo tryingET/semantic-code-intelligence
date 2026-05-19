@@ -86,8 +86,8 @@ IW53 produced the evidence review contract in `docs/project/evidence-review-cont
 
 Recommended next wave:
 
-**IW54 — Evidence review summary prototype**
+**IW55 — Evidence review contract integration decision**
 
-Goal: implement the smallest non-mutating renderer/summary producer for the contract, preferably as a CLI or script that reads existing `.test-results`/`validationPlan` input and emits markdown or JSON.
+IW54 implements the smallest non-mutating renderer/summary producer for the contract as `bun run evidence-review:summary`.
 
-Do not build a UI until the summary contract is proven with existing evidence samples.
+Next, decide whether to integrate that summary with a Pi/operator-workbench rendering path, keep it CLI-only, or defer Phase 2 implementation. Do not build a full UI/dashboard before that integration decision.
