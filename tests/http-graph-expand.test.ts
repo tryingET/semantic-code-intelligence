@@ -22,6 +22,19 @@ bindDescribe('HTTP /api/v1/graph-expand fallback', () => {
         delete process.env.HTTP_API_PORT;
     });
 
+    test('malformed JSON request fails closed as caller error', async () => {
+        const res = await fetch(`${base}/api/v1/graph-expand`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: '{',
+        });
+        expect(res.status).toBe(400);
+        const body = await res.json();
+        expect(body.success).toBe(false);
+        expect(body.error?.code).toBe('InvalidParams');
+        expect(body.error?.message).toBe('Invalid JSON');
+    });
+
     test('returns 200 and structure for file even if parser unavailable', async () => {
         const res = await fetch(`${base}/api/v1/graph-expand`, {
             method: 'POST',

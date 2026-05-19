@@ -30,6 +30,25 @@ interface HTTPServerConfig {
     enableOpenAPI?: boolean;
 }
 
+function statusForCoreErrorCode(code: unknown, fallback = 500): number {
+    if (code === 'InvalidParams') return 400;
+    if (code === 'UnknownTool') return 404;
+    if (code === 'Internal') return 500;
+    return fallback;
+}
+
+function statusForThrownError(err: unknown): number {
+    return isCoreError(err) ? statusForCoreErrorCode(err.code) : 500;
+}
+
+function envelopeForThrownError(err: unknown): { code: string; message: string; data?: any } {
+    if (isCoreError(err)) {
+        return { code: err.code, message: err.message, data: err.data };
+    }
+    const message = err instanceof Error ? err.message : String(err || 'Internal server error');
+    return { code: 'Internal', message };
+}
+
 export class HTTPServer {
     private coreAnalyzer!: CodeAnalyzer;
     private httpAdapter!: HTTPAdapter;
@@ -347,15 +366,7 @@ export class HTTPServer {
                             recordToolEnd('http', name, Date.now() - t0, success);
                             const isError = !!(normalized && typeof normalized === 'object' && normalized.ok === false);
                             const errCode = isError ? (normalized as any)?.error?.code : undefined;
-                            const status = isError
-                                ? errCode === 'UnknownTool'
-                                    ? 404
-                                    : errCode === 'InvalidParams'
-                                      ? 400
-                                      : errCode === 'Internal'
-                                        ? 500
-                                        : 400
-                                : 200;
+                            const status = isError ? statusForCoreErrorCode(errCode, 400) : 200;
                             return new Response(
                                 JSON.stringify({
                                     success: !isError,
@@ -374,18 +385,8 @@ export class HTTPServer {
                             try {
                                 recordToolEnd('http', 'unknown', 0, false);
                             } catch {}
-                            const message = err?.message || String(err || 'tool call failed');
-                            const status = isCoreError(err)
-                                ? err.code === 'InvalidParams'
-                                    ? 400
-                                    : err.code === 'UnknownTool'
-                                      ? 404
-                                      : 500
-                                : 500;
-                            const code = isCoreError(err) ? err.code : 'Internal';
-                            const data = isCoreError(err) ? err.data : undefined;
-                            return new Response(JSON.stringify({ success: false, error: { code, message, data } }), {
-                                status,
+                            return new Response(JSON.stringify({ success: false, error: envelopeForThrownError(err) }), {
+                                status: statusForThrownError(err),
                                 headers: { 'Content-Type': 'application/json' },
                             });
                         }
@@ -864,7 +865,7 @@ export class HTTPServer {
                                     recordToolEnd('http', 'graph_expand_fallback', Date.now() - t0, false);
                                 } catch {}
                                 const code = res?.error?.code;
-                                const status = code === 'InvalidParams' ? 400 : 500;
+                                const status = statusForCoreErrorCode(code);
                                 return new Response(
                                     JSON.stringify({
                                         success: false,
@@ -904,8 +905,8 @@ export class HTTPServer {
                             try {
                                 recordToolEnd('http', 'graph_expand_fallback', Date.now() - t0, false);
                             } catch {}
-                            return new Response(JSON.stringify({ success: false, error: err?.message || 'graph_expand failed' }), {
-                                status: 500,
+                            return new Response(JSON.stringify({ success: false, error: envelopeForThrownError(err) }), {
+                                status: statusForThrownError(err),
                                 headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
                             });
                         }

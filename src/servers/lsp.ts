@@ -554,10 +554,29 @@ export class LSPServer {
     }
 }
 
-// Export singleton instance for compatibility
-export const server = new LSPServer();
+let serverInstance: LSPServer | null = null;
+
+export function getLSPServer(): LSPServer {
+    if (!serverInstance) {
+        serverInstance = new LSPServer();
+    }
+    return serverInstance;
+}
+
+// Export lazy singleton proxy for compatibility without activating stdio listeners on import.
+export const server = new Proxy({} as LSPServer, {
+    get(_target, prop, receiver) {
+        const instance = getLSPServer();
+        const value = Reflect.get(instance, prop, receiver);
+        return typeof value === 'function' ? value.bind(instance) : value;
+    },
+    set(_target, prop, value, receiver) {
+        const instance = getLSPServer();
+        return Reflect.set(instance, prop, value, receiver);
+    },
+});
 
 // Start server if run directly
 if (import.meta.main) {
-    server.start().catch(console.error);
+    getLSPServer().start().catch(console.error);
 }
