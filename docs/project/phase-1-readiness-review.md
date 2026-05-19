@@ -64,10 +64,10 @@ Generated evidence surfaces reviewed:
 | First-user fit | Ready for alpha use | The substrate directly supports harnessed LLM navigation, patch planning, check recommendation, and evidence reporting. |
 | Mutation safety | Strong alpha posture | Preview-first default, guarded apply, exact applied-diff verification, rollback artifact, and dirty mismatch fail-closed evidence are present. |
 | Interface coverage | Credible alpha coverage | HTTP, MCP HTTP, MCP stdio, direct adapter tests, and CLI fallback are all exercised. |
-| Evidence quality | Credible but current-run scoped | Evidence packet and validation-plan comparison are repeatable, but not yet historical trend analysis. |
+| Evidence quality | Improved alpha posture | Evidence packet and validation-plan comparison are repeatable; IW45 adds lightweight elapsed-time history comparison, but not durable metrics storage. |
 | Graph semantics | Partial | File-scoped graph impact is useful; symbol caller/callee evidence can still be sparse or fallback-shaped. |
 | External target proof | Improved after IW41/IW43 | Installed/global CLI from multiple non-SCI cwd targets now exercises graph impact, check recommendation, preview/check, validationPlan evidence, cleanup, and clean target posture. More language/ecosystem diversity is still useful before broad closure. |
-| Performance | Alpha guidance documented after IW44 | Per-call latency budgets catch obvious regressions; `docs/project/interactive-slo-guidance.md` gives operator-facing bands, but not production p95/p99 SLOs. |
+| Performance | Alpha guidance plus lightweight history after IW45 | Per-call latency budgets catch obvious regressions; `docs/project/interactive-slo-guidance.md` gives operator-facing bands and IW45 compares generated elapsed-time maxima against an explicit baseline, but not production p95/p99 SLOs. |
 | Durable session semantics | Not closed | Snapshot metadata/artifacts are persisted narrowly; no long-lived cross-process session DB is claimed. |
 | Production readiness | Not ready | Kubernetes, marketplace, analytics, production deployment, and broad human IDE polish remain non-goals for alpha. |
 
@@ -85,18 +85,18 @@ It is **not** yet truthful to say:
 
 1. **External-repo diversity** — IW41/IW43 proved the validationPlan spine in two non-SCI repos; repeat across a less TypeScript-centric target before broad closure.
 2. **Graph richness** — improve or characterize symbol-level caller/callee limitations so fallback shapes are clearer to harnesses.
-3. **Performance posture** — IW44 added operator-facing latency/SLO guidance; still missing production-grade historical p95/p99 characterization.
-4. **Evidence history** — current comparison is current-run stable-field comparison, not a durable historical regression store.
+3. **Performance posture** — IW44 added operator-facing latency/SLO guidance and IW45 adds lightweight generated-evidence history; still missing production-grade p95/p99 characterization.
+4. **Evidence history** — IW45 provides an explicit elapsed-time baseline and current-run comparison, not a durable metrics database or dashboard-grade trend store.
 5. **Interface guidance** — IW42 added `docs/project/interface-choice-guide.md`; future work should validate it with more external target sessions.
 
 ## Recommended next wave
 
-**IW45 — Performance evidence history or graph richness hardening**
+**IW46 — Graph richness hardening or external diversity proof**
 
-Goal: either add historical elapsed-time comparison for generated evidence or improve/characterize graph caller/callee fallback behavior.
+Goal: improve/characterize graph caller/callee fallback behavior, or run another clean target-repo proof in a less TypeScript-centric ecosystem.
 
-Preference: add historical elapsed-time comparison if staying in evidence hardening; choose graph richness if operator experience shows impact summaries are too sparse.
+Preference: choose graph richness if operator experience shows impact summaries are too sparse; choose external diversity if broad Phase 1 closure is the nearer decision.
 
 ## Closeout conclusion
 
-IW41 completed the first external target validationPlan proof, IW42 documented interface choice guidance, IW43 added a second external target proof, and IW44 documented interactive SLO guidance. Continue to avoid feature accretion until either performance evidence history or graph-richness hardening reduces the remaining readiness ambiguity.
+IW41 completed the first external target validationPlan proof, IW42 documented interface choice guidance, IW43 added a second external target proof, IW44 documented interactive SLO guidance, and IW45 added lightweight elapsed-time history comparison. Continue to avoid feature accretion until graph-richness hardening or broader external diversity reduces the remaining readiness ambiguity.

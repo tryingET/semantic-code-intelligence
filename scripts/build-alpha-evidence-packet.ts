@@ -9,6 +9,7 @@ const files = {
     recommendChecks: '.test-results/recommend-checks-dogfood.json',
     safeWrite: '.test-results/safe-write-dogfood.json',
     validationPlanComparison: '.test-results/validation-plan-comparison.json',
+    evidenceHistory: '.test-results/alpha-evidence-history.json',
     gate: '.test-results/alpha-evidence-check.json',
 };
 
@@ -45,6 +46,7 @@ const graph = loaded.graph.ok ? loaded.graph.value : null;
 const recommendChecks = loaded.recommendChecks.ok ? loaded.recommendChecks.value : null;
 const safeWrite = loaded.safeWrite.ok ? loaded.safeWrite.value : null;
 const validationPlanComparison = loaded.validationPlanComparison.ok ? loaded.validationPlanComparison.value : null;
+const evidenceHistory = loaded.evidenceHistory.ok ? loaded.evidenceHistory.value : null;
 const gate = loaded.gate.ok ? loaded.gate.value : null;
 
 const safeWriteCalls = Array.isArray(safeWrite?.calls) ? safeWrite.calls : [];
@@ -70,6 +72,7 @@ const packet = {
         recommendChecks?.ok === true &&
         safeWrite?.ok === true &&
         validationPlanComparison?.ok === true &&
+        evidenceHistory?.ok === true &&
         gate?.ok === true,
     sourceFiles: files,
     evidenceGate: {
@@ -123,6 +126,15 @@ const packet = {
         operatorSummary: validationPlanComparison?.operatorSummary || null,
         remediationCatalog: validationPlanComparison?.remediationCatalog || null,
     },
+    evidenceHistory: {
+        ok: evidenceHistory?.ok === true,
+        baseline: evidenceHistory?.baseline || null,
+        comparisonPolicy: evidenceHistory?.comparisonPolicy || null,
+        comparisons: evidenceHistory?.comparisons || [],
+        warnings: evidenceHistory?.warnings || [],
+        overBudget: evidenceHistory?.overBudget || [],
+        operatorSummary: evidenceHistory?.operatorSummary || null,
+    },
     safeWriteVerification: {
         ok: safeWrite?.ok === true,
         cleanApplyVerified: !!cleanApply,
@@ -144,6 +156,7 @@ const packet = {
         'bun run safe-write:dogfood',
         'bun run validation-plan:compare',
         'bun run alpha:evidence:check',
+        'bun run alpha:evidence:history',
         'bun run alpha:evidence:packet',
         './scripts/migration-hygiene.sh',
     ],
@@ -155,17 +168,18 @@ const packet = {
             'Impact-aware check recommendation dogfood maps docs, source, test, and graph-impact cases to explicit advisory commands.',
             'Patch-check and safe-write previews can surface advisory check recommendations and compact validationPlan summaries without changing check/apply policy.',
             'ValidationPlan comparison flags stable-field check-plan drift while ignoring volatile snapshot/timing fields and includes remediation hints for failures.',
+            'Alpha evidence history compares elapsed-time maxima against an explicit baseline while preserving coarse budgets as the fail-closed gate.',
             'Patch planning remains preview-first by default.',
             'safe_write has clean apply exact-diff verification and dirty mismatch fail-closed evidence.',
             'Generated dogfood evidence passes the lightweight Alpha evidence gate.',
         ],
         doesNotProve: [
             'Production readiness.',
-            'Comprehensive performance characterization.',
+            'Production p95/p99 performance characterization.',
             'Complete whole-program call graph accuracy or rich semantic graph behavior for every language.',
             'A durable long-lived session database beyond narrow snapshot artifacts and generated evidence files.',
         ],
-        nextRecommendedWave: 'Promote validationPlan evidence into targeted operator UX only after more external-repo dogfood.'
+        nextRecommendedWave: 'Continue with graph richness hardening or broader external-repo diversity before broad Phase 1 closure.'
     },
     loadErrors: Object.fromEntries(
         Object.entries(loaded)

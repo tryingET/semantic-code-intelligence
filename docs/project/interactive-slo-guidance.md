@@ -28,7 +28,7 @@ The Alpha evidence gate currently budgets generated dogfood calls as follows:
 | Check recommendation calls | 15s per call |
 | Safe-write calls | 15s per call |
 
-Recent evidence packets generally run representative bounded calls well below those ceilings, often sub-second to a few seconds, but the budgets are intentionally loose. They prove that the current harness is not obviously stalled; they do **not** prove production latency SLOs.
+Recent evidence packets generally run representative bounded calls well below those ceilings, often sub-second to a few seconds, but the budgets are intentionally loose. `bun run alpha:evidence:history` now compares generated elapsed-time maxima against `docs/project/alpha-evidence-latency-baseline.json` as a lightweight historical regression signal. These checks prove that the current harness is not obviously stalled; they do **not** prove production latency SLOs.
 
 ## Operator latency bands
 
@@ -87,8 +87,9 @@ When a workflow exceeds expectations:
 1. **Classify the delay** — startup, search breadth, graph expansion, structural matching, or external check command.
 2. **Narrow the next call** — smaller paths/ranges, lower limits, file hints, or a composite workflow.
 3. **Preserve evidence** — keep elapsed time, selected commands, and `validationPlan` in the session/evidence packet.
-4. **Avoid false success** — do not claim interactive readiness if the operator waited on a slow hidden step.
-5. **Escalate only with proof** — create a performance hardening task if repeated delays exceed 15s for normal navigation or 30s for any interactive workflow.
+4. **Compare history** — run `bun run alpha:evidence:history` after regenerating evidence to see whether current maxima drifted from the explicit baseline.
+5. **Avoid false success** — do not claim interactive readiness if the operator waited on a slow hidden step.
+6. **Escalate only with proof** — create a performance hardening task if repeated delays exceed 15s for normal navigation or 30s for any interactive workflow.
 
 ## What current Alpha performance evidence proves
 
@@ -96,6 +97,7 @@ Current evidence proves:
 
 - representative Phase 1 workflows complete within coarse dogfood budgets;
 - generated evidence includes per-call elapsed times;
+- elapsed-time maxima can be compared against an explicit baseline;
 - slow-path detection exists at the evidence-gate level;
 - validationPlan records the selected commands so check latency can be distinguished from recommendation latency.
 
@@ -105,6 +107,7 @@ Current evidence does **not** prove:
 - performance on very large repositories;
 - stable p95/p99 latency across machines;
 - dashboard-grade historical trend analysis;
+- stable cross-machine historical benchmarks;
 - that CLI startup overhead is optimal for long-lived sessions.
 
 ## Recommended next hardening
@@ -112,6 +115,6 @@ Current evidence does **not** prove:
 Before broad Phase 1 closure, prefer one of:
 
 1. collect external target latency evidence across at least one larger or less TypeScript-centric repo;
-2. add historical comparison for elapsed time distributions;
+2. repeat elapsed-time history comparison across more generated evidence runs before refreshing the baseline;
 3. split evidence budgets by workflow type and repository size;
 4. document transport-specific startup overhead after more MCP HTTP vs CLI dogfood.

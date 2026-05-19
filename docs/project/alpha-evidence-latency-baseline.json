@@ -1,0 +1,33 @@
+{
+  "schema": "semantic-code-intelligence.alpha_evidence_latency_baseline.v1",
+  "label": "IW45 initial Alpha evidence elapsed-time baseline",
+  "capturedAt": "2026-05-18T15:24:24.334Z",
+  "commit": "6218e8c7e200b25e5890f21bedec4a7bb4814e9e",
+  "note": "Baseline max elapsed times were captured from generated Alpha evidence after IW44. They are operator-regression hints, not production SLOs or cross-machine benchmarks.",
+  "baselines": {
+    "alpha": {
+      "sourceFile": ".test-results/alpha-mvp-dogfood.json",
+      "maxElapsedMs": 1297
+    },
+    "selfHosted": {
+      "sourceFile": ".test-results/self-hosted-cli-dogfood.json",
+      "maxElapsedMs": 2591
+    },
+    "structural": {
+      "sourceFile": ".test-results/structural-workflow-dogfood.json",
+      "maxElapsedMs": 561
+    },
+    "graph": {
+      "sourceFile": ".test-results/graph-impact-dogfood.json",
+      "maxElapsedMs": 698
+    },
+    "recommendChecks": {
+      "sourceFile": ".test-results/recommend-checks-dogfood.json",
+      "maxElapsedMs": 442
+    },
+    "safeWrite": {
+      "sourceFile": ".test-results/safe-write-dogfood.json",
+      "maxElapsedMs": 545
+    }
+  }
+}

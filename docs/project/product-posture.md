@@ -88,8 +88,8 @@ Before treating Phase 1 as broadly proven, keep pressure on:
 
 - more external-repo validationPlan dogfood across less TypeScript-centric targets;
 - richer semantic graph behavior beyond stable fallback shapes;
-- durable evidence history beyond current-run stable-field comparison;
-- historical performance evidence beyond the operator-facing latency bands in `docs/project/interactive-slo-guidance.md`;
+- durable evidence history beyond current-run stable-field and lightweight elapsed-time comparison;
+- production-grade p95/p99 performance evidence beyond the operator-facing latency bands and generated-evidence baseline in `docs/project/interactive-slo-guidance.md`;
 - durable snapshot/session semantics where process-local CLI or adapter state is insufficient;
 - validating the new interface choice guidance (`docs/project/interface-choice-guide.md`) across more external target sessions.
 
