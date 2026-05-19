@@ -10,8 +10,8 @@ type: "revised-draft-rfc"
 # RFC: Phase 2 evidence review summary path
 
 Date: 2026-05-19
-Wave: IW58 — Phase 2 RFC conceptual model revision
-Status: **conceptual-model revised draft RFC; not accepted; not ADR-ready**
+Wave: IW59 — Phase 2 RFC semantic hardening
+Status: **semantic-hardened draft RFC; not accepted; not ADR-ready**
 
 ## Authority note
 
@@ -21,7 +21,7 @@ AK decisions `46` and `47` were superseded after the operator rejected unilatera
 
 Review notes for the previous revision: `docs/project/phase-2-evidence-review-rfc-review.md`.
 
-This revision adds a conceptual model for evidence-backed operator judgment; it does not create governance acceptance.
+This revision adds semantic hardening for evidence-backed operator judgment; it does not create governance acceptance.
 
 ## Problem / intent source
 
@@ -81,6 +81,55 @@ Core concepts:
 - **AuthorityBoundary** — a normative statement about what the review cannot authorize, such as production readiness, AK decision acceptance, mutation, or host integration.
 - **OperatorDecisionPoint** — a human-facing choice left open by the evidence, such as continue, stop, narrow scope, inspect a limitation, or run stronger checks.
 
+### Conceptual schema table
+
+| Concept | Definition | Minimum required representation | Prohibited confusion | Example |
+|---|---|---|---|---|
+| EvidenceReview | Read-only organization of evidence for operator inspection | schema/version, source, claims, authority boundaries, operator decision points | Treating a rendered review as canonical AK evidence or governance approval | A markdown/JSON review generated from an alpha evidence packet |
+| EvidenceArtifact | Input object consumed by the review | artifact kind, source URI/path when available, schema/kind, observed status | Treating artifact existence as proof of safety | `.test-results/alpha-evidence-packet.json` |
+| ReviewClaim | Proposition the review supports, weakens, or qualifies | claim id/text, support artifacts, limitations, warrant, authority boundary | Treating check success as broad safety without a claim | "Selected checks passed" |
+| ValidationExecution | Event where selected commands actually ran | command, status, elapsed time when available, output reference when available | Inferring execution from recommendation | `bun run typecheck` executed and passed |
+| CheckResult | Outcome of a validation execution | ok/status, failure/timeout when present, elapsed time when available | Collapsing timeout, failure, and missing evidence | `ok: true`, elapsed 206 ms |
+| RecommendedCommand | Advisory command proposed for risk coverage | command, rationale, minimum/broader category | Displaying as executed unless selected and observed | `bun run typecheck` recommended broader check |
+| ExecutedCommand | Command observed as run | command, execution source, result reference | Treating recommendation as execution | `true` selected and run in preview checks |
+| Limitation | Explicit qualifier that bounds a claim or decision point | limitation text, affected claim/decision, severity where available | Hiding fallback graph evidence behind green status | "graph expand unavailable; caller context limited" |
+| AuthorityBoundary | Normative constraint on what the review cannot authorize | boundary text, affected action/scope | Treating evidence review as AK decision acceptance | "not production readiness" |
+| OperatorDecisionPoint | Human choice supported but not automated by the review | decision options, supporting/limiting claims, residual uncertainty | Auto-continuing or auto-accepting based on evidence | continue, stop, inspect graph limitation, run broader checks |
+
+### Minimum claim model
+
+A review claim should be representable in JSON and markdown using this shape:
+
+```text
+ReviewClaim
+- id
+- claim
+- status: supported | weakened | contradicted | unresolved
+- supportedBy: EvidenceArtifact[]
+- limitedBy: Limitation[]
+- warrant
+- authorityBoundaries: AuthorityBoundary[]
+- operatorDecisionPoints: OperatorDecisionPoint[]
+```
+
+Rules for claim use:
+
+- every high-level outcome banner must be backed by at least one ReviewClaim;
+- claims about safety must name the exact scope they cover;
+- claims about continuation must expose remaining limitations;
+- no claim may imply production readiness unless production evidence exists, which Phase 1 Alpha evidence does not provide.
+
+### Evidence absence states
+
+The review must not collapse different kinds of missing or negative evidence:
+
+| State | Meaning | Operator interpretation |
+|---|---|---|
+| failed | An attempted validation or evidence-producing step ran and produced a negative result | Stop, fix, or explicitly accept risk before continuing |
+| unavailable | Evidence was expected or useful but no valid observation is present | Treat as a limitation; consider stronger checks or inspection |
+| unknown | The review cannot determine whether evidence exists or applies | Treat as uncertainty; do not infer safety |
+| inapplicable | The evidence type does not apply to this source, workflow, or risk category | Do not penalize the review, but keep the reason visible |
+
 Conceptual rules:
 
 1. every EvidenceReview must state at least one ReviewClaim and at least one AuthorityBoundary;
@@ -102,7 +151,7 @@ Authority boundary: The review cannot accept an AK decision, mutate the workspac
 Operator decision point: continue, inspect graph limitation, run broader checks, or stop.
 ```
 
-This conceptual model is the source for the schema review points below. If the JSON shape cannot represent these distinctions, the RFC should choose Option A and keep the producer CLI/markdown-only until the model and shape are aligned.
+This conceptual model is the source for the schema review points below. If the JSON shape cannot represent the conceptual schema table, minimum claim model, and absence states, the RFC should choose Option A and keep the producer CLI/markdown-only until the model and shape are aligned.
 
 ## Proposal
 
@@ -223,7 +272,7 @@ Before this RFC can approach ADR readiness, reviewers must decide:
 2. which fields are required versus optional for each source kind;
 3. how unavailable evidence differs from failed, unknown, and inapplicable evidence;
 4. how multiple validation plans are represented;
-5. how ReviewClaims, supporting artifacts, warrants, limitations, and authority boundaries are represented;
+5. how ReviewClaims, supporting artifacts, warrants, limitations, authority boundaries, and operator decision points are represented;
 6. what stability expectations apply to artifact URIs such as `snapshot://.../overlay.diff`;
 7. what versioning/deprecation policy applies to `semantic-code-intelligence.evidence_review.v1`;
 8. whether target-dogfood evidence and alpha-packet evidence require separate sections or one shared renderer.
