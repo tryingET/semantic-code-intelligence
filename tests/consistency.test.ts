@@ -507,6 +507,8 @@ describe('Cross-Protocol Consistency', () => {
             const cliResult = await context.adapters.cli.executeCommand([
                 'references',
                 symbol,
+                '--file',
+                file,
                 '--include-declaration',
             ]);
 

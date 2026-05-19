@@ -106,35 +106,72 @@ export class ScipIndexReader {
 
 export async function loadScipIndex(indexPath: string, options: ScipLoadOptions = {}): Promise<ScipIndexReader> {
     const resolved = await resolveScipArtifact(indexPath, options);
-    const bytes = await fs.readFile(resolved.path);
-    const index = deserializeSCIP(bytes);
-    return new ScipIndexReader(index, resolved.path);
+    const handle = await fs.open(resolved.path, 'r').catch((error) => {
+        throw new CoreError('InvalidParams', `Failed to open SCIP index: ${error instanceof Error ? error.message : String(error)}`, { scipIndexPath: indexPath });
+    });
+
+    try {
+        const stat = await handle.stat();
+        if (!stat.isFile()) {
+            throw new CoreError('InvalidParams', 'scipIndexPath must point to a file', { scipIndexPath: indexPath });
+        }
+        if (stat.size > resolved.maxBytes) {
+            throw new CoreError('InvalidParams', 'SCIP index exceeds maximum allowed size', { scipIndexPath: indexPath, bytes: stat.size, maxBytes: resolved.maxBytes });
+        }
+        const bytes = await handle.readFile();
+        const index = deserializeScipBytes(bytes, indexPath);
+        return new ScipIndexReader(index, resolved.path);
+    } finally {
+        await handle.close().catch(() => undefined);
+    }
 }
 
-export async function resolveScipArtifact(indexPath: string, options: ScipLoadOptions = {}): Promise<{ path: string; bytes: number }> {
+export async function resolveScipArtifact(indexPath: string, options: ScipLoadOptions = {}): Promise<{ path: string; bytes: number; maxBytes: number }> {
     const workspaceRoot = options.workspaceRoot ? path.resolve(options.workspaceRoot) : null;
     const candidate = path.resolve(workspaceRoot || process.cwd(), indexPath);
+    const maxBytes = Math.max(1, options.maxBytes ?? DEFAULT_MAX_SCIP_BYTES);
 
     if (workspaceRoot) {
-        const rel = path.relative(workspaceRoot, candidate);
-        if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) {
+        const lexicalRel = path.relative(workspaceRoot, candidate);
+        if (!lexicalRel || lexicalRel.startsWith('..') || path.isAbsolute(lexicalRel)) {
             throw new CoreError('InvalidParams', 'scipIndexPath must stay within the workspace', { scipIndexPath: indexPath });
         }
     }
 
-    const stat = await fs.stat(candidate).catch((error) => {
+    const realCandidate = await fs.realpath(candidate).catch((error) => {
+        throw new CoreError('InvalidParams', `Failed to stat SCIP index: ${error instanceof Error ? error.message : String(error)}`, { scipIndexPath: indexPath });
+    });
+
+    if (workspaceRoot) {
+        const realWorkspaceRoot = await fs.realpath(workspaceRoot).catch((error) => {
+            throw new CoreError('InvalidParams', `Failed to stat workspace root: ${error instanceof Error ? error.message : String(error)}`, { scipIndexPath: indexPath });
+        });
+        const realRel = path.relative(realWorkspaceRoot, realCandidate);
+        if (!realRel || realRel.startsWith('..') || path.isAbsolute(realRel)) {
+            throw new CoreError('InvalidParams', 'scipIndexPath must stay within the workspace', { scipIndexPath: indexPath });
+        }
+    }
+
+    const stat = await fs.stat(realCandidate).catch((error) => {
         throw new CoreError('InvalidParams', `Failed to stat SCIP index: ${error instanceof Error ? error.message : String(error)}`, { scipIndexPath: indexPath });
     });
     if (!stat.isFile()) {
         throw new CoreError('InvalidParams', 'scipIndexPath must point to a file', { scipIndexPath: indexPath });
     }
 
-    const maxBytes = Math.max(1, options.maxBytes ?? DEFAULT_MAX_SCIP_BYTES);
     if (stat.size > maxBytes) {
         throw new CoreError('InvalidParams', 'SCIP index exceeds maximum allowed size', { scipIndexPath: indexPath, bytes: stat.size, maxBytes });
     }
 
-    return { path: candidate, bytes: stat.size };
+    return { path: realCandidate, bytes: stat.size, maxBytes };
+}
+
+function deserializeScipBytes(bytes: Uint8Array, indexPath: string): Index {
+    try {
+        return deserializeSCIP(bytes);
+    } catch (error) {
+        throw new CoreError('InvalidParams', `Failed to parse SCIP index: ${error instanceof Error ? error.message : String(error)}`, { scipIndexPath: indexPath });
+    }
 }
 
 function normalizeRelativePath(file: string): string {

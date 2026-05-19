@@ -111,12 +111,7 @@ bindDescribe('Alpha MVP MCP HTTP protocol', () => {
     }
 
     test('tools/list advertises the Alpha MVP tool surface', async () => {
-        const { status, body } = await toolsList(2);
-
-        expect(status).toBe(200);
-        const tools = body?.result?.tools || [];
-        const toolNames = new Set(tools.map((tool: any) => tool.name));
-        for (const name of [
+        const requiredToolNames = [
             'get_snapshot',
             'read_file',
             'text_search',
@@ -127,7 +122,22 @@ bindDescribe('Alpha MVP MCP HTTP protocol', () => {
             'graph_expand',
             'propose_patch',
             'run_checks',
-        ]) {
+        ];
+        let status = 0;
+        let tools: any[] = [];
+        let toolNames = new Set<string>();
+
+        for (let attempt = 0; attempt < 10; attempt++) {
+            const listed = await toolsList(2 + attempt);
+            status = listed.status;
+            tools = listed.body?.result?.tools || [];
+            toolNames = new Set(tools.map((tool: any) => tool.name));
+            if (status === 200 && requiredToolNames.every((name) => toolNames.has(name))) break;
+            await wait(150);
+        }
+
+        expect(status).toBe(200);
+        for (const name of requiredToolNames) {
             expect(toolNames.has(name), `${name} should be discoverable through MCP HTTP tools/list`).toBe(true);
         }
 

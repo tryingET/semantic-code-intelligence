@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { create } from '@bufbuild/protobuf';
@@ -148,6 +148,18 @@ describe('MCP graph_expand SCIP backend', () => {
         });
         expect(outside.isError).toBe(true);
         expect(String(outside.content?.[0]?.text || '')).toContain('scipIndexPath must stay within the workspace');
+
+        const symlinkDir = join(process.cwd(), '.test-results', 'scip-graph-expand');
+        mkdirSync(symlinkDir, { recursive: true });
+        const symlinkPath = join(symlinkDir, `outside-${Date.now()}-${Math.random().toString(16).slice(2)}.scip`);
+        symlinkSync(outsidePath, symlinkPath);
+        const symlink = await mcp.handleToolCall('graph_expand', {
+            file: 'pkg/foo.go',
+            edges: ['imports'],
+            scipIndexPath: symlinkPath,
+        });
+        expect(symlink.isError).toBe(true);
+        expect(String(symlink.content?.[0]?.text || '')).toContain('scipIndexPath must stay within the workspace');
     });
 
     test('matches absolute file seeds against SCIP project root', async () => {

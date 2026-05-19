@@ -15,21 +15,23 @@ describe('LSP Server Integration Tests', () => {
             stdio: ['pipe', 'pipe', 'pipe'],
         });
 
-        // Wait for server to be ready
+        // Wait briefly for the stdio server process to attach listeners. Readiness logs must stay
+        // on stderr so stdout remains a clean LSP protocol channel.
         await new Promise<void>((resolve) => {
-            serverProcess.stdout?.on('data', (data) => {
-                const message = data.toString();
-                if (message.includes('Initialized') || message.includes('ready')) {
-                    serverReady = true;
-                    resolve();
-                }
-            });
-
-            // Timeout after 5 seconds
-            setTimeout(() => {
+            let done = false;
+            const finish = () => {
+                if (done) return;
+                done = true;
                 serverReady = true;
+                serverProcess.stderr?.off('data', onStderr);
                 resolve();
-            }, 5000);
+            };
+            const onStderr = (data: Buffer) => {
+                const message = data.toString();
+                if (message.includes('Starting Semantic Code Intelligence Server')) finish();
+            };
+            serverProcess.stderr?.on('data', onStderr);
+            setTimeout(finish, 1000);
         });
     });
 

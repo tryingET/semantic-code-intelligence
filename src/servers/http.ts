@@ -160,7 +160,7 @@ export class HTTPServer {
                                     },
                                 }),
                                 {
-                                    status: l4 || l1m || l2m ? 200 : 503,
+                                    status: l4 || l1m || l2m || lmAll || lmPerf ? 200 : 503,
                                     headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
                                 }
                             );
@@ -858,7 +858,6 @@ export class HTTPServer {
                             const executor = new ToolExecutor();
                             const res: any = await executor.execute(mcpAdapter as any, 'graph_expand', body);
                             const txt = res?.content?.[0]?.text;
-                            const payload = typeof txt === 'string' ? JSON.parse(txt) : res;
 
                             if (res?.isError) {
                                 try {
@@ -866,11 +865,19 @@ export class HTTPServer {
                                 } catch {}
                                 const code = res?.error?.code;
                                 const status = code === 'InvalidParams' ? 400 : 500;
-                                return new Response(JSON.stringify({ success: false, error: res?.error || { message: 'graph_expand failed' } }), {
-                                    status,
-                                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-                                });
+                                return new Response(
+                                    JSON.stringify({
+                                        success: false,
+                                        error: res?.error || { code: 'Internal', message: typeof txt === 'string' ? txt : 'graph_expand failed' },
+                                    }),
+                                    {
+                                        status,
+                                        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                                    }
+                                );
                             }
+
+                            const payload = typeof txt === 'string' ? JSON.parse(txt) : res;
 
                             if (typeof payload?.note === 'string' && payload.note.length) {
                                 try {

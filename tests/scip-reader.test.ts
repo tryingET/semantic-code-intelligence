@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { create } from '@bufbuild/protobuf';
@@ -127,5 +127,24 @@ describe('SCIP reader', () => {
         const indexPath = writeSampleScipIndex();
         await expect(loadScipIndex(indexPath, { workspaceRoot: process.cwd() })).rejects.toThrow('scipIndexPath must stay within the workspace');
         await expect(loadScipIndex(indexPath, { maxBytes: 1 })).rejects.toThrow('SCIP index exceeds maximum allowed size');
+    });
+
+    test('rejects workspace-contained symlinks that resolve outside the workspace', async () => {
+        const outsideIndexPath = writeSampleScipIndex();
+        const workspace = mkdtempSync(join(tmpdir(), 'sci-scip-workspace-'));
+        const nestedDir = join(workspace, 'artifacts');
+        mkdirSync(nestedDir, { recursive: true });
+        const symlinkPath = join(nestedDir, 'index.scip');
+        symlinkSync(outsideIndexPath, symlinkPath);
+
+        await expect(loadScipIndex(symlinkPath, { workspaceRoot: workspace })).rejects.toThrow('scipIndexPath must stay within the workspace');
+    });
+
+    test('reports malformed SCIP bytes as invalid caller input', async () => {
+        const workspace = mkdtempSync(join(tmpdir(), 'sci-scip-malformed-'));
+        const malformedPath = join(workspace, 'bad.scip');
+        writeFileSync(malformedPath, 'not a scip index');
+
+        await expect(loadScipIndex(malformedPath, { workspaceRoot: workspace })).rejects.toThrow('Failed to parse SCIP index');
     });
 });

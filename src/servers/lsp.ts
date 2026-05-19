@@ -35,7 +35,7 @@ import type { CodeAnalyzer } from '../core/unified-analyzer.js';
 import { metricsRegistry, recordLayerLatency, recordToolEnd, recordToolStart } from '../instrumentation/metrics.js';
 
 export class LSPServer {
-    private connection = createConnection(ProposedFeatures.all);
+    private connection = createConnection(ProposedFeatures.all, process.stdin, process.stdout);
     private documents = new TextDocuments(TextDocument);
     private hasConfigurationCapability = false;
     private coreAnalyzer!: CodeAnalyzer;

@@ -17,7 +17,7 @@ describe('MCP apply_after_checks with unified diff (applied=true)', () => {
     let mcp: MCPAdapter;
     const targetRel = 'tests/fixtures/example.ts';
     const targetAbs = path.join(process.cwd(), targetRel);
-    const marker = '// mcp unified apply_after_checks test';
+    const marker = '// mcp unified apply_after_checks second marker';
 
     beforeAll(async () => {
         process.env.ALLOW_SNAPSHOT_APPLY = '1';

@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { create } from '@bufbuild/protobuf';
 import {
@@ -78,5 +79,48 @@ bindDescribe('HTTP /api/v1/graph-expand SCIP parity', () => {
         expect(body.data?.impactSummary?.backend).toBe('scip');
         expect(body.data?.neighbors?.imports).toHaveLength(1);
         expect(body.data?.neighbors?.exports).toHaveLength(1);
+    });
+
+    test('returns a client error for malformed explicit scipIndexPath instead of falling back', async () => {
+        const dir = join(process.cwd(), '.test-results', 'http-scip-graph-expand');
+        mkdirSync(dir, { recursive: true });
+        const malformedPath = join(dir, `bad-${Date.now()}-${Math.random().toString(16).slice(2)}.scip`);
+        writeFileSync(malformedPath, 'not a scip index');
+
+        const res = await fetch(`${base}/api/v1/graph-expand`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ file: 'pkg/foo.go', edges: ['imports'], scipIndexPath: malformedPath, limit: 10 }),
+        });
+        expect(res.status).toBe(400);
+        const body = await res.json();
+        expect(body.success).toBe(false);
+        expect(body.error?.code).toBe('InvalidParams');
+        expect(body.error?.message).toContain('Failed to parse SCIP index');
+        expect(body.data).toBeUndefined();
+    });
+
+    test('rejects workspace symlink escapes for explicit scipIndexPath', async () => {
+        const outsideDir = join(tmpdir(), `sci-http-outside-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+        mkdirSync(outsideDir, { recursive: true });
+        const outsideIndexPath = join(outsideDir, 'index.scip');
+        writeFileSync(outsideIndexPath, 'outside');
+
+        const dir = join(process.cwd(), '.test-results', 'http-scip-graph-expand');
+        mkdirSync(dir, { recursive: true });
+        const symlinkPath = join(dir, `outside-${Date.now()}-${Math.random().toString(16).slice(2)}.scip`);
+        symlinkSync(outsideIndexPath, symlinkPath);
+
+        const res = await fetch(`${base}/api/v1/graph-expand`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ file: 'pkg/foo.go', edges: ['imports'], scipIndexPath: symlinkPath, limit: 10 }),
+        });
+        expect(res.status).toBe(400);
+        const body = await res.json();
+        expect(body.success).toBe(false);
+        expect(body.error?.code).toBe('InvalidParams');
+        expect(body.error?.message).toContain('scipIndexPath must stay within the workspace');
+        expect(body.data).toBeUndefined();
     });
 });
