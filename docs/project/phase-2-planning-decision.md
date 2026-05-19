@@ -82,10 +82,12 @@ Phase 2 work must be rollbackable without damaging the Phase 1 substrate:
 
 ## Next executable wave
 
+IW53 produced the evidence review contract in `docs/project/evidence-review-contract.md`.
+
 Recommended next wave:
 
-**IW53 — Evidence review contract design**
+**IW54 — Evidence review summary prototype**
 
-Goal: define the minimal operator-facing evidence review contract, including fields, layout/sections, sample input from existing `.test-results`, non-goals, and validation checks.
+Goal: implement the smallest non-mutating renderer/summary producer for the contract, preferably as a CLI or script that reads existing `.test-results`/`validationPlan` input and emits markdown or JSON.
 
-Do not implement UI until IW53 produces an accepted contract and names the target rendering surface.
+Do not build a UI until the summary contract is proven with existing evidence samples.

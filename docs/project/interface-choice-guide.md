@@ -144,4 +144,4 @@ After IW50/IW51, do not add more interface dogfood by default. Prefer one of:
 2. targeted hardening tied to a named closure-review gap; or
 3. the IW52 Phase 2 planning decision (`docs/project/phase-2-planning-decision.md`) before any UI/workbench implementation.
 
-Do not start Phase 2 UI/workbench polish solely because the Alpha MVP interface set is documented. IW52 points first toward an evidence review contract, not broad IDE/dashboard work.
+Do not start Phase 2 UI/workbench polish solely because the Alpha MVP interface set is documented. IW52 points first toward evidence review, and IW53 defines the evidence review contract in `docs/project/evidence-review-contract.md`.
