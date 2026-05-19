@@ -2204,7 +2204,7 @@ export class MCPAdapter {
         const requestedEdges = Array.isArray(args?.edges) ? args.edges.map(String) : ['imports', 'exports'];
         const hasFileSeed = typeof args?.file === 'string' && args.file.trim().length > 0;
         const hasSymbolSeed = typeof args?.symbol === 'string' && args.symbol.trim().length > 0;
-        const languageSupport = this.inferGraphLanguage(hasFileSeed ? args.file : undefined);
+        const languageSupport = out?.languageSupport && typeof out.languageSupport === 'object' ? out.languageSupport : this.inferGraphLanguage(hasFileSeed ? args.file : undefined);
         const note = typeof out?.note === 'string' ? out.note : '';
         const noteLimitations = note
             ? note
@@ -2228,21 +2228,23 @@ export class MCPAdapter {
         });
         const callerContextCount = Array.isArray(neighbors.callers) ? neighbors.callers.filter((item: any) => typeof item?.caller === 'string' && item.caller).length : 0;
         const fallbackUnavailable = noteLimitations.some((item: string) => item.toLowerCase().startsWith('fallback: graph expand unavailable'));
-        const backend = fallbackUnavailable
-            ? 'fallback'
-            : languageSupport.support === 'tree_sitter_best_effort'
-              ? 'tree_sitter'
-              : languageSupport.support === 'symbol_seed_best_effort'
-                ? 'fallback'
-                : 'fallback';
+        const backend = out?.provenance?.backend
+            ? String(out.provenance.backend)
+            : fallbackUnavailable
+              ? 'fallback'
+              : languageSupport.support === 'tree_sitter_best_effort'
+                ? 'tree_sitter'
+                : languageSupport.support === 'symbol_seed_best_effort'
+                  ? 'fallback'
+                  : 'fallback';
         const provenance = {
             backend,
-            freshness: backend === 'tree_sitter' ? 'current' : 'unknown',
-            discoveryBackend: !hasFileSeed && hasSymbolSeed ? 'rg' : null,
-            indexPath: null,
-            generatedAt: null,
-            workspaceRoot: process.cwd(),
-            metadataSource: null,
+            freshness: out?.provenance?.freshness ? String(out.provenance.freshness) : backend === 'tree_sitter' ? 'current' : 'unknown',
+            discoveryBackend: out?.provenance?.discoveryBackend !== undefined ? out.provenance.discoveryBackend : !hasFileSeed && hasSymbolSeed ? 'rg' : null,
+            indexPath: out?.provenance?.indexPath ?? null,
+            generatedAt: out?.provenance?.generatedAt ?? null,
+            workspaceRoot: out?.provenance?.workspaceRoot ?? process.cwd(),
+            metadataSource: out?.provenance?.metadataSource ?? null,
         };
         return {
             seed: hasFileSeed ? { kind: 'file', value: args.file } : { kind: 'symbol', value: String(args?.symbol || '') },
@@ -2269,12 +2271,83 @@ export class MCPAdapter {
         };
     }
 
+    private async expandGraphFromScip(args: Record<string, any>, edges: string[], file?: string, symbol?: string) {
+        const scipIndexPath = typeof args?.scipIndexPath === 'string' && args.scipIndexPath.trim() ? args.scipIndexPath.trim() : '';
+        if (!scipIndexPath) return null;
+
+        const { loadScipIndex } = await import('../core/scip-reader.js');
+        const reader = await loadScipIndex(scipIndexPath);
+        const summary = reader.summary();
+        const limit = Math.max(1, Math.min(Number(args?.limit || 50) || 50, 1000));
+        const neighbors: Record<string, any[]> = { imports: [], exports: [], callers: [], callees: [] };
+        const notes: string[] = [];
+
+        const toItem = (occurrence: any) => ({
+            file: occurrence.file,
+            symbol: occurrence.symbol,
+            language: occurrence.language,
+            start: occurrence.range.start,
+            end: occurrence.range.end,
+            roles: occurrence.roles,
+        });
+
+        if (file) {
+            const fileOccurrences = reader.occurrencesForFile(file);
+            if (edges.includes('imports')) neighbors.imports = fileOccurrences.filter((occurrence) => occurrence.roles.import).slice(0, limit).map(toItem);
+            if (edges.includes('exports')) neighbors.exports = fileOccurrences.filter((occurrence) => occurrence.roles.definition).slice(0, limit).map(toItem);
+        } else {
+            if (edges.includes('imports')) notes.push('imports: SCIP import extraction requires a file seed');
+            if (edges.includes('exports') && !symbol) notes.push('exports: SCIP definition extraction requires a file or symbol seed');
+        }
+
+        if (symbol) {
+            if (edges.includes('exports')) neighbors.exports = reader.definitions(symbol).slice(0, limit).map(toItem);
+            if (edges.includes('callers')) {
+                neighbors.callers = reader.references(symbol).slice(0, limit).map((occurrence) => ({
+                    ...toItem(occurrence),
+                    caller: null,
+                    callerKind: null,
+                }));
+                notes.push('callers: SCIP backend returns symbol references, not proven call sites');
+            }
+        } else if (edges.includes('callers')) {
+            notes.push('callers: SCIP reference extraction requires a symbol seed');
+        }
+
+        if (edges.includes('callees')) notes.push('callees: SCIP reader does not infer callee edges yet');
+
+        const out: any = file ? { file: path.resolve(file), neighbors } : { symbol: symbol || '', neighbors };
+        if (notes.length) out.note = notes.join('; ');
+        out.scip = summary;
+        out.languageSupport = {
+            language: file ? this.inferGraphLanguage(file).language : 'symbol_seed',
+            support: 'scip_index',
+            supportedEdges: ['imports', 'exports', 'callers'],
+        };
+        out.provenance = {
+            backend: 'scip',
+            freshness: 'unknown',
+            discoveryBackend: null,
+            indexPath: summary.indexPath,
+            generatedAt: summary.generatedAt,
+            workspaceRoot: summary.workspaceRoot || process.cwd(),
+            metadataSource: null,
+        };
+        return out;
+    }
+
     private async handleGraphExpand(args: Record<string, any>) {
         const edges = Array.isArray(args?.edges) ? (args.edges as string[]) : ['imports', 'exports'];
         const file = typeof args?.file === 'string' ? (args.file as string) : undefined;
         const symbol = typeof args?.symbol === 'string' ? (args.symbol as string) : undefined;
         if (!file && !symbol) return { content: [{ type: 'text', text: 'file or symbol required' }], isError: true };
         try {
+            const scipOut = await this.expandGraphFromScip(args, edges, file, symbol);
+            if (scipOut) {
+                const payload = { schemaVersion: 2, ...scipOut, impactSummary: this.summarizeGraphImpact(scipOut, args) };
+                return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: false };
+            }
+
             const { expandNeighbors } = await import('../core/code-graph.js');
             let seedFiles: string[] | undefined;
             if (symbol) {

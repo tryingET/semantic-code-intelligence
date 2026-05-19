@@ -36,14 +36,14 @@ Make `graph_expand` limitations predictable for harnessed LLM coding sessions. T
 {
   "languageSupport": {
     "language": "typescript | javascript | python | symbol_seed | unknown | <extension>",
-    "support": "tree_sitter_best_effort | symbol_seed_best_effort | unsupported_extension | unknown_extension",
+    "support": "tree_sitter_best_effort | symbol_seed_best_effort | unsupported_extension | unknown_extension | scip_index",
     "supportedEdges": ["imports", "exports", "callers", "callees"]
   },
-  "backend": "tree_sitter | fallback",
+  "backend": "tree_sitter | scip | fallback",
   "freshness": "current | unknown",
   "discoveryBackend": "rg | null",
   "provenance": {
-    "backend": "tree_sitter | fallback",
+    "backend": "tree_sitter | scip | fallback",
     "freshness": "current | unknown",
     "discoveryBackend": "rg | null",
     "indexPath": null,
@@ -54,7 +54,7 @@ Make `graph_expand` limitations predictable for harnessed LLM coding sessions. T
 }
 ```
 
-The provenance shape is forward-compatible with future `scip` and `live_lsp` backends, but current behavior remains tree-sitter or fallback only.
+The provenance shape is forward-compatible with future `live_lsp` backends. Current automatic behavior remains tree-sitter or fallback only, while callers may opt into `backend: "scip"` by passing an explicit existing `scipIndexPath` artifact. SCI does not generate SCIP indexes from `graph_expand`.
 
 Requested edges that are unsupported for the inferred language appear as `limited` evidence with limitations such as:
 

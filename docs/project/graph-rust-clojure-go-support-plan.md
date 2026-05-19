@@ -121,7 +121,8 @@ Landed after the initial plan:
 
 - `graph_expand` impact summaries expose backend provenance/freshness fields for current `tree_sitter` and `fallback` behavior.
 - `src/core/scip-reader.ts` provides a read-only generic SCIP reader spike that can load an existing `index.scip`, summarize documents/occurrences/languages, and query definitions, references, and file-local occurrences.
-- No `graph_expand` routing to SCIP exists yet; SCIP remains a consumed artifact, not something generated automatically by `graph_expand`.
+- `graph_expand` can optionally consume an explicit `scipIndexPath` and return `backend: "scip"` evidence for file imports/exports and symbol definitions/references.
+- `graph_expand` still does not generate SCIP indexes automatically; SCIP remains a consumed artifact.
 
 ## Current code surfaces to change later
 

@@ -208,6 +208,10 @@ export class ToolRegistry {
                     },
                     depth: { type: 'number', default: 1 },
                     limit: { type: 'number', default: 50 },
+                    scipIndexPath: {
+                        type: 'string',
+                        description: 'Optional path to an existing local index.scip artifact. SCI reads it only; graph_expand does not generate SCIP indexes.',
+                    },
                 },
                 anyOf: [{ required: ['file'] }, { required: ['symbol'] }],
             },
