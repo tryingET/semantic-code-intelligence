@@ -53,9 +53,10 @@
     "alpha:evidence:history": "mkdir -p .test-results && bun run scripts/compare-alpha-evidence-history.ts >/dev/null",
     "target-validation-plan:dogfood": "mkdir -p .test-results && bun run scripts/dogfood-target-validation-plan.ts --json",
     "evidence-review:summary": "bun run scripts/summarize-evidence-review.ts",
+    "evidence-review:test": "bun test tests/evidence-review-claim-model.test.ts",
     "alpha:evidence:check": "bun run scripts/check-alpha-evidence.ts > .test-results/alpha-evidence-check.json",
     "alpha:evidence:packet": "bun run scripts/build-alpha-evidence-packet.ts > .test-results/alpha-evidence-packet.json",
-    "alpha:mvp:check": "bun run typecheck && bun run alpha:mvp:test && mkdir -p .test-results && bun run scripts/dogfood-alpha-mvp.ts --json > .test-results/alpha-mvp-dogfood.json && bun run self:dogfood:cli && bun run structural:dogfood && bun run graph:dogfood && bun run recommend-checks:dogfood && bun run safe-write:dogfood && bun run validation-plan:compare && bun run alpha:evidence:check && bun run alpha:evidence:history && bun run alpha:evidence:packet && ./scripts/migration-hygiene.sh",
+    "alpha:mvp:check": "bun run typecheck && bun run alpha:mvp:test && bun run evidence-review:test && mkdir -p .test-results && bun run scripts/dogfood-alpha-mvp.ts --json > .test-results/alpha-mvp-dogfood.json && bun run self:dogfood:cli && bun run structural:dogfood && bun run graph:dogfood && bun run recommend-checks:dogfood && bun run safe-write:dogfood && bun run validation-plan:compare && bun run alpha:evidence:check && bun run alpha:evidence:history && bun run alpha:evidence:packet && ./scripts/migration-hygiene.sh",
     "typecheck": "tsgo --project tsconfig.build.json --noEmit --pretty false",
     "typecheck:fallback": "tsc -p tsconfig.build.json"
   },

@@ -160,4 +160,4 @@ Observed result:
 
 ## Follow-up
 
-IW64 begins aligning `semantic-code-intelligence.evidence_review.v1` with the conceptual claim model by adding first-class evidence artifacts, claims, authority boundaries, and operator decision points to the summary output. Handoff or UI work remains blocked until the reconsideration gates above are satisfied.
+IW64 begins aligning `semantic-code-intelligence.evidence_review.v1` with the conceptual claim model by adding first-class evidence artifacts, claims, authority boundaries, and operator decision points to the summary output. IW65 adds regression coverage for that model, and IW66 wires the claim-model test into the alpha validation surface. Handoff or UI work remains blocked until the reconsideration gates above are satisfied.
