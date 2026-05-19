@@ -9,13 +9,14 @@ type: "adr"
 
 # ADR-0002: Defer Evidence Review Handoff Until Claim Model Is Schema-Ready
 
-Status: Proposed
+Status: Accepted
 Date: 2026-05-19
+Accepted: 2026-05-19 by explicit operator instruction (`do 1` after being offered “Accept/reject proposed ADR-0002 explicitly”)
 Authors: Semantic Code Intelligence Team
 
 ## Authority note
 
-This ADR is **proposed**. It records the narrow decision candidate from `docs/project/phase-2-evidence-review-rfc.md`; it is not accepted authority until an explicit operator or accepted governance path accepts it.
+This ADR is **accepted as a repository ADR** for the narrow Option A deferral decision recorded below.
 
 This ADR does not create or advance AK decision lifecycle state. AK decisions `46` and `47` remain superseded and must not be cited as accepted authority.
 
@@ -128,7 +129,7 @@ Trade-offs:
 
 ## Rollback and revisit
 
-Rollback for this proposed ADR is simple: do not cite it as accepted and continue treating the RFC as draft planning context.
+Rollback for this accepted ADR requires a later explicit superseding ADR or accepted governance action. Do not silently broaden or reinterpret this ADR into host handoff, UI rendering, schema implementation, production readiness, or AK decision lifecycle authority.
 
 Revisit when:
 
@@ -159,4 +160,4 @@ Observed result:
 
 ## Follow-up
 
-Next implementation work, if this ADR is accepted later, should align `semantic-code-intelligence.evidence_review.v1` with the conceptual claim model before any handoff or UI work.
+Next implementation work should align `semantic-code-intelligence.evidence_review.v1` with the conceptual claim model before any handoff or UI work.
