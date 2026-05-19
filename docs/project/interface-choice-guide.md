@@ -138,9 +138,9 @@ The interface evidence is credible for the closed Phase 1 Alpha MVP substrate, b
 
 ## Next recommended hardening
 
-After IW50, do not add more interface dogfood by default. Prefer one of:
+After IW50/IW51, do not add more interface dogfood by default. Prefer one of:
 
-1. Alpha maintenance/regression work when evidence fails;
+1. Alpha maintenance/regression work when evidence fails, using `docs/project/alpha-maintenance-backlog.md` when it fits;
 2. targeted hardening tied to a named closure-review gap; or
 3. a Phase 2 planning decision before any UI/workbench implementation.
 

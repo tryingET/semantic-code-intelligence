@@ -89,7 +89,7 @@ Phase 1 is closed as an Alpha MVP substrate after IW50. The closure boundary is 
 Do not keep adding Phase 1 dogfood waves by default. Future work should be one of:
 
 - Alpha maintenance or regression fixes when the evidence bundle fails;
-- targeted hardening tied to a named closure-review gap;
+- targeted hardening tied to a named closure-review gap and the AK-backed backlog in `docs/project/alpha-maintenance-backlog.md`;
 - a Phase 2 planning decision for human workbench/IDE/dashboard scope.
 
 Remaining non-blocking gaps after closure:

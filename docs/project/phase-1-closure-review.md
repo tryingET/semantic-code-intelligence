@@ -112,4 +112,6 @@ Pick one:
 - create a Phase 2 planning decision for developer workbench/IDE/dashboard priorities; or
 - triage Alpha maintenance follow-ups into a small backlog, explicitly separating bugs from future product scope.
 
+IW51 created that backlog in `docs/project/alpha-maintenance-backlog.md` and seeded AK tasks `3165`–`3168`.
+
 Do not begin Phase 2 implementation until the planning decision names the target user, interface, validation contract, and rollback boundary.
