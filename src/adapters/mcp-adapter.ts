@@ -2185,19 +2185,35 @@ export class MCPAdapter {
         return { content: [{ type: 'text', text: JSON.stringify(out, null, 2) }], isError: false };
     }
 
+    private inferGraphLanguage(seed: string | undefined) {
+        const value = String(seed || '').toLowerCase();
+        if (/\.(ts|tsx)$/.test(value)) return { language: 'typescript', support: 'tree_sitter_best_effort', supportedEdges: ['imports', 'exports', 'callers', 'callees'] };
+        if (/\.(js|jsx)$/.test(value)) return { language: 'javascript', support: 'tree_sitter_best_effort', supportedEdges: ['imports', 'exports', 'callers', 'callees'] };
+        if (/\.py$/.test(value)) return { language: 'python', support: 'tree_sitter_best_effort', supportedEdges: ['imports', 'callers', 'callees'] };
+        if (/\.(rs|clj|cljs|cljc|java|go|rb|php|cs|cpp|c|h|hpp)$/.test(value)) return { language: value.replace(/^.*\./, ''), support: 'unsupported_extension', supportedEdges: [] };
+        return seed
+            ? { language: 'unknown', support: 'unknown_extension', supportedEdges: [] }
+            : { language: 'symbol_seed', support: 'symbol_seed_best_effort', supportedEdges: ['callers'] };
+    }
+
     private summarizeGraphImpact(out: any, args: Record<string, any>) {
         const neighbors = out?.neighbors && typeof out.neighbors === 'object' ? out.neighbors : {};
         const counts = Object.fromEntries(
             ['imports', 'exports', 'callers', 'callees'].map((edge) => [edge, Array.isArray(neighbors[edge]) ? neighbors[edge].length : 0])
         );
         const requestedEdges = Array.isArray(args?.edges) ? args.edges.map(String) : ['imports', 'exports'];
+        const languageSupport = this.inferGraphLanguage(typeof args?.file === 'string' ? args.file : undefined);
         const note = typeof out?.note === 'string' ? out.note : '';
-        const limitations = note
+        const noteLimitations = note
             ? note
                   .split(';')
                   .map((part: string) => part.trim())
                   .filter(Boolean)
             : [];
+        const languageLimitations = requestedEdges
+            .filter((edge: string) => !languageSupport.supportedEdges.includes(edge) && languageSupport.support !== 'symbol_seed_best_effort')
+            .map((edge: string) => `${edge}: ${languageSupport.language} graph extraction is ${languageSupport.support}; supported edges: ${languageSupport.supportedEdges.join(', ') || 'none'}`);
+        const limitations = noteLimitations.concat(languageLimitations);
         const evidence = requestedEdges.map((edge: string) => {
             const count = Number((counts as any)[edge] || 0);
             const edgeLimitations = limitations.filter((item: string) => item.toLowerCase().startsWith(`${edge.toLowerCase()}:`));
@@ -2211,6 +2227,7 @@ export class MCPAdapter {
         const callerContextCount = Array.isArray(neighbors.callers) ? neighbors.callers.filter((item: any) => typeof item?.caller === 'string' && item.caller).length : 0;
         return {
             seed: typeof args?.file === 'string' ? { kind: 'file', value: args.file } : { kind: 'symbol', value: String(args?.symbol || '') },
+            languageSupport,
             requestedEdges,
             counts,
             evidence,

@@ -128,7 +128,10 @@ if (graph) {
             graph?.assertions?.fileImpactHasPlanningHints === true &&
             graph?.assertions?.symbolImpactHasCallerStatus === true &&
             graph?.assertions?.symbolImpactHasLimitations === true &&
-            graph?.assertions?.callerContextPresent === true,
+            graph?.assertions?.callerContextPresent === true &&
+            graph?.assertions?.pythonLanguageCharacterized === true &&
+            graph?.assertions?.pythonExportLimitationVisible === true &&
+            graph?.assertions?.unsupportedExtensionCharacterized === true,
         detail: graph?.assertions || null,
     });
     checks.push({

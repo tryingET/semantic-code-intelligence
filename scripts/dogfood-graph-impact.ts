@@ -90,9 +90,35 @@ const callerContextImpact = workflow(
 );
 calls.push(callerContextImpact);
 
+const pythonImpact = workflow(
+    'graph_expand',
+    {
+        file: 'scripts/lib/check-task-scope-snapshots.py',
+        edges: ['imports', 'exports', 'callees'],
+        depth: 1,
+        limit: 30,
+    },
+    'Use graph_expand against Python to characterize supported import/callee extraction and explicit export limitations.'
+);
+calls.push(pythonImpact);
+
+const unsupportedImpact = workflow(
+    'graph_expand',
+    {
+        file: 'docs/project/product-posture.md',
+        edges: ['imports', 'exports', 'callers', 'callees'],
+        depth: 1,
+        limit: 10,
+    },
+    'Use graph_expand against a non-code markdown seed to characterize unsupported-extension fallback behavior.'
+);
+calls.push(unsupportedImpact);
+
 const fileSummary = fileImpact.payload?.impactSummary || {};
 const symbolSummary = symbolImpact.payload?.impactSummary || {};
 const callerContextSummary = callerContextImpact.payload?.impactSummary || {};
+const pythonSummary = pythonImpact.payload?.impactSummary || {};
+const unsupportedSummary = unsupportedImpact.payload?.impactSummary || {};
 const fileCounts = fileSummary.counts || {};
 const symbolCounts = symbolSummary.counts || {};
 const callerContextCounts = callerContextSummary.counts || {};
@@ -110,7 +136,13 @@ const evidence = {
         symbolSummary.evidence.some((item: any) => item.edge === 'callers') &&
         symbolSummary.evidence.some((item: any) => item.edge === 'callees') &&
         Number(callerContextCounts.callers || 0) > 0 &&
-        Number(callerContextSummary.callerContextCount || 0) > 0,
+        Number(callerContextSummary.callerContextCount || 0) > 0 &&
+        pythonSummary?.languageSupport?.language === 'python' &&
+        Array.isArray(pythonSummary?.limitations) &&
+        pythonSummary.limitations.some((item: string) => item.includes('exports: python')) &&
+        unsupportedSummary?.languageSupport?.support === 'unknown_extension' &&
+        Array.isArray(unsupportedSummary?.limitations) &&
+        unsupportedSummary.limitations.length > 0,
     target: 'src/core/code-graph.ts',
     symbol: 'expandNeighbors',
     assertions: {
@@ -120,6 +152,9 @@ const evidence = {
         symbolImpactHasCallerStatus: Array.isArray(symbolSummary.evidence) && symbolSummary.evidence.some((item: any) => item.edge === 'callers'),
         symbolImpactHasLimitations: Array.isArray(symbolSummary.limitations) && symbolSummary.limitations.length > 0,
         callerContextPresent: Number(callerContextCounts.callers || 0) > 0 && Number(callerContextSummary.callerContextCount || 0) > 0,
+        pythonLanguageCharacterized: pythonSummary?.languageSupport?.language === 'python' && pythonSummary?.languageSupport?.support === 'tree_sitter_best_effort',
+        pythonExportLimitationVisible: Array.isArray(pythonSummary?.limitations) && pythonSummary.limitations.some((item: string) => item.includes('exports: python')),
+        unsupportedExtensionCharacterized: unsupportedSummary?.languageSupport?.support === 'unknown_extension' && Array.isArray(unsupportedSummary?.limitations) && unsupportedSummary.limitations.length > 0,
         summariesHaveRequestedEdges:
             Array.isArray(fileSummary.requestedEdges) &&
             fileSummary.requestedEdges.includes('imports') &&
@@ -131,6 +166,8 @@ const evidence = {
         file: fileSummary,
         symbol: symbolSummary,
         callerContext: callerContextSummary,
+        python: pythonSummary,
+        unsupported: unsupportedSummary,
     },
     calls: calls.map((call) => ({
         name: call.name,
@@ -154,10 +191,12 @@ const evidence = {
             'File-scoped graph expansion exposes import/callee evidence and planning hints.',
             'Symbol-scoped graph expansion exposes caller/callee edge status with structured limitations when evidence is sparse.',
             'File+symbol caller expansion includes best-effort enclosing callable context for call sites.',
+            'Graph impact summaries characterize best-effort language support and unsupported-extension limitations.',
         ],
         does_not_prove: [
             'Complete whole-program call graph accuracy.',
             'Rich semantic graph behavior for every language.',
+            'Graph support for unsupported source types such as Markdown, Rust, or Clojure.',
         ],
     },
 };
