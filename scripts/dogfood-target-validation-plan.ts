@@ -104,7 +104,9 @@ const beforeOntologyExists = existsSync(resolve(targetCwd, '.ontology'));
 
 const markdown = gitFiles('README.md docs/*.md *.md');
 const readPath = markdown.find((file) => file === 'README.md') || markdown[0] || gitFiles('package.json')[0];
-const sourceFile = gitFiles("'*.ts' 'src/**/*.ts' 'packages/**/*.ts'").find((file) => !file.endsWith('.d.ts'));
+const sourceFile = gitFiles("'*.ts' 'src/**/*.ts' 'packages/**/*.ts' '*.js' 'src/**/*.js' 'web/**/*.js' 'internal/**/*.js' '*.py' 'src/**/*.py'").find(
+  (file) => !file.endsWith('.d.ts')
+);
 
 const calls: any[] = [];
 let patchSnapshot: string | undefined;
@@ -114,7 +116,7 @@ if (!isGitRepo || beforeStatus || !readPath || !sourceFile) {
   const evidence = {
     schema: 'semantic-code-intelligence.target_validation_plan_dogfood.v1',
     ok: false,
-    target: { label: targetLabel, nonSciRepo: targetCwd !== sciRepo, cleanBefore: beforeStatus === '', hasReadPath: !!readPath, hasSourceFile: !!sourceFile },
+    target: { label: targetLabel, nonSciRepo: targetCwd !== sciRepo, cleanBefore: beforeStatus === '', hasReadPath: !!readPath, hasSourceFile: !!sourceFile, supportedSourceExtensions: ['.ts', '.js', '.py'] },
     failure: !isGitRepo ? 'target_not_git_repo' : beforeStatus ? 'target_not_clean' : !readPath ? 'no_read_path' : 'no_source_file',
   };
   mkdirSync(dirname(outputPath), { recursive: true });
@@ -164,7 +166,7 @@ const evidence = {
     afterOntologyExists,
     cleanupAttempted,
   },
-  selectedPaths: { readPath, sourceFile },
+  selectedPaths: { readPath, sourceFile, sourceKind: sourceFile.endsWith('.py') ? 'python' : sourceFile.endsWith('.js') ? 'javascript' : 'typescript' },
   cli: { command, cwdModel: 'target_repo_cwd', argsUseTargetRelativePaths: true },
   assertions: {
     graphImpactPresent: !!graph.payload?.impactSummary,
@@ -195,7 +197,7 @@ const evidence = {
   interpretation: {
     proves: [
       'Installed/global SCI can be invoked from a non-SCI target repository cwd.',
-      'Target-relative discovery, graph impact, check recommendation, preview/check, and validationPlan evidence compose without mutating target source.',
+      'Target-relative discovery, graph impact, check recommendation, preview/check, and validationPlan evidence compose across TypeScript/JavaScript/Python source targets without mutating target source.',
       'Target working tree remains clean after snapshot artifact cleanup.',
     ],
     does_not_prove: ['Broad external-repository coverage.', 'Production readiness.'],

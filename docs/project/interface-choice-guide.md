@@ -132,14 +132,14 @@ Regardless of interface:
 The interface evidence is credible for Alpha MVP, but not enough for production readiness:
 
 - self-hosted CLI, HTTP, MCP HTTP, MCP stdio, direct adapter, and target-repo CLI paths are all exercised;
-- external target validation-plan dogfood exists for multiple non-SCI repos;
-- interactive SLO guidance and lightweight elapsed-time history exist, but broader target diversity remains before Phase 1 closure.
+- external target validation-plan dogfood exists for multiple non-SCI repos, including a sibling JavaScript target;
+- interactive SLO guidance and lightweight elapsed-time history exist, but Python/mixed-language target diversity remains before Phase 1 closure.
 
 ## Next recommended hardening
 
 After this guide, prefer one of:
 
-1. repeat external validationPlan dogfood on a larger or less TypeScript-centric target repo; or
-2. deepen graph caller/callee accuracy if best-effort caller context is still insufficient.
+1. repeat external validationPlan dogfood on a clean Python or mixed-language target repo; or
+2. perform a Phase 1 closure review that explicitly preserves remaining production-readiness gaps.
 
 Do not start Phase 2 UI/workbench polish solely because the Alpha MVP interface set is documented.
