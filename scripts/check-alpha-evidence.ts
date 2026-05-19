@@ -131,7 +131,8 @@ if (graph) {
             graph?.assertions?.callerContextPresent === true &&
             graph?.assertions?.pythonLanguageCharacterized === true &&
             graph?.assertions?.pythonExportLimitationVisible === true &&
-            graph?.assertions?.unsupportedExtensionCharacterized === true,
+            graph?.assertions?.unsupportedExtensionCharacterized === true &&
+            graph?.assertions?.backendProvenancePresent === true,
         detail: graph?.assertions || null,
     });
     checks.push({

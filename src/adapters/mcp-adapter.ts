@@ -2202,7 +2202,9 @@ export class MCPAdapter {
             ['imports', 'exports', 'callers', 'callees'].map((edge) => [edge, Array.isArray(neighbors[edge]) ? neighbors[edge].length : 0])
         );
         const requestedEdges = Array.isArray(args?.edges) ? args.edges.map(String) : ['imports', 'exports'];
-        const languageSupport = this.inferGraphLanguage(typeof args?.file === 'string' ? args.file : undefined);
+        const hasFileSeed = typeof args?.file === 'string' && args.file.trim().length > 0;
+        const hasSymbolSeed = typeof args?.symbol === 'string' && args.symbol.trim().length > 0;
+        const languageSupport = this.inferGraphLanguage(hasFileSeed ? args.file : undefined);
         const note = typeof out?.note === 'string' ? out.note : '';
         const noteLimitations = note
             ? note
@@ -2225,9 +2227,30 @@ export class MCPAdapter {
             };
         });
         const callerContextCount = Array.isArray(neighbors.callers) ? neighbors.callers.filter((item: any) => typeof item?.caller === 'string' && item.caller).length : 0;
+        const fallbackUnavailable = noteLimitations.some((item: string) => item.toLowerCase().startsWith('fallback: graph expand unavailable'));
+        const backend = fallbackUnavailable
+            ? 'fallback'
+            : languageSupport.support === 'tree_sitter_best_effort'
+              ? 'tree_sitter'
+              : languageSupport.support === 'symbol_seed_best_effort'
+                ? 'fallback'
+                : 'fallback';
+        const provenance = {
+            backend,
+            freshness: backend === 'tree_sitter' ? 'current' : 'unknown',
+            discoveryBackend: !hasFileSeed && hasSymbolSeed ? 'rg' : null,
+            indexPath: null,
+            generatedAt: null,
+            workspaceRoot: process.cwd(),
+            metadataSource: null,
+        };
         return {
-            seed: typeof args?.file === 'string' ? { kind: 'file', value: args.file } : { kind: 'symbol', value: String(args?.symbol || '') },
+            seed: hasFileSeed ? { kind: 'file', value: args.file } : { kind: 'symbol', value: String(args?.symbol || '') },
             languageSupport,
+            provenance,
+            backend: provenance.backend,
+            freshness: provenance.freshness,
+            discoveryBackend: provenance.discoveryBackend,
             requestedEdges,
             counts,
             evidence,

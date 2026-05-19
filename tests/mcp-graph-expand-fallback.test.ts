@@ -44,5 +44,22 @@ describe('MCP graph_expand hardening', () => {
         expect(Array.isArray(obj.neighbors.exports)).toBe(true);
         expect(Array.isArray(obj.neighbors.callers)).toBe(true);
         expect(Array.isArray(obj.neighbors.callees)).toBe(true);
+        expect(obj.impactSummary?.backend).toBe('fallback');
+        expect(obj.impactSummary?.freshness).toBe('unknown');
+        expect(obj.impactSummary?.provenance?.backend).toBe('fallback');
+        expect(obj.impactSummary?.provenance?.indexPath).toBeNull();
+    });
+
+    test('impact summary exposes tree-sitter provenance for supported file seeds', async () => {
+        const res = await mcp.handleToolCall('graph_expand', {
+            file: 'src/core/code-graph.ts',
+            edges: ['imports'],
+        });
+        const obj = await parse(res);
+        expect(obj.impactSummary?.backend).toBe('tree_sitter');
+        expect(obj.impactSummary?.freshness).toBe('current');
+        expect(obj.impactSummary?.discoveryBackend).toBeNull();
+        expect(obj.impactSummary?.provenance?.backend).toBe('tree_sitter');
+        expect(obj.impactSummary?.provenance?.metadataSource).toBeNull();
     });
 });

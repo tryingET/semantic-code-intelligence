@@ -30,7 +30,7 @@ Make `graph_expand` limitations predictable for harnessed LLM coding sessions. T
 
 ## Impact summary contract
 
-`impactSummary` now includes `languageSupport`:
+`impactSummary` now includes `languageSupport` and backend provenance:
 
 ```json
 {
@@ -38,9 +38,23 @@ Make `graph_expand` limitations predictable for harnessed LLM coding sessions. T
     "language": "typescript | javascript | python | symbol_seed | unknown | <extension>",
     "support": "tree_sitter_best_effort | symbol_seed_best_effort | unsupported_extension | unknown_extension",
     "supportedEdges": ["imports", "exports", "callers", "callees"]
+  },
+  "backend": "tree_sitter | fallback",
+  "freshness": "current | unknown",
+  "discoveryBackend": "rg | null",
+  "provenance": {
+    "backend": "tree_sitter | fallback",
+    "freshness": "current | unknown",
+    "discoveryBackend": "rg | null",
+    "indexPath": null,
+    "generatedAt": null,
+    "workspaceRoot": "<cwd>",
+    "metadataSource": null
   }
 }
 ```
+
+The provenance shape is forward-compatible with future `scip` and `live_lsp` backends, but current behavior remains tree-sitter or fallback only.
 
 Requested edges that are unsupported for the inferred language appear as `limited` evidence with limitations such as:
 

@@ -142,7 +142,11 @@ const evidence = {
         pythonSummary.limitations.some((item: string) => item.includes('exports: python')) &&
         unsupportedSummary?.languageSupport?.support === 'unknown_extension' &&
         Array.isArray(unsupportedSummary?.limitations) &&
-        unsupportedSummary.limitations.length > 0,
+        unsupportedSummary.limitations.length > 0 &&
+        fileSummary?.backend === 'tree_sitter' &&
+        fileSummary?.freshness === 'current' &&
+        symbolSummary?.discoveryBackend === 'rg' &&
+        unsupportedSummary?.backend === 'fallback',
     target: 'src/core/code-graph.ts',
     symbol: 'expandNeighbors',
     assertions: {
@@ -155,6 +159,12 @@ const evidence = {
         pythonLanguageCharacterized: pythonSummary?.languageSupport?.language === 'python' && pythonSummary?.languageSupport?.support === 'tree_sitter_best_effort',
         pythonExportLimitationVisible: Array.isArray(pythonSummary?.limitations) && pythonSummary.limitations.some((item: string) => item.includes('exports: python')),
         unsupportedExtensionCharacterized: unsupportedSummary?.languageSupport?.support === 'unknown_extension' && Array.isArray(unsupportedSummary?.limitations) && unsupportedSummary.limitations.length > 0,
+        backendProvenancePresent:
+            fileSummary?.backend === 'tree_sitter' &&
+            fileSummary?.freshness === 'current' &&
+            fileSummary?.provenance?.backend === 'tree_sitter' &&
+            symbolSummary?.discoveryBackend === 'rg' &&
+            unsupportedSummary?.backend === 'fallback',
         summariesHaveRequestedEdges:
             Array.isArray(fileSummary.requestedEdges) &&
             fileSummary.requestedEdges.includes('imports') &&
@@ -191,7 +201,7 @@ const evidence = {
             'File-scoped graph expansion exposes import/callee evidence and planning hints.',
             'Symbol-scoped graph expansion exposes caller/callee edge status with structured limitations when evidence is sparse.',
             'File+symbol caller expansion includes best-effort enclosing callable context for call sites.',
-            'Graph impact summaries characterize best-effort language support and unsupported-extension limitations.',
+            'Graph impact summaries characterize best-effort language support, backend provenance, and unsupported-extension limitations.',
         ],
         does_not_prove: [
             'Complete whole-program call graph accuracy.',
