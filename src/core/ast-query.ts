@@ -1,7 +1,8 @@
-import * as fs from 'fs/promises';
 import { glob } from 'glob';
 import * as path from 'path';
 import Parser, { Query } from 'tree-sitter';
+import { CoreError } from './errors.js';
+import { openWorkspaceFileForRead } from './workspace-path.js';
 
 async function loadLanguage(language: 'typescript' | 'javascript' | 'python') {
     try {
@@ -30,6 +31,7 @@ export type AstQueryInput = {
     paths?: string[];
     glob?: string;
     limit?: number;
+    workspaceRoot?: string;
 };
 
 export async function runAstQuery(inp: AstQueryInput) {
@@ -40,31 +42,52 @@ export async function runAstQuery(inp: AstQueryInput) {
     }
     const parser = new Parser();
     parser.setLanguage(lang);
-    const q = new Query(lang as any, inp.query);
+    let q: Query;
+    try {
+        q = new Query(lang as any, inp.query);
+    } catch (error) {
+        return {
+            count: 0,
+            results: [],
+            parser: 'query_unavailable',
+            error: error instanceof Error ? error.message : String(error),
+        };
+    }
 
+    const workspaceRoot = path.resolve(inp.workspaceRoot || process.cwd());
     const fileSet = new Set<string>();
-    if (inp.paths && inp.paths.length) {
-        inp.paths.forEach((p) => fileSet.add(path.resolve(p)));
+    const explicitPaths = Array.isArray(inp.paths) ? inp.paths.map(String).filter(Boolean) : [];
+    for (const requestedPath of explicitPaths) {
+        fileSet.add(requestedPath);
     }
     if (inp.glob) {
-        const matches = glob.sync(inp.glob, {
+        const pattern = String(inp.glob).trim();
+        if (path.isAbsolute(pattern)) {
+            throw new CoreError('InvalidParams', 'ast_query glob must stay within the workspace', { glob: inp.glob });
+        }
+        const matches = glob.sync(pattern, {
+            cwd: workspaceRoot,
             ignore: ['**/node_modules/**', '**/dist/**', '**/.git/**', '**/coverage/**'],
             nodir: true,
+            follow: false,
+            absolute: false,
         } as any);
-        matches.slice(0, 2000).forEach((m) => fileSet.add(path.resolve(m)));
+        matches.slice(0, 2000).forEach((m) => fileSet.add(String(m)));
     }
     const files = Array.from(fileSet).slice(0, Math.min(inp.limit || 100, 1000));
 
     const results: any[] = [];
-    for (const file of files) {
+    for (const requestedFile of files) {
+        let opened: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
         try {
-            const text = await fs.readFile(file, 'utf8');
+            opened = await openWorkspaceFileForRead(requestedFile, { workspaceRoot, inputLabel: 'ast_query path' });
+            const text = await opened.handle.readFile('utf8');
             const tree = parser.parse(text);
             const caps = q.captures(tree.rootNode);
             for (const c of caps) {
                 const n = c.node;
                 results.push({
-                    file,
+                    file: opened.relativePath,
                     capture: c.name,
                     start: { line: n.startPosition.row, column: n.startPosition.column },
                     end: { line: n.endPosition.row, column: n.endPosition.column },
@@ -74,7 +97,11 @@ export async function runAstQuery(inp: AstQueryInput) {
                         .join('\n'),
                 });
             }
-        } catch {}
+        } catch (error) {
+            if (explicitPaths.includes(requestedFile) && error instanceof CoreError) throw error;
+        } finally {
+            await opened?.handle.close().catch(() => undefined);
+        }
         if (results.length >= (inp.limit || 2000)) break;
     }
     return { count: results.length, results };

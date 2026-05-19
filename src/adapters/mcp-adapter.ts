@@ -417,12 +417,10 @@ export class MCPAdapter {
     private async handleListSymbols(args: Record<string, any>) {
         const file = typeof args?.file === 'string' ? args.file : '';
         if (!file) return { content: [{ type: 'text', text: 'file required' }], isError: true };
+        let opened: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
         try {
-            const fs = await import('node:fs/promises');
-            const path = await import('node:path');
-            const abs = path.isAbsolute(file) ? file : path.resolve(process.cwd(), file);
-
-            const text = await fs.readFile(abs, 'utf8');
+            opened = await openWorkspaceFileForRead(file, { workspaceRoot: process.cwd(), inputLabel: 'list_symbols file' });
+            const text = await opened.handle.readFile('utf8');
             const lines = text.split(/\r?\n/);
             const out: Array<{ name: string; kind: string; line: number; character: number }> = [];
             const push = (name: string, kind: string, line: number, character: number) => {
@@ -435,7 +433,7 @@ export class MCPAdapter {
                 try {
                     const { runAstQuery } = await import('../core/ast-query.js');
                     // Infer language from extension
-                    const ext = abs.toLowerCase();
+                    const ext = opened.relativePath.toLowerCase();
                     let language: 'typescript' | 'javascript' | 'python' | null = null;
                     if (/(\.ts|\.tsx)$/.test(ext)) language = 'typescript';
                     else if (/(\.js|\.jsx)$/.test(ext)) language = 'javascript';
@@ -468,7 +466,7 @@ export class MCPAdapter {
                             `;
                         }
 
-                        const res = await runAstQuery({ language, query, paths: [abs], limit: 2000 });
+                        const res = await runAstQuery({ language, query, paths: [opened.relativePath], limit: 2000, workspaceRoot: process.cwd() });
                         if (Array.isArray(res?.results)) {
                             for (const r of res.results) {
                                 if (!r || !r.start || !r.end) continue;
@@ -533,11 +531,13 @@ export class MCPAdapter {
                 }
             }
 
-            const result = { file: abs, symbols: out.slice(0, 500) };
+            const result = { file: opened.relativePath, symbols: out.slice(0, 500) };
             return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }], isError: false };
         } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
             return { content: [{ type: 'text', text: `list_symbols failed: ${msg}` }], isError: true };
+        } finally {
+            await opened?.handle.close().catch(() => undefined);
         }
     }
 
@@ -2175,9 +2175,16 @@ export class MCPAdapter {
         const paths = Array.isArray(args?.paths) ? (args.paths as string[]) : undefined;
         const glob = typeof args?.glob === 'string' ? (args.glob as string) : undefined;
         const limit = typeof args?.limit === 'number' ? args.limit : undefined;
-        const { runAstQuery } = await import('../core/ast-query.js');
-        const out = await runAstQuery({ language: language as any, query, paths, glob, limit });
-        return { content: [{ type: 'text', text: JSON.stringify(out, null, 2) }], isError: false };
+        try {
+            const { runAstQuery } = await import('../core/ast-query.js');
+            const out = await runAstQuery({ language: language as any, query, paths, glob, limit, workspaceRoot: process.cwd() });
+            return { content: [{ type: 'text', text: JSON.stringify(out, null, 2) }], isError: false };
+        } catch (error) {
+            const coreError = error instanceof CoreError
+                ? error
+                : new CoreError('InvalidParams', `ast_query failed: ${error instanceof Error ? error.message : String(error)}`);
+            return handleAdapterError(coreError, 'mcp');
+        }
     }
 
     private inferGraphLanguage(seed: string | undefined) {

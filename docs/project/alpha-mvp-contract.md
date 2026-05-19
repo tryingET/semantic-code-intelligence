@@ -42,7 +42,7 @@ The Alpha MVP tool surface is:
 | `read_file` | Read bounded file ranges from the requested snapshot/workspace state; fail closed when lexical paths, symlinks, or opened file descriptors escape the workspace. | Path, range, and content or structured error without leaked out-of-workspace content. |
 | `text_search` | Search text with caps, ignore handling, and deterministic result shape. | Query, result count, capped results. |
 | `symbol_search` | Find likely symbols with path/language hints where available. | Query, candidates, confidence/ranking fields when available. |
-| `ast_query` | Run structural language-aware queries where parser support exists. | Language, query, matched ranges, parser/fallback status. |
+| `ast_query` | Run structural language-aware queries where parser support exists; explicit paths and glob-expanded files must stay inside the workspace after lexical, realpath, and opened-file checks. | Language, query, matched ranges, parser/fallback status, and snippets only from workspace-contained files. |
 | `find_definition` | Resolve likely definition locations without requiring a long-lived editor process. | Symbol/query, file/range candidates, fallback status. |
 | `find_references` | Return bounded reference candidates. | Symbol/query, file/range candidates, cap metadata. |
 | `graph_expand` | Expand file/symbol neighborhoods through imports, exports, callers, callees, or semantic edges where available, with a concise impact summary for change planning. | Node id, edge types, depth, neighbors, fallback/limitation status, edge counts, best-effort caller context, impact evidence status, and planning hints. |
@@ -57,7 +57,7 @@ The Alpha MVP tool surface is:
 
 - MCP, HTTP, and CLI should use the same core behavior for the same operation.
 - Results should be bounded by limits rather than unbounded repository traversal.
-- File-reading paths must be contained after lexical normalization, realpath resolution, and opened-file verification so symlink or TOCTOU-shaped escapes fail closed.
+- File-reading and structural-snippet paths must be contained after lexical normalization, realpath resolution, and opened-file verification so symlink or TOCTOU-shaped escapes fail closed.
 - Errors should be structured enough for a harnessed LLM to recover without guessing.
 - Stdio protocol paths must keep stdout clean.
 - Tool names and documentation use the canonical Semantic Code Intelligence identity; no pre-rename compatibility names are retained during alpha.
