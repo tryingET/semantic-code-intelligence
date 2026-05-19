@@ -1,5 +1,5 @@
 ---
-summary: "Revised draft RFC for Phase 2 evidence review summary/integration; not ADR-ready."
+summary: "ADR-ready narrow RFC for Phase 2 evidence review deferral; not accepted authority."
 read_when:
   - "You need the revised draft RFC for Phase 2 evidence review."
   - "You are reviewing whether the evidence review summary path should advance toward ADR readiness."
@@ -10,8 +10,8 @@ type: "revised-draft-rfc"
 # RFC: Phase 2 evidence review summary path
 
 Date: 2026-05-19
-Wave: IW60 — Phase 2 RFC read-only validation evidence
-Status: **validation-evidenced semantic-hardened draft RFC; not accepted; not ADR-ready**
+Wave: IW60 — Phase 2 RFC ADR candidate narrowing
+Status: **ADR-ready for narrow Option A deferral decision; not accepted authority**
 
 ## Authority note
 
@@ -21,7 +21,7 @@ AK decisions `46` and `47` were superseded after the operator rejected unilatera
 
 Review notes for the previous revision: `docs/project/phase-2-evidence-review-rfc-review.md`.
 
-This revision adds semantic hardening for evidence-backed operator judgment and read-only validation evidence for the current summary producer; it does not create governance acceptance.
+This revision narrows the ADR candidate decision to Option A deferral and includes read-only validation evidence for the current summary producer. It does not create governance acceptance, implementation authority, or AK decision lifecycle state.
 
 ## Problem / intent source
 
@@ -153,15 +153,63 @@ Operator decision point: continue, inspect graph limitation, run broader checks,
 
 This conceptual model is the source for the schema review points below. If the JSON shape cannot represent the conceptual schema table, minimum claim model, and absence states, the RFC should choose Option A and keep the producer CLI/markdown-only until the model and shape are aligned.
 
+## ADR candidate decision
+
+This RFC is ADR-ready only for a narrow deferral decision:
+
+> Choose Option A now: keep Phase 2 evidence review CLI/markdown/JSON-only in SCI, with no Pi/operator-workbench handoff and no SCI-rendered UI, until `semantic-code-intelligence.evidence_review.v1` can represent the conceptual claim model and evidence absence states.
+
+The ADR candidate should decide:
+
+1. SCI continues to own only the read-only summary producer and existing markdown/JSON output.
+2. Option B, a Pi/operator-workbench handoff packet, is deferred.
+3. Option C, SCI-owned rendering/dashboard/UI, is rejected for this decision.
+4. Contract/schema implementation changes are deferred until a later accepted implementation wave.
+5. AK decisions `46` and `47` remain superseded and cannot be cited as evidence for this ADR.
+
+This RFC is not ADR-ready for:
+
+- Pi/operator-workbench integration;
+- UI rendering;
+- schema implementation;
+- host handoff;
+- production readiness;
+- accepting or advancing any AK decision lifecycle state.
+
+### Option B reconsideration gates
+
+Option B may be reconsidered only after all of these are true:
+
+1. `semantic-code-intelligence.evidence_review.v1` represents `ReviewClaim`, `EvidenceArtifact`, `Limitation`, `AuthorityBoundary`, and `OperatorDecisionPoint`.
+2. `failed`, `unavailable`, `unknown`, and `inapplicable` evidence states are structurally distinct.
+3. selected and recommended commands are structurally distinct.
+4. at least one sample normalized JSON object proves the claim model.
+5. read-only validation evidence shows rendering does not mutate source, snapshots, target repos, AK, or databases.
+6. Pi/operator-workbench owner scope accepts a handoff request before any host work begins.
+
+### Consequences of the ADR candidate
+
+If accepted, the narrow ADR would mean:
+
+- SCI may keep maintaining the existing summary producer as a read-only alpha-support tool.
+- SCI must not start host integration or UI rendering work from this ADR.
+- The evidence-review contract remains planning context until a later schema-alignment wave updates it under accepted authority.
+- Future work should first align `evidence_review.v1` with the claim model, then produce sample JSON, then seek a separate handoff decision if still needed.
+- Operators can use CLI/markdown/JSON summaries, but those summaries remain evidence presentations, not governance authority.
+
+### Revisit trigger
+
+Revisit this ADR candidate when the claim model is represented in schema and sample output, or when an authorized host owner explicitly requests a handoff review.
+
 ## Proposal
 
-Adopt the following Phase 2 evidence review path if review accepts it:
+Adopt the following Phase 2 evidence review path if the narrow ADR candidate above is accepted:
 
 1. SCI owns the evidence summary producer and normalized `semantic-code-intelligence.evidence_review.v1` shape.
 2. SCI keeps the producer read-only and non-mutating.
 3. SCI does not own a full dashboard, IDE extension, canonical UI state layer, or Pi/operator-workbench mutation.
-4. A future host integration, likely Pi/operator-workbench, may render the markdown/JSON summary after a separate explicit handoff/review.
-5. No host integration begins until this RFC is accepted or revised through the proper governance path.
+4. A future host integration, likely Pi/operator-workbench, may render the markdown/JSON summary only after a separate explicit handoff/review.
+5. No host integration begins from this RFC or from the narrow ADR candidate.
 
 The contract names the likely consumer. This RFC does not authorize work in that consumer.
 
@@ -256,11 +304,13 @@ Weaknesses:
 - risks creating canonical UI state in SCI;
 - pulls Phase 2 toward dashboard/product surface before host needs are validated.
 
-## Draft recommendation
+## Recommendation
 
-Current review posture: prefer **Option A** until the conceptual model and schema review points are resolved.
+Choose **Option A** for the narrow ADR candidate.
 
-Choose **Option B** only after explicit review confirms that `semantic-code-intelligence.evidence_review.v1` can represent ReviewClaims, Limitations, AuthorityBoundaries, and OperatorDecisionPoints without collapsing evidence into authority.
+Defer **Option B** until the reconsideration gates are met.
+
+Reject **Option C** for this decision because SCI-owned rendering would violate the current source-owner boundary and could create a false authority surface.
 
 Do not implement rendering in SCI.
 
@@ -345,7 +395,8 @@ Important schema gap found during validation:
 Interpretation:
 
 - the summary producer is suitable for continued CLI/markdown review under Option A;
-- the shape is not yet stable enough for Option B host handoff or ADR readiness;
+- the shape is not yet stable enough for Option B host handoff, UI rendering, or schema implementation;
+- the validation evidence supports the narrow Option A deferral ADR candidate;
 - the next accepted implementation wave should either add first-class claim/boundary/decision-point fields or explicitly revise the conceptual model to match the implementation shape.
 
 ## Review questions
@@ -362,14 +413,8 @@ A reviewer should decide:
 
 ## ADR-readiness status
 
-Not ADR-ready.
+ADR-ready only for the narrow Option A deferral decision stated above.
 
-Required before ADR readiness:
+Not ADR-ready for Option B, Option C, Pi/operator-workbench handoff, UI rendering, schema implementation, production readiness, or AK decision lifecycle advancement.
 
-1. explicit RFC review by the operator or accepted governance path;
-2. revised RFC if review requests changes beyond this draft revision;
-3. clear decision on Option A versus Option B;
-4. owner boundary confirmation for any Pi/operator-workbench handoff;
-5. conceptual model and schema review point resolution or explicit deferral;
-6. non-mutation/read-only validation evidence attached to the RFC;
-7. explicit operator approval before any AK decision lifecycle creation or advancement.
+A later ADR or implementation wave must not broaden this decision without explicit review. Any AK decision lifecycle creation or advancement still requires explicit operator approval or the repo's accepted governance procedure.
