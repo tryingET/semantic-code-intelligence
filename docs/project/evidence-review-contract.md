@@ -156,6 +156,16 @@ Implementations may normalize input into this shape before rendering:
       "citationRequirement": "cite AK evidence id or explicit command transcript when available; local summary output alone is not authority-durable evidence"
     }
   ],
+  "limitations": [
+    {
+      "id": "graph-impact-limitation-1",
+      "limitation": "fallback: graph expand unavailable",
+      "sourceArtifact": "graph-impact",
+      "affectsClaims": ["graph-limitations"],
+      "affectsDecisionPoints": ["continue-or-stop"],
+      "severity": "warning"
+    }
+  ],
   "claims": [
     {
       "id": "checks-result",
@@ -226,7 +236,7 @@ Implementations may normalize input into this shape before rendering:
 }
 ```
 
-The first-class `evidenceArtifacts`, `claims`, `authorityBoundaries`, and `operatorDecisionPoints` fields are required to prevent the review from collapsing artifacts into claims, claims into authority, or recommendations into executed commands. Evidence artifacts also carry durability and citation requirements so `snapshot://` pointers are not mistaken for durable proof.
+The first-class `evidenceArtifacts`, `limitations`, `claims`, `authorityBoundaries`, and `operatorDecisionPoints` fields are required to prevent the review from collapsing artifacts into claims, claims into authority, limitations into green status, or recommendations into executed commands. Evidence artifacts also carry durability and citation requirements so `snapshot://` pointers are not mistaken for durable proof.
 
 ## Validation checks for an implementation wave
 

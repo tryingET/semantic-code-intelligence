@@ -394,9 +394,9 @@ Important schema gap found during IW60 validation:
 
 Later implementation evidence:
 
-- the summary output now exposes first-class `evidenceArtifacts`, `claims`, `authorityBoundaries`, and `operatorDecisionPoints` fields;
+- the summary output now exposes first-class `evidenceArtifacts`, `limitations`, `claims`, `authorityBoundaries`, and `operatorDecisionPoints` fields;
 - `tests/fixtures/evidence-review-claim-model-sample.json` provides a committed normalized sample;
-- `tests/evidence-review-claim-model.test.ts` covers read-only rendering, selected-vs-recommended command separation, absence states, graph limitation visibility, rollback absence, production-readiness caveats, and non-authority-durable local validation execution.
+- `tests/evidence-review-claim-model.test.ts` covers read-only rendering, selected-vs-recommended command separation, absence states, first-class graph limitation visibility, rollback absence, production-readiness caveats, and non-authority-durable local validation execution.
 
 Interpretation:
 

@@ -59,9 +59,14 @@ function claimById(review: any, id: string) {
 function assertClaimModel(review: any) {
   expect(review.schema).toBe('semantic-code-intelligence.evidence_review.v1');
   expect(review.claims.length).toBeGreaterThanOrEqual(4);
+  expect(review.limitations.length).toBeGreaterThanOrEqual(1);
   expect(review.authorityBoundaries.length).toBeGreaterThanOrEqual(3);
   expect(review.operatorDecisionPoints.length).toBeGreaterThanOrEqual(2);
 
+  expect(review.limitations.map((limitation: any) => limitation.id)).toContain('graph-impact-limitation-1');
+  expect(review.limitations[0].sourceArtifact).toBe('graph-impact');
+  expect(review.limitations[0].affectsClaims).toContain('graph-limitations');
+  expect(review.limitations[0].affectsDecisionPoints).toContain('continue-or-stop');
   expect(review.claims.map((claim: any) => claim.id)).toContain('checks-result');
   expect(review.claims.map((claim: any) => claim.id)).toContain('command-distinction');
   expect(review.authorityBoundaries.map((boundary: any) => boundary.id)).toContain('not-production-readiness');
@@ -112,6 +117,8 @@ describe('evidence review claim model', () => {
     expect(output).toContain('continue-or-stop');
     expect(output).toContain('### Evidence artifact durability');
     expect(output).toContain('snapshot:// references are pointers, not durable proof');
+    expect(output).toContain('### First-class limitations');
+    expect(output).toContain('graph-impact-limitation-1');
   });
 
   test('checks cannot be supported without observed selected command evidence', () => {
@@ -163,7 +170,14 @@ describe('evidence review claim model', () => {
     const review = JSON.parse(stdout);
 
     expect(review.graphImpact.limitations).toContain('graph impact evidence unavailable or not observed; do not infer no impact from absence');
+    expect(review.limitations[0]).toMatchObject({
+      id: 'graph-impact-limitation-1',
+      limitation: 'graph impact evidence unavailable or not observed; do not infer no impact from absence',
+      sourceArtifact: 'graph-impact',
+      severity: 'warning',
+    });
     expect(claimById(review, 'graph-limitations')?.status).toBe('weakened');
+    expect(claimById(review, 'graph-limitations')?.limitedBy).toEqual(['graph-impact-limitation-1']);
 
     const { stdout: markdown } = runSummary(plan, ['--format', 'markdown']);
     expect(markdown).toContain('graph impact evidence unavailable or not observed; do not infer no impact from absence');

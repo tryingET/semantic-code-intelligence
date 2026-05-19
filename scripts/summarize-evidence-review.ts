@@ -42,6 +42,10 @@ function artifact(id: string, kind: string, schema: string | null, observedStatu
   return { id, kind, schema, observedStatus, durability, uriOrPath, citationRequirement };
 }
 
+function limitation(id: string, text: string, sourceArtifact: string, affectsClaims: string[], affectsDecisionPoints: string[], severity: 'info' | 'warning' | 'blocking' = 'warning') {
+  return { id, limitation: text, sourceArtifact, affectsClaims, affectsDecisionPoints, severity };
+}
+
 function firstString(values: unknown[]): string | null {
   for (const value of values) {
     if (typeof value === 'string' && value.length > 0) return value;
@@ -218,6 +222,15 @@ function withConceptualModel(review: any) {
     { id: 'no-implicit-mutation', boundary: 'Rendering evidence review output must not mutate source, snapshots, target repos, AK, or databases.', affectedScope: 'mutation' },
   ];
 
+  const reviewLimitations = limitations.map((text, index) => limitation(
+    `graph-impact-limitation-${index + 1}`,
+    text,
+    'graph-impact',
+    ['graph-limitations'],
+    ['continue-or-stop'],
+  ));
+  const limitationIds = reviewLimitations.map((item) => item.id);
+
   const operatorDecisionPoints = [
     { id: 'continue-or-stop', options: ['continue', 'stop', 'inspect limitations'], supportingClaims: ['checks-result'], limitingClaims: limitations.length ? ['graph-limitations'] : [], residualUncertainty: limitations.length ? 'Graph or impact evidence has visible limitations.' : 'No graph limitation recorded in this review.' },
     { id: 'run-stronger-checks', options: ['accept selected checks', 'run recommended minimum', 'run recommended broader'], supportingClaims: ['command-distinction'], limitingClaims: [], residualUncertainty: recommendedMinimum.length || recommendedBroader.length ? 'Recommended commands remain advisory unless executed.' : 'No additional recommendations recorded.' },
@@ -249,7 +262,7 @@ function withConceptualModel(review: any) {
       limitations.length ? 'Graph or impact evidence includes visible limitations.' : 'No graph limitation was recorded in this review.',
       limitations.length ? 'weakened' : graphObserved ? 'supported' : 'unresolved',
       ['graph-impact'],
-      limitations.length ? ['graph-impact'] : [],
+      limitationIds,
       'Missing or fallback-shaped graph evidence qualifies continuation decisions; it does not imply no impact.',
       ['not-production-readiness'],
       ['continue-or-stop'],
@@ -266,7 +279,7 @@ function withConceptualModel(review: any) {
     ),
   ];
 
-  return { ...reviewWithLimitations, evidenceArtifacts, claims, authorityBoundaries, operatorDecisionPoints };
+  return { ...reviewWithLimitations, evidenceArtifacts, limitations: reviewLimitations, claims, authorityBoundaries, operatorDecisionPoints };
 }
 
 function normalize(raw: any) {
@@ -304,6 +317,8 @@ function renderMarkdown(review: any): string {
     `${arr(review.operatorDecisionPoints).map((p: any) => `- ${p.id}: ${strings(p.options).join(', ')}; uncertainty: ${p.residualUncertainty || 'not recorded'}`).join('\n') || '- none'}\n\n` +
     `### Evidence artifact durability\n\n` +
     `${arr(review.evidenceArtifacts).map((a: any) => `- ${a.id}: ${a.observedStatus}; durability=${a.durability}; cite=${a.citationRequirement}`).join('\n') || '- none'}\n\n` +
+    `### First-class limitations\n\n` +
+    `${arr(review.limitations).map((l: any) => `- ${l.id}: ${l.severity || 'warning'} — ${l.limitation}; source=${l.sourceArtifact || 'unknown'}`).join('\n') || '- none'}\n\n` +
     `## 2. Changed or affected scope\n\n` +
     `- Touched files:\n${bullet(strings(review.scope.touchedFiles))}\n` +
     `- Risk: ${review.scope.risk ? JSON.stringify(review.scope.risk) : 'not recorded'}\n` +

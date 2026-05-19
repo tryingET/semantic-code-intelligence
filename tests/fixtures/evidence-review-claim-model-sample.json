@@ -126,6 +126,20 @@
       "citationRequirement": "cite concrete rollback command or materialized inverse patch; otherwise treat rollback as unavailable"
     }
   ],
+  "limitations": [
+    {
+      "id": "graph-impact-limitation-1",
+      "limitation": "fallback: graph expand unavailable",
+      "sourceArtifact": "graph-impact",
+      "affectsClaims": [
+        "graph-limitations"
+      ],
+      "affectsDecisionPoints": [
+        "continue-or-stop"
+      ],
+      "severity": "warning"
+    }
+  ],
   "claims": [
     {
       "id": "checks-result",
@@ -169,7 +183,7 @@
         "graph-impact"
       ],
       "limitedBy": [
-        "graph-impact"
+        "graph-impact-limitation-1"
       ],
       "warrant": "Missing or fallback-shaped graph evidence qualifies continuation decisions; it does not imply no impact.",
       "authorityBoundaries": [
