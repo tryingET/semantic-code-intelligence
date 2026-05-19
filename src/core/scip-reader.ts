@@ -1,4 +1,6 @@
+import { constants } from 'node:fs';
 import * as fs from 'node:fs/promises';
+import type { FileHandle } from 'node:fs/promises';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deserializeSCIP, SymbolRole, type Index, type Occurrence } from '@c4312/scip';
@@ -42,6 +44,14 @@ export type ScipLoadOptions = {
 };
 
 const DEFAULT_MAX_SCIP_BYTES = 50 * 1024 * 1024;
+const SCIP_OPEN_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0);
+
+type ResolvedScipArtifact = {
+    path: string;
+    bytes: number;
+    maxBytes: number;
+    realWorkspaceRoot: string | null;
+};
 
 export class ScipIndexReader {
     readonly indexPath: string;
@@ -106,11 +116,15 @@ export class ScipIndexReader {
 
 export async function loadScipIndex(indexPath: string, options: ScipLoadOptions = {}): Promise<ScipIndexReader> {
     const resolved = await resolveScipArtifact(indexPath, options);
-    const handle = await fs.open(resolved.path, 'r').catch((error) => {
-        throw new CoreError('InvalidParams', `Failed to open SCIP index: ${error instanceof Error ? error.message : String(error)}`, { scipIndexPath: indexPath });
+    const handle = await fs.open(resolved.path, SCIP_OPEN_FLAGS).catch((error) => {
+        const message = isSymlinkOpenError(error)
+            ? 'scipIndexPath must not resolve to a symlink during open'
+            : `Failed to open SCIP index: ${error instanceof Error ? error.message : String(error)}`;
+        throw new CoreError('InvalidParams', message, { scipIndexPath: indexPath });
     });
 
     try {
+        await assertOpenedScipArtifactWithinWorkspace(handle, resolved.realWorkspaceRoot, indexPath);
         const stat = await handle.stat();
         if (!stat.isFile()) {
             throw new CoreError('InvalidParams', 'scipIndexPath must point to a file', { scipIndexPath: indexPath });
@@ -126,10 +140,11 @@ export async function loadScipIndex(indexPath: string, options: ScipLoadOptions 
     }
 }
 
-export async function resolveScipArtifact(indexPath: string, options: ScipLoadOptions = {}): Promise<{ path: string; bytes: number; maxBytes: number }> {
+export async function resolveScipArtifact(indexPath: string, options: ScipLoadOptions = {}): Promise<ResolvedScipArtifact> {
     const workspaceRoot = options.workspaceRoot ? path.resolve(options.workspaceRoot) : null;
     const candidate = path.resolve(workspaceRoot || process.cwd(), indexPath);
     const maxBytes = Math.max(1, options.maxBytes ?? DEFAULT_MAX_SCIP_BYTES);
+    let realWorkspaceRoot: string | null = null;
 
     if (workspaceRoot) {
         const lexicalRel = path.relative(workspaceRoot, candidate);
@@ -143,7 +158,7 @@ export async function resolveScipArtifact(indexPath: string, options: ScipLoadOp
     });
 
     if (workspaceRoot) {
-        const realWorkspaceRoot = await fs.realpath(workspaceRoot).catch((error) => {
+        realWorkspaceRoot = await fs.realpath(workspaceRoot).catch((error) => {
             throw new CoreError('InvalidParams', `Failed to stat workspace root: ${error instanceof Error ? error.message : String(error)}`, { scipIndexPath: indexPath });
         });
         const realRel = path.relative(realWorkspaceRoot, realCandidate);
@@ -163,7 +178,35 @@ export async function resolveScipArtifact(indexPath: string, options: ScipLoadOp
         throw new CoreError('InvalidParams', 'SCIP index exceeds maximum allowed size', { scipIndexPath: indexPath, bytes: stat.size, maxBytes });
     }
 
-    return { path: realCandidate, bytes: stat.size, maxBytes };
+    return { path: realCandidate, bytes: stat.size, maxBytes, realWorkspaceRoot };
+}
+
+/** @internal exported for focused trust-boundary regression coverage. */
+export async function assertOpenedScipArtifactWithinWorkspace(handle: FileHandle, realWorkspaceRoot: string | null, indexPath: string): Promise<void> {
+    if (!realWorkspaceRoot) return;
+
+    const openedPath = await realpathOpenFileDescriptor(handle, indexPath);
+    const openedRel = path.relative(realWorkspaceRoot, openedPath);
+    if (!openedRel || openedRel.startsWith('..') || path.isAbsolute(openedRel)) {
+        throw new CoreError('InvalidParams', 'scipIndexPath must stay within the workspace', { scipIndexPath: indexPath });
+    }
+}
+
+async function realpathOpenFileDescriptor(handle: FileHandle, indexPath: string): Promise<string> {
+    const candidates = [`/proc/self/fd/${handle.fd}`, `/dev/fd/${handle.fd}`];
+    const errors: string[] = [];
+    for (const candidate of candidates) {
+        try {
+            return await fs.realpath(candidate);
+        } catch (error) {
+            errors.push(error instanceof Error ? error.message : String(error));
+        }
+    }
+    throw new CoreError('InvalidParams', `Failed to verify opened SCIP index containment: ${errors.join('; ')}`, { scipIndexPath: indexPath });
+}
+
+function isSymlinkOpenError(error: unknown): boolean {
+    return !!error && typeof error === 'object' && (error as any).code === 'ELOOP';
 }
 
 function deserializeScipBytes(bytes: Uint8Array, indexPath: string): Index {

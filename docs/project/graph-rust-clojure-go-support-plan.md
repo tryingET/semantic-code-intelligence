@@ -122,7 +122,7 @@ Landed after the initial plan:
 - `graph_expand` impact summaries expose backend provenance/freshness fields for current `tree_sitter` and `fallback` behavior.
 - `src/core/scip-reader.ts` provides a read-only generic SCIP reader spike that can load an existing `index.scip`, summarize documents/occurrences/languages, and query definitions, references, and file-local occurrences.
 - `graph_expand` can optionally consume an explicit workspace-contained `scipIndexPath` and return `backend: "scip"` evidence for file imports/exports and symbol definitions/references.
-- Explicit SCIP artifact ingestion now fails closed for invalid, malformed, oversized, out-of-workspace, or symlink-escaping indexes instead of silently falling back.
+- Explicit SCIP artifact ingestion now fails closed for invalid, malformed, oversized, out-of-workspace, symlink-escaping, or post-open containment-failing indexes instead of silently falling back.
 - Direct HTTP `/api/v1/graph-expand` routes through MCP graph semantics for SCIP/provenance parity.
 - `graph_expand` still does not generate SCIP indexes automatically; SCIP remains a consumed artifact.
 

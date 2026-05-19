@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
+import { open, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { create } from '@bufbuild/protobuf';
@@ -15,7 +16,7 @@ import {
     ToolInfoSchema,
     serializeSCIP,
 } from '@c4312/scip';
-import { loadScipIndex } from '../src/core/scip-reader.js';
+import { assertOpenedScipArtifactWithinWorkspace, loadScipIndex } from '../src/core/scip-reader.js';
 
 const fooSymbol = 'scip-go gomod example.com/acme Foo().';
 const barSymbol = 'scip-go gomod example.com/acme Bar().';
@@ -146,5 +147,29 @@ describe('SCIP reader', () => {
         writeFileSync(malformedPath, 'not a scip index');
 
         await expect(loadScipIndex(malformedPath, { workspaceRoot: workspace })).rejects.toThrow('Failed to parse SCIP index');
+    });
+
+    test('verifies opened artifact file descriptors stay within the workspace', async () => {
+        const workspace = mkdtempSync(join(tmpdir(), 'sci-scip-fd-workspace-'));
+        const insidePath = join(workspace, 'inside.scip');
+        const outsideDir = mkdtempSync(join(tmpdir(), 'sci-scip-fd-outside-'));
+        const outsidePath = join(outsideDir, 'outside.scip');
+        writeFileSync(insidePath, 'inside');
+        writeFileSync(outsidePath, 'outside');
+        const realWorkspaceRoot = await realpath(workspace);
+
+        const insideHandle = await open(insidePath, 'r');
+        try {
+            await expect(assertOpenedScipArtifactWithinWorkspace(insideHandle, realWorkspaceRoot, insidePath)).resolves.toBeUndefined();
+        } finally {
+            await insideHandle.close();
+        }
+
+        const outsideHandle = await open(outsidePath, 'r');
+        try {
+            await expect(assertOpenedScipArtifactWithinWorkspace(outsideHandle, realWorkspaceRoot, outsidePath)).rejects.toThrow('scipIndexPath must stay within the workspace');
+        } finally {
+            await outsideHandle.close();
+        }
     });
 });
