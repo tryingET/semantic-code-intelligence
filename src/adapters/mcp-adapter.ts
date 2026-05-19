@@ -16,7 +16,7 @@ import * as path from 'node:path';
 import { CoreError } from '../core/errors.js';
 import { overlayStore } from '../core/overlay-store.js';
 import { ToolRegistry } from '../core/tools/registry.js';
-import { openWorkspaceFileForRead } from '../core/workspace-path.js';
+import { openWorkspaceFileForRead, resolveWorkspacePath } from '../core/workspace-path.js';
 import { DefinitionKind } from '../core/types.js';
 import { createValidationError, type ErrorContext, type RecoveryOptions, withMcpErrorHandling } from '../core/utils/error-handler.js';
 import { adapterLogger, mcpLogger } from '../core/utils/file-logger.js';
@@ -1515,7 +1515,9 @@ export class MCPAdapter {
             const kind = (args?.kind as string) || 'literal';
             const caseInsensitive = !!args?.caseInsensitive;
             const maxResults = Math.min(Number(args?.maxResults || 200), 1000);
-            const path = String(args?.path || process.cwd());
+            const requestedPath = String(args?.path || process.cwd());
+            const searchRoot = await resolveWorkspacePath(requestedPath, { workspaceRoot: process.cwd(), inputLabel: 'text_search path', allowRoot: true });
+            const path = searchRoot.realPath;
 
             // Prepare query based on kind
             let searchQuery = query;
@@ -1559,11 +1561,14 @@ export class MCPAdapter {
                 isError: false,
             };
         } catch (error) {
+            if (error instanceof CoreError) return handleAdapterError(error, 'mcp');
             // Fallback to direct AsyncEnhancedGrep if textSearch fails
             const kind = (args?.kind as string) || 'literal';
             const caseInsensitive = !!args?.caseInsensitive;
             const maxResults = Math.min(Number(args?.maxResults || 200), 1000);
-            const path = String(args?.path || process.cwd());
+            const requestedPath = String(args?.path || process.cwd());
+            const searchRoot = await resolveWorkspacePath(requestedPath, { workspaceRoot: process.cwd(), inputLabel: 'text_search path', allowRoot: true });
+            const path = searchRoot.realPath;
             const asyncGrep = new AsyncEnhancedGrep({ cacheSize: 500, cacheTTL: 30000 });
             const pattern =
                 kind === 'word' ? `\\b${escapeRegex(query)}\\b` : kind === 'literal' ? escapeRegex(query) : query;
@@ -1598,18 +1603,17 @@ export class MCPAdapter {
             .map((d: any) => ({ uri: d.uri, range: d.range, kind: d.kind, name: d.name || query }));
 
         if (out.length === 0 && fileHint) {
-            const workspaceRoot = path.resolve(process.cwd());
-            const absPath = path.resolve(workspaceRoot, fileHint);
-            const relPath = path.relative(workspaceRoot, absPath);
-            if (relPath && !relPath.startsWith('..') && !path.isAbsolute(relPath)) {
-                const text = await fs.readFile(absPath, 'utf8').catch(() => '');
+            let opened: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
+            try {
+                opened = await openWorkspaceFileForRead(fileHint, { workspaceRoot: process.cwd(), inputLabel: 'symbol_search fileHint' });
+                const text = await opened.handle.readFile('utf8');
                 const lines = text.split(/\r?\n/);
                 out = lines
                     .map((line, index) => ({ line, index, column: line.indexOf(query) }))
                     .filter((match) => match.column >= 0)
                     .slice(0, maxResults)
                     .map((match) => ({
-                        uri: `file://${absPath}`,
+                        uri: `file://${path.resolve(process.cwd(), opened?.relativePath || fileHint)}`,
                         range: {
                             start: { line: match.index, character: match.column },
                             end: { line: match.index, character: match.column + query.length },
@@ -1620,6 +1624,13 @@ export class MCPAdapter {
                         name: query,
                         fallback: 'fileHint_text_scan',
                     }));
+            } catch (error) {
+                const coreError = error instanceof CoreError
+                    ? error
+                    : new CoreError('InvalidParams', `symbol_search fileHint failed: ${error instanceof Error ? error.message : String(error)}`, { path: fileHint });
+                return handleAdapterError(coreError, 'mcp');
+            } finally {
+                await opened?.handle.close().catch(() => undefined);
             }
         }
 

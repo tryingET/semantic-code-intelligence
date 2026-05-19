@@ -18,11 +18,24 @@ export type OpenWorkspaceFileForReadOptions = {
     inputLabel?: string;
 };
 
-export async function openWorkspaceFileForRead(requestedPath: string, options: OpenWorkspaceFileForReadOptions = {}): Promise<OpenWorkspaceFileForReadResult> {
+export type ResolveWorkspacePathResult = {
+    absolutePath: string;
+    relativePath: string;
+    realPath: string;
+    realWorkspaceRoot: string;
+};
+
+export type ResolveWorkspacePathOptions = {
+    workspaceRoot?: string;
+    inputLabel?: string;
+    allowRoot?: boolean;
+};
+
+export async function resolveWorkspacePath(requestedPath: string, options: ResolveWorkspacePathOptions = {}): Promise<ResolveWorkspacePathResult> {
     const inputLabel = options.inputLabel || 'path';
     const workspaceRoot = path.resolve(options.workspaceRoot || process.cwd());
     const candidate = path.resolve(workspaceRoot, requestedPath);
-    const relativePath = assertLexicallyWithinWorkspace(workspaceRoot, candidate, inputLabel, requestedPath);
+    const relativePath = assertLexicallyWithinWorkspace(workspaceRoot, candidate, inputLabel, requestedPath, options.allowRoot === true);
 
     const realWorkspaceRoot = await fs.realpath(workspaceRoot).catch((error) => {
         throw new CoreError('InvalidParams', `Failed to resolve workspace root: ${errorMessage(error)}`, { path: requestedPath });
@@ -31,7 +44,23 @@ export async function openWorkspaceFileForRead(requestedPath: string, options: O
     const realCandidate = await fs.realpath(candidate).catch((error) => {
         throw new CoreError('InvalidParams', `${inputLabel} does not exist or cannot be resolved`, { path: requestedPath, cause: errorMessage(error) });
     });
-    assertRealPathWithinWorkspace(realWorkspaceRoot, realCandidate, inputLabel, requestedPath);
+    assertRealPathWithinWorkspace(realWorkspaceRoot, realCandidate, inputLabel, requestedPath, options.allowRoot === true);
+
+    return {
+        absolutePath: candidate,
+        relativePath: normalizeRelativePath(relativePath || '.'),
+        realPath: realCandidate,
+        realWorkspaceRoot,
+    };
+}
+
+export async function openWorkspaceFileForRead(requestedPath: string, options: OpenWorkspaceFileForReadOptions = {}): Promise<OpenWorkspaceFileForReadResult> {
+    const inputLabel = options.inputLabel || 'path';
+    const workspaceRoot = path.resolve(options.workspaceRoot || process.cwd());
+    const resolved = await resolveWorkspacePath(requestedPath, { workspaceRoot, inputLabel });
+    const relativePath = resolved.relativePath;
+    const realWorkspaceRoot = resolved.realWorkspaceRoot;
+    const realCandidate = resolved.realPath;
 
     const handle = await fs.open(realCandidate, READ_NOFOLLOW_FLAGS).catch((error) => {
         const message = isSymlinkOpenError(error)
@@ -56,17 +85,17 @@ export async function openWorkspaceFileForRead(requestedPath: string, options: O
     }
 }
 
-function assertLexicallyWithinWorkspace(workspaceRoot: string, candidate: string, inputLabel: string, requestedPath: string): string {
+function assertLexicallyWithinWorkspace(workspaceRoot: string, candidate: string, inputLabel: string, requestedPath: string, allowRoot = false): string {
     const relativePath = path.relative(workspaceRoot, candidate);
-    if (!relativePath || relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+    if ((!relativePath && !allowRoot) || relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
         throw new CoreError('InvalidParams', `${inputLabel} must stay within the workspace`, { path: requestedPath });
     }
     return relativePath;
 }
 
-function assertRealPathWithinWorkspace(realWorkspaceRoot: string, realCandidate: string, inputLabel: string, requestedPath: string): void {
+function assertRealPathWithinWorkspace(realWorkspaceRoot: string, realCandidate: string, inputLabel: string, requestedPath: string, allowRoot = false): void {
     const relativePath = path.relative(realWorkspaceRoot, realCandidate);
-    if (!relativePath || relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+    if ((!relativePath && !allowRoot) || relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
         throw new CoreError('InvalidParams', `${inputLabel} must stay within the workspace`, { path: requestedPath });
     }
 }
