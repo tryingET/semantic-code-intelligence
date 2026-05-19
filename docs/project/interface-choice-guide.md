@@ -129,17 +129,19 @@ Regardless of interface:
 
 ## Current readiness implication
 
-The interface evidence is credible for Alpha MVP, but not enough for production readiness:
+The interface evidence is credible for the closed Phase 1 Alpha MVP substrate, but not enough for production readiness:
 
 - self-hosted CLI, HTTP, MCP HTTP, MCP stdio, direct adapter, and target-repo CLI paths are all exercised;
 - external target validation-plan dogfood exists for multiple non-SCI repos, including a sibling JavaScript target, a clean worktree of mixed Python/Rust `agent-kernel`, and a clean Clojure worktree;
-- interactive SLO guidance and lightweight elapsed-time history exist, but closure still needs an explicit decision review.
+- interactive SLO guidance and lightweight elapsed-time history exist;
+- IW50 closure review records the Alpha MVP closure boundary in `docs/project/phase-1-closure-review.md`.
 
 ## Next recommended hardening
 
-After this guide, prefer one of:
+After IW50, do not add more interface dogfood by default. Prefer one of:
 
-1. perform a Phase 1 closure review that explicitly preserves remaining production-readiness gaps; or
-2. only add more target dogfood if the closure review identifies a specific ecosystem gap.
+1. Alpha maintenance/regression work when evidence fails;
+2. targeted hardening tied to a named closure-review gap; or
+3. a Phase 2 planning decision before any UI/workbench implementation.
 
 Do not start Phase 2 UI/workbench polish solely because the Alpha MVP interface set is documented.

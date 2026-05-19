@@ -14,11 +14,11 @@ Wave: IW40 — Phase 1 closeout readiness review
 
 ## Decision posture
 
-**Posture: Alpha MVP substrate is credible for the first user, but Phase 1 should not be declared broadly closed or production-ready.**
+**Superseded by IW50 closure review.** See `docs/project/phase-1-closure-review.md`.
 
-SCI now has enough repeatable evidence to treat the harnessed-LLM coding-session substrate as alpha-usable for bounded navigation, preview-first patch planning, explicit checks, guarded apply, rollback evidence, and operator-readable validation planning.
+Current posture after IW50: Phase 1 is closed as an **Alpha MVP substrate** for the harnessed-LLM first user. This is not production readiness, whole-program graph accuracy, broad IDE readiness, or Phase 2 delivery.
 
-The recommended next move is **targeted hardening and external-repo dogfood**, not more feature accretion inside the SCI repo. Phase 2 developer-workbench work should wait until at least one more nontrivial target-repo/global-CLI proof exercises the current validation-plan spine outside this repository.
+SCI has enough repeatable evidence to treat the harnessed-LLM coding-session substrate as alpha-usable for bounded navigation, preview-first patch planning, explicit checks, guarded apply, rollback evidence, and operator-readable validation planning.
 
 ## Evidence reviewed
 
@@ -91,12 +91,12 @@ It is **not** yet truthful to say:
 
 ## Recommended next wave
 
-**IW50 — Phase 1 closure review**
+**IW51 — Phase 2 planning decision or Alpha maintenance backlog triage**
 
-Goal: perform a decision-quality Phase 1 closure review that explicitly separates alpha-usable substrate evidence from remaining production-readiness gaps.
+Goal: stop automatic Phase 1 dogfood accumulation and choose either Phase 2 planning or a small Alpha maintenance backlog.
 
-Preference: choose closure review before adding more dogfood so the next work is guided by a decision checkpoint rather than automatic feature/evidence accumulation.
+Preference: create a Phase 2 planning decision only if the operator wants human workbench/IDE/dashboard work; otherwise triage maintenance follow-ups from `docs/project/phase-1-closure-review.md`.
 
 ## Closeout conclusion
 
-IW41 completed the first external target validationPlan proof, IW42 documented interface choice guidance, IW43 added a second external target proof, IW44 documented interactive SLO guidance, IW45 added lightweight elapsed-time history comparison, IW46 improved graph fallback characterization/caller context, IW47 added a sibling JavaScript target proof, IW48 added a mixed Python/Rust `agent-kernel` worktree proof, and IW49 added a Clojure worktree proof. Continue to avoid feature accretion until an explicit closure review resolves the remaining readiness ambiguity.
+IW41 completed the first external target validationPlan proof, IW42 documented interface choice guidance, IW43 added a second external target proof, IW44 documented interactive SLO guidance, IW45 added lightweight elapsed-time history comparison, IW46 improved graph fallback characterization/caller context, IW47 added a sibling JavaScript target proof, IW48 added a mixed Python/Rust `agent-kernel` worktree proof, IW49 added a Clojure worktree proof, and IW50 closed Phase 1 as an Alpha MVP substrate. Continue to avoid feature accretion; future work needs either a maintenance bug, a targeted hardening gap, or a Phase 2 planning decision.

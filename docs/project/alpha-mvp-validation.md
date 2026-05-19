@@ -10,7 +10,7 @@ type: "reference"
 
 ## Purpose
 
-The Phase 1 Alpha MVP validation bundle proves the first-user path for harnessed LLM coding sessions:
+The Phase 1 Alpha MVP validation bundle proves the first-user path for harnessed LLM coding sessions. IW50 closes this as an Alpha MVP substrate; see `docs/project/phase-1-closure-review.md` for the closure boundary and remaining production-readiness gaps.
 
 - documented Alpha MVP tool surface is present;
 - HTTP `/api/v1/tools/call` can execute `read_file` and the non-mutating navigation cluster (`text_search`, `symbol_search`, `find_definition`, `find_references`, `ast_query`, and `graph_expand`);
@@ -108,7 +108,7 @@ The dogfood harness emits JSON with this high-level shape:
 }
 ```
 
-The `interpretation.does_not_prove` section is intentional. Passing this bundle proves the Phase 1 harnessed-LLM Alpha MVP path, not production readiness or Phase 2+ surfaces.
+The `interpretation.does_not_prove` section is intentional. Passing this bundle proves the closed Phase 1 harnessed-LLM Alpha MVP path, not production readiness or Phase 2+ surfaces.
 
 `bun run validation-plan:compare` reads generated validation plans and emits `.test-results/validation-plan-comparison.json`, comparing stable fields while ignoring volatile snapshot ids and timing. When drift is detected, the comparison includes operator-facing explanations and remediation hints. `bun run alpha:evidence:check` reads the generated dogfood JSON files under `.test-results/` and emits `.test-results/alpha-evidence-check.json`. It is intentionally a lightweight evidence gate, not a historical database: it checks that current evidence still contains SCI-first discovery, graph impact summaries, impact-aware check recommendations, validationPlan summaries/comparison, preview-first mutation posture, safe-write exact apply verification plus mismatch fail-closed behavior, and coarse per-call latency budgets. `bun run alpha:evidence:history` emits `.test-results/alpha-evidence-history.json`, comparing current elapsed-time maxima against `docs/project/alpha-evidence-latency-baseline.json`; repeated warnings are hardening signals, while existing Alpha budgets remain the fail-closed latency gate. Operator-facing latency bands are documented in `docs/project/interactive-slo-guidance.md`.
 

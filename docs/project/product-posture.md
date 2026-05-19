@@ -69,7 +69,7 @@ Phase 1 has moved from posture to a repeatable Alpha MVP validation bundle. The 
 - dogfood evidence is emitted as JSON and verifies that preview-first patch planning does not mutate the working tree;
 - impact-aware check recommendation dogfood records JSON evidence that docs-only, TS source, test-file, and graph-impact inputs produce explicit advisory validation commands;
 - validation-plan evidence summarizes selected commands, recommendations, check results, snapshot artifacts, apply/rollback posture, and stable-field drift comparison with remediation hints;
-- IW40 readiness review (`docs/project/phase-1-readiness-review.md`) concludes the Phase 1 Alpha MVP substrate is credible for the first user, but should continue with external-repo validationPlan dogfood before broader closure or Phase 2 prioritization;
+- IW50 closure review (`docs/project/phase-1-closure-review.md`) closes Phase 1 as an Alpha MVP substrate for the first user while preserving production-readiness gaps;
 - target-repo CLI usage is now proven as an installed/global command invoked from a non-SCI repository cwd through a harnessed `pi -p` session, without SCI knowing target repo paths;
 - migration hygiene continues to reject pre-rename identity drift, machine-local path coupling, and unsafe local artifacts.
 
@@ -80,22 +80,29 @@ bun run alpha:mvp:check
 just alpha-mvp-check
 ```
 
-This is credible Alpha MVP evidence for the first-user substrate. It is not yet production readiness.
+This is credible Alpha MVP evidence for the first-user substrate. It is not production readiness.
 
-### Remaining Phase 1 gaps
+### Phase 1 closure posture
 
-Before treating Phase 1 as broadly proven, keep pressure on:
+Phase 1 is closed as an Alpha MVP substrate after IW50. The closure boundary is `docs/project/phase-1-closure-review.md`.
 
-- a Phase 1 closure review now that JavaScript, mixed Python/Rust, and Clojure external validationPlan proofs exist;
+Do not keep adding Phase 1 dogfood waves by default. Future work should be one of:
+
+- Alpha maintenance or regression fixes when the evidence bundle fails;
+- targeted hardening tied to a named closure-review gap;
+- a Phase 2 planning decision for human workbench/IDE/dashboard scope.
+
+Remaining non-blocking gaps after closure:
+
 - richer semantic graph behavior beyond characterized fallback shapes and best-effort caller context;
 - durable evidence history beyond current-run stable-field and lightweight elapsed-time comparison;
 - production-grade p95/p99 performance evidence beyond the operator-facing latency bands and generated-evidence baseline in `docs/project/interactive-slo-guidance.md`;
 - durable snapshot/session semantics where process-local CLI or adapter state is insufficient;
-- validating the new interface choice guidance (`docs/project/interface-choice-guide.md`) across more external target sessions.
+- validating interface guidance (`docs/project/interface-choice-guide.md`) in future target sessions when a concrete operator need appears.
 
 ## Phase 2: Developer workbench
 
-Human-facing IDE and dashboard experiences become primary only after Phase 1 proves the substrate.
+Human-facing IDE and dashboard experiences become primary only after a Phase 2 planning decision names the target user, interface, validation contract, and rollback boundary.
 
 Candidate surfaces:
 
