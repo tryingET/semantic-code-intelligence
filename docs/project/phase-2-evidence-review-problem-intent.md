@@ -92,8 +92,8 @@ Out of scope:
 
 A reviewed RFC should make these decisions explicit:
 
-1. whether SCI should own only the summary producer or also a rendered surface;
-2. what fields a review summary must expose;
+1. whether SCI should remain CLI/markdown-only until the evidence-review schema is stable, or prepare a non-mutating host handoff packet;
+2. what conceptual entities a review summary must expose, including claims, artifacts, limitations, authority boundaries, and operator decision points;
 3. how the summary is validated against existing evidence samples;
 4. what future host integration may consume;
 5. what remains non-authoritative until a later ADR or implementation wave.

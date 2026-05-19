@@ -10,8 +10,8 @@ type: "revised-draft-rfc"
 # RFC: Phase 2 evidence review summary path
 
 Date: 2026-05-19
-Wave: IW57 — Phase 2 RFC review revision
-Status: **revised draft RFC; not accepted; not ADR-ready**
+Wave: IW58 — Phase 2 RFC conceptual model revision
+Status: **conceptual-model revised draft RFC; not accepted; not ADR-ready**
 
 ## Authority note
 
@@ -19,7 +19,9 @@ This RFC is a revised draft. It is not an accepted RFC review and does not autho
 
 AK decisions `46` and `47` were superseded after the operator rejected unilateral decision lifecycle advancement. They must not be advanced, revived, or cited as accepted authority. Any future decision must be explicitly operator-directed or created through the repo's accepted governance procedure.
 
-Review notes for this revision: `docs/project/phase-2-evidence-review-rfc-review.md`.
+Review notes for the previous revision: `docs/project/phase-2-evidence-review-rfc-review.md`.
+
+This revision adds a conceptual model for evidence-backed operator judgment; it does not create governance acceptance.
 
 ## Problem / intent source
 
@@ -61,6 +63,46 @@ The prototype can already render:
 bun run evidence-review:summary -- --input .test-results/alpha-evidence-packet.json --format markdown
 bun run evidence-review:summary -- --input .test-results/alpha-evidence-packet.json --extract validationPlan --format json
 ```
+
+## Conceptual model
+
+The evidence review path exists to support an operator's judgment, not to replace it. The model separates artifacts, claims, warrants, limitations, authority, and human decision points.
+
+Core concepts:
+
+- **EvidenceReview** — a read-only summary event/view that organizes evidence for operator inspection. It is not canonical task/evidence authority.
+- **EvidenceArtifact** — an input object such as an alpha evidence packet, validation plan, graph impact summary, check recommendation, or snapshot link.
+- **ReviewClaim** — a proposition the review can support or weaken, for example: "the selected checks passed", "the graph evidence is limited", or "this result remains preview-only".
+- **ValidationExecution** — an event where selected commands actually ran.
+- **CheckResult** — the observable outcome of a validation execution, including pass/fail/timeout and elapsed time where available.
+- **RecommendedCommand** — an advisory command SCI suggested for risk coverage.
+- **ExecutedCommand** — a command that actually ran. It must never be inferred from a recommendation.
+- **Limitation** — a qualifier that weakens or bounds one or more review claims, such as fallback-shaped graph evidence or unavailable rollback evidence.
+- **AuthorityBoundary** — a normative statement about what the review cannot authorize, such as production readiness, AK decision acceptance, mutation, or host integration.
+- **OperatorDecisionPoint** — a human-facing choice left open by the evidence, such as continue, stop, narrow scope, inspect a limitation, or run stronger checks.
+
+Conceptual rules:
+
+1. every EvidenceReview must state at least one ReviewClaim and at least one AuthorityBoundary;
+2. every ExecutedCommand must come from observed execution evidence, not recommendation text;
+3. every RecommendedCommand must remain visually and structurally distinct from every ExecutedCommand;
+4. every Limitation must identify the claim or decision point it qualifies;
+5. unavailable evidence, failed evidence, unknown evidence, and inapplicable evidence must remain distinguishable;
+6. an operator decision may be supported by evidence, but is not produced automatically by the evidence review;
+7. a rendered review is a presentation of evidence, not governance acceptance.
+
+Example claim/warrant shape:
+
+```text
+Claim: The preview evidence is sufficient to continue reviewing this patch.
+Supported by: selected checks passed; touched files are visible; no apply evidence is present.
+Limited by: graph impact evidence is fallback-shaped.
+Warrant: For a low-risk preview, passing selected checks plus visible limitations may justify continued inspection, not production readiness.
+Authority boundary: The review cannot accept an AK decision, mutate the workspace, or claim the patch is production-ready.
+Operator decision point: continue, inspect graph limitation, run broader checks, or stop.
+```
+
+This conceptual model is the source for the schema review points below. If the JSON shape cannot represent these distinctions, the RFC should choose Option A and keep the producer CLI/markdown-only until the model and shape are aligned.
 
 ## Proposal
 
@@ -167,9 +209,9 @@ Weaknesses:
 
 ## Draft recommendation
 
-Prefer **Option B** after explicit review only if the schema review points below are resolved or accepted as deliberate follow-up.
+Current review posture: prefer **Option A** until the conceptual model and schema review points are resolved.
 
-Otherwise choose **Option A** and keep the summary producer CLI/markdown-only until the compatibility shape is more stable.
+Choose **Option B** only after explicit review confirms that `semantic-code-intelligence.evidence_review.v1` can represent ReviewClaims, Limitations, AuthorityBoundaries, and OperatorDecisionPoints without collapsing evidence into authority.
 
 Do not implement rendering in SCI.
 
@@ -179,11 +221,12 @@ Before this RFC can approach ADR readiness, reviewers must decide:
 
 1. whether `source.kind` values are closed or extensible;
 2. which fields are required versus optional for each source kind;
-3. how unavailable evidence differs from failed evidence;
+3. how unavailable evidence differs from failed, unknown, and inapplicable evidence;
 4. how multiple validation plans are represented;
-5. what stability expectations apply to artifact URIs such as `snapshot://.../overlay.diff`;
-6. what versioning/deprecation policy applies to `semantic-code-intelligence.evidence_review.v1`;
-7. whether target-dogfood evidence and alpha-packet evidence require separate sections or one shared renderer.
+5. how ReviewClaims, supporting artifacts, warrants, limitations, and authority boundaries are represented;
+6. what stability expectations apply to artifact URIs such as `snapshot://.../overlay.diff`;
+7. what versioning/deprecation policy applies to `semantic-code-intelligence.evidence_review.v1`;
+8. whether target-dogfood evidence and alpha-packet evidence require separate sections or one shared renderer.
 
 ## Risks
 
@@ -212,7 +255,7 @@ git diff --check
 ak direction check --repo . --machine
 ```
 
-Review must also inspect `git status --short` before and after rendering to confirm the summary path does not mutate source.
+Review must also inspect `git status --short` before and after rendering to confirm the summary path does not mutate source. ADR-ready validation should additionally confirm the renderer does not call AK or database mutation commands.
 
 ### Implementation-time validation
 
@@ -231,10 +274,11 @@ A reviewer should decide:
 
 1. Is Option A or Option B the correct next step under current source-owner boundaries?
 2. Are the source-owner boundaries explicit enough?
-3. Is the normalized `semantic-code-intelligence.evidence_review.v1` shape sufficient for handoff?
+3. Is the normalized `semantic-code-intelligence.evidence_review.v1` shape sufficient to represent the conceptual model?
 4. Which schema review points must be resolved before ADR readiness?
 5. Who owns reviewing or accepting any Pi/operator-workbench integration?
 6. What evidence must be attached to prove rendering is read-only and non-mutating?
+7. What operator decisions should the review support without automating or authorizing them?
 
 ## ADR-readiness status
 
@@ -246,6 +290,6 @@ Required before ADR readiness:
 2. revised RFC if review requests changes beyond this draft revision;
 3. clear decision on Option A versus Option B;
 4. owner boundary confirmation for any Pi/operator-workbench handoff;
-5. schema review point resolution or explicit deferral;
+5. conceptual model and schema review point resolution or explicit deferral;
 6. non-mutation/read-only validation evidence attached to the RFC;
 7. explicit operator approval before any AK decision lifecycle creation or advancement.

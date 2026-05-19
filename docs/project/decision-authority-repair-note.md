@@ -47,4 +47,4 @@ Invalid:
 
 Future decision lifecycle mutation requires explicit operator instruction naming the decision and target state, or the repo's accepted governance procedure.
 
-IW56 adds draft-only problem-intent/RFC artifacts for Phase 2 evidence review. IW57 adds non-authoritative review notes and a revised draft RFC. These artifacts may support a later explicit review, but they are not ADR-ready or accepted AK decision authority.
+IW56 adds draft-only problem-intent/RFC artifacts for Phase 2 evidence review. IW57 adds non-authoritative review notes and a revised draft RFC. IW58 adds a conceptual-model revision. These artifacts may support a later explicit review, but they are not ADR-ready or accepted AK decision authority.
