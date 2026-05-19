@@ -25,6 +25,7 @@ function strings(value: any): string[] {
 }
 
 type EvidenceAbsenceState = 'failed' | 'unavailable' | 'unknown' | 'inapplicable';
+type EvidenceDurability = 'ephemeral' | 'reproducible_local' | 'materialized_local' | 'repo_durable' | 'authority_durable';
 
 function evidenceState(kind: string, observed: boolean, failed: boolean, applicable = true): EvidenceAbsenceState | 'observed' {
   if (!applicable) return 'inapplicable';
@@ -35,6 +36,17 @@ function evidenceState(kind: string, observed: boolean, failed: boolean, applica
 
 function claim(id: string, text: string, status: 'supported' | 'weakened' | 'contradicted' | 'unresolved', supportedBy: string[], limitedBy: string[], warrant: string, authorityBoundaries: string[], operatorDecisionPoints: string[]) {
   return { id, claim: text, status, supportedBy, limitedBy, warrant, authorityBoundaries, operatorDecisionPoints };
+}
+
+function artifact(id: string, kind: string, schema: string | null, observedStatus: EvidenceAbsenceState | 'observed', durability: EvidenceDurability, uriOrPath: string | null, citationRequirement: string) {
+  return { id, kind, schema, observedStatus, durability, uriOrPath, citationRequirement };
+}
+
+function firstString(values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === 'string' && value.length > 0) return value;
+  }
+  return null;
 }
 
 function firstValidationPlan(packet: any): any | null {
@@ -176,11 +188,11 @@ function withConceptualModel(review: any) {
   const graphApplicable = review?.source?.kind !== 'target_dogfood' || review?.scope?.sourceKind !== 'unknown';
 
   const evidenceArtifacts = [
-    { id: 'source', kind: review?.source?.kind || 'unknown', schema: review?.source?.schema || null, observedStatus: 'observed' },
-    { id: 'validation-execution', kind: 'validation_execution', schema: null, observedStatus: evidenceState('required', selectedCommands.length > 0, checksFailed) },
-    { id: 'graph-impact', kind: 'graph_impact', schema: null, observedStatus: evidenceState('optional', graphObserved, false, graphApplicable) },
-    { id: 'snapshot-artifacts', kind: 'snapshot_artifacts', schema: null, observedStatus: evidenceState('optional', hasArtifacts, false) },
-    { id: 'rollback', kind: 'rollback', schema: null, observedStatus: rollbackAvailable ? 'observed' : 'unavailable' },
+    artifact('source', review?.source?.kind || 'unknown', review?.source?.schema || null, 'observed', 'reproducible_local', null, 'cite input schema and command used to generate this review'),
+    artifact('validation-execution', 'validation_execution', null, evidenceState('required', selectedCommands.length > 0, checksFailed), 'authority_durable', null, 'cite AK evidence id or explicit command transcript when available'),
+    artifact('graph-impact', 'graph_impact', null, evidenceState('optional', graphObserved, false, graphApplicable), graphObserved ? 'reproducible_local' : 'ephemeral', null, 'cite limitations and regeneration command; do not infer no impact from absence'),
+    artifact('snapshot-artifacts', 'snapshot_artifacts', null, evidenceState('optional', hasArtifacts, false), hasArtifacts ? 'ephemeral' : 'ephemeral', firstString([review?.artifacts?.overlayDiff, review?.artifacts?.status, review?.artifacts?.progress]), 'snapshot:// references are pointers, not durable proof, unless materialized or attached to AK evidence'),
+    artifact('rollback', 'rollback', null, rollbackAvailable ? 'observed' : 'unavailable', rollbackAvailable ? 'reproducible_local' : 'ephemeral', review?.rollback?.command || null, 'cite concrete rollback command or materialized inverse patch; otherwise treat rollback as unavailable'),
   ];
 
   const authorityBoundaries = [
@@ -273,6 +285,8 @@ function renderMarkdown(review: any): string {
     `${arr(review.authorityBoundaries).map((b: any) => `- ${b.id}: ${b.boundary}`).join('\n') || '- none'}\n\n` +
     `### Operator decision points\n\n` +
     `${arr(review.operatorDecisionPoints).map((p: any) => `- ${p.id}: ${strings(p.options).join(', ')}; uncertainty: ${p.residualUncertainty || 'not recorded'}`).join('\n') || '- none'}\n\n` +
+    `### Evidence artifact durability\n\n` +
+    `${arr(review.evidenceArtifacts).map((a: any) => `- ${a.id}: ${a.observedStatus}; durability=${a.durability}; cite=${a.citationRequirement}`).join('\n') || '- none'}\n\n` +
     `## 2. Changed or affected scope\n\n` +
     `- Touched files:\n${bullet(strings(review.scope.touchedFiles))}\n` +
     `- Risk: ${review.scope.risk ? JSON.stringify(review.scope.risk) : 'not recorded'}\n` +

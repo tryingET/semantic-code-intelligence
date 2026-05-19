@@ -84,31 +84,46 @@
       "id": "source",
       "kind": "validation_plan",
       "schema": "semantic-code-intelligence.validation_plan.v1",
-      "observedStatus": "observed"
+      "observedStatus": "observed",
+      "durability": "reproducible_local",
+      "uriOrPath": null,
+      "citationRequirement": "cite input schema and command used to generate this review"
     },
     {
       "id": "validation-execution",
       "kind": "validation_execution",
       "schema": null,
-      "observedStatus": "observed"
+      "observedStatus": "observed",
+      "durability": "authority_durable",
+      "uriOrPath": null,
+      "citationRequirement": "cite AK evidence id or explicit command transcript when available"
     },
     {
       "id": "graph-impact",
       "kind": "graph_impact",
       "schema": null,
-      "observedStatus": "unknown"
+      "observedStatus": "unknown",
+      "durability": "ephemeral",
+      "uriOrPath": null,
+      "citationRequirement": "cite limitations and regeneration command; do not infer no impact from absence"
     },
     {
       "id": "snapshot-artifacts",
       "kind": "snapshot_artifacts",
       "schema": null,
-      "observedStatus": "observed"
+      "observedStatus": "observed",
+      "durability": "ephemeral",
+      "uriOrPath": "snapshot://example/overlay.diff",
+      "citationRequirement": "snapshot:// references are pointers, not durable proof, unless materialized or attached to AK evidence"
     },
     {
       "id": "rollback",
       "kind": "rollback",
       "schema": null,
-      "observedStatus": "unavailable"
+      "observedStatus": "unavailable",
+      "durability": "ephemeral",
+      "uriOrPath": null,
+      "citationRequirement": "cite concrete rollback command or materialized inverse patch; otherwise treat rollback as unavailable"
     }
   ],
   "claims": [

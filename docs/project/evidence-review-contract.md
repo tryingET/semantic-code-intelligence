@@ -150,7 +150,10 @@ Implementations may normalize input into this shape before rendering:
       "id": "validation-execution",
       "kind": "validation_execution",
       "schema": null,
-      "observedStatus": "observed | failed | unavailable | unknown | inapplicable"
+      "observedStatus": "observed | failed | unavailable | unknown | inapplicable",
+      "durability": "ephemeral | reproducible_local | materialized_local | repo_durable | authority_durable",
+      "uriOrPath": null,
+      "citationRequirement": "cite AK evidence id or explicit command transcript when available"
     }
   ],
   "claims": [
@@ -223,7 +226,7 @@ Implementations may normalize input into this shape before rendering:
 }
 ```
 
-The first-class `evidenceArtifacts`, `claims`, `authorityBoundaries`, and `operatorDecisionPoints` fields are required to prevent the review from collapsing artifacts into claims, claims into authority, or recommendations into executed commands.
+The first-class `evidenceArtifacts`, `claims`, `authorityBoundaries`, and `operatorDecisionPoints` fields are required to prevent the review from collapsing artifacts into claims, claims into authority, or recommendations into executed commands. Evidence artifacts also carry durability and citation requirements so `snapshot://` pointers are not mistaken for durable proof.
 
 ## Validation checks for an implementation wave
 

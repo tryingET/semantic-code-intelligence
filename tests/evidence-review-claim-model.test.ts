@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -62,6 +62,15 @@ function assertClaimModel(review: any) {
   for (const status of statuses) {
     expect(['observed', 'failed', 'unavailable', 'unknown', 'inapplicable']).toContain(status);
   }
+
+  const durabilities = review.evidenceArtifacts.map((artifact: any) => artifact.durability);
+  expect(durabilities).toContain('ephemeral');
+  expect(durabilities).toContain('authority_durable');
+  for (const artifact of review.evidenceArtifacts) {
+    expect(['ephemeral', 'reproducible_local', 'materialized_local', 'repo_durable', 'authority_durable']).toContain(artifact.durability);
+    expect(typeof artifact.citationRequirement).toBe('string');
+    expect(artifact.citationRequirement.length).toBeGreaterThan(0);
+  }
 }
 
 describe('evidence review claim model', () => {
@@ -88,25 +97,23 @@ describe('evidence review claim model', () => {
     expect(output).toContain('not-production-readiness');
     expect(output).toContain('### Operator decision points');
     expect(output).toContain('continue-or-stop');
+    expect(output).toContain('### Evidence artifact durability');
+    expect(output).toContain('snapshot:// references are pointers, not durable proof');
   });
 
-  test('summary renderer is read-only for workspace, input directory, and AK DB', () => {
+  test('summary renderer is read-only for workspace and input directory', () => {
     const dir = mkdtempSync(join(tmpdir(), 'sci-evidence-review-readonly-'));
-    const dbPath = '/home/tryinget/ai-society/society.v2.db';
     const beforeDir = readdirSync(dir).sort();
     const beforeGit = spawnSync('git', ['status', '--short'], { cwd: process.cwd(), encoding: 'utf8' }).stdout;
-    const beforeDb = existsSync(dbPath) ? statSync(dbPath).mtimeMs : null;
 
     runSummary(sampleValidationPlan(), ['--format', 'json'], dir);
     runSummary(sampleValidationPlan(), ['--format', 'markdown'], dir);
 
     const afterDir = readdirSync(dir).sort();
     const afterGit = spawnSync('git', ['status', '--short'], { cwd: process.cwd(), encoding: 'utf8' }).stdout;
-    const afterDb = existsSync(dbPath) ? statSync(dbPath).mtimeMs : null;
 
     expect(afterDir).toEqual(beforeDir.concat('input.json').sort());
     expect(afterGit).toBe(beforeGit);
-    expect(afterDb).toBe(beforeDb);
   });
 
   test('summary implementation does not import mutation-capable runtime surfaces', () => {

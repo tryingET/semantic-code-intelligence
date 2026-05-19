@@ -90,7 +90,7 @@ EvidenceArtifact
 - citationRequirement
 ```
 
-This is not required for the current Alpha summary producer, but future changes to `semantic-code-intelligence.evidence_review.v1` should prefer this distinction over overloading `observedStatus`.
+IW70 adds this distinction to the Alpha summary producer so `semantic-code-intelligence.evidence_review.v1` no longer overloads `observedStatus` with durability meaning.
 
 ## Rollback evidence requirements
 
