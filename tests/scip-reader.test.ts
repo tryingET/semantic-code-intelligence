@@ -1,0 +1,117 @@
+import { describe, expect, test } from 'bun:test';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { create } from '@bufbuild/protobuf';
+import {
+    DocumentSchema,
+    IndexSchema,
+    MetadataSchema,
+    OccurrenceSchema,
+    PositionEncoding,
+    ProtocolVersion,
+    SymbolRole,
+    TextEncoding,
+    ToolInfoSchema,
+    serializeSCIP,
+} from '@c4312/scip';
+import { loadScipIndex } from '../src/core/scip-reader.js';
+
+const fooSymbol = 'scip-go gomod example.com/acme Foo().';
+const barSymbol = 'scip-go gomod example.com/acme Bar().';
+
+function writeSampleScipIndex(): string {
+    const dir = mkdtempSync(join(tmpdir(), 'sci-scip-reader-'));
+    const indexPath = join(dir, 'index.scip');
+    const index = create(IndexSchema, {
+        metadata: create(MetadataSchema, {
+            version: ProtocolVersion.UnspecifiedProtocolVersion,
+            toolInfo: create(ToolInfoSchema, { name: 'sci-test', version: '0.0.0' }),
+            projectRoot: 'file:///tmp/sci-scip-reader',
+            textDocumentEncoding: TextEncoding.UTF8,
+        }),
+        documents: [
+            create(DocumentSchema, {
+                relativePath: 'pkg/foo.go',
+                language: 'go',
+                positionEncoding: PositionEncoding.UTF8CodeUnitOffsetFromLineStart,
+                occurrences: [
+                    create(OccurrenceSchema, {
+                        range: [2, 5, 8],
+                        symbol: fooSymbol,
+                        symbolRoles: SymbolRole.Definition,
+                    }),
+                    create(OccurrenceSchema, {
+                        range: [3, 9, 12],
+                        symbol: barSymbol,
+                        symbolRoles: SymbolRole.ReadAccess,
+                    }),
+                    create(OccurrenceSchema, {
+                        range: [0, 7, 20],
+                        symbol: 'scip-go gomod fmt/',
+                        symbolRoles: SymbolRole.Import,
+                    }),
+                ],
+            }),
+            create(DocumentSchema, {
+                relativePath: 'pkg/bar.go',
+                language: 'go',
+                positionEncoding: PositionEncoding.UTF8CodeUnitOffsetFromLineStart,
+                occurrences: [
+                    create(OccurrenceSchema, {
+                        range: [1, 5, 8],
+                        symbol: barSymbol,
+                        symbolRoles: SymbolRole.Definition,
+                    }),
+                    create(OccurrenceSchema, {
+                        range: [2, 9, 12],
+                        symbol: fooSymbol,
+                        symbolRoles: SymbolRole.ReadAccess,
+                    }),
+                ],
+            }),
+        ],
+    });
+    writeFileSync(indexPath, serializeSCIP(index));
+    return indexPath;
+}
+
+describe('SCIP reader', () => {
+    test('loads a SCIP index and summarizes documents, occurrences, and languages', async () => {
+        const reader = await loadScipIndex(writeSampleScipIndex());
+        const summary = reader.summary();
+
+        expect(summary.documentCount).toBe(2);
+        expect(summary.occurrenceCount).toBe(5);
+        expect(summary.languages).toEqual(['go']);
+        expect(summary.workspaceRoot).toBe('file:///tmp/sci-scip-reader');
+        expect(summary.indexPath.endsWith('/index.scip')).toBe(true);
+    });
+
+    test('returns symbol definitions and references with normalized roles', async () => {
+        const reader = await loadScipIndex(writeSampleScipIndex());
+        const definitions = reader.definitions(fooSymbol);
+        const references = reader.references(fooSymbol);
+
+        expect(definitions).toHaveLength(1);
+        expect(definitions[0].file).toBe('pkg/foo.go');
+        expect(definitions[0].roles.definition).toBe(true);
+        expect(definitions[0].roles.reference).toBe(false);
+        expect(definitions[0].range).toEqual({ start: { line: 2, character: 5 }, end: { line: 2, character: 8 } });
+
+        expect(references).toHaveLength(1);
+        expect(references[0].file).toBe('pkg/bar.go');
+        expect(references[0].roles.reference).toBe(true);
+        expect(references[0].roles.read).toBe(true);
+    });
+
+    test('returns file-local occurrences and import role metadata', async () => {
+        const reader = await loadScipIndex(writeSampleScipIndex());
+        const occurrences = reader.occurrencesForFile('pkg/foo.go');
+        const imported = occurrences.find((occurrence) => occurrence.roles.import);
+
+        expect(occurrences).toHaveLength(3);
+        expect(imported?.symbol).toBe('scip-go gomod fmt/');
+        expect(imported?.roles.reference).toBe(true);
+    });
+});

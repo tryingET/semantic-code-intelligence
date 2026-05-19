@@ -115,6 +115,14 @@ Future `fff` adoption gate:
 
 Until that evidence exists, use `rg` for bounded symbol/no-file candidate discovery inside SCI itself, then parse candidates with tree-sitter or resolve them through SCIP/LSP. In Pi sessions, `pi-fff` can be benchmarked with `ffgrep`/`fffind` as a harness-mediated discovery helper, but do not treat either `rg` or `fff` output as graph evidence.
 
+## Current implementation status
+
+Landed after the initial plan:
+
+- `graph_expand` impact summaries expose backend provenance/freshness fields for current `tree_sitter` and `fallback` behavior.
+- `src/core/scip-reader.ts` provides a read-only generic SCIP reader spike that can load an existing `index.scip`, summarize documents/occurrences/languages, and query definitions, references, and file-local occurrences.
+- No `graph_expand` routing to SCIP exists yet; SCIP remains a consumed artifact, not something generated automatically by `graph_expand`.
+
 ## Current code surfaces to change later
 
 A minimal implementation wave would touch at least:

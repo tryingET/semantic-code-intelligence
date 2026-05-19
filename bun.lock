@@ -5,6 +5,8 @@
     "": {
       "name": "semantic-code-intelligence",
       "dependencies": {
+        "@bufbuild/protobuf": "^2.12.0",
+        "@c4312/scip": "0.1.0",
         "@modelcontextprotocol/sdk": "^1.17.4",
         "@types/glob": "^9.0.0",
         "bloom-filters": "^3.0.4",
@@ -64,6 +66,10 @@
     "@biomejs/cli-win32-arm64": ["@biomejs/cli-win32-arm64@2.2.0", "https://registry.npmmirror.com/@biomejs/cli-win32-arm64/-/cli-win32-arm64-2.2.0.tgz", { "os": "win32", "cpu": "arm64" }, "sha512-n9a1/f2CwIDmNMNkFs+JI0ZjFnMO0jdOyGNtihgUNFnlmd84yIYY2KMTBmMV58ZlVHjgmY5Y6E1hVTnSRieggA=="],
 
     "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.2.0", "https://registry.npmmirror.com/@biomejs/cli-win32-x64/-/cli-win32-x64-2.2.0.tgz", { "os": "win32", "cpu": "x64" }, "sha512-Nawu5nHjP/zPKTIryh2AavzTc/KEg4um/MxWdXW0A6P/RZOyIpa7+QSjeXwAwX/utJGaCoXRPWtF3m5U/bB3Ww=="],
+
+    "@bufbuild/protobuf": ["@bufbuild/protobuf@2.12.0", "", {}, "sha512-B/XlCaFIP8LOwzo+bz5uFzATYokcwCKQcghqnlfwSmM5eX/qTkvDBnDPs+gXtX/RyjxJ4DRikECcPJbyALA8FA=="],
+
+    "@c4312/scip": ["@c4312/scip@0.1.0", "", { "dependencies": { "@bufbuild/protobuf": "^2.0.0" } }, "sha512-V1VIq3rB1tIj7n3NHIg+VgbKEYl75O+yM30GD4K5wQgdgC7taOsJU7itQdMvtkKhyCWHHuR3WZ0ijUUqPELR3g=="],
 
     "@isaacs/balanced-match": ["@isaacs/balanced-match@4.0.1", "https://registry.npmmirror.com/@isaacs/balanced-match/-/balanced-match-4.0.1.tgz", {}, "sha512-yzMTt9lEb8Gv7zRioUilSglI0c0smZ9k5D65677DLWLtWJaXIS3CqcGyUFByYKlnUj6TkjLVs54fBl6+TiGQDQ=="],
 

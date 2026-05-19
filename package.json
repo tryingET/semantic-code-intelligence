@@ -70,11 +70,15 @@
   "author": "tryingET",
   "license": "MIT",
   "dependencies": {
+    "@bufbuild/protobuf": "^2.12.0",
+    "@c4312/scip": "0.1.0",
     "@modelcontextprotocol/sdk": "^1.17.4",
     "@types/glob": "^9.0.0",
     "bloom-filters": "^3.0.4",
     "chokidar": "^4.0.3",
     "commander": "^14.0.0",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
     "glob": "^11.0.3",
     "graphlib": "^2.1.8",
     "js-yaml": "^4.1.0",
@@ -88,8 +92,6 @@
     "uuid": "^11.1.0",
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.12",
-    "cors": "^2.8.5",
-    "express": "^4.19.2",
     "zod": "^3.23.8"
   },
   "devDependencies": {
