@@ -39,7 +39,7 @@ The Alpha MVP tool surface is:
 | Operation | Required behavior | Minimum evidence |
 |---|---|---|
 | `get_snapshot` | Return an identifier for the repository state or overlay state used by later calls. | Snapshot id or explicit state descriptor; snapshot metadata/artifacts are narrowly persisted for later artifact inspection. |
-| `read_file` | Read bounded file ranges from the requested snapshot/workspace state. | Path, range, and content or structured error. |
+| `read_file` | Read bounded file ranges from the requested snapshot/workspace state; fail closed when lexical paths, symlinks, or opened file descriptors escape the workspace. | Path, range, and content or structured error without leaked out-of-workspace content. |
 | `text_search` | Search text with caps, ignore handling, and deterministic result shape. | Query, result count, capped results. |
 | `symbol_search` | Find likely symbols with path/language hints where available. | Query, candidates, confidence/ranking fields when available. |
 | `ast_query` | Run structural language-aware queries where parser support exists. | Language, query, matched ranges, parser/fallback status. |
@@ -57,6 +57,7 @@ The Alpha MVP tool surface is:
 
 - MCP, HTTP, and CLI should use the same core behavior for the same operation.
 - Results should be bounded by limits rather than unbounded repository traversal.
+- File-reading paths must be contained after lexical normalization, realpath resolution, and opened-file verification so symlink or TOCTOU-shaped escapes fail closed.
 - Errors should be structured enough for a harnessed LLM to recover without guessing.
 - Stdio protocol paths must keep stdout clean.
 - Tool names and documentation use the canonical Semantic Code Intelligence identity; no pre-rename compatibility names are retained during alpha.
