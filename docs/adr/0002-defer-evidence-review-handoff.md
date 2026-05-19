@@ -53,7 +53,7 @@ It also distinguishes evidence absence states:
 - unknown;
 - inapplicable.
 
-IW60 validation confirmed the existing summary producer can render markdown/JSON without mutating the working tree, but the current `semantic-code-intelligence.evidence_review.v1` shape does not yet expose first-class `ReviewClaim[]`, `AuthorityBoundary[]`, or `OperatorDecisionPoint[]` arrays matching the conceptual model.
+IW60 validation confirmed the existing summary producer could render markdown/JSON without mutating the working tree. At ADR acceptance time, `semantic-code-intelligence.evidence_review.v1` did not yet expose first-class `ReviewClaim[]`, `AuthorityBoundary[]`, or `OperatorDecisionPoint[]` arrays matching the conceptual model. Later follow-up work may satisfy schema-readiness gates, but it does not change this ADR's Option A deferral or authorize host handoff by itself.
 
 ## Decision
 
@@ -98,13 +98,13 @@ A Pi/operator-workbench handoff packet may be reconsidered only after all of the
 
 SCI keeps the existing non-mutating summary producer and markdown/JSON output. No host handoff packet or UI work starts.
 
-Chosen because the conceptual model is now clear enough to block premature integration, but the current JSON shape is not yet aligned enough to support host handoff.
+Chosen because the conceptual model was clear enough to block premature integration, but the JSON shape at acceptance time was not yet aligned enough to support host handoff.
 
 ### Option B — Prepare a Pi/operator-workbench handoff packet
 
 SCI would author a non-mutating handoff packet for a future Pi/operator-workbench rendering surface.
 
-Deferred because the schema does not yet represent the claim model and absence states. Handoff now would risk exporting an unstable or semantically incomplete contract.
+Deferred because the schema did not yet represent the claim model and absence states at ADR acceptance time. Handoff without later schema evidence and host-owner acceptance would risk exporting an unstable or semantically incomplete contract.
 
 ### Option C — Implement rendering in SCI
 
@@ -124,8 +124,8 @@ Positive:
 Trade-offs:
 
 - Operators still do not get a dedicated Pi/operator-workbench panel.
-- The current evidence-review JSON remains semantically incomplete relative to the RFC model.
-- A later implementation wave is needed before host integration can be reconsidered.
+- The evidence-review JSON required later implementation evidence before it could be treated as schema-ready.
+- Even after schema-readiness work, host integration still requires explicit owner acceptance before it can be reconsidered.
 
 ## Rollback and revisit
 
@@ -160,4 +160,4 @@ Observed result:
 
 ## Follow-up
 
-IW64 begins aligning `semantic-code-intelligence.evidence_review.v1` with the conceptual claim model by adding first-class evidence artifacts, claims, authority boundaries, and operator decision points to the summary output. IW65 adds regression coverage for that model, IW66 wires the claim-model test into the alpha validation surface, IW67 adds `tests/fixtures/evidence-review-claim-model-sample.json` as a committed normalized sample, IW68 adds read-only boundary regression coverage for the summary renderer, and IW69 defines durable vs ephemeral snapshot evidence semantics in `docs/project/durable-snapshot-evidence-boundary.md`. Handoff or UI work remains blocked until the reconsideration gates above are satisfied.
+IW64 begins aligning `semantic-code-intelligence.evidence_review.v1` with the conceptual claim model by adding first-class evidence artifacts, claims, authority boundaries, and operator decision points to the summary output. IW65 adds regression coverage for that model, IW66 wires the claim-model test into the alpha validation surface, IW67 adds `tests/fixtures/evidence-review-claim-model-sample.json` as a committed normalized sample, IW68 adds read-only boundary regression coverage for the summary renderer, and IW69 defines durable vs ephemeral snapshot evidence semantics in `docs/project/durable-snapshot-evidence-boundary.md`. Later hardening keeps local validation execution from being treated as `authority_durable` without AK evidence or an explicit command transcript, requires selected-command evidence before supporting selected-check claims, and keeps absent graph evidence visible as a limitation. Handoff or UI work remains blocked until all reconsideration gates above are satisfied, including Pi/operator-workbench owner scope acceptance.

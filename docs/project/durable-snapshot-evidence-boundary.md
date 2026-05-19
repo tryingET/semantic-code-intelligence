@@ -90,7 +90,7 @@ EvidenceArtifact
 - citationRequirement
 ```
 
-IW70 adds this distinction to the Alpha summary producer so `semantic-code-intelligence.evidence_review.v1` no longer overloads `observedStatus` with durability meaning.
+IW70 adds this distinction to the Alpha summary producer so `semantic-code-intelligence.evidence_review.v1` no longer overloads `observedStatus` with durability meaning. Local validation execution is not `authority_durable` by default; it becomes authority-durable only when captured by AK or another accepted authority surface. A local summary can report reproducible-local execution evidence, but it must still ask for an AK evidence id or explicit command transcript when authority-durable citation is needed.
 
 ## Rollback evidence requirements
 

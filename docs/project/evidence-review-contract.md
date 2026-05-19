@@ -153,7 +153,7 @@ Implementations may normalize input into this shape before rendering:
       "observedStatus": "observed | failed | unavailable | unknown | inapplicable",
       "durability": "ephemeral | reproducible_local | materialized_local | repo_durable | authority_durable",
       "uriOrPath": null,
-      "citationRequirement": "cite AK evidence id or explicit command transcript when available"
+      "citationRequirement": "cite AK evidence id or explicit command transcript when available; local summary output alone is not authority-durable evidence"
     }
   ],
   "claims": [
@@ -163,7 +163,7 @@ Implementations may normalize input into this shape before rendering:
       "status": "supported | weakened | contradicted | unresolved",
       "supportedBy": ["validation-execution"],
       "limitedBy": [],
-      "warrant": "Executed command evidence, not recommendation text, determines this claim.",
+      "warrant": "Executed command evidence, not recommendation text, determines this claim; check success without selected command evidence is not enough.",
       "authorityBoundaries": ["not-production-readiness"],
       "operatorDecisionPoints": ["continue-or-stop"]
     }

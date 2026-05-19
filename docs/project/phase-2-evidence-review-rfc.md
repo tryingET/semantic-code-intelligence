@@ -388,16 +388,22 @@ Observed result:
 - working tree after rendering: clean;
 - selected commands and recommended commands remained structurally distinct in the rendered JSON.
 
-Important schema gap found during validation:
+Important schema gap found during IW60 validation:
 
-- the current `semantic-code-intelligence.evidence_review.v1` output exposes `operatorQuestions` and `safety`, but does not yet expose first-class `ReviewClaim[]`, `AuthorityBoundary[]`, or `OperatorDecisionPoint[]` arrays matching the conceptual model above.
+- at that time, `semantic-code-intelligence.evidence_review.v1` output exposed `operatorQuestions` and `safety`, but did not yet expose first-class `ReviewClaim[]`, `AuthorityBoundary[]`, or `OperatorDecisionPoint[]` arrays matching the conceptual model above.
+
+Later implementation evidence:
+
+- the summary output now exposes first-class `evidenceArtifacts`, `claims`, `authorityBoundaries`, and `operatorDecisionPoints` fields;
+- `tests/fixtures/evidence-review-claim-model-sample.json` provides a committed normalized sample;
+- `tests/evidence-review-claim-model.test.ts` covers read-only rendering, selected-vs-recommended command separation, absence states, graph limitation visibility, rollback absence, production-readiness caveats, and non-authority-durable local validation execution.
 
 Interpretation:
 
-- the summary producer is suitable for continued CLI/markdown review under Option A;
-- the shape is not yet stable enough for Option B host handoff, UI rendering, or schema implementation;
-- the validation evidence supports the narrow Option A deferral ADR candidate;
-- the next accepted implementation wave should either add first-class claim/boundary/decision-point fields or explicitly revise the conceptual model to match the implementation shape.
+- the summary producer remains suitable for continued CLI/markdown/JSON review under Option A;
+- implementation evidence now supports the claim-model and absence-state schema gates for SCI-owned summary output;
+- this does not authorize Option B host handoff, UI rendering, production-readiness claims, or AK decision lifecycle advancement;
+- host integration still requires a separate owner-scoped handoff/review path.
 
 ## Review questions
 
