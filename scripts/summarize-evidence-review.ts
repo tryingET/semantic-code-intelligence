@@ -180,24 +180,41 @@ function withConceptualModel(review: any) {
   const selectedCommands = strings(review?.commands?.selected);
   const recommendedMinimum = strings(review?.commands?.recommendedMinimum);
   const recommendedBroader = strings(review?.commands?.recommendedBroader);
-  const limitations = strings(review?.graphImpact?.limitations);
   const hasArtifacts = Object.values(review?.artifacts || {}).some(Boolean);
   const rollbackAvailable = review?.rollback?.available === true;
   const checksFailed = review?.checks?.ok === false || strings(review?.checks?.failedGateChecks).length > 0;
+  const checksPassedWithObservedCommands = review?.checks?.ok === true && selectedCommands.length > 0;
   const graphObserved = review?.graphImpact?.hasImpactEvidence === true;
   const graphApplicable = review?.source?.kind !== 'target_dogfood' || review?.scope?.sourceKind !== 'unknown';
+  const rawLimitations = strings(review?.graphImpact?.limitations);
+  const synthesizedGraphLimitations = !graphObserved && graphApplicable && rawLimitations.length === 0
+    ? ['graph impact evidence unavailable or not observed; do not infer no impact from absence']
+    : [];
+  const limitations = rawLimitations.concat(synthesizedGraphLimitations);
+  const reviewWithLimitations = {
+    ...review,
+    graphImpact: {
+      ...(review?.graphImpact || {}),
+      limitations,
+    },
+  };
+
+  const validationExecutionState = evidenceState('required', selectedCommands.length > 0, checksFailed);
+  const validationExecutionDurability: EvidenceDurability = validationExecutionState === 'observed' || validationExecutionState === 'failed'
+    ? 'reproducible_local'
+    : 'ephemeral';
 
   const evidenceArtifacts = [
-    artifact('source', review?.source?.kind || 'unknown', review?.source?.schema || null, 'observed', 'reproducible_local', null, 'cite input schema and command used to generate this review'),
-    artifact('validation-execution', 'validation_execution', null, evidenceState('required', selectedCommands.length > 0, checksFailed), 'authority_durable', null, 'cite AK evidence id or explicit command transcript when available'),
+    artifact('source', reviewWithLimitations?.source?.kind || 'unknown', reviewWithLimitations?.source?.schema || null, 'observed', 'reproducible_local', null, 'cite input schema and command used to generate this review'),
+    artifact('validation-execution', 'validation_execution', null, validationExecutionState, validationExecutionDurability, null, 'cite AK evidence id or explicit command transcript when available; local summary output alone is not authority-durable evidence'),
     artifact('graph-impact', 'graph_impact', null, evidenceState('optional', graphObserved, false, graphApplicable), graphObserved ? 'reproducible_local' : 'ephemeral', null, 'cite limitations and regeneration command; do not infer no impact from absence'),
-    artifact('snapshot-artifacts', 'snapshot_artifacts', null, evidenceState('optional', hasArtifacts, false), hasArtifacts ? 'ephemeral' : 'ephemeral', firstString([review?.artifacts?.overlayDiff, review?.artifacts?.status, review?.artifacts?.progress]), 'snapshot:// references are pointers, not durable proof, unless materialized or attached to AK evidence'),
-    artifact('rollback', 'rollback', null, rollbackAvailable ? 'observed' : 'unavailable', rollbackAvailable ? 'reproducible_local' : 'ephemeral', review?.rollback?.command || null, 'cite concrete rollback command or materialized inverse patch; otherwise treat rollback as unavailable'),
+    artifact('snapshot-artifacts', 'snapshot_artifacts', null, evidenceState('optional', hasArtifacts, false), 'ephemeral', firstString([reviewWithLimitations?.artifacts?.overlayDiff, reviewWithLimitations?.artifacts?.status, reviewWithLimitations?.artifacts?.progress]), 'snapshot:// references are pointers, not durable proof, unless materialized or attached to AK evidence'),
+    artifact('rollback', 'rollback', null, rollbackAvailable ? 'observed' : 'unavailable', rollbackAvailable ? 'reproducible_local' : 'ephemeral', reviewWithLimitations?.rollback?.command || null, 'cite concrete rollback command or materialized inverse patch; otherwise treat rollback as unavailable'),
   ];
 
   const authorityBoundaries = [
-    { id: 'not-canonical-authority', boundary: review?.safety?.authorityBoundary || 'This review is not canonical task/evidence authority.', affectedScope: 'governance' },
-    { id: 'not-production-readiness', boundary: review?.safety?.productionBoundary || 'Alpha evidence is not production readiness.', affectedScope: 'readiness' },
+    { id: 'not-canonical-authority', boundary: reviewWithLimitations?.safety?.authorityBoundary || 'This review is not canonical task/evidence authority.', affectedScope: 'governance' },
+    { id: 'not-production-readiness', boundary: reviewWithLimitations?.safety?.productionBoundary || 'Alpha evidence is not production readiness.', affectedScope: 'readiness' },
     { id: 'no-implicit-mutation', boundary: 'Rendering evidence review output must not mutate source, snapshots, target repos, AK, or databases.', affectedScope: 'mutation' },
   ];
 
@@ -209,21 +226,21 @@ function withConceptualModel(review: any) {
   const claims = [
     claim(
       'checks-result',
-      review?.checks?.ok === true ? 'Selected validation checks passed.' : 'Selected validation checks did not prove a clean pass.',
-      review?.checks?.ok === true ? 'supported' : checksFailed ? 'contradicted' : 'unresolved',
+      checksPassedWithObservedCommands ? 'Selected validation checks passed.' : 'Selected validation checks did not prove a clean pass.',
+      checksPassedWithObservedCommands ? 'supported' : checksFailed ? 'contradicted' : 'unresolved',
       ['validation-execution'],
-      checksFailed ? ['validation-execution'] : [],
-      'Executed command evidence, not recommendation text, determines this claim.',
+      checksPassedWithObservedCommands ? [] : ['validation-execution'],
+      'Executed command evidence, not recommendation text, determines this claim; check success without selected command evidence is not enough.',
       ['not-production-readiness', 'not-canonical-authority'],
       ['continue-or-stop', 'run-stronger-checks'],
     ),
     claim(
       'command-distinction',
-      'Selected commands remain distinct from recommended commands.',
-      selectedCommands.join('\n') !== recommendedMinimum.concat(recommendedBroader).join('\n') ? 'supported' : 'weakened',
+      'Selected command evidence remains structurally distinct from recommended command advice.',
+      'supported',
       ['validation-execution'],
       [],
-      'Recommendations are advisory unless also present in observed selected/executed command evidence.',
+      'Selected and recommended commands are represented as separate fields; overlapping command strings are allowed when recommendations were intentionally selected.',
       ['not-canonical-authority'],
       ['run-stronger-checks'],
     ),
@@ -239,17 +256,17 @@ function withConceptualModel(review: any) {
     ),
     claim(
       'preview-boundary',
-      review?.outcome?.previewOnly ? 'This evidence remains preview-only and does not prove apply safety.' : 'This evidence includes apply posture.',
-      review?.outcome?.previewOnly ? 'weakened' : 'supported',
+      reviewWithLimitations?.outcome?.previewOnly ? 'This evidence remains preview-only and does not prove apply safety.' : 'This evidence includes apply posture.',
+      reviewWithLimitations?.outcome?.previewOnly ? 'weakened' : 'supported',
       ['source', 'snapshot-artifacts'],
-      review?.outcome?.previewOnly ? ['rollback'] : [],
+      reviewWithLimitations?.outcome?.previewOnly ? ['rollback'] : [],
       'Preview evidence can support continued review, not production readiness or governance acceptance.',
       ['not-production-readiness', 'no-implicit-mutation'],
       ['continue-or-stop'],
     ),
   ];
 
-  return { ...review, evidenceArtifacts, claims, authorityBoundaries, operatorDecisionPoints };
+  return { ...reviewWithLimitations, evidenceArtifacts, claims, authorityBoundaries, operatorDecisionPoints };
 }
 
 function normalize(raw: any) {

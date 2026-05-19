@@ -44,6 +44,18 @@ function runSummary(input: unknown, args: string[], dir = mkdtempSync(join(tmpdi
   return { stdout: result.stdout, dir };
 }
 
+function clonePlan(overrides: Record<string, unknown> = {}) {
+  return { ...JSON.parse(JSON.stringify(sampleValidationPlan())), ...overrides };
+}
+
+function artifactById(review: any, id: string) {
+  return review.evidenceArtifacts.find((artifact: any) => artifact.id === id);
+}
+
+function claimById(review: any, id: string) {
+  return review.claims.find((claim: any) => claim.id === id);
+}
+
 function assertClaimModel(review: any) {
   expect(review.schema).toBe('semantic-code-intelligence.evidence_review.v1');
   expect(review.claims.length).toBeGreaterThanOrEqual(4);
@@ -65,7 +77,8 @@ function assertClaimModel(review: any) {
 
   const durabilities = review.evidenceArtifacts.map((artifact: any) => artifact.durability);
   expect(durabilities).toContain('ephemeral');
-  expect(durabilities).toContain('authority_durable');
+  expect(durabilities).toContain('reproducible_local');
+  expect(artifactById(review, 'validation-execution')?.durability).not.toBe('authority_durable');
   for (const artifact of review.evidenceArtifacts) {
     expect(['ephemeral', 'reproducible_local', 'materialized_local', 'repo_durable', 'authority_durable']).toContain(artifact.durability);
     expect(typeof artifact.citationRequirement).toBe('string');
@@ -99,6 +112,61 @@ describe('evidence review claim model', () => {
     expect(output).toContain('continue-or-stop');
     expect(output).toContain('### Evidence artifact durability');
     expect(output).toContain('snapshot:// references are pointers, not durable proof');
+  });
+
+  test('checks cannot be supported without observed selected command evidence', () => {
+    const plan = clonePlan({
+      commands: { selected: [], recommendedMinimum: ['bun run typecheck'], recommendedBroader: [], recommendationsAppliedToSelected: false },
+      checks: { ok: true, elapsedMs: 42 },
+    });
+    const { stdout } = runSummary(plan, ['--format', 'json']);
+    const review = JSON.parse(stdout);
+
+    expect(artifactById(review, 'validation-execution')?.observedStatus).toBe('unavailable');
+    expect(artifactById(review, 'validation-execution')?.durability).toBe('ephemeral');
+    expect(claimById(review, 'checks-result')?.status).toBe('unresolved');
+    expect(claimById(review, 'checks-result')?.limitedBy).toContain('validation-execution');
+  });
+
+  test('validation execution is not authority durable without explicit AK evidence', () => {
+    const { stdout } = runSummary(sampleValidationPlan(), ['--format', 'json']);
+    const review = JSON.parse(stdout);
+
+    expect(artifactById(review, 'validation-execution')?.observedStatus).toBe('observed');
+    expect(artifactById(review, 'validation-execution')?.durability).toBe('reproducible_local');
+    expect(artifactById(review, 'validation-execution')?.citationRequirement).toContain('local summary output alone is not authority-durable evidence');
+  });
+
+  test('selected recommendations remain structurally distinct when command strings overlap', () => {
+    const plan = clonePlan({
+      commands: {
+        selected: ['bun run typecheck'],
+        recommendedMinimum: ['bun run typecheck'],
+        recommendedBroader: ['bun run typecheck', 'bun test'],
+        recommendationsAppliedToSelected: true,
+      },
+    });
+    const { stdout } = runSummary(plan, ['--format', 'json']);
+    const review = JSON.parse(stdout);
+
+    expect(review.commands.selected).toEqual(['bun run typecheck']);
+    expect(review.commands.recommendedMinimum).toEqual(['bun run typecheck']);
+    expect(review.commands.recommendationsAppliedToSelected).toBe(true);
+    expect(claimById(review, 'command-distinction')?.status).toBe('supported');
+  });
+
+  test('absent graph evidence is rendered as a visible limitation', () => {
+    const plan = clonePlan({
+      graphImpact: { hasImpactEvidence: false, counts: {}, limitations: [], planningHints: [] },
+    });
+    const { stdout } = runSummary(plan, ['--format', 'json']);
+    const review = JSON.parse(stdout);
+
+    expect(review.graphImpact.limitations).toContain('graph impact evidence unavailable or not observed; do not infer no impact from absence');
+    expect(claimById(review, 'graph-limitations')?.status).toBe('weakened');
+
+    const { stdout: markdown } = runSummary(plan, ['--format', 'markdown']);
+    expect(markdown).toContain('graph impact evidence unavailable or not observed; do not infer no impact from absence');
   });
 
   test('summary renderer is read-only for workspace and input directory', () => {

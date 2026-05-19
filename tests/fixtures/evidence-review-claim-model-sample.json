@@ -94,9 +94,9 @@
       "kind": "validation_execution",
       "schema": null,
       "observedStatus": "observed",
-      "durability": "authority_durable",
+      "durability": "reproducible_local",
       "uriOrPath": null,
-      "citationRequirement": "cite AK evidence id or explicit command transcript when available"
+      "citationRequirement": "cite AK evidence id or explicit command transcript when available; local summary output alone is not authority-durable evidence"
     },
     {
       "id": "graph-impact",
@@ -135,7 +135,7 @@
         "validation-execution"
       ],
       "limitedBy": [],
-      "warrant": "Executed command evidence, not recommendation text, determines this claim.",
+      "warrant": "Executed command evidence, not recommendation text, determines this claim; check success without selected command evidence is not enough.",
       "authorityBoundaries": [
         "not-production-readiness",
         "not-canonical-authority"
@@ -147,13 +147,13 @@
     },
     {
       "id": "command-distinction",
-      "claim": "Selected commands remain distinct from recommended commands.",
+      "claim": "Selected command evidence remains structurally distinct from recommended command advice.",
       "status": "supported",
       "supportedBy": [
         "validation-execution"
       ],
       "limitedBy": [],
-      "warrant": "Recommendations are advisory unless also present in observed selected/executed command evidence.",
+      "warrant": "Selected and recommended commands are represented as separate fields; overlapping command strings are allowed when recommendations were intentionally selected.",
       "authorityBoundaries": [
         "not-canonical-authority"
       ],
