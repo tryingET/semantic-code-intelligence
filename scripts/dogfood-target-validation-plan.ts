@@ -16,6 +16,7 @@ const targetCwdArg = argValue('--target-cwd');
 const command = argValue('--command') || process.env.SCI_DOGFOOD_COMMAND || 'semantic-code-intelligence';
 const jsonMode = process.argv.includes('--json');
 const pretty = process.argv.includes('--pretty');
+const allowDirtyTarget = process.argv.includes('--allow-dirty-target');
 
 if (!targetCwdArg) {
   console.error('Usage: bun run scripts/dogfood-target-validation-plan.ts --target-cwd <non-SCI-repo> [--command semantic-code-intelligence]');
@@ -101,22 +102,42 @@ const beforeStatus = git('status --short').stdout.trim();
 const isGitRepo = git('rev-parse --is-inside-work-tree').stdout.trim() === 'true';
 const targetLabel = basename(targetCwd);
 const beforeOntologyExists = existsSync(resolve(targetCwd, '.ontology'));
+const languageCounts = {
+  typescript: gitFiles("'*.ts' 'src/**/*.ts' 'packages/**/*.ts'").filter((file) => !file.endsWith('.d.ts')).length,
+  javascript: gitFiles("'*.js' 'src/**/*.js' 'web/**/*.js' 'internal/**/*.js'").length,
+  python: gitFiles("'*.py' 'src/**/*.py' 'scripts/**/*.py'").length,
+  rust: gitFiles("'*.rs' 'src/**/*.rs' 'crates/**/*.rs'").length,
+};
 
 const markdown = gitFiles('README.md docs/*.md *.md');
 const readPath = markdown.find((file) => file === 'README.md') || markdown[0] || gitFiles('package.json')[0];
-const sourceFile = gitFiles("'*.ts' 'src/**/*.ts' 'packages/**/*.ts' '*.js' 'src/**/*.js' 'web/**/*.js' 'internal/**/*.js' '*.py' 'src/**/*.py'").find(
-  (file) => !file.endsWith('.d.ts')
-);
+const sourceCandidates = [
+  ...gitFiles("'*.ts' 'src/**/*.ts' 'packages/**/*.ts'").filter((file) => !file.endsWith('.d.ts')),
+  ...gitFiles("'*.js' 'src/**/*.js' 'web/**/*.js' 'internal/**/*.js'"),
+  ...gitFiles("'*.py' 'src/**/*.py' 'scripts/**/*.py'"),
+  ...gitFiles("'*.rs' 'src/**/*.rs' 'crates/**/*.rs'"),
+];
+const sourceFile = sourceCandidates[0];
 
 const calls: any[] = [];
 let patchSnapshot: string | undefined;
 let cleanupAttempted = false;
 
-if (!isGitRepo || beforeStatus || !readPath || !sourceFile) {
+if (!isGitRepo || (!allowDirtyTarget && beforeStatus) || !readPath || !sourceFile) {
   const evidence = {
     schema: 'semantic-code-intelligence.target_validation_plan_dogfood.v1',
     ok: false,
-    target: { label: targetLabel, nonSciRepo: targetCwd !== sciRepo, cleanBefore: beforeStatus === '', hasReadPath: !!readPath, hasSourceFile: !!sourceFile, supportedSourceExtensions: ['.ts', '.js', '.py'] },
+    target: {
+      label: targetLabel,
+      nonSciRepo: targetCwd !== sciRepo,
+      cleanBefore: beforeStatus === '',
+      dirtyAllowed: allowDirtyTarget,
+      statusPreserved: false,
+      hasReadPath: !!readPath,
+      hasSourceFile: !!sourceFile,
+      supportedSourceExtensions: ['.ts', '.js', '.py', '.rs'],
+      languageCounts,
+    },
     failure: !isGitRepo ? 'target_not_git_repo' : beforeStatus ? 'target_not_clean' : !readPath ? 'no_read_path' : 'no_source_file',
   };
   mkdirSync(dirname(outputPath), { recursive: true });
@@ -145,13 +166,14 @@ cleanupAttempted = true;
 
 const afterStatus = git('status --short').stdout.trim();
 const afterOntologyExists = existsSync(resolve(targetCwd, '.ontology'));
+const statusPreserved = afterStatus === beforeStatus;
 const validationPlan = patchChecks.payload?.validationPlan;
 const evidence = {
   schema: 'semantic-code-intelligence.target_validation_plan_dogfood.v1',
   ok:
     calls.every((call) => call.success) &&
-    beforeStatus === '' &&
-    afterStatus === '' &&
+    (beforeStatus === '' || allowDirtyTarget) &&
+    statusPreserved &&
     validationPlan?.schema === 'semantic-code-intelligence.validation_plan.v1' &&
     validationPlan?.commands?.recommendationsAppliedToSelected === false &&
     validationPlan?.checks?.ok === true &&
@@ -162,11 +184,16 @@ const evidence = {
     nonSciRepo: targetCwd !== sciRepo,
     cleanBefore: beforeStatus === '',
     cleanAfter: afterStatus === '',
+    dirtyAllowed: allowDirtyTarget,
+    statusPreserved,
+    beforeStatus,
+    afterStatus,
+    languageCounts,
     beforeOntologyExists,
     afterOntologyExists,
     cleanupAttempted,
   },
-  selectedPaths: { readPath, sourceFile, sourceKind: sourceFile.endsWith('.py') ? 'python' : sourceFile.endsWith('.js') ? 'javascript' : 'typescript' },
+  selectedPaths: { readPath, sourceFile, sourceKind: sourceFile.endsWith('.rs') ? 'rust' : sourceFile.endsWith('.py') ? 'python' : sourceFile.endsWith('.js') ? 'javascript' : 'typescript' },
   cli: { command, cwdModel: 'target_repo_cwd', argsUseTargetRelativePaths: true },
   assertions: {
     graphImpactPresent: !!graph.payload?.impactSummary,
@@ -175,6 +202,7 @@ const evidence = {
     recommendationsAdvisory: validationPlan?.commands?.recommendationsAppliedToSelected === false,
     previewChecksPassed: validationPlan?.checks?.ok === true,
     targetCleanAfter: afterStatus === '',
+    targetStatusPreserved: statusPreserved,
   },
   calls: calls.map((call) => ({
     name: call.name,
@@ -197,8 +225,8 @@ const evidence = {
   interpretation: {
     proves: [
       'Installed/global SCI can be invoked from a non-SCI target repository cwd.',
-      'Target-relative discovery, graph impact, check recommendation, preview/check, and validationPlan evidence compose across TypeScript/JavaScript/Python source targets without mutating target source.',
-      'Target working tree remains clean after snapshot artifact cleanup.',
+      'Target-relative discovery, graph impact, check recommendation, preview/check, and validationPlan evidence compose across TypeScript/JavaScript/Python/Rust source targets without mutating target source.',
+      allowDirtyTarget ? 'Target working tree status is preserved after snapshot artifact cleanup.' : 'Target working tree remains clean after snapshot artifact cleanup.',
     ],
     does_not_prove: ['Broad external-repository coverage.', 'Production readiness.'],
   },

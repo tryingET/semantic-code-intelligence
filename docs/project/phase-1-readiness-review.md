@@ -66,7 +66,7 @@ Generated evidence surfaces reviewed:
 | Interface coverage | Credible alpha coverage | HTTP, MCP HTTP, MCP stdio, direct adapter tests, and CLI fallback are all exercised. |
 | Evidence quality | Improved alpha posture | Evidence packet and validation-plan comparison are repeatable; IW45 adds lightweight elapsed-time history comparison, but not durable metrics storage. |
 | Graph semantics | Improved alpha posture | File-scoped graph impact is useful; IW46 adds sparse-edge limitations and best-effort caller context, but symbol caller/callee evidence can still be fallback-shaped. |
-| External target proof | Improved after IW41/IW43/IW47 | Installed/global CLI from multiple non-SCI cwd targets now exercises graph impact, check recommendation, preview/check, validationPlan evidence, cleanup, and clean target posture. IW47 adds a clean sibling JavaScript target proof; more language/ecosystem diversity is still useful before broad closure. |
+| External target proof | Improved after IW41/IW43/IW47/IW48 | Installed/global CLI from multiple non-SCI cwd targets now exercises graph impact, check recommendation, preview/check, validationPlan evidence, cleanup, and clean target posture. IW47 adds a clean sibling JavaScript target proof; IW48 adds a clean worktree proof for the mixed Python/Rust `agent-kernel` repo. More ecosystem diversity is still useful before broad closure. |
 | Performance | Alpha guidance plus lightweight history after IW45 | Per-call latency budgets catch obvious regressions; `docs/project/interactive-slo-guidance.md` gives operator-facing bands and IW45 compares generated elapsed-time maxima against an explicit baseline, but not production p95/p99 SLOs. |
 | Durable session semantics | Not closed | Snapshot metadata/artifacts are persisted narrowly; no long-lived cross-process session DB is claimed. |
 | Production readiness | Not ready | Kubernetes, marketplace, analytics, production deployment, and broad human IDE polish remain non-goals for alpha. |
@@ -83,7 +83,7 @@ It is **not** yet truthful to say:
 
 ## Remaining gaps before broader Phase 1 closure
 
-1. **External-repo diversity** — IW41/IW43 proved the validationPlan spine in two non-SCI repos and IW47 adds a sibling JavaScript target; repeat across Python/Clojure or larger mixed-language targets before broad closure.
+1. **External-repo diversity** — IW41/IW43 proved the validationPlan spine in two non-SCI repos, IW47 adds a sibling JavaScript target, and IW48 adds a mixed Python/Rust `agent-kernel` worktree proof; repeat across Clojure or larger mixed-language targets before broad closure.
 2. **Graph richness** — IW46 characterizes symbol-level caller/callee limitations and adds caller context, but whole-program graph richness remains alpha-limited.
 3. **Performance posture** — IW44 added operator-facing latency/SLO guidance and IW45 adds lightweight generated-evidence history; still missing production-grade p95/p99 characterization.
 4. **Evidence history** — IW45 provides an explicit elapsed-time baseline and current-run comparison, not a durable metrics database or dashboard-grade trend store.
@@ -91,12 +91,12 @@ It is **not** yet truthful to say:
 
 ## Recommended next wave
 
-**IW48 — Python/mixed-language external proof or closure review**
+**IW49 — Phase 1 closure review or Clojure external proof**
 
-Goal: either run another clean target-repo proof in a Python or mixed-language target, or perform a Phase 1 closure review that explicitly names remaining production-readiness gaps.
+Goal: either perform a Phase 1 closure review that explicitly names remaining production-readiness gaps, or run one more clean target-repo proof in a Clojure/larger mixed-language target.
 
-Preference: choose Python/mixed-language external proof if a clean target is available; choose closure review only if the operator wants a decision checkpoint rather than another dogfood run.
+Preference: choose closure review if the operator wants a decision checkpoint; choose Clojure/larger mixed-language proof if broad external diversity is still the priority.
 
 ## Closeout conclusion
 
-IW41 completed the first external target validationPlan proof, IW42 documented interface choice guidance, IW43 added a second external target proof, IW44 documented interactive SLO guidance, IW45 added lightweight elapsed-time history comparison, IW46 improved graph fallback characterization/caller context, and IW47 added a sibling JavaScript target proof. Continue to avoid feature accretion until broader external diversity or an explicit closure review resolves the remaining readiness ambiguity.
+IW41 completed the first external target validationPlan proof, IW42 documented interface choice guidance, IW43 added a second external target proof, IW44 documented interactive SLO guidance, IW45 added lightweight elapsed-time history comparison, IW46 improved graph fallback characterization/caller context, IW47 added a sibling JavaScript target proof, and IW48 added a mixed Python/Rust `agent-kernel` worktree proof. Continue to avoid feature accretion until an explicit closure review or one more ecosystem-diverse proof resolves the remaining readiness ambiguity.
