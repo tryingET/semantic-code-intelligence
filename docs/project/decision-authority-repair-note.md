@@ -46,3 +46,5 @@ Invalid:
 `proceed` may authorize scoped implementation, validation, evidence recording, and task closure. It does not authorize an agent to manufacture governance acceptance by advancing AK decision lifecycle state.
 
 Future decision lifecycle mutation requires explicit operator instruction naming the decision and target state, or the repo's accepted governance procedure.
+
+IW56 adds draft-only problem-intent/RFC artifacts for Phase 2 evidence review. These drafts may be reviewed later, but they are not reviewed, revised, ADR-ready, or accepted AK decision authority.

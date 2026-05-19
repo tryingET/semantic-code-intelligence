@@ -89,3 +89,10 @@ Recommended next wave:
 **Governance repair or explicit Phase 2 decision review**
 
 Before any further Phase 2 handoff or implementation, review this draft under the proper decision boundary. Do not treat superseded decision `46` as accepted authority.
+
+IW56 adds draft-only problem-intent and RFC artifacts:
+
+- `docs/project/phase-2-evidence-review-problem-intent.md`
+- `docs/project/phase-2-evidence-review-rfc.md`
+
+They are not reviewed, revised, or ADR-ready.
