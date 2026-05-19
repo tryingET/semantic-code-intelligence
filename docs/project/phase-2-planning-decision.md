@@ -1,5 +1,5 @@
 ---
-summary: "IW52 Phase 2 planning decision after Phase 1 Alpha MVP closure."
+summary: "IW52 Phase 2 planning draft after Phase 1 Alpha MVP closure."
 read_when:
   - "You are deciding whether to start Phase 2 work."
   - "You need the target user, interface, validation contract, and rollback boundary for Phase 2."
@@ -7,20 +7,20 @@ read_when:
 type: "decision"
 ---
 
-# Phase 2 planning decision
+# Phase 2 planning draft
 
 Date: 2026-05-19  
-Wave: IW52 — Phase 2 planning decision  
-AK decision: `46`  
-Status: accepted planning decision; implementation not started
+Wave: IW52 — Phase 2 planning draft
+Former AK decision: `46` — superseded after operator rejected unilateral DB decision advancement
+Status: draft planning artifact; implementation not started
 
-## Decision
+## Draft recommendation
 
 **Start Phase 2 planning around operator-facing evidence/workbench support, not a broad IDE or dashboard build.**
 
 The first Phase 2 direction should make the closed Phase 1 Alpha substrate easier for a human operator to inspect and steer during harnessed-LLM coding sessions.
 
-This decision authorizes planning and task shaping only. It does **not** authorize implementation of a VS Code extension, dashboard, marketplace, production deployment, analytics, or new mutation semantics.
+This draft does not authorize implementation of a VS Code extension, dashboard, marketplace, production deployment, analytics, or new mutation semantics. It also does not carry accepted AK decision authority after decision `46` was superseded.
 
 ## Target user
 
@@ -82,12 +82,10 @@ Phase 2 work must be rollbackable without damaging the Phase 1 substrate:
 
 ## Next executable wave
 
-IW53 produced the evidence review contract in `docs/project/evidence-review-contract.md`.
+IW53 produced the evidence review contract in `docs/project/evidence-review-contract.md`. IW54 implemented the smallest non-mutating renderer/summary producer for the contract as `bun run evidence-review:summary`.
 
 Recommended next wave:
 
-**IW55 — Evidence review contract integration decision**
+**Governance repair or explicit Phase 2 decision review**
 
-IW54 implements the smallest non-mutating renderer/summary producer for the contract as `bun run evidence-review:summary`.
-
-Next, decide whether to integrate that summary with a Pi/operator-workbench rendering path, keep it CLI-only, or defer Phase 2 implementation. Do not build a full UI/dashboard before that integration decision.
+Before any further Phase 2 handoff or implementation, review this draft under the proper decision boundary. Do not treat superseded decision `46` as accepted authority.

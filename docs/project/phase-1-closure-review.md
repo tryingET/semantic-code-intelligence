@@ -114,4 +114,4 @@ Pick one:
 
 IW51 created that backlog in `docs/project/alpha-maintenance-backlog.md` and seeded AK tasks `3165`–`3168`.
 
-IW52 created the Phase 2 planning decision in `docs/project/phase-2-planning-decision.md`. It names the target user, interface direction, validation contract, and rollback boundary, but still does not authorize UI implementation until the next evidence-review contract is accepted.
+IW52 produced a Phase 2 planning draft in `docs/project/phase-2-planning-decision.md`, but the associated AK decision `46` was superseded after the operator rejected unilateral DB decision advancement. Treat it as draft input for a future explicit decision review, not accepted authority.

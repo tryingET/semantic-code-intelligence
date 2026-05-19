@@ -90,9 +90,9 @@ Do not keep adding Phase 1 dogfood waves by default. Future work should be one o
 
 - Alpha maintenance or regression fixes when the evidence bundle fails;
 - targeted hardening tied to a named closure-review gap and the AK-backed backlog in `docs/project/alpha-maintenance-backlog.md`;
-- a Phase 2 planning decision for human workbench/IDE/dashboard scope.
+- an explicit Phase 2 decision review for human workbench/IDE/dashboard scope.
 
-IW52 records the Phase 2 planning decision in `docs/project/phase-2-planning-decision.md`: start with an operator-facing evidence review contract, not a broad IDE/dashboard build. IW53 defines that contract in `docs/project/evidence-review-contract.md`.
+IW52 produced a Phase 2 planning draft in `docs/project/phase-2-planning-decision.md`, but its AK decision record (`46`) was superseded after the operator rejected unilateral DB decision advancement. IW53 defines the evidence review contract in `docs/project/evidence-review-contract.md`; IW54 adds the non-mutating summary producer. Further Phase 2 authority requires explicit review.
 
 Remaining non-blocking gaps after closure:
 
@@ -104,7 +104,7 @@ Remaining non-blocking gaps after closure:
 
 ## Phase 2: Developer workbench
 
-Human-facing IDE and dashboard experiences become primary only after the Phase 2 evidence review contract is proven with a small non-mutating summary prototype. IW52 names the initial Phase 2 target as an operator-facing evidence/workbench support surface for supervised harnessed-LLM sessions, and IW53 defines the contract.
+Human-facing IDE and dashboard experiences become primary only after an explicit Phase 2 decision review. The current draft suggests an operator-facing evidence/workbench support surface for supervised harnessed-LLM sessions, but it is not accepted implementation authority.
 
 Candidate surfaces:
 

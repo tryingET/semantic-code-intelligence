@@ -218,7 +218,7 @@ This contract does not authorize:
 
 Recommended next wave:
 
-**IW55 — Evidence review contract integration decision**
+**Explicit Phase 2 integration review**
 
 IW54 implements the first non-mutating summary producer:
 
@@ -227,4 +227,4 @@ bun run evidence-review:summary -- --input .test-results/alpha-evidence-packet.j
 bun run evidence-review:summary -- --input .test-results/alpha-evidence-packet.json --extract validationPlan --format json
 ```
 
-Next, decide whether to integrate the summary with an operator workbench/Pi rendering path or keep it as a CLI-only planning artifact.
+Decision `47` was superseded after the operator rejected unilateral AK decision lifecycle advancement. Any future integration with Pi/operator-workbench must go through an explicit review/handoff path, not an agent-manufactured accepted decision.
