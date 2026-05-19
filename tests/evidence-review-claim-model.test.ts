@@ -1,10 +1,11 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const script = 'scripts/summarize-evidence-review.ts';
+const sampleOutputFixture = 'tests/fixtures/evidence-review-claim-model-sample.json';
 
 function sampleValidationPlan() {
   return {
@@ -44,28 +45,39 @@ function runSummary(input: unknown, args: string[]) {
   return result.stdout;
 }
 
+function assertClaimModel(review: any) {
+  expect(review.schema).toBe('semantic-code-intelligence.evidence_review.v1');
+  expect(review.claims.length).toBeGreaterThanOrEqual(4);
+  expect(review.authorityBoundaries.length).toBeGreaterThanOrEqual(3);
+  expect(review.operatorDecisionPoints.length).toBeGreaterThanOrEqual(2);
+
+  expect(review.claims.map((claim: any) => claim.id)).toContain('checks-result');
+  expect(review.claims.map((claim: any) => claim.id)).toContain('command-distinction');
+  expect(review.authorityBoundaries.map((boundary: any) => boundary.id)).toContain('not-production-readiness');
+  expect(review.operatorDecisionPoints.map((point: any) => point.id)).toContain('continue-or-stop');
+
+  const statuses = review.evidenceArtifacts.map((artifact: any) => artifact.observedStatus);
+  expect(statuses).toContain('observed');
+  expect(statuses).toContain('unknown');
+  expect(statuses).toContain('unavailable');
+  for (const status of statuses) {
+    expect(['observed', 'failed', 'unavailable', 'unknown', 'inapplicable']).toContain(status);
+  }
+}
+
 describe('evidence review claim model', () => {
   test('JSON output exposes first-class claims, boundaries, decision points, and absence states', () => {
     const output = runSummary(sampleValidationPlan(), ['--format', 'json']);
     const review = JSON.parse(output);
 
-    expect(review.schema).toBe('semantic-code-intelligence.evidence_review.v1');
-    expect(review.claims.length).toBeGreaterThanOrEqual(4);
-    expect(review.authorityBoundaries.length).toBeGreaterThanOrEqual(3);
-    expect(review.operatorDecisionPoints.length).toBeGreaterThanOrEqual(2);
+    assertClaimModel(review);
+  });
 
-    expect(review.claims.map((claim: any) => claim.id)).toContain('checks-result');
-    expect(review.claims.map((claim: any) => claim.id)).toContain('command-distinction');
-    expect(review.authorityBoundaries.map((boundary: any) => boundary.id)).toContain('not-production-readiness');
-    expect(review.operatorDecisionPoints.map((point: any) => point.id)).toContain('continue-or-stop');
-
-    const statuses = review.evidenceArtifacts.map((artifact: any) => artifact.observedStatus);
-    expect(statuses).toContain('observed');
-    expect(statuses).toContain('unknown');
-    expect(statuses).toContain('unavailable');
-    for (const status of statuses) {
-      expect(['observed', 'failed', 'unavailable', 'unknown', 'inapplicable']).toContain(status);
-    }
+  test('committed sample normalized JSON proves the claim model', () => {
+    const review = JSON.parse(readFileSync(sampleOutputFixture, 'utf8'));
+    assertClaimModel(review);
+    expect(review.source.kind).toBe('validation_plan');
+    expect(review.claims.find((claim: any) => claim.id === 'preview-boundary')?.status).toBe('weakened');
   });
 
   test('markdown output renders claim model sections', () => {

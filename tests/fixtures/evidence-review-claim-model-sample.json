@@ -1,0 +1,235 @@
+{
+  "schema": "semantic-code-intelligence.evidence_review.v1",
+  "source": {
+    "kind": "validation_plan",
+    "schema": "semantic-code-intelligence.validation_plan.v1",
+    "workflow": "patch_checks_in_snapshot"
+  },
+  "outcome": {
+    "ok": true,
+    "status": "checks_passed",
+    "previewOnly": true,
+    "applied": false,
+    "productionReady": false
+  },
+  "scope": {
+    "touchedFiles": [
+      "src/example.ts"
+    ],
+    "risk": {
+      "level": "low",
+      "category": "source_change"
+    },
+    "target": null
+  },
+  "commands": {
+    "selected": [
+      "bun test tests/example.test.ts"
+    ],
+    "recommendedMinimum": [
+      "bun run typecheck"
+    ],
+    "recommendedBroader": [
+      "bun run typecheck",
+      "bun test"
+    ],
+    "recommendationsAppliedToSelected": false,
+    "rationale": []
+  },
+  "checks": {
+    "ok": true,
+    "elapsedMs": 42,
+    "commands": [
+      {
+        "command": "bun test tests/example.test.ts",
+        "ok": true
+      }
+    ]
+  },
+  "graphImpact": {
+    "hasImpactEvidence": false,
+    "counts": {
+      "imports": 0,
+      "exports": 0,
+      "callers": 0,
+      "callees": 0
+    },
+    "limitations": [
+      "fallback: graph expand unavailable"
+    ],
+    "planningHints": [
+      "inspect callers manually if risk increases"
+    ]
+  },
+  "artifacts": {
+    "overlayDiff": "snapshot://example/overlay.diff",
+    "status": "snapshot://example/status"
+  },
+  "rollback": {
+    "available": false,
+    "command": null
+  },
+  "safety": {
+    "sourceMutated": false,
+    "targetStatusPreserved": null,
+    "authorityBoundary": "AK remains task/evidence authority where registered; this review is not canonical state.",
+    "productionBoundary": "Alpha evidence is not production readiness."
+  },
+  "operatorQuestions": [
+    "Is this evidence enough to continue, or should the operator stop and inspect details?",
+    "Did the executed checks match the risk of the change?"
+  ],
+  "evidenceArtifacts": [
+    {
+      "id": "source",
+      "kind": "validation_plan",
+      "schema": "semantic-code-intelligence.validation_plan.v1",
+      "observedStatus": "observed"
+    },
+    {
+      "id": "validation-execution",
+      "kind": "validation_execution",
+      "schema": null,
+      "observedStatus": "observed"
+    },
+    {
+      "id": "graph-impact",
+      "kind": "graph_impact",
+      "schema": null,
+      "observedStatus": "unknown"
+    },
+    {
+      "id": "snapshot-artifacts",
+      "kind": "snapshot_artifacts",
+      "schema": null,
+      "observedStatus": "observed"
+    },
+    {
+      "id": "rollback",
+      "kind": "rollback",
+      "schema": null,
+      "observedStatus": "unavailable"
+    }
+  ],
+  "claims": [
+    {
+      "id": "checks-result",
+      "claim": "Selected validation checks passed.",
+      "status": "supported",
+      "supportedBy": [
+        "validation-execution"
+      ],
+      "limitedBy": [],
+      "warrant": "Executed command evidence, not recommendation text, determines this claim.",
+      "authorityBoundaries": [
+        "not-production-readiness",
+        "not-canonical-authority"
+      ],
+      "operatorDecisionPoints": [
+        "continue-or-stop",
+        "run-stronger-checks"
+      ]
+    },
+    {
+      "id": "command-distinction",
+      "claim": "Selected commands remain distinct from recommended commands.",
+      "status": "supported",
+      "supportedBy": [
+        "validation-execution"
+      ],
+      "limitedBy": [],
+      "warrant": "Recommendations are advisory unless also present in observed selected/executed command evidence.",
+      "authorityBoundaries": [
+        "not-canonical-authority"
+      ],
+      "operatorDecisionPoints": [
+        "run-stronger-checks"
+      ]
+    },
+    {
+      "id": "graph-limitations",
+      "claim": "Graph or impact evidence includes visible limitations.",
+      "status": "weakened",
+      "supportedBy": [
+        "graph-impact"
+      ],
+      "limitedBy": [
+        "graph-impact"
+      ],
+      "warrant": "Missing or fallback-shaped graph evidence qualifies continuation decisions; it does not imply no impact.",
+      "authorityBoundaries": [
+        "not-production-readiness"
+      ],
+      "operatorDecisionPoints": [
+        "continue-or-stop"
+      ]
+    },
+    {
+      "id": "preview-boundary",
+      "claim": "This evidence remains preview-only and does not prove apply safety.",
+      "status": "weakened",
+      "supportedBy": [
+        "source",
+        "snapshot-artifacts"
+      ],
+      "limitedBy": [
+        "rollback"
+      ],
+      "warrant": "Preview evidence can support continued review, not production readiness or governance acceptance.",
+      "authorityBoundaries": [
+        "not-production-readiness",
+        "no-implicit-mutation"
+      ],
+      "operatorDecisionPoints": [
+        "continue-or-stop"
+      ]
+    }
+  ],
+  "authorityBoundaries": [
+    {
+      "id": "not-canonical-authority",
+      "boundary": "AK remains task/evidence authority where registered; this review is not canonical state.",
+      "affectedScope": "governance"
+    },
+    {
+      "id": "not-production-readiness",
+      "boundary": "Alpha evidence is not production readiness.",
+      "affectedScope": "readiness"
+    },
+    {
+      "id": "no-implicit-mutation",
+      "boundary": "Rendering evidence review output must not mutate source, snapshots, target repos, AK, or databases.",
+      "affectedScope": "mutation"
+    }
+  ],
+  "operatorDecisionPoints": [
+    {
+      "id": "continue-or-stop",
+      "options": [
+        "continue",
+        "stop",
+        "inspect limitations"
+      ],
+      "supportingClaims": [
+        "checks-result"
+      ],
+      "limitingClaims": [
+        "graph-limitations"
+      ],
+      "residualUncertainty": "Graph or impact evidence has visible limitations."
+    },
+    {
+      "id": "run-stronger-checks",
+      "options": [
+        "accept selected checks",
+        "run recommended minimum",
+        "run recommended broader"
+      ],
+      "supportingClaims": [
+        "command-distinction"
+      ],
+      "limitingClaims": [],
+      "residualUncertainty": "Recommended commands remain advisory unless executed."
+    }
+  ]
+}
