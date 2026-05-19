@@ -10,8 +10,8 @@ type: "revised-draft-rfc"
 # RFC: Phase 2 evidence review summary path
 
 Date: 2026-05-19
-Wave: IW59 — Phase 2 RFC semantic hardening
-Status: **semantic-hardened draft RFC; not accepted; not ADR-ready**
+Wave: IW60 — Phase 2 RFC read-only validation evidence
+Status: **validation-evidenced semantic-hardened draft RFC; not accepted; not ADR-ready**
 
 ## Authority note
 
@@ -21,7 +21,7 @@ AK decisions `46` and `47` were superseded after the operator rejected unilatera
 
 Review notes for the previous revision: `docs/project/phase-2-evidence-review-rfc-review.md`.
 
-This revision adds semantic hardening for evidence-backed operator judgment; it does not create governance acceptance.
+This revision adds semantic hardening for evidence-backed operator judgment and read-only validation evidence for the current summary producer; it does not create governance acceptance.
 
 ## Problem / intent source
 
@@ -316,6 +316,37 @@ bun run alpha:mvp:check
 ```
 
 Additional host integration validation belongs in the owning host repo if Option B later proceeds.
+
+### IW60 review-time validation evidence
+
+IW60 ran the review-time validation smoke checks against the existing alpha evidence packet and confirmed that evidence review rendering did not mutate the working tree.
+
+Observed commands:
+
+```bash
+git status --short
+bun run evidence-review:summary -- --input .test-results/alpha-evidence-packet.json --format markdown
+bun run evidence-review:summary -- --input .test-results/alpha-evidence-packet.json --extract validationPlan --format json
+git status --short
+```
+
+Observed result:
+
+- working tree before rendering: clean;
+- markdown summary rendered successfully from `.test-results/alpha-evidence-packet.json`;
+- validationPlan JSON extract rendered successfully with schema `semantic-code-intelligence.evidence_review.v1`;
+- working tree after rendering: clean;
+- selected commands and recommended commands remained structurally distinct in the rendered JSON.
+
+Important schema gap found during validation:
+
+- the current `semantic-code-intelligence.evidence_review.v1` output exposes `operatorQuestions` and `safety`, but does not yet expose first-class `ReviewClaim[]`, `AuthorityBoundary[]`, or `OperatorDecisionPoint[]` arrays matching the conceptual model above.
+
+Interpretation:
+
+- the summary producer is suitable for continued CLI/markdown review under Option A;
+- the shape is not yet stable enough for Option B host handoff or ADR readiness;
+- the next accepted implementation wave should either add first-class claim/boundary/decision-point fields or explicitly revise the conceptual model to match the implementation shape.
 
 ## Review questions
 
