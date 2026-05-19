@@ -114,4 +114,4 @@ Pick one:
 
 IW51 created that backlog in `docs/project/alpha-maintenance-backlog.md` and seeded AK tasks `3165`–`3168`.
 
-Do not begin Phase 2 implementation until the planning decision names the target user, interface, validation contract, and rollback boundary.
+IW52 created the Phase 2 planning decision in `docs/project/phase-2-planning-decision.md`. It names the target user, interface direction, validation contract, and rollback boundary, but still does not authorize UI implementation until the next evidence-review contract is accepted.
