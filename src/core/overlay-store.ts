@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
@@ -64,6 +64,38 @@ export class OverlayStore {
 
     private metadataPath(id: string): string {
         return path.join(this.snapshotDir(id), 'metadata.json');
+    }
+
+    private snapshotDiffFingerprint(snap: Snapshot | null | undefined): string {
+        const diffs = Array.isArray(snap?.diffs) ? snap.diffs : [];
+        const hash = createHash('sha256');
+        for (const diff of diffs) {
+            hash.update(String(Buffer.byteLength(diff, 'utf8')));
+            hash.update('\0');
+            hash.update(diff);
+            hash.update('\0');
+        }
+        return `${diffs.length}:${hash.digest('hex')}`;
+    }
+
+    private readMaterializedFingerprint(markerPath: string): string | null {
+        try {
+            const raw = fs.readFileSync(markerPath, 'utf8');
+            const parsed = JSON.parse(raw);
+            return typeof parsed?.diffFingerprint === 'string' ? parsed.diffFingerprint : null;
+        } catch {
+            return null;
+        }
+    }
+
+    private async writeMaterializedMarker(markerPath: string, snap: Snapshot | null | undefined): Promise<void> {
+        const payload = {
+            schema: 'semantic-code-intelligence.snapshot_materialized.v1',
+            materializedAt: new Date().toISOString(),
+            diffFingerprint: this.snapshotDiffFingerprint(snap),
+            diffCount: Array.isArray(snap?.diffs) ? snap.diffs.length : 0,
+        };
+        await fsp.writeFile(markerPath, JSON.stringify(payload, null, 2), 'utf8');
     }
 
     private serializeSnapshot(snap: Snapshot): Record<string, unknown> {
@@ -272,76 +304,80 @@ export class OverlayStore {
 
     private async ensureMaterialized(snapshotId: string): Promise<string | null> {
         this.assertValidId(snapshotId);
-        // Respect workspace root if provided to avoid copying entire repo for snapshots
         const base = this.resolveWorkspaceBase();
         const snapsRoot = this.snapshotsRoot();
         const dir = path.join(snapsRoot, snapshotId);
         await fsp.mkdir(snapsRoot, { recursive: true }).catch(() => {});
         const materializedMarker = path.join(dir, '.materialized');
-        const isMaterialized = fs.existsSync(materializedMarker);
         const preferPartial = process.env.SNAPSHOT_PARTIAL === '1';
         const snap = this.snapshots.get(snapshotId) || this.loadSnapshotFromDisk(snapshotId);
+        const desiredFingerprint = this.snapshotDiffFingerprint(snap);
+        const currentFingerprint = fs.existsSync(materializedMarker) ? this.readMaterializedFingerprint(materializedMarker) : null;
+        const isCurrent = currentFingerprint === desiredFingerprint;
         const touched = snap?.touchedFiles ? Array.from(snap.touchedFiles) : [];
-        if (!isMaterialized) {
-            await this.logProgress(snapshotId, 'materialize:start');
-            await fsp.mkdir(dir, { recursive: true });
-            if (preferPartial && touched.length > 0) {
-                // Partial materialize: copy only touched files and essential configs
-                await this.logProgress(snapshotId, `materialize:partial ${touched.length} files`);
-                const essential = ['tsconfig.json', 'tsconfig.build.json', 'package.json'];
-                const toCopy = [...new Set([...touched, ...essential])];
-                for (const rel of toCopy) {
+
+        if (isCurrent) return dir;
+
+        await this.logProgress(snapshotId, currentFingerprint ? 'materialize:refresh-start' : 'materialize:start');
+        await fsp.rm(dir, { recursive: true, force: true }).catch(() => {});
+        await fsp.mkdir(dir, { recursive: true });
+
+        if (preferPartial && touched.length > 0) {
+            // Partial materialize: copy only touched files and essential configs
+            await this.logProgress(snapshotId, `materialize:partial ${touched.length} files`);
+            const essential = ['tsconfig.json', 'tsconfig.build.json', 'package.json'];
+            const toCopy = [...new Set([...touched, ...essential])];
+            for (const rel of toCopy) {
+                try {
+                    const src = path.join(base, rel);
+                    const dst = path.join(dir, rel);
+                    await fsp.mkdir(path.dirname(dst), { recursive: true }).catch(() => {});
+                    if (fs.existsSync(src) && fs.statSync(src).isFile()) {
+                        spawnSync('bash', ['-lc', `cp -a ${JSON.stringify(src)} ${JSON.stringify(dst)}`], {
+                            stdio: 'pipe',
+                        });
+                    }
+                } catch {}
+            }
+        } else {
+            // Full copy: prefer rsync; fallback to tar or cp
+            if (this.which('rsync')) {
+                await this.logProgress(snapshotId, `materialize:rsync ${base} -> ${dir}`);
+                spawnSync(
+                    'bash',
+                    [
+                        '-lc',
+                        `rsync -a --delete --exclude .git --exclude node_modules --exclude .ontology --exclude dist ${JSON.stringify(base)}/ ${dir}/`,
+                    ],
+                    { stdio: 'pipe' }
+                );
+            } else if (this.which('tar')) {
+                await this.logProgress(snapshotId, `materialize:tar ${base} -> ${dir}`);
+                const cmd = `tar -C ${JSON.stringify(base)} --exclude .git --exclude node_modules --exclude .ontology --exclude dist -cf - . | tar -C ${JSON.stringify(dir)} -xf -`;
+                spawnSync('bash', ['-lc', cmd], { stdio: 'pipe' });
+            } else {
+                const entries = await fsp.readdir(base, { withFileTypes: true });
+                for (const ent of entries) {
+                    if (['.git', '.ontology', 'node_modules', 'dist'].includes(ent.name)) continue;
+                    const src = path.join(base, ent.name);
+                    const dest = path.join(dir, ent.name);
                     try {
-                        const src = path.join(base, rel);
-                        const dst = path.join(dir, rel);
-                        await fsp.mkdir(path.dirname(dst), { recursive: true }).catch(() => {});
-                        if (fs.existsSync(src) && fs.statSync(src).isFile()) {
-                            spawnSync('bash', ['-lc', `cp -a ${JSON.stringify(src)} ${JSON.stringify(dst)}`], {
-                                stdio: 'pipe',
-                            });
-                        }
+                        spawnSync('bash', ['-lc', `cp -a ${JSON.stringify(src)} ${JSON.stringify(dest)}`], {
+                            stdio: 'pipe',
+                        });
                     } catch {}
                 }
-            } else {
-                // Full copy: prefer rsync; fallback to tar or cp
-                if (this.which('rsync')) {
-                    await this.logProgress(snapshotId, `materialize:rsync ${base} -> ${dir}`);
-                    spawnSync(
-                        'bash',
-                        [
-                            '-lc',
-                            `rsync -a --delete --exclude .git --exclude node_modules --exclude .ontology --exclude dist ${JSON.stringify(base)}/ ${dir}/`,
-                        ],
-                        { stdio: 'pipe' }
-                    );
-                } else if (this.which('tar')) {
-                    await this.logProgress(snapshotId, `materialize:tar ${base} -> ${dir}`);
-                    const cmd = `tar -C ${JSON.stringify(base)} --exclude .git --exclude node_modules --exclude .ontology --exclude dist -cf - . | tar -C ${JSON.stringify(dir)} -xf -`;
-                    spawnSync('bash', ['-lc', cmd], { stdio: 'pipe' });
-                } else {
-                    const entries = await fsp.readdir(base, { withFileTypes: true });
-                    for (const ent of entries) {
-                        if (['.git', '.ontology', 'node_modules', 'dist'].includes(ent.name)) continue;
-                        const src = path.join(base, ent.name);
-                        const dest = path.join(dir, ent.name);
-                        try {
-                            spawnSync('bash', ['-lc', `cp -a ${JSON.stringify(src)} ${JSON.stringify(dest)}`], {
-                                stdio: 'pipe',
-                            });
-                        } catch {}
-                    }
-                }
             }
-            await fsp.writeFile(materializedMarker, new Date().toISOString(), 'utf8').catch(() => {});
-            if (snap) this.persistSnapshotSync(snap);
-            await this.logProgress(snapshotId, 'materialize:done');
         }
-        // Apply staged diffs if any
-        if (!snap) return dir;
-        if (snap.diffs.length > 0) {
+
+        if (snap?.diffs.length) {
             await this.logProgress(snapshotId, `apply:diffs ${snap.diffs.length}`);
             const diffFile = path.join(dir, 'overlay.diff');
             await fsp.writeFile(diffFile, snap.diffs.join('\n'), 'utf8');
+            const diffText = await fsp.readFile(diffFile, 'utf8').catch(() => '');
+            let ok = false;
+            let output = '';
+
             if (this.which('git')) {
                 const applied = spawnSync(
                     'bash',
@@ -351,19 +387,26 @@ export class OverlayStore {
                     ],
                     { stdio: 'pipe' }
                 );
-                if (applied.status !== 0 && this.which('patch')) {
-                    // Choose -p level based on diff header (a/ b/ prefixes -> -p1)
-                    const diffText = await fsp.readFile(diffFile, 'utf8').catch(() => '');
-                    const pLevel = /\ndiff --git a\//.test('\n' + diffText) ? 1 : 0;
-                    spawnSync('bash', ['-lc', `patch -p${pLevel} < overlay.diff`], { cwd: dir, stdio: 'pipe' });
-                }
-            } else if (this.which('patch')) {
-                const diffText = await fsp.readFile(diffFile, 'utf8').catch(() => '');
+                ok = applied.status === 0;
+                output += `${String(applied.stdout || '')}${String(applied.stderr || '')}`;
+            }
+
+            if (!ok && this.which('patch')) {
                 const pLevel = /\ndiff --git a\//.test('\n' + diffText) ? 1 : 0;
-                spawnSync('bash', ['-lc', `patch -p${pLevel} < overlay.diff`], { cwd: dir, stdio: 'pipe' });
+                const patched = spawnSync('bash', ['-lc', `patch -p${pLevel} < overlay.diff`], { cwd: dir, stdio: 'pipe' });
+                ok = patched.status === 0;
+                output += `${String(patched.stdout || '')}${String(patched.stderr || '')}`;
+            }
+
+            if (!ok) {
+                throw new Error(`Failed to materialize snapshot overlay: ${output.slice(-1000) || 'patch application failed'}`);
             }
             await this.logProgress(snapshotId, 'apply:done');
         }
+
+        await this.writeMaterializedMarker(materializedMarker, snap);
+        if (snap) this.persistSnapshotSync(snap);
+        await this.logProgress(snapshotId, currentFingerprint ? 'materialize:refresh-done' : 'materialize:done');
         return dir;
     }
 

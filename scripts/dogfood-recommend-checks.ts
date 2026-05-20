@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { validateGraphImpactContext } from './validation-plan-graph-impact';
 
@@ -61,12 +61,15 @@ const docsPatch = `diff --git a/docs/project/alpha-mvp-contract.md b/docs/projec
 +new docs line
 `;
 
-const sourcePatch = `diff --git a/src/adapters/mcp-adapter.ts b/src/adapters/mcp-adapter.ts
---- a/src/adapters/mcp-adapter.ts
-+++ b/src/adapters/mcp-adapter.ts
-@@ -1,3 +1,3 @@
--old source line
-+new source line
+const sourceFile = 'src/adapters/mcp-adapter.ts';
+const sourceFirstLine = readFileSync(sourceFile, 'utf8').split(/\r?\n/)[0] || '';
+const sourceReplacementLine = sourceFirstLine.endsWith(' ') ? sourceFirstLine.trimEnd() : `${sourceFirstLine} `;
+const sourcePatch = `diff --git a/${sourceFile} b/${sourceFile}
+--- a/${sourceFile}
++++ b/${sourceFile}
+@@ -1 +1 @@
+-${sourceFirstLine}
++${sourceReplacementLine}
 `;
 
 const impactSummary = {
