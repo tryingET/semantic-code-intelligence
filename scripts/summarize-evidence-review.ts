@@ -561,6 +561,19 @@ function bullet(items: string[]): string {
   return items.length ? items.map((item) => `- ${mdInline(item)}`).join('\n') : '- none';
 }
 
+function checkReceiptBullet(entry: any): string {
+  const command = typeof entry?.command === 'string' ? entry.command : 'unknown command';
+  const ok = typeof entry?.ok === 'boolean' ? entry.ok : 'unknown';
+  const exitCode = typeof entry?.exitCode === 'number' ? entry.exitCode : 'not recorded';
+  const timedOut = entry?.timedOut === true;
+  const elapsedMs = typeof entry?.elapsedMs === 'number' ? entry.elapsedMs : 'not recorded';
+  return `- ${mdInline(command)} — ok=${mdInline(ok)}; exitCode=${mdInline(exitCode)}; timedOut=${mdInline(timedOut)}; elapsedMs=${mdInline(elapsedMs)}`;
+}
+
+function checkReceiptBullets(entries: any[]): string {
+  return entries.length ? entries.map(checkReceiptBullet).join('\n') : '- none recorded';
+}
+
 function renderMarkdown(review: any): string {
   const commands = review.commands || {};
   const graph = review.graphImpact || {};
@@ -599,7 +612,8 @@ function renderMarkdown(review: any): string {
     `## 4. Check results\n\n` +
     `- Checks OK: ${review.checks.ok}\n` +
     `- Elapsed ms: ${review.checks.elapsedMs ?? 'not recorded'}\n` +
-    `- Failed gate checks: ${strings(review.checks.failedGateChecks).join(', ') || 'none'}\n\n` +
+    `- Failed gate checks: ${strings(review.checks.failedGateChecks).join(', ') || 'none'}\n` +
+    `- Command receipts:\n${checkReceiptBullets(arr(review.checks.commands))}\n\n` +
     `Operator question: Did the executed checks match the risk of the change?\n\n` +
     `## 5. Graph and impact evidence\n\n` +
     `- Has impact evidence: ${graph.hasImpactEvidence}\n` +

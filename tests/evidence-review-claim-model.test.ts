@@ -136,6 +136,8 @@ describe('evidence review claim model', () => {
     expect(output).toContain('snapshot:// references are pointers, not durable proof');
     expect(output).toContain('### First-class limitations');
     expect(output).toContain('graph-impact-limitation-1');
+    expect(output).toContain('Command receipts:');
+    expect(output).toContain('bun test tests/example.test.ts — ok=true; exitCode=not recorded; timedOut=false; elapsedMs=not recorded');
   });
 
   test('checks cannot be supported without observed selected command evidence', () => {
@@ -318,6 +320,7 @@ describe('evidence review claim model', () => {
     const { stdout: output } = runSummary(plan, ['--format', 'markdown']);
 
     expect(output).toContain('true ⏎ ## FORGED CHECK STATUS ⏎ \\[secret\\]\\(file:///tmp/secret\\)');
+    expect(output).toContain('true ⏎ ## FORGED CHECK STATUS ⏎ \\[secret\\]\\(file:///tmp/secret\\) — ok=true; exitCode=not recorded; timedOut=false; elapsedMs=not recorded');
     expect(output).not.toContain('[secret](file:///tmp/secret)');
   });
 
