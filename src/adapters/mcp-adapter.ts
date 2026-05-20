@@ -2124,6 +2124,24 @@ export class MCPAdapter {
         const recommendedBroader = Array.isArray(args.checkRecommendations?.broader) ? args.checkRecommendations.broader.map(String) : [];
         const rationale = Array.isArray(args.checkRecommendations?.rationale) ? args.checkRecommendations.rationale : [];
         const impactCounts = args.impactSummary?.counts && typeof args.impactSummary.counts === 'object' ? args.impactSummary.counts : null;
+        const impactSeed = args.impactSummary?.seed && typeof args.impactSummary.seed === 'object'
+            ? { kind: String(args.impactSummary.seed.kind || 'unknown'), value: String(args.impactSummary.seed.value || '') }
+            : null;
+        const languageSupport = args.impactSummary?.languageSupport && typeof args.impactSummary.languageSupport === 'object'
+            ? {
+                  language: String(args.impactSummary.languageSupport.language || 'unknown'),
+                  support: String(args.impactSummary.languageSupport.support || 'unknown'),
+                  supportedEdges: Array.isArray(args.impactSummary.languageSupport.supportedEdges) ? args.impactSummary.languageSupport.supportedEdges.map(String) : [],
+              }
+            : null;
+        const edgeEvidence = Array.isArray(args.impactSummary?.evidence)
+            ? args.impactSummary.evidence.map((item: any) => ({
+                  edge: String(item?.edge || 'unknown'),
+                  count: Number(item?.count || 0),
+                  status: String(item?.status || 'unknown'),
+                  limitations: Array.isArray(item?.limitations) ? item.limitations.map(String) : [],
+              }))
+            : [];
         return {
             schema: 'semantic-code-intelligence.validation_plan.v1',
             workflow: args.workflow,
@@ -2141,10 +2159,17 @@ export class MCPAdapter {
             rationale,
             graphImpact: args.impactSummary
                 ? {
-                      hasImpactEvidence: args.impactSummary?.hasImpactEvidence === true,
+                      seed: impactSeed,
+                      languageSupport,
+                      backend: typeof args.impactSummary?.backend === 'string' ? args.impactSummary.backend : null,
+                      freshness: typeof args.impactSummary?.freshness === 'string' ? args.impactSummary.freshness : null,
+                      requestedEdges: Array.isArray(args.impactSummary?.requestedEdges) ? args.impactSummary.requestedEdges.map(String) : [],
                       counts: impactCounts,
-                      limitations: Array.isArray(args.impactSummary?.limitations) ? args.impactSummary.limitations : [],
-                      planningHints: Array.isArray(args.impactSummary?.planningHints) ? args.impactSummary.planningHints : [],
+                      evidence: edgeEvidence,
+                      limitations: Array.isArray(args.impactSummary?.limitations) ? args.impactSummary.limitations.map(String) : [],
+                      callerContextCount: typeof args.impactSummary?.callerContextCount === 'number' ? args.impactSummary.callerContextCount : null,
+                      hasImpactEvidence: args.impactSummary?.hasImpactEvidence === true,
+                      planningHints: Array.isArray(args.impactSummary?.planningHints) ? args.impactSummary.planningHints.map(String) : [],
                   }
                 : null,
             checks: { ok: args.checksOk, elapsedMs: args.checksElapsedMs, commands: Array.isArray(args.checkCommands) ? args.checkCommands : [] },

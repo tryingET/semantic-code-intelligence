@@ -47,6 +47,27 @@
     ]
   },
   "graphImpact": {
+    "seed": {
+      "kind": "file",
+      "value": "src/example.ts"
+    },
+    "languageSupport": {
+      "language": "typescript",
+      "support": "tree_sitter_best_effort",
+      "supportedEdges": [
+        "imports",
+        "exports",
+        "callers",
+        "callees"
+      ]
+    },
+    "backend": "tree_sitter",
+    "freshness": "current",
+    "requestedEdges": [
+      "imports",
+      "exports",
+      "callers"
+    ],
     "hasImpactEvidence": false,
     "counts": {
       "imports": 0,
@@ -54,9 +75,32 @@
       "callers": 0,
       "callees": 0
     },
+    "evidence": [
+      {
+        "edge": "imports",
+        "count": 0,
+        "status": "empty_or_unavailable",
+        "limitations": []
+      },
+      {
+        "edge": "exports",
+        "count": 0,
+        "status": "empty_or_unavailable",
+        "limitations": []
+      },
+      {
+        "edge": "callers",
+        "count": 0,
+        "status": "limited",
+        "limitations": [
+          "callers: fallback-shaped evidence"
+        ]
+      }
+    ],
     "limitations": [
       "fallback: graph expand unavailable"
     ],
+    "callerContextCount": 0,
     "planningHints": [
       "inspect callers manually if risk increases"
     ]

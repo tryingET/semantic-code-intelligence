@@ -339,9 +339,27 @@ function normalizeValidationPlan(plan: any, packet?: any) {
       commands: plan?.checks?.commands || null,
     },
     graphImpact: {
+      seed: graph?.seed && typeof graph.seed === 'object' ? { kind: String(graph.seed.kind || 'unknown'), value: String(graph.seed.value || '') } : null,
+      languageSupport: graph?.languageSupport && typeof graph.languageSupport === 'object'
+        ? {
+            language: String(graph.languageSupport.language || 'unknown'),
+            support: String(graph.languageSupport.support || 'unknown'),
+            supportedEdges: strings(graph.languageSupport.supportedEdges),
+          }
+        : null,
+      backend: typeof graph?.backend === 'string' ? graph.backend : null,
+      freshness: typeof graph?.freshness === 'string' ? graph.freshness : null,
+      requestedEdges: strings(graph?.requestedEdges),
       hasImpactEvidence: graph?.hasImpactEvidence === true,
       counts: graph?.counts || {},
+      evidence: arr(graph?.evidence).map((item: any) => ({
+        edge: typeof item?.edge === 'string' ? item.edge : 'unknown',
+        count: typeof item?.count === 'number' ? item.count : 0,
+        status: typeof item?.status === 'string' ? item.status : 'unknown',
+        limitations: strings(item?.limitations),
+      })),
       limitations: strings(graph?.limitations),
+      callerContextCount: typeof graph?.callerContextCount === 'number' ? graph.callerContextCount : null,
       planningHints: strings(graph?.planningHints),
     },
     artifacts: plan?.artifacts || {},
@@ -387,10 +405,16 @@ function normalizeAlphaPacket(packet: any) {
     },
     graphImpact: {
       hasImpactEvidence: packet?.graphImpact?.fileImpact?.hasImpactEvidence === true || base.graphImpact.hasImpactEvidence,
+      seed: packet?.graphImpact?.fileImpact?.seed || base.graphImpact.seed,
+      languageSupport: packet?.graphImpact?.fileImpact?.languageSupport || base.graphImpact.languageSupport,
+      backend: packet?.graphImpact?.fileImpact?.backend || base.graphImpact.backend,
+      freshness: packet?.graphImpact?.fileImpact?.freshness || base.graphImpact.freshness,
+      requestedEdges: strings(packet?.graphImpact?.fileImpact?.requestedEdges).concat(base.graphImpact.requestedEdges || []),
       counts: packet?.graphImpact?.fileImpact?.counts || base.graphImpact.counts,
+      evidence: arr(packet?.graphImpact?.fileImpact?.evidence).concat(base.graphImpact.evidence || []),
       limitations: strings(packet?.graphImpact?.symbolImpact?.limitations).concat(base.graphImpact.limitations),
       planningHints: strings(packet?.graphImpact?.fileImpact?.planningHints).concat(base.graphImpact.planningHints),
-      callerContextCount: packet?.graphImpact?.impact?.callerContext?.callerContextCount || packet?.graphImpact?.fileImpact?.callerContextCount || null,
+      callerContextCount: packet?.graphImpact?.impact?.callerContext?.callerContextCount ?? packet?.graphImpact?.fileImpact?.callerContextCount ?? base.graphImpact.callerContextCount ?? null,
     },
     safety: {
       ...base.safety,
@@ -574,6 +598,18 @@ function checkReceiptBullets(entries: any[]): string {
   return entries.length ? entries.map(checkReceiptBullet).join('\n') : '- none recorded';
 }
 
+function graphEvidenceBullet(entry: any): string {
+  const edge = typeof entry?.edge === 'string' ? entry.edge : 'unknown';
+  const count = typeof entry?.count === 'number' ? entry.count : 0;
+  const status = typeof entry?.status === 'string' ? entry.status : 'unknown';
+  const limitations = strings(entry?.limitations);
+  return `- ${mdInline(edge)} — status=${mdInline(status)}; count=${mdInline(count)}; limitations=${mdInline(limitations.length ? limitations.join('; ') : 'none')}`;
+}
+
+function graphEvidenceBullets(entries: any[]): string {
+  return entries.length ? entries.map(graphEvidenceBullet).join('\n') : '- none recorded';
+}
+
 function renderMarkdown(review: any): string {
   const commands = review.commands || {};
   const graph = review.graphImpact || {};
@@ -616,9 +652,15 @@ function renderMarkdown(review: any): string {
     `- Command receipts:\n${checkReceiptBullets(arr(review.checks.commands))}\n\n` +
     `Operator question: Did the executed checks match the risk of the change?\n\n` +
     `## 5. Graph and impact evidence\n\n` +
+    `- Seed: ${mdInline(graph.seed ? `${graph.seed.kind}:${graph.seed.value}` : 'not recorded')}\n` +
+    `- Backend: ${mdInline(graph.backend || 'not recorded')}\n` +
+    `- Freshness: ${mdInline(graph.freshness || 'not recorded')}\n` +
+    `- Language support: ${mdInline(graph.languageSupport ? JSON.stringify(graph.languageSupport) : 'not recorded')}\n` +
+    `- Requested edges:\n${bullet(strings(graph.requestedEdges))}\n` +
     `- Has impact evidence: ${graph.hasImpactEvidence}\n` +
-    `- Counts: ${JSON.stringify(graph.counts || {})}\n` +
-    `- Caller context count: ${graph.callerContextCount ?? 'not recorded'}\n` +
+    `- Counts: ${mdInline(JSON.stringify(graph.counts || {}))}\n` +
+    `- Edge evidence/status:\n${graphEvidenceBullets(arr(graph.evidence))}\n` +
+    `- Caller context count: ${mdInline(graph.callerContextCount ?? 'not recorded')}\n` +
     `- Limitations/fallback notes:\n${bullet(strings(graph.limitations))}\n` +
     `- Planning hints:\n${bullet(strings(graph.planningHints))}\n\n` +
     `## 6. Snapshot and artifacts\n\n` +

@@ -30,9 +30,20 @@ function sampleValidationPlan() {
     },
     checks: { ok: true, elapsedMs: 42, commands: [{ command: 'bun test tests/example.test.ts', ok: true }] },
     graphImpact: {
+      seed: { kind: 'file', value: 'src/example.ts' },
+      languageSupport: { language: 'typescript', support: 'tree_sitter_best_effort', supportedEdges: ['imports', 'exports', 'callers', 'callees'] },
+      backend: 'tree_sitter',
+      freshness: 'current',
+      requestedEdges: ['imports', 'exports', 'callers'],
       hasImpactEvidence: false,
       counts: { imports: 0, exports: 0, callers: 0, callees: 0 },
+      evidence: [
+        { edge: 'imports', count: 0, status: 'empty_or_unavailable', limitations: [] },
+        { edge: 'exports', count: 0, status: 'empty_or_unavailable', limitations: [] },
+        { edge: 'callers', count: 0, status: 'limited', limitations: ['callers: fallback-shaped evidence'] },
+      ],
       limitations: ['fallback: graph expand unavailable'],
+      callerContextCount: 0,
       planningHints: ['inspect callers manually if risk increases'],
     },
     artifacts: { overlayDiff: 'snapshot://example/overlay.diff', status: 'snapshot://example/status' },
@@ -140,6 +151,10 @@ describe('evidence review claim model', () => {
     expect(output).not.toContain('Selected commands actually run:');
     expect(output).toContain('Command receipts:');
     expect(output).toContain('bun test tests/example.test.ts — ok=true; exitCode=not recorded; timedOut=false; elapsedMs=not recorded');
+    expect(output).toContain('Requested edges:');
+    expect(output).toContain('- callers');
+    expect(output).toContain('Edge evidence/status:');
+    expect(output).toContain('callers — status=limited; count=0; limitations=callers: fallback-shaped evidence');
   });
 
   test('checks cannot be supported without observed selected command evidence', () => {
@@ -341,6 +356,32 @@ describe('evidence review claim model', () => {
     expect(markdown).not.toContain('\n## FORGED GREEN STATUS');
     expect(markdown).not.toContain('**Production-ready: true**');
     expect(markdown).not.toContain('[Applied](file:///tmp/secret)');
+  });
+
+  test('markdown output neutralizes graph seed and edge evidence text', () => {
+    const plan = clonePlan({
+      graphImpact: {
+        seed: { kind: 'file', value: 'src/example.ts\n## FORGED GRAPH SEED\n[secret](file:///tmp/secret)' },
+        languageSupport: { language: 'typescript', support: 'tree_sitter_best_effort', supportedEdges: ['imports\n## FORGED EDGE'] },
+        backend: 'tree_sitter\n## FORGED BACKEND',
+        freshness: 'current',
+        requestedEdges: ['imports\n## FORGED REQUESTED EDGE\n[secret](file:///tmp/secret)'],
+        counts: {},
+        evidence: [{ edge: 'imports\n## FORGED EDGE STATUS', count: 0, status: 'limited\n## GREEN', limitations: ['**safe**\n[secret](file:///tmp/secret)'] }],
+        limitations: [],
+        callerContextCount: 0,
+        planningHints: [],
+      },
+    });
+    const { stdout: markdown } = runSummary(plan, ['--format', 'markdown']);
+
+    expect(markdown).toContain('src/example.ts ⏎ ## FORGED GRAPH SEED ⏎ \\[secret\\]\\(file:///tmp/secret\\)');
+    expect(markdown).toContain('imports ⏎ ## FORGED REQUESTED EDGE ⏎ \\[secret\\]\\(file:///tmp/secret\\)');
+    expect(markdown).toContain('imports ⏎ ## FORGED EDGE STATUS — status=limited ⏎ ## GREEN; count=0; limitations=\\*\\*safe\\*\\* ⏎ \\[secret\\]\\(file:///tmp/secret\\)');
+    expect(markdown).not.toContain('\n## FORGED GRAPH SEED');
+    expect(markdown).not.toContain('\n## FORGED REQUESTED EDGE');
+    expect(markdown).not.toContain('[secret](file:///tmp/secret)');
+    expect(markdown).not.toContain('**safe**');
   });
 
   test('markdown output neutralizes target status preserved text', () => {
