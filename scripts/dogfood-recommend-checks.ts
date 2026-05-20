@@ -72,6 +72,13 @@ const impactSummary = {
     seed: { kind: 'file', value: 'src/adapters/mcp-adapter.ts' },
     requestedEdges: ['imports', 'exports', 'callers', 'callees'],
     counts: { imports: 2, exports: 1, callers: 0, callees: 3 },
+    evidence: [
+        { edge: 'imports', count: 2, status: 'evidence', limitations: [] },
+        { edge: 'exports', count: 1, status: 'evidence', limitations: [] },
+        { edge: 'callers', count: 0, status: 'empty_or_unavailable', limitations: [] },
+        { edge: 'callees', count: 3, status: 'evidence', limitations: [] },
+    ],
+    limitations: [],
     hasImpactEvidence: true,
 };
 
@@ -93,8 +100,8 @@ const calls: CallEvidence[] = [
     workflowTool(
         'patch_checks_in_snapshot',
         'patch_checks_recommendations_threaded',
-        { patch: sourcePatch, commands: ['true'], timeoutSec: 30, recommendChecks: true },
-        'Patch-check workflow should surface advisory recommendations while still running caller-supplied commands.'
+        { patch: sourcePatch, commands: ['true'], timeoutSec: 30, recommendChecks: true, impactSummary },
+        'Patch-check workflow should surface advisory recommendations and graph impact context while still running caller-supplied commands.'
     ),
 ];
 
@@ -118,6 +125,10 @@ const assertions = {
     patchChecksValidationPlanPresent:
         byCase.patch_checks_recommendations_threaded.payload?.validationPlan?.schema === 'semantic-code-intelligence.validation_plan.v1' &&
         byCase.patch_checks_recommendations_threaded.payload?.validationPlan?.commands?.recommendationsAppliedToSelected === false,
+    patchChecksGraphContextPreserved:
+        byCase.patch_checks_recommendations_threaded.payload?.validationPlan?.graphImpact?.seed?.value === 'src/adapters/mcp-adapter.ts' &&
+        Array.isArray(byCase.patch_checks_recommendations_threaded.payload?.validationPlan?.graphImpact?.requestedEdges) &&
+        byCase.patch_checks_recommendations_threaded.payload.validationPlan.graphImpact.requestedEdges.includes('callers'),
 };
 
 const evidence = {
@@ -153,7 +164,7 @@ const evidence = {
             'recommend_checks returns transparent command recommendations without running checks.',
             'Docs-only, TS source, test-file, and graph-impact cases produce expected minimum/broader command rationale.',
             'patch_checks_in_snapshot can surface advisory recommendations without changing caller-supplied check commands.',
-            'patch_checks_in_snapshot returns a compact validationPlan evidence summary.',
+            'patch_checks_in_snapshot returns a compact validationPlan evidence summary with graph impact review context when supplied.',
         ],
         does_not_prove: ['Complete test selection accuracy.', 'A hidden policy gate; recommendations are advisory.'],
     },

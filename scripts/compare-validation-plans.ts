@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 
-const outputPath = '.test-results/validation-plan-comparison.json';
+const evidenceRoot = process.env.SCI_VALIDATION_PLAN_EVIDENCE_ROOT || '.test-results';
+const outputPath = join(evidenceRoot, 'validation-plan-comparison.json');
 
 function readJson(path: string): any {
   return JSON.parse(readFileSync(path, 'utf8'));
@@ -16,7 +17,44 @@ function minimum(plan: any): string[] {
   return Array.isArray(plan?.commands?.recommendedMinimum) ? plan.commands.recommendedMinimum.map(String) : [];
 }
 
+function strings(value: any): string[] {
+  return Array.isArray(value) ? value.map(String).filter(Boolean) : [];
+}
+
+function normalizeGraphImpact(graphImpact: any) {
+  if (!graphImpact || typeof graphImpact !== 'object') {
+    return {
+      present: false,
+      seed: null,
+      requestedEdges: [],
+      edgeEvidence: [],
+      limitationsFieldPresent: false,
+      hasStableContext: false,
+    };
+  }
+  const seed = graphImpact.seed && typeof graphImpact.seed === 'object'
+    ? { kind: String(graphImpact.seed.kind || ''), value: String(graphImpact.seed.value || '') }
+    : null;
+  const requestedEdges = strings(graphImpact.requestedEdges);
+  const edgeEvidence = Array.isArray(graphImpact.evidence)
+    ? graphImpact.evidence.map((item: any) => ({
+        edge: String(item?.edge || ''),
+        status: String(item?.status || ''),
+        count: Number(item?.count || 0),
+      })).filter((item: any) => item.edge && item.status)
+    : [];
+  return {
+    present: true,
+    seed,
+    requestedEdges,
+    edgeEvidence,
+    limitationsFieldPresent: Array.isArray(graphImpact.limitations),
+    hasStableContext: !!seed?.kind && !!seed?.value && requestedEdges.length > 0 && edgeEvidence.length > 0,
+  };
+}
+
 function normalize(plan: any) {
+  const graphImpact = normalizeGraphImpact(plan?.graphImpact);
   return {
     schema: plan?.schema || null,
     workflow: plan?.workflow || null,
@@ -30,6 +68,12 @@ function normalize(plan: any) {
     hasArtifacts: !!plan?.artifacts?.overlayDiff,
     hasRollback: !!plan?.rollback?.command,
     riskCategory: plan?.risk?.category || null,
+    graphImpactPresent: graphImpact.present,
+    graphImpactSeed: graphImpact.seed,
+    graphImpactRequestedEdges: graphImpact.requestedEdges,
+    graphImpactEdgeEvidence: graphImpact.edgeEvidence,
+    graphImpactLimitationsFieldPresent: graphImpact.limitationsFieldPresent,
+    graphImpactHasStableContext: graphImpact.hasStableContext,
   };
 }
 
@@ -47,8 +91,8 @@ function fromSafeWriteEvidence(evidence: any) {
     .filter((item: any) => item.plan?.schema === 'semantic-code-intelligence.validation_plan.v1');
 }
 
-const recommendChecks = readJson('.test-results/recommend-checks-dogfood.json');
-const safeWrite = readJson('.test-results/safe-write-dogfood.json');
+const recommendChecks = readJson(join(evidenceRoot, 'recommend-checks-dogfood.json'));
+const safeWrite = readJson(join(evidenceRoot, 'safe-write-dogfood.json'));
 const plans = [...fromRecommendChecksEvidence(recommendChecks), ...fromSafeWriteEvidence(safeWrite)];
 const normalized = plans.map((item) => ({ source: item.source, ...normalize(item.plan) }));
 
@@ -77,6 +121,14 @@ const failureGuidance: Record<string, { explanation: string; remediation: string
     explanation: 'safe_write validation evidence no longer exposes rollback posture.',
     remediation: 'Restore rollback command/artifact fields for safe_write validationPlan output.',
   },
+  graph_impact_context_missing: {
+    explanation: 'Generated validationPlan evidence no longer includes a graph-bearing plan, so graph review context can drift unnoticed.',
+    remediation: 'Thread graph_expand impactSummary into at least one preview/check dogfood validationPlan and preserve seed, requested edges, edge status, and limitations.',
+  },
+  graph_impact_context_incomplete: {
+    explanation: 'A graph-bearing validationPlan is missing stable graph context fields needed for evidence review.',
+    remediation: 'Preserve validationPlan.graphImpact seed, requestedEdges, per-edge evidence/status, and limitations as stable non-volatile fields.',
+  },
 };
 
 function explainFailures(failures: string[]) {
@@ -101,7 +153,17 @@ const comparisons = normalized.map((item) => {
   if (!item.selectedCommands.length) failures.push('selected_commands_missing');
   if (!item.hasArtifacts) failures.push('snapshot_artifact_link_missing');
   if (item.workflow === 'safe_write' && !item.hasRollback) failures.push('safe_write_rollback_missing');
+  if (item.graphImpactPresent && (!item.graphImpactHasStableContext || !item.graphImpactLimitationsFieldPresent)) failures.push('graph_impact_context_incomplete');
   return { source: item.source, ok: failures.length === 0, failures, guidance: explainFailures(failures), expected, actual: item };
+});
+const graphContextPlanCount = normalized.filter((item) => item.graphImpactHasStableContext && item.graphImpactLimitationsFieldPresent).length;
+comparisons.push({
+  source: 'bundle:graph-impact-context',
+  ok: graphContextPlanCount >= 1,
+  failures: graphContextPlanCount >= 1 ? [] : ['graph_impact_context_missing'],
+  guidance: graphContextPlanCount >= 1 ? [] : explainFailures(['graph_impact_context_missing']),
+  expected: { graphContextPlanCount: '>=1' },
+  actual: { graphContextPlanCount },
 });
 
 const drift = comparisons.filter((item) => !item.ok);
@@ -114,9 +176,10 @@ const operatorSummary = {
 };
 const evidence = {
   schema: 'semantic-code-intelligence.validation_plan_comparison.v1',
-  ok: plans.length >= 2 && drift.length === 0,
+  ok: plans.length >= 2 && graphContextPlanCount >= 1 && drift.length === 0,
   comparedPlanCount: plans.length,
-  stableFields: ['schema', 'workflow', 'mode', 'selectedCommands', 'recommendationsAppliedToSelected', 'checksOk', 'hasArtifacts', 'hasRollback'],
+  graphContextPlanCount,
+  stableFields: ['schema', 'workflow', 'mode', 'selectedCommands', 'recommendationsAppliedToSelected', 'checksOk', 'hasArtifacts', 'hasRollback', 'graphImpactSeed', 'graphImpactRequestedEdges', 'graphImpactEdgeEvidence', 'graphImpactLimitationsFieldPresent'],
   ignoredVolatileFields: ['snapshot', 'elapsedMs', 'artifact paths with snapshot ids', 'generatedAt'],
   comparisons,
   drift,
@@ -127,6 +190,7 @@ const evidence = {
       'Current generated validationPlan evidence preserves stable safety/check-planning fields.',
       'Recommendations remain advisory and do not mutate selected commands.',
       'Preview evidence still links snapshot artifacts and safe_write rollback posture.',
+      'At least one generated validationPlan preserves graph seed, requested edges, per-edge status, and limitations for evidence review.',
     ],
     does_not_prove: ['Historical trend analysis beyond the current generated evidence bundle.'],
   },
