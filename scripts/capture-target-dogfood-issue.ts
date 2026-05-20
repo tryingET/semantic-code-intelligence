@@ -191,11 +191,23 @@ function renderMarkdown(issue: any): string {
     `## Authority boundaries\n\n${issue.authorityBoundaries.map((boundary: string) => `- ${mdInline(boundary)}`).join('\n')}\n`;
 }
 
+function nearestExistingAncestor(path: string): string {
+  let current = path;
+  while (!existsSync(current)) {
+    const next = dirname(current);
+    if (next === current) return current;
+    current = next;
+  }
+  return current;
+}
+
 function safeWriteWorkspaceFile(path: string, content: string) {
   const workspaceRoot = realpathSync(process.cwd());
   const outputPath = resolve(workspaceRoot, path);
   if (!isContainedPath(workspaceRoot, outputPath)) throw new Error('Output path must stay within the workspace');
   const parent = dirname(outputPath);
+  const existingAncestorReal = realpathSync(nearestExistingAncestor(parent));
+  if (!isContainedPath(workspaceRoot, existingAncestorReal)) throw new Error('Output path must stay within the workspace');
   mkdirSync(parent, { recursive: true });
   const parentReal = realpathSync(parent);
   if (!isContainedPath(workspaceRoot, parentReal)) throw new Error('Output path must stay within the workspace');

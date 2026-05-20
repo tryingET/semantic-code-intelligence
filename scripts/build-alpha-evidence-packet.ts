@@ -41,12 +41,12 @@ const gate = loaded.gate.ok ? loaded.gate.value : null;
 
 const safeWriteCalls = Array.isArray(safeWrite?.calls) ? safeWrite.calls : [];
 const cleanApply = safeWriteCalls.find(
-    (call) => call?.payload?.applied === true && call?.payload?.verification?.appliedDiffMatchesSnapshot === true
+    (call) => call?.success === true && call?.payload?.applied === true && call?.payload?.verification?.appliedDiffMatchesSnapshot === true
 );
 const mismatch = safeWriteCalls.find(
-    (call) => call?.payload?.applied === true && call?.payload?.ok === false && call?.payload?.verification?.appliedDiffMatchesSnapshot === false
+    (call) => call?.success === true && call?.payload?.applied === true && call?.payload?.ok === false && call?.payload?.verification?.appliedDiffMatchesSnapshot === false
 );
-const preview = safeWriteCalls.find((call) => call?.payload?.mode === 'preview_validate' && call?.payload?.applied === false);
+const preview = safeWriteCalls.find((call) => call?.success === true && call?.payload?.mode === 'preview_validate' && call?.payload?.applied === false);
 
 const gateChecks = Array.isArray(gate?.checks) ? gate.checks : [];
 const failedGateChecks = gateChecks.filter((check) => check?.ok !== true).map((check) => check?.name);
@@ -63,8 +63,8 @@ const sourceFilesOk =
 const sciFirstDiscoveryOk = selfHosted?.selfHosting?.sciFirstDiscovery?.complete === true;
 const selfHostedWorkspaceUnchanged = selfHosted?.selfHosting?.workspaceUnchanged === true;
 const safeWritePreviewPresent = !!preview;
-const safeWritePreviewRecommendationsPresent = safeWriteCalls.some((call) => call?.payload?.mode === 'preview_validate' && call?.payload?.checkRecommendations?.workflow === 'recommend_checks');
-const safeWritePreviewValidationPlanPresent = safeWriteCalls.some((call) => call?.payload?.mode === 'preview_validate' && call?.payload?.validationPlan?.schema === 'semantic-code-intelligence.validation_plan.v1');
+const safeWritePreviewRecommendationsPresent = safeWriteCalls.some((call) => call?.success === true && call?.payload?.mode === 'preview_validate' && call?.payload?.checkRecommendations?.workflow === 'recommend_checks');
+const safeWritePreviewValidationPlanPresent = safeWriteCalls.some((call) => call?.success === true && call?.payload?.mode === 'preview_validate' && call?.payload?.validationPlan?.schema === 'semantic-code-intelligence.validation_plan.v1');
 const safeWriteFixtureCleanAfterRollback = safeWrite?.assertions?.fixtureCleanAfterRollback === true;
 const cleanApplyVerified = !!cleanApply;
 const mismatchFailsClosed = !!mismatch;
@@ -112,6 +112,7 @@ const packet = {
         assertions: sanitizeEvidence(graph?.assertions || null),
         fileImpact: sanitizeEvidence(graph?.impact?.file || null),
         symbolImpact: sanitizeEvidence(graph?.impact?.symbol || null),
+        impact: sanitizeEvidence({ callerContext: graph?.impact?.callerContext || null }),
         maxCallElapsedMs: Array.isArray(graph?.calls) ? maxElapsed(graph.calls) : 0,
     },
     checkRecommendations: {

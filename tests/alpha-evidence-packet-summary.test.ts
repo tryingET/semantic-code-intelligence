@@ -17,7 +17,7 @@ const files: Record<string, any> = {
     target: 'fixture',
     symbol: 'fixtureSymbol',
     assertions: { limitationsVisible: true },
-    impact: { file: { hasImpactEvidence: true, counts: { imports: 1 }, planningHints: [] }, symbol: { limitations: [] } },
+    impact: { file: { hasImpactEvidence: true, counts: { imports: 1 }, planningHints: [] }, symbol: { limitations: [] }, callerContext: { callerContextCount: 2 } },
     calls: [{ name: 'graph_expand', success: true, elapsedMs: 1 }],
   },
   'recommend-checks-dogfood.json': { ok: true, assertions: { recommendationsPresent: true }, calls: [{ name: 'recommend_checks', success: true, elapsedMs: 1 }] },
@@ -25,9 +25,9 @@ const files: Record<string, any> = {
     ok: true,
     assertions: { fixtureCleanAfterRollback: true, rollbackRestoredExactly: true, mismatchRollbackPreservedPreexistingDirtyChange: true },
     calls: [
-      { payload: { mode: 'preview_validate', applied: false, checkRecommendations: { workflow: 'recommend_checks' }, validationPlan: { schema: 'semantic-code-intelligence.validation_plan.v1' } } },
-      { payload: { applied: true, verification: { appliedDiffMatchesSnapshot: true, method: 'reverse_git_apply_check' } } },
-      { payload: { applied: true, ok: false, verification: { appliedDiffMatchesSnapshot: false, method: 'reverse_git_apply_check' } } },
+      { success: true, payload: { mode: 'preview_validate', applied: false, checkRecommendations: { workflow: 'recommend_checks' }, validationPlan: { schema: 'semantic-code-intelligence.validation_plan.v1' } } },
+      { success: true, payload: { applied: true, verification: { appliedDiffMatchesSnapshot: true, method: 'reverse_git_apply_check' } } },
+      { success: true, payload: { applied: true, ok: false, verification: { appliedDiffMatchesSnapshot: false, method: 'reverse_git_apply_check' } } },
     ],
   },
   'validation-plan-comparison.json': { ok: true, comparedPlanCount: 1, stableFields: [], ignoredVolatileFields: [], drift: [], operatorSummary: {} },
@@ -75,6 +75,14 @@ describe('alpha evidence packet operator summary', () => {
     expect(packet.operatorSummary.doesNotProve).toContain('Authority to reopen Phase 1 dogfood accumulation by default.');
   });
 
+  test('packet preserves caller context for evidence review summaries', () => {
+    const result = runPacket(makeFixtureRoot());
+    expect(result.status, result.stderr).toBe(0);
+    const packet = JSON.parse(result.stdout);
+
+    expect(packet.graphImpact.impact.callerContext.callerContextCount).toBe(2);
+  });
+
   test('packet fails closed when top-level source ok flags lack derived safety evidence', () => {
     const hollowOk = Object.fromEntries(Object.keys(files).map((name) => [name, { ok: true }]));
     const result = runPacket(makeFixtureRoot(hollowOk));
@@ -83,6 +91,19 @@ describe('alpha evidence packet operator summary', () => {
 
     expect(packet.ok).toBe(false);
     expect(packet.sciFirstDiscovery.ok).toBe(false);
+    expect(packet.previewFirstMutation.safeWritePreviewPresent).toBe(false);
+    expect(packet.safeWriteVerification.cleanApplyVerified).toBe(false);
+    expect(packet.safeWriteVerification.mismatchFailsClosed).toBe(false);
+  });
+
+  test('packet fails closed when safe-write evidence payloads exist only on failed calls', () => {
+    const failedSafeWrite = JSON.parse(JSON.stringify(files['safe-write-dogfood.json']));
+    failedSafeWrite.calls = failedSafeWrite.calls.map((call: any) => ({ ...call, success: false }));
+    const result = runPacket(makeFixtureRoot({ 'safe-write-dogfood.json': failedSafeWrite }));
+    expect(result.status).toBe(1);
+    const packet = JSON.parse(result.stdout);
+
+    expect(packet.ok).toBe(false);
     expect(packet.previewFirstMutation.safeWritePreviewPresent).toBe(false);
     expect(packet.safeWriteVerification.cleanApplyVerified).toBe(false);
     expect(packet.safeWriteVerification.mismatchFailsClosed).toBe(false);

@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -240,6 +240,22 @@ describe('target dogfood issue capture', () => {
     expect(escapeResult.status).not.toBe(0);
     expect(escapeResult.stderr).toContain('Evidence input must stay within the workspace');
     expect(escapeResult.stderr).not.toContain('outside-secret-marker');
+
+    rmSync(outsideDir, { recursive: true, force: true });
+  });
+
+  test('rejects output paths through symlinked parents before creating outside directories', () => {
+    const { inputPath, dir } = writeInput(failedEvidence());
+    const outsideDir = mkdtempSync(join(tmpdir(), 'sci-target-issue-parent-outside-'));
+    const linkPath = join(dir, 'outside-link');
+    symlinkSync(outsideDir, linkPath);
+    const outsideChild = join(outsideDir, 'new-child');
+
+    const result = spawnSync('bun', ['run', script, '--input', relative(process.cwd(), inputPath), '--output', relative(process.cwd(), join(linkPath, 'new-child', 'issue.json'))], { cwd: process.cwd(), encoding: 'utf8' });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('Output path must stay within the workspace');
+    expect(existsSync(outsideChild)).toBe(false);
 
     rmSync(outsideDir, { recursive: true, force: true });
   });
