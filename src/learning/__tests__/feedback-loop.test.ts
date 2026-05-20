@@ -200,6 +200,30 @@ describe('FeedbackLoopSystem', () => {
             await reloadedFeedbackLoop.dispose();
         });
 
+        test('should preserve serialized feedback timestamps through sanitization', async () => {
+            const timestamp = '2026-05-20T12:34:56.000Z';
+            const feedbackId = await feedbackLoop.recordFeedback({
+                type: 'accept',
+                suggestionId: 'suggestion-serialized-time',
+                originalSuggestion: 'getUserData',
+                context: {
+                    file: '/src/user.ts',
+                    operation: 'rename',
+                    timestamp,
+                    confidence: 0.85,
+                } as any,
+                metadata: {
+                    source: 'cli',
+                },
+            });
+
+            const reloadedFeedbackLoop = new FeedbackLoopSystem(sharedServices, eventBus);
+            await reloadedFeedbackLoop.initialize();
+            const reloaded = reloadedFeedbackLoop.getRecentFeedback(10).find((feedback) => feedback.id === feedbackId);
+            expect(reloaded?.context.timestamp.toISOString()).toBe(timestamp);
+            await reloadedFeedbackLoop.dispose();
+        });
+
         test('should record feedback within performance target', async () => {
             const startTime = Date.now();
 

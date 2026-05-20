@@ -238,9 +238,32 @@ export class FeedbackLoopSystem {
             file: typeof context.file === 'string' ? context.file : 'unknown',
             operation: typeof context.operation === 'string' ? context.operation : 'unknown',
             confidence: typeof context.confidence === 'number' ? Math.max(0, Math.min(1, context.confidence)) : 0.5,
-            timestamp: context.timestamp instanceof Date ? context.timestamp : new Date(),
+            timestamp: this.sanitizeTimestamp(context.timestamp),
             userId: typeof context.userId === 'string' ? context.userId : undefined,
         };
+    }
+
+    private sanitizeTimestamp(value: unknown): Date {
+        if (value instanceof Date && !Number.isNaN(value.getTime())) {
+            return value;
+        }
+
+        if (typeof value === 'number' && Number.isFinite(value)) {
+            const millis = value > 0 && value < 1_000_000_000_000 ? value * 1000 : value;
+            const date = new Date(millis);
+            if (!Number.isNaN(date.getTime())) return date;
+        }
+
+        if (typeof value === 'string') {
+            const numeric = Number(value);
+            if (Number.isFinite(numeric)) {
+                return this.sanitizeTimestamp(numeric);
+            }
+            const date = new Date(value);
+            if (!Number.isNaN(date.getTime())) return date;
+        }
+
+        return new Date();
     }
 
     /**

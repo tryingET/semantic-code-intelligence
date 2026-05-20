@@ -425,10 +425,11 @@ export class EnhancedGrep {
     async search(params: EnhancedGrepParams): Promise<EnhancedGrepResult[]> {
         const startTime = Date.now();
         this.metrics.searchCount++;
+        const normalizedParams = this.normalizeParams(params);
 
         try {
             // Generate cache key
-            const cacheKey = this.generateCacheKey(params);
+            const cacheKey = this.generateCacheKey(normalizedParams);
 
             // Check cache
             if (this.config.enableCache) {
@@ -440,12 +441,12 @@ export class EnhancedGrep {
             }
 
             // Determine search strategy
-            const results = await this.executeSearch(params);
+            const results = await this.executeSearch(normalizedParams);
 
             // Cache positive and negative results; repeated no-match searches are
             // useful work to avoid and need to participate in cache accounting.
             if (this.config.enableCache) {
-                this.cache.set(cacheKey, results, undefined, params.path);
+                this.cache.set(cacheKey, results, undefined, normalizedParams.path);
             }
 
             this.updateMetrics(Date.now() - startTime);
@@ -620,6 +621,27 @@ export class EnhancedGrep {
                     results.push(...result.value);
                 }
             }
+        }
+
+        return this.applyNodeOutputMode(results, params);
+    }
+
+    private applyNodeOutputMode(results: EnhancedGrepResult[], params: EnhancedGrepParams): EnhancedGrepResult[] {
+        if (params.outputMode === 'files_with_matches') {
+            return Array.from(new Set(results.map((result) => result.file))).map((file) => ({ file, confidence: 0.8 }));
+        }
+
+        if (params.outputMode === 'count') {
+            const counts = new Map<string, number>();
+            for (const result of results) {
+                counts.set(result.file, (counts.get(result.file) || 0) + 1);
+            }
+            return Array.from(counts.entries()).map(([file, count]) => ({
+                file,
+                text: String(count),
+                match: String(count),
+                confidence: 0.8,
+            }));
         }
 
         return results;
@@ -797,6 +819,14 @@ export class EnhancedGrep {
 
     private escapeShellArg(arg: string): string {
         return arg.replace(/['"\\$`]/g, '\\$&');
+    }
+
+    private normalizeParams(params: EnhancedGrepParams): EnhancedGrepParams {
+        return {
+            ...params,
+            path: path.resolve(params.path || process.cwd()),
+            outputMode: params.outputMode || 'content',
+        };
     }
 
     private generateCacheKey(params: EnhancedGrepParams): string {
