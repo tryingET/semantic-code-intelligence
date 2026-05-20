@@ -239,6 +239,7 @@ export class FeedbackLoopSystem {
             operation: typeof context.operation === 'string' ? context.operation : 'unknown',
             confidence: typeof context.confidence === 'number' ? Math.max(0, Math.min(1, context.confidence)) : 0.5,
             timestamp: context.timestamp instanceof Date ? context.timestamp : new Date(),
+            userId: typeof context.userId === 'string' ? context.userId : undefined,
         };
     }
 
@@ -258,6 +259,8 @@ export class FeedbackLoopSystem {
             source: typeof metadata.source === 'string' ? metadata.source : 'unknown',
             keystrokes: typeof metadata.keystrokes === 'number' ? Math.max(0, metadata.keystrokes) : 0,
             timeToDecision: typeof metadata.timeToDecision === 'number' ? Math.max(0, metadata.timeToDecision) : 0,
+            alternativesShown:
+                typeof metadata.alternativesShown === 'number' ? Math.max(0, metadata.alternativesShown) : undefined,
         };
     }
 

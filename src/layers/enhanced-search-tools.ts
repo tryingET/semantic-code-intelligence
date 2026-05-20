@@ -160,7 +160,15 @@ interface LegacySearchCache<T> {
 class SmartCacheAdapter<T> implements LegacySearchCache<T> {
     private syncCache = new Map<
         string,
-        { data: T; timestamp: number; ttl: number; filePath?: string; fileModTime?: number; fileSize?: number }
+        {
+            data: T;
+            timestamp: number;
+            ttl: number;
+            filePath?: string;
+            fileModTime?: number;
+            fileSize?: number;
+            dependencies?: Array<{ path: string; fileModTime: number; fileSize: number }>;
+        }
     >();
     private stats = { hits: 0, misses: 0, evictions: 0 };
 
@@ -187,6 +195,9 @@ class SmartCacheAdapter<T> implements LegacySearchCache<T> {
     set(key: string, data: T, ttl?: number, filePath?: string): void {
         const actualTtl = ttl || 300000; // 5 minutes default
         const metadata = this.readFileMetadata(filePath);
+        if (metadata.uncacheable) {
+            return;
+        }
 
         this.evictIfNecessary();
         this.syncCache.set(key, {
@@ -196,6 +207,7 @@ class SmartCacheAdapter<T> implements LegacySearchCache<T> {
             filePath: metadata.filePath,
             fileModTime: metadata.fileModTime,
             fileSize: metadata.fileSize,
+            dependencies: metadata.dependencies,
         });
 
         this.smartCache.set(key, data, { ttl: actualTtl, filePath: metadata.filePath }).catch((error) => {
@@ -224,22 +236,84 @@ class SmartCacheAdapter<T> implements LegacySearchCache<T> {
         };
     }
 
-    private readFileMetadata(filePath?: string): { filePath?: string; fileModTime?: number; fileSize?: number } {
+    private readFileMetadata(filePath?: string): {
+        filePath?: string;
+        fileModTime?: number;
+        fileSize?: number;
+        dependencies?: Array<{ path: string; fileModTime: number; fileSize: number }>;
+        uncacheable?: boolean;
+    } {
         if (!filePath) return {};
+        const normalized = path.resolve(filePath);
         try {
-            const normalized = path.resolve(filePath);
             const stat = fsSync.statSync(normalized);
-            return { filePath: normalized, fileModTime: stat.mtime.getTime(), fileSize: stat.size };
+            if (stat.isDirectory()) {
+                const dependencies = this.snapshotDirectory(normalized);
+                return dependencies
+                    ? { filePath: normalized, fileModTime: stat.mtimeMs, fileSize: stat.size, dependencies }
+                    : { filePath: normalized, uncacheable: true };
+            }
+            return { filePath: normalized, fileModTime: stat.mtimeMs, fileSize: stat.size };
         } catch {
-            return { filePath: path.resolve(filePath) };
+            return { filePath: normalized };
         }
     }
 
-    private hasFileChanged(entry: { filePath?: string; fileModTime?: number; fileSize?: number }): boolean {
+    private snapshotDirectory(root: string): Array<{ path: string; fileModTime: number; fileSize: number }> | null {
+        const maxDependencies = 2000;
+        const dependencies: Array<{ path: string; fileModTime: number; fileSize: number }> = [];
+        const visit = (candidate: string): boolean => {
+            if (dependencies.length >= maxDependencies) return false;
+            let stat: fsSync.Stats;
+            try {
+                stat = fsSync.lstatSync(candidate);
+            } catch {
+                return true;
+            }
+
+            dependencies.push({ path: candidate, fileModTime: stat.mtimeMs, fileSize: stat.size });
+            if (!stat.isDirectory() || stat.isSymbolicLink()) return true;
+
+            let entries: string[];
+            try {
+                entries = fsSync.readdirSync(candidate);
+            } catch {
+                return true;
+            }
+
+            for (const entry of entries) {
+                if (!visit(path.join(candidate, entry))) return false;
+            }
+            return true;
+        };
+
+        return visit(root) ? dependencies : null;
+    }
+
+    private hasFileChanged(entry: {
+        filePath?: string;
+        fileModTime?: number;
+        fileSize?: number;
+        dependencies?: Array<{ path: string; fileModTime: number; fileSize: number }>;
+    }): boolean {
+        if (entry.dependencies) {
+            for (const dependency of entry.dependencies) {
+                try {
+                    const stat = fsSync.lstatSync(dependency.path);
+                    if (stat.mtimeMs !== dependency.fileModTime || stat.size !== dependency.fileSize) {
+                        return true;
+                    }
+                } catch {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         if (!entry.filePath || entry.fileModTime === undefined) return false;
         try {
             const stat = fsSync.statSync(entry.filePath);
-            return stat.mtime.getTime() > entry.fileModTime || stat.size !== entry.fileSize;
+            return stat.mtimeMs !== entry.fileModTime || stat.size !== entry.fileSize;
         } catch {
             return true;
         }
@@ -470,7 +544,7 @@ export class EnhancedGrep {
         args.push('--with-filename');
 
         if (params.caseInsensitive) args.push('-i');
-        if (params.outputMode === 'content' || params.lineNumbers) args.push('-n');
+        if (params.outputMode !== 'files_with_matches' && params.outputMode !== 'count') args.push('-n');
         if (params.multiline) args.push('-U', '--multiline-dotall');
         if (typeof params.contextBefore === 'number') args.push('-B', String(params.contextBefore));
         if (typeof params.contextAfter === 'number') args.push('-A', String(params.contextAfter));
@@ -685,17 +759,32 @@ export class EnhancedGrep {
     }
 
     private parsePlainTextLine(line: string, params: EnhancedGrepParams): EnhancedGrepResult | null {
-        // Simple parser for plain text ripgrep output
-        const parts = line.split(':');
-        if (parts.length >= 3) {
+        if (!line) return null;
+
+        if (params.outputMode === 'files_with_matches') {
+            return { file: line, confidence: 0.8 };
+        }
+
+        if (params.outputMode === 'count') {
+            const countMatch = line.match(/^(.*):(\d+)$/);
+            if (!countMatch) return null;
             return {
-                file: parts[0],
-                line: parseInt(parts[1]) || undefined,
-                text: parts.slice(2).join(':').trim(),
+                file: countMatch[1],
+                text: countMatch[2],
+                match: countMatch[2],
                 confidence: 0.8,
             };
         }
-        return null;
+
+        const match = line.match(/^(.*):(\d+):(.*)$/);
+        if (!match) return null;
+
+        return {
+            file: match[1],
+            line: parseInt(match[2], 10) || undefined,
+            text: match[3].trim(),
+            confidence: 0.8,
+        };
     }
 
     private chunkArray<T>(array: T[], size: number): T[][] {

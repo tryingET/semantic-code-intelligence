@@ -165,6 +165,41 @@ describe('FeedbackLoopSystem', () => {
             expect(recentFeedback[0].originalSuggestion).toBe('getUserData');
         });
 
+        test('should round-trip full-fidelity feedback metadata through persistence', async () => {
+            const feedbackId = await feedbackLoop.recordFeedback({
+                type: 'modify',
+                suggestionId: 'suggestion-full-fidelity',
+                originalSuggestion: 'getUserData',
+                finalValue: 'fetchUserData',
+                context: {
+                    file: '/src/user.ts',
+                    operation: 'rename',
+                    timestamp: new Date(),
+                    confidence: 0.85,
+                    userId: 'operator-1',
+                },
+                metadata: {
+                    source: 'cli',
+                    timeToDecision: 2500,
+                    keystrokes: 4,
+                    alternativesShown: 3,
+                },
+            });
+
+            const rows = await sharedServices.database.query(
+                'SELECT user_id, alternatives_shown FROM feedback_events WHERE id = ?',
+                [feedbackId]
+            );
+            expect(rows).toEqual([{ user_id: 'operator-1', alternatives_shown: 3 }]);
+
+            const reloadedFeedbackLoop = new FeedbackLoopSystem(sharedServices, eventBus);
+            await reloadedFeedbackLoop.initialize();
+            const reloaded = reloadedFeedbackLoop.getRecentFeedback(10).find((feedback) => feedback.id === feedbackId);
+            expect(reloaded?.context.userId).toBe('operator-1');
+            expect(reloaded?.metadata.alternativesShown).toBe(3);
+            await reloadedFeedbackLoop.dispose();
+        });
+
         test('should record feedback within performance target', async () => {
             const startTime = Date.now();
 

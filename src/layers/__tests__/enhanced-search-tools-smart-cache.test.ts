@@ -161,6 +161,47 @@ describe('Enhanced Search Tools with Smart Cache', () => {
             const updatedStats = grep.getCacheStats();
             expect(updatedStats.hits).toBe(2);
         });
+
+        it('should parse every public grep output mode', async () => {
+            const defaultResults = await grep.search({ pattern: 'testFunction', path: tempDir });
+            expect(defaultResults.length).toBeGreaterThan(0);
+            expect(defaultResults[0].line).toBeGreaterThan(0);
+            expect(defaultResults[0].text).toContain('testFunction');
+
+            const contentResults = await grep.search({ pattern: 'testFunction', path: tempDir, outputMode: 'content' });
+            expect(contentResults.length).toBeGreaterThan(0);
+            expect(contentResults[0].text).toContain('testFunction');
+
+            const filesWithMatches = await grep.search({
+                pattern: 'testFunction',
+                path: tempDir,
+                outputMode: 'files_with_matches',
+            });
+            expect(filesWithMatches.length).toBeGreaterThan(0);
+            expect(filesWithMatches.some((result) => result.file.endsWith('test1.ts'))).toBe(true);
+
+            const countResults = await grep.search({ pattern: 'testFunction', path: tempDir, outputMode: 'count' });
+            expect(countResults.length).toBeGreaterThan(0);
+            expect(countResults.some((result) => result.file.endsWith('test1.ts') && Number(result.text) > 0)).toBe(true);
+        });
+
+        it('should invalidate directory search cache when a nested file changes', async () => {
+            const nestedFile = path.join(tempDir, 'subdir', 'subtest.ts');
+            const params = {
+                pattern: 'subTest',
+                path: tempDir,
+                outputMode: 'content' as const,
+            };
+
+            const results1 = await grep.search(params);
+            expect(results1.length).toBe(1);
+
+            await new Promise((resolve) => setTimeout(resolve, 10)); // Ensure different mtime
+            await fs.writeFile(nestedFile, 'const renamedSubTest = "changed";');
+
+            const results2 = await grep.search(params);
+            expect(results2.length).toBe(0);
+        });
     });
 
     describe('EnhancedGlob with Smart Cache', () => {
