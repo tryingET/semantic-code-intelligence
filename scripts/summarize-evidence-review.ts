@@ -14,6 +14,15 @@ const format = argValue('--format') || 'markdown';
 const extract = argValue('--extract');
 const maxInputBytes = 10 * 1024 * 1024;
 
+function validateCliOptions() {
+  if (format !== 'json' && format !== 'markdown') {
+    throw new Error('Unsupported --format; expected markdown or json');
+  }
+  if (extract !== null && extract !== 'validationPlan') {
+    throw new Error('Unsupported --extract; expected validationPlan');
+  }
+}
+
 function isContainedPath(root: string, candidate: string): boolean {
   const rel = relative(root, candidate);
   return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
@@ -555,14 +564,13 @@ function renderMarkdown(review: any): string {
 }
 
 function main() {
+  validateCliOptions();
   const raw = readJson(inputPath);
   const review = normalize(raw);
   if (format === 'json') {
     console.log(JSON.stringify(review, null, 2));
-  } else if (format === 'markdown') {
-    console.log(renderMarkdown(review));
   } else {
-    throw new Error('Unsupported --format; expected markdown or json');
+    console.log(renderMarkdown(review));
   }
 }
 

@@ -424,10 +424,10 @@ describe('evidence review claim model', () => {
     expect(result.stderr).not.toContain(' at ');
   });
 
-  test('summary rejects unsupported formats without reflecting untrusted format text', () => {
+  test('summary rejects unsupported formats before parsing input and without reflecting untrusted format text', () => {
     const dir = workspaceTempDir('bad-format-');
     const inputPath = join(dir, 'input.json');
-    writeFileSync(inputPath, JSON.stringify(sampleValidationPlan()));
+    writeFileSync(inputPath, '{"schema":"semantic-code-intelligence.validation_plan.v1","secret":"format-before-parse-marker", BAD');
 
     const result = spawnSync('bun', ['run', script, '--input', relative(process.cwd(), inputPath), '--format', 'json\n## format-secret-marker'], {
       cwd: process.cwd(),
@@ -437,6 +437,24 @@ describe('evidence review claim model', () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('evidence-review: Unsupported --format; expected markdown or json');
     expect(result.stdout + result.stderr).not.toContain('format-secret-marker');
+    expect(result.stdout + result.stderr).not.toContain('format-before-parse-marker');
+    expect(result.stderr).not.toContain(process.cwd());
+  });
+
+  test('summary rejects unsupported extract modes before parsing input and without reflecting untrusted extract text', () => {
+    const dir = workspaceTempDir('bad-extract-');
+    const inputPath = join(dir, 'input.json');
+    writeFileSync(inputPath, '{"schema":"semantic-code-intelligence.alpha_evidence_packet.v1","secret":"extract-before-parse-marker", BAD');
+
+    const result = spawnSync('bun', ['run', script, '--input', relative(process.cwd(), inputPath), '--extract', 'validationplan\n## extract-secret-marker', '--format', 'json'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('evidence-review: Unsupported --extract; expected validationPlan');
+    expect(result.stdout + result.stderr).not.toContain('extract-secret-marker');
+    expect(result.stdout + result.stderr).not.toContain('extract-before-parse-marker');
     expect(result.stderr).not.toContain(process.cwd());
   });
 

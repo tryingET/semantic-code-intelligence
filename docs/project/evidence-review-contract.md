@@ -253,7 +253,7 @@ Any implementation of this contract must validate:
 9. alpha packet bundle gates remain distinct from selected-command execution evidence;
 10. oversized evidence inputs fail closed before parsing;
 11. path escapes, symlink escapes, TOCTOU replacement/mutation, missing/unreadable inputs, and non-regular evidence inputs fail closed without leaking input contents;
-12. unsupported schemas, malformed JSON, and unsupported formats fail with sanitized errors that do not expose stacks, source paths, or reflected caller-controlled text;
+12. unsupported schemas, malformed JSON, unsupported formats, and unsupported extract modes fail with sanitized errors that do not expose stacks, source paths, or reflected caller-controlled text;
 13. docs strict and direction check pass;
 14. if runtime contracts change, `bun run alpha:mvp:check` still passes.
 
