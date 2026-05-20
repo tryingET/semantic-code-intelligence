@@ -118,9 +118,11 @@
     "reason": "No source mutation occurred; rollback is not needed for preview-only evidence."
   },
   "verification": {
+    "applied": null,
     "appliedDiffMatchesSnapshot": null,
     "method": null,
-    "diagnostics": null
+    "diagnostics": null,
+    "semanticFailures": []
   },
   "safety": {
     "sourceMutated": false,

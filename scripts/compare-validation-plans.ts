@@ -2,6 +2,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { validateGraphImpactContext } from './validation-plan-graph-impact';
+import { validateValidationPlanSemantics } from './validation-plan-semantics';
 
 const evidenceRoot = process.env.SCI_VALIDATION_PLAN_EVIDENCE_ROOT || '.test-results';
 const outputPath = join(evidenceRoot, 'validation-plan-comparison.json');
@@ -23,6 +24,7 @@ function normalize(plan: any) {
   const verification = plan?.verification && typeof plan.verification === 'object' ? plan.verification : null;
   const applied = plan?.apply?.applied === true;
   const verificationAppliedDiffMatchesSnapshot = typeof verification?.appliedDiffMatchesSnapshot === 'boolean' ? verification.appliedDiffMatchesSnapshot : null;
+  const semantic = validateValidationPlanSemantics(plan);
   return {
     schema: plan?.schema || null,
     workflow: plan?.workflow || null,
@@ -39,7 +41,8 @@ function normalize(plan: any) {
     verificationPresent: !!verification,
     verificationApplied: verification?.applied === true,
     verificationAppliedDiffMatchesSnapshot,
-    verificationStateComplete: !!verification && verification.applied === applied && (applied ? typeof verification?.appliedDiffMatchesSnapshot === 'boolean' : verificationAppliedDiffMatchesSnapshot === null),
+    verificationSemanticFailures: semantic.failures.map((failure) => failure.code),
+    verificationStateComplete: !!verification && semantic.ok,
     graphImpactPresent: graphImpact.present,
     graphImpactSeed: graphImpact.seed,
     graphImpactRequestedEdges: graphImpact.requestedEdges,
@@ -102,6 +105,10 @@ const failureGuidance: Record<string, { explanation: string; remediation: string
     explanation: 'safe_write validationPlan verification is present but does not preserve applied state or applied-diff match state.',
     remediation: 'Ensure validationPlan.verification.applied mirrors apply.applied and appliedDiffMatchesSnapshot is boolean only for applied states, null for non-applied preview/refusal states.',
   },
+  safe_write_verification_coverage_missing: {
+    explanation: 'Generated safe_write validationPlan evidence does not include both a verified clean apply and a mismatch/fail-closed apply case.',
+    remediation: 'Restore safe_write dogfood coverage for clean guarded apply with appliedDiffMatchesSnapshot=true and dirty mismatch with appliedDiffMatchesSnapshot=false.',
+  },
   graph_impact_context_missing: {
     explanation: 'Generated validationPlan evidence no longer includes a graph-bearing plan, so graph review context can drift unnoticed.',
     remediation: 'Thread graph_expand impactSummary into at least one preview/check dogfood validationPlan and preserve seed, requested edges, edge status, and limitations.',
@@ -148,6 +155,17 @@ comparisons.push({
   expected: { graphContextPlanCount: '>=1' },
   actual: { graphContextPlanCount },
 });
+const cleanApplyVerificationPlanCount = normalized.filter((item) => item.workflow === 'safe_write' && item.applied === true && item.verificationApplied === true && item.verificationAppliedDiffMatchesSnapshot === true && item.verificationStateComplete).length;
+const mismatchVerificationPlanCount = normalized.filter((item) => item.workflow === 'safe_write' && item.applied === true && item.verificationApplied === true && item.verificationAppliedDiffMatchesSnapshot === false && item.verificationStateComplete).length;
+const safeWriteVerificationCoverageOk = cleanApplyVerificationPlanCount >= 1 && mismatchVerificationPlanCount >= 1;
+comparisons.push({
+  source: 'bundle:safe-write-verification-coverage',
+  ok: safeWriteVerificationCoverageOk,
+  failures: safeWriteVerificationCoverageOk ? [] : ['safe_write_verification_coverage_missing'],
+  guidance: safeWriteVerificationCoverageOk ? [] : explainFailures(['safe_write_verification_coverage_missing']),
+  expected: { cleanApplyVerificationPlanCount: '>=1', mismatchVerificationPlanCount: '>=1' },
+  actual: { cleanApplyVerificationPlanCount, mismatchVerificationPlanCount },
+});
 
 const drift = comparisons.filter((item) => !item.ok);
 const operatorSummary = {
@@ -159,9 +177,10 @@ const operatorSummary = {
 };
 const evidence = {
   schema: 'semantic-code-intelligence.validation_plan_comparison.v1',
-  ok: plans.length >= 2 && graphContextPlanCount >= 1 && drift.length === 0,
+  ok: plans.length >= 2 && graphContextPlanCount >= 1 && safeWriteVerificationCoverageOk && drift.length === 0,
   comparedPlanCount: plans.length,
   graphContextPlanCount,
+  safeWriteVerificationCoverage: { cleanApplyVerificationPlanCount, mismatchVerificationPlanCount },
   stableFields: ['schema', 'workflow', 'mode', 'selectedCommands', 'recommendationsAppliedToSelected', 'checksOk', 'hasArtifacts', 'hasRollback', 'verificationPresent', 'verificationApplied', 'verificationAppliedDiffMatchesSnapshot', 'graphImpactSeed', 'graphImpactRequestedEdges', 'graphImpactEdgeEvidence', 'graphImpactLimitationsFieldPresent'],
   ignoredVolatileFields: ['snapshot', 'elapsedMs', 'artifact paths with snapshot ids', 'generatedAt'],
   comparisons,

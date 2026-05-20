@@ -202,6 +202,9 @@ describe('evidence review claim model', () => {
   });
 
   test('alpha packet does not erase embedded applied validation plan posture', () => {
+    const dir = workspaceTempDir('embedded-applied-');
+    const rollbackPatch = join(dir, 'example.patch');
+    writeFileSync(rollbackPatch, 'diff --git a/example b/example\n');
     const packet = {
       schema: 'semantic-code-intelligence.alpha_evidence_packet.v1',
       ok: true,
@@ -209,11 +212,11 @@ describe('evidence review claim model', () => {
         validationPlanSample: clonePlan({
           status: 'applied',
           apply: { applied: true },
-          rollback: { command: 'git apply -R .test-results/example.patch' },
+          rollback: { command: `git apply -R ${relative(process.cwd(), rollbackPatch)}` },
         }),
       },
     };
-    const { stdout } = runSummary(packet, ['--format', 'json']);
+    const { stdout } = runSummary(packet, ['--format', 'json'], dir);
     const review = JSON.parse(stdout);
 
     expect(review.outcome.applied).toBe(true);
@@ -350,11 +353,14 @@ describe('evidence review claim model', () => {
   });
 
   test('applied safe-write verification mismatch is a blocking visible limitation', () => {
+    const dir = workspaceTempDir('verification-rollback-');
+    const rollbackPatch = join(dir, 'example.patch');
+    writeFileSync(rollbackPatch, 'diff --git a/example b/example\n');
     const { stdout } = runSummary(clonePlan({
       apply: { applied: true },
-      rollback: { command: 'git apply -R .test-results/example.patch' },
-      verification: { appliedDiffMatchesSnapshot: false, method: 'test_mismatch' },
-    }), ['--format', 'json']);
+      rollback: { command: `git apply -R ${relative(process.cwd(), rollbackPatch)}` },
+      verification: { applied: true, appliedDiffMatchesSnapshot: false, method: 'test_mismatch' },
+    }), ['--format', 'json'], dir);
     const review = JSON.parse(stdout);
 
     expect(review.verification.appliedDiffMatchesSnapshot).toBe(false);
@@ -364,6 +370,20 @@ describe('evidence review claim model', () => {
       sourceArtifact: 'apply-verification',
       severity: 'blocking',
     });
+  });
+
+  test('preview verification cannot forge supported applied-diff evidence', () => {
+    const { stdout } = runSummary(clonePlan({
+      apply: { applied: false },
+      verification: { applied: true, appliedDiffMatchesSnapshot: true, method: 'forged_preview' },
+    }), ['--format', 'json']);
+    const review = JSON.parse(stdout);
+
+    expect(review.outcome.applied).toBe(false);
+    expect(review.verification.semanticFailures.map((failure: any) => failure.code)).toContain('verification_applied_mismatch');
+    expect(review.verification.semanticFailures.map((failure: any) => failure.code)).toContain('verification_preview_diff_match_not_applicable');
+    expect(artifactById(review, 'apply-verification')?.observedStatus).toBe('failed');
+    expect(claimById(review, 'apply-verification')?.status).toBe('contradicted');
   });
 
   test('malicious rollback command is not promoted as available rollback evidence', () => {
@@ -379,6 +399,18 @@ describe('evidence review claim model', () => {
     expect(review.rollback.status).toBe('untrusted_command_unavailable_after_apply');
     expect(artifactById(review, 'rollback')?.observedStatus).toBe('unavailable');
     expect(claimById(review, 'rollback-posture')?.status).toBe('contradicted');
+  });
+
+  test('missing rollback patch is not promoted as available rollback evidence', () => {
+    const { stdout } = runSummary(clonePlan({
+      apply: { applied: true },
+      rollback: { command: 'git apply -R .test-results/does-not-exist.patch' },
+    }), ['--format', 'json']);
+    const review = JSON.parse(stdout);
+
+    expect(review.rollback.available).toBe(false);
+    expect(review.rollback.status).toBe('untrusted_command_unavailable_after_apply');
+    expect(artifactById(review, 'rollback')?.observedStatus).toBe('unavailable');
   });
 
   test('selected recommendations remain structurally distinct when command strings overlap', () => {

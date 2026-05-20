@@ -45,7 +45,12 @@ function safeWritePlan(overrides: Record<string, any> = {}) {
   });
 }
 
-function writeEvidence(root: string, recommendPlan: any, safePlan = safeWritePlan()) {
+function writeEvidence(root: string, recommendPlan: any, safePlans: any | any[] = [
+  safeWritePlan(),
+  safeWritePlan({ mode: 'apply_after_checks', apply: { applied: true, guardSatisfied: true }, verification: { staged: true, checksPassed: true, applyGuardSatisfied: true, applied: true, appliedDiffMatchesSnapshot: true } }),
+  safeWritePlan({ mode: 'apply_after_checks', apply: { applied: true, guardSatisfied: true }, verification: { staged: true, checksPassed: true, applyGuardSatisfied: true, applied: true, appliedDiffMatchesSnapshot: false } }),
+]) {
+  const plans = Array.isArray(safePlans) ? safePlans : [safePlans];
   mkdirSync(root, { recursive: true });
   writeFileSync(join(root, 'recommend-checks-dogfood.json'), JSON.stringify({
     schema: 'semantic-code-intelligence.recommend_checks_dogfood.v1',
@@ -55,7 +60,7 @@ function writeEvidence(root: string, recommendPlan: any, safePlan = safeWritePla
   writeFileSync(join(root, 'safe-write-dogfood.json'), JSON.stringify({
     schema: 'semantic-code-intelligence.safe_write_dogfood.v1',
     ok: true,
-    calls: [{ payload: { mode: 'preview_validate', validationPlan: safePlan } }],
+    calls: plans.map((plan) => ({ payload: { mode: plan.mode || 'preview_validate', validationPlan: plan } })),
   }, null, 2));
 }
 
@@ -120,6 +125,18 @@ describe('validation plan comparison graph context', () => {
 
     expect(report.ok).toBe(false);
     expect(report.drift.some((item: any) => item.failures.includes('safe_write_verification_incomplete'))).toBe(true);
+  });
+
+  test('fails closed when safe_write bundle lacks clean apply and mismatch verification coverage', () => {
+    const root = makeRoot();
+    writeEvidence(root, validationPlan(), safeWritePlan());
+
+    const result = runComparison(root);
+    expect(result.status).toBe(1);
+    const report = JSON.parse(readFileSync(join(root, 'validation-plan-comparison.json'), 'utf8'));
+
+    expect(report.ok).toBe(false);
+    expect(report.drift.some((item: any) => item.failures.includes('safe_write_verification_coverage_missing'))).toBe(true);
   });
 
   test('fails closed when no generated validationPlan carries graph context', () => {

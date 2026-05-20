@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { closeSync, constants, fstatSync, openSync, readSync, realpathSync, statSync, type Stats } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
+import { validateValidationPlanSemantics } from './validation-plan-semantics';
 
 function argValue(name: string): string | null {
   const idx = process.argv.indexOf(name);
@@ -267,9 +268,14 @@ function isWorkspaceMaterializedFile(ref: string): boolean {
   }
 }
 
-function rollbackCommandIsPlausible(command: string): boolean {
+function rollbackCommandPatchPath(command: string): string | null {
   const match = command.match(/^git apply\s+(?:-R|--reverse)\s+([^\s;&|`$<>]+)$/);
-  return !!match && isSafeRelativeWorkspaceRef(match[1]);
+  return match?.[1] || null;
+}
+
+function rollbackCommandIsPlausible(command: string): boolean {
+  const patchPath = rollbackCommandPatchPath(command);
+  return !!patchPath && isWorkspaceMaterializedFile(patchPath);
 }
 
 type ArtifactRefSummary = {
@@ -443,10 +449,13 @@ function normalizeRollback(plan: any) {
 
 function normalizeVerification(plan: any) {
   const verification = plan?.verification && typeof plan.verification === 'object' ? plan.verification : null;
+  const semantic = validateValidationPlanSemantics(plan);
   return {
+    applied: typeof verification?.applied === 'boolean' ? verification.applied : null,
     appliedDiffMatchesSnapshot: typeof verification?.appliedDiffMatchesSnapshot === 'boolean' ? verification.appliedDiffMatchesSnapshot : null,
     method: typeof verification?.method === 'string' ? verification.method : null,
     diagnostics: verification?.diagnostics && typeof verification.diagnostics === 'object' ? verification.diagnostics : null,
+    semanticFailures: semantic.failures,
   };
 }
 
@@ -616,9 +625,11 @@ function withConceptualModel(review: any) {
   const rollbackDurability: EvidenceDurability = reviewWithLimitations?.rollback?.status === 'inverse_patch_materialized'
     ? 'materialized_local'
     : rollbackAvailable ? 'reproducible_local' : 'ephemeral';
-  const verificationApplicable = reviewWithLimitations?.outcome?.applied === true || typeof reviewWithLimitations?.verification?.appliedDiffMatchesSnapshot === 'boolean';
-  const verificationFailed = reviewWithLimitations?.outcome?.applied === true && reviewWithLimitations?.verification?.appliedDiffMatchesSnapshot === false;
+  const verificationSemanticFailures = arr(reviewWithLimitations?.verification?.semanticFailures).map((failure: any) => String(failure?.code || 'verification_semantic_failure'));
+  const verificationApplicable = reviewWithLimitations?.outcome?.applied === true || typeof reviewWithLimitations?.verification?.appliedDiffMatchesSnapshot === 'boolean' || verificationSemanticFailures.length > 0;
+  const verificationFailed = verificationSemanticFailures.length > 0 || (reviewWithLimitations?.outcome?.applied === true && reviewWithLimitations?.verification?.appliedDiffMatchesSnapshot === false);
   const verificationObserved = typeof reviewWithLimitations?.verification?.appliedDiffMatchesSnapshot === 'boolean';
+  const verificationUnavailable = verificationApplicable && !verificationObserved && verificationSemanticFailures.length === 0;
   const verificationState = verificationFailed ? 'failed' : evidenceState('optional', verificationObserved, false, verificationApplicable);
 
   const evidenceArtifacts = [
@@ -666,13 +677,17 @@ function withConceptualModel(review: any) {
     ['continue-or-stop'],
     'blocking',
   )] : [];
-  const verificationLimitations = verificationFailed ? [limitation(
+  const verificationLimitations = verificationFailed || verificationUnavailable ? [limitation(
     'apply-verification-limitation-1',
-    'Applied diff does not match the reviewed snapshot artifact; stop or inspect before treating apply evidence as valid.',
+    verificationSemanticFailures.length
+      ? `Apply verification is lifecycle-inconsistent (${verificationSemanticFailures.join(', ')}); stop or inspect before treating apply evidence as valid.`
+      : verificationUnavailable
+        ? 'Applied evidence has no applied-diff verification observation; stop or inspect before treating apply evidence as valid.'
+        : 'Applied diff does not match the reviewed snapshot artifact; stop or inspect before treating apply evidence as valid.',
     'apply-verification',
     ['apply-verification'],
     ['continue-or-stop'],
-    'blocking',
+    verificationFailed ? 'blocking' : 'warning',
   )] : [];
   const previewLimitations = reviewWithLimitations?.outcome?.previewOnly ? [limitation(
     'preview-boundary-limitation-1',
@@ -758,7 +773,7 @@ function withConceptualModel(review: any) {
     ),
     claim(
       'apply-verification',
-      verificationFailed ? 'Applied diff verification contradicts the reviewed snapshot.' : verificationObserved ? 'Applied diff verification evidence is recorded.' : 'Applied diff verification is not recorded for this review.',
+      verificationFailed ? 'Applied diff verification contradicts the reviewed snapshot or lifecycle.' : verificationObserved ? 'Applied diff verification evidence is recorded.' : 'Applied diff verification is not recorded for this review.',
       verificationFailed ? 'contradicted' : verificationObserved ? 'supported' : verificationApplicable ? 'unresolved' : 'weakened',
       ['apply-verification'],
       verificationLimitationIds,
