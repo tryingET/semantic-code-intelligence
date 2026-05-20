@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
-import { readFileSync, statSync } from 'node:fs';
+import { closeSync, fstatSync, openSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { isAbsolute, relative, resolve } from 'node:path';
 
 function argValue(name: string): string | null {
   const idx = process.argv.indexOf(name);
@@ -13,12 +14,61 @@ const format = argValue('--format') || 'markdown';
 const extract = argValue('--extract');
 const maxInputBytes = 10 * 1024 * 1024;
 
-function readJson(path: string): any {
-  const size = statSync(path).size;
-  if (size > maxInputBytes) {
-    throw new Error(`Evidence input too large: ${size} bytes exceeds ${maxInputBytes} byte limit`);
+function isContainedPath(root: string, candidate: string): boolean {
+  const rel = relative(root, candidate);
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+}
+
+function openedFdRealpath(fd: number): string {
+  try {
+    return realpathSync(`/proc/self/fd/${fd}`);
+  } catch {
+    throw new Error('Evidence input is unavailable or unreadable');
   }
-  return JSON.parse(readFileSync(path, 'utf8'));
+}
+
+function readJson(path: string): any {
+  const workspaceRoot = realpathSync(process.cwd());
+  const lexicalPath = resolve(workspaceRoot, path);
+  if (!isContainedPath(workspaceRoot, lexicalPath)) {
+    throw new Error('Evidence input must stay within the workspace');
+  }
+
+  let initialStat;
+  try {
+    initialStat = statSync(lexicalPath);
+  } catch {
+    throw new Error('Evidence input is unavailable or unreadable');
+  }
+  if (!initialStat.isFile()) {
+    throw new Error('Evidence input must be a regular file');
+  }
+
+  let fd: number;
+  try {
+    fd = openSync(lexicalPath, 'r');
+  } catch {
+    throw new Error('Evidence input is unavailable or unreadable');
+  }
+
+  try {
+    const openedStat = fstatSync(fd);
+    if (!openedStat.isFile()) {
+      throw new Error('Evidence input must be a regular file');
+    }
+    if (openedStat.size > maxInputBytes) {
+      throw new Error(`Evidence input too large: ${openedStat.size} bytes exceeds ${maxInputBytes} byte limit`);
+    }
+
+    const realPath = openedFdRealpath(fd);
+    if (!isContainedPath(workspaceRoot, realPath)) {
+      throw new Error('Evidence input must stay within the workspace');
+    }
+
+    return JSON.parse(readFileSync(fd, 'utf8'));
+  } finally {
+    closeSync(fd);
+  }
 }
 
 function arr(value: any): any[] {

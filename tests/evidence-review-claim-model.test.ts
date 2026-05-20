@@ -1,11 +1,19 @@
-import { describe, expect, test } from 'bun:test';
-import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { afterAll, describe, expect, test } from 'bun:test';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const script = 'scripts/summarize-evidence-review.ts';
 const sampleOutputFixture = 'tests/fixtures/evidence-review-claim-model-sample.json';
+const testArtifactRoot = join(process.cwd(), '.test-results', 'evidence-review-tests');
+
+function cleanupTestArtifacts() {
+  rmSync(testArtifactRoot, { recursive: true, force: true });
+}
+
+cleanupTestArtifacts();
+afterAll(cleanupTestArtifacts);
 
 function sampleValidationPlan() {
   return {
@@ -33,15 +41,20 @@ function sampleValidationPlan() {
   };
 }
 
-function runSummary(input: unknown, args: string[], dir = mkdtempSync(join(tmpdir(), 'sci-evidence-review-'))) {
+function workspaceTempDir(prefix: string) {
+  mkdirSync(testArtifactRoot, { recursive: true });
+  return mkdtempSync(join(testArtifactRoot, prefix));
+}
+
+function runSummary(input: unknown, args: string[], dir = workspaceTempDir('case-')) {
   const inputPath = join(dir, 'input.json');
   writeFileSync(inputPath, JSON.stringify(input, null, 2));
-  const result = spawnSync('bun', ['run', script, '--input', inputPath, ...args], {
+  const result = spawnSync('bun', ['run', script, '--input', relative(process.cwd(), inputPath), ...args], {
     cwd: process.cwd(),
     encoding: 'utf8',
   });
   expect(result.status, result.stderr).toBe(0);
-  return { stdout: result.stdout, dir };
+  return { stdout: result.stdout, dir, inputPath };
 }
 
 function clonePlan(overrides: Record<string, unknown> = {}) {
@@ -217,11 +230,11 @@ describe('evidence review claim model', () => {
   });
 
   test('summary rejects oversized evidence inputs before parsing', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'sci-evidence-review-large-'));
+    const dir = workspaceTempDir('large-');
     const inputPath = join(dir, 'large.json');
     writeFileSync(inputPath, `{"schema":"semantic-code-intelligence.validation_plan.v1","padding":"${'x'.repeat(10 * 1024 * 1024)}"}`);
 
-    const result = spawnSync('bun', ['run', script, '--input', inputPath, '--format', 'json'], {
+    const result = spawnSync('bun', ['run', script, '--input', relative(process.cwd(), inputPath), '--format', 'json'], {
       cwd: process.cwd(),
       encoding: 'utf8',
     });
@@ -230,8 +243,64 @@ describe('evidence review claim model', () => {
     expect(result.stderr).toContain('Evidence input too large');
   });
 
+  test('summary rejects evidence inputs outside the workspace without leaking contents', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sci-evidence-review-outside-'));
+    const inputPath = join(dir, 'outside.json');
+    writeFileSync(inputPath, JSON.stringify({ ...sampleValidationPlan(), graphImpact: { limitations: ['outside-secret-marker'] } }));
+
+    const result = spawnSync('bun', ['run', script, '--input', inputPath, '--format', 'markdown'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    });
+
+    rmSync(dir, { recursive: true, force: true });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('Evidence input must stay within the workspace');
+    expect(result.stdout + result.stderr).not.toContain('outside-secret-marker');
+  });
+
+  test('summary rejects workspace symlink escapes without leaking target contents', () => {
+    const outsideDir = mkdtempSync(join(tmpdir(), 'sci-evidence-review-symlink-outside-'));
+    const outsidePath = join(outsideDir, 'outside.json');
+    writeFileSync(outsidePath, JSON.stringify({ ...sampleValidationPlan(), graphImpact: { limitations: ['symlink-secret-marker'] } }));
+    const dir = workspaceTempDir('symlink-');
+    const linkPath = join(dir, 'input.json');
+    symlinkSync(outsidePath, linkPath);
+
+    const result = spawnSync('bun', ['run', script, '--input', relative(process.cwd(), linkPath), '--format', 'markdown'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    });
+
+    rmSync(outsideDir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('Evidence input must stay within the workspace');
+    expect(result.stdout + result.stderr).not.toContain('symlink-secret-marker');
+  });
+
+  test('summary rejects missing and non-regular evidence inputs before parsing', () => {
+    const dir = workspaceTempDir('nonregular-');
+    const missing = join(dir, 'missing.json');
+    const missingResult = spawnSync('bun', ['run', script, '--input', relative(process.cwd(), missing), '--format', 'json'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    });
+    expect(missingResult.status).not.toBe(0);
+    expect(missingResult.stderr).toContain('Evidence input is unavailable or unreadable');
+
+    const inputDir = join(dir, 'input-dir.json');
+    mkdirSync(inputDir);
+    const dirResult = spawnSync('bun', ['run', script, '--input', relative(process.cwd(), inputDir), '--format', 'json'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    });
+    expect(dirResult.status).not.toBe(0);
+    expect(dirResult.stderr).toContain('Evidence input must be a regular file');
+  });
+
   test('summary renderer is read-only for workspace and input directory', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'sci-evidence-review-readonly-'));
+    const dir = workspaceTempDir('readonly-');
     const beforeDir = readdirSync(dir).sort();
     const beforeGit = spawnSync('git', ['status', '--short'], { cwd: process.cwd(), encoding: 'utf8' }).stdout;
 
