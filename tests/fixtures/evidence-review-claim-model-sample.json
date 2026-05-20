@@ -111,7 +111,16 @@
   },
   "rollback": {
     "available": false,
-    "command": null
+    "notNeeded": true,
+    "status": "not_needed_preview",
+    "command": null,
+    "inversePatch": null,
+    "reason": "No source mutation occurred; rollback is not needed for preview-only evidence."
+  },
+  "verification": {
+    "appliedDiffMatchesSnapshot": null,
+    "method": null,
+    "diagnostics": null
   },
   "safety": {
     "sourceMutated": false,
@@ -164,10 +173,19 @@
       "id": "rollback",
       "kind": "rollback",
       "schema": null,
-      "observedStatus": "unavailable",
+      "observedStatus": "inapplicable",
       "durability": "ephemeral",
       "uriOrPath": null,
-      "citationRequirement": "cite concrete rollback command or materialized inverse patch; otherwise treat rollback as unavailable"
+      "citationRequirement": "no rollback needed because this evidence is preview-only and no source mutation occurred"
+    },
+    {
+      "id": "apply-verification",
+      "kind": "apply_verification",
+      "schema": null,
+      "observedStatus": "inapplicable",
+      "durability": "ephemeral",
+      "uriOrPath": null,
+      "citationRequirement": "cite applied-diff verification evidence when source mutation is claimed; mismatch blocks apply-safety claims"
     }
   ],
   "limitations": [
@@ -185,7 +203,7 @@
     },
     {
       "id": "preview-boundary-limitation-1",
-      "limitation": "Preview-only evidence does not prove apply safety or rollback availability.",
+      "limitation": "Preview-only evidence does not prove apply safety; rollback is not needed unless a source mutation is applied.",
       "sourceArtifact": "rollback",
       "affectsClaims": [
         "preview-boundary"
@@ -244,6 +262,56 @@
       "warrant": "Missing or fallback-shaped graph evidence qualifies continuation decisions; it does not imply no impact.",
       "authorityBoundaries": [
         "not-production-readiness"
+      ],
+      "operatorDecisionPoints": [
+        "continue-or-stop"
+      ]
+    },
+    {
+      "id": "artifact-durability",
+      "claim": "Snapshot artifact references are not materialized local proof.",
+      "status": "weakened",
+      "supportedBy": [
+        "snapshot-artifacts"
+      ],
+      "limitedBy": [],
+      "warrant": "Artifact references must distinguish materialized local files from ephemeral snapshot pointers, missing files, unsupported URIs, and path escapes.",
+      "authorityBoundaries": [
+        "not-canonical-authority"
+      ],
+      "operatorDecisionPoints": [
+        "continue-or-stop"
+      ]
+    },
+    {
+      "id": "rollback-posture",
+      "claim": "Rollback is not needed because no source mutation was applied.",
+      "status": "supported",
+      "supportedBy": [
+        "rollback"
+      ],
+      "limitedBy": [],
+      "warrant": "Rollback availability requires a command or materialized inverse patch; preview-only evidence does not need rollback because it does not mutate source.",
+      "authorityBoundaries": [
+        "not-canonical-authority",
+        "no-implicit-mutation"
+      ],
+      "operatorDecisionPoints": [
+        "continue-or-stop"
+      ]
+    },
+    {
+      "id": "apply-verification",
+      "claim": "Applied diff verification is not recorded for this review.",
+      "status": "weakened",
+      "supportedBy": [
+        "apply-verification"
+      ],
+      "limitedBy": [],
+      "warrant": "Applied mutation evidence must preserve whether the applied diff matched the reviewed snapshot; mismatch blocks apply-safety claims.",
+      "authorityBoundaries": [
+        "not-production-readiness",
+        "not-canonical-authority"
       ],
       "operatorDecisionPoints": [
         "continue-or-stop"

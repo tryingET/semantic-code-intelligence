@@ -99,7 +99,7 @@ function assertClaimModel(review: any) {
   const statuses = review.evidenceArtifacts.map((artifact: any) => artifact.observedStatus);
   expect(statuses).toContain('observed');
   expect(statuses).toContain('unknown');
-  expect(statuses).toContain('unavailable');
+  expect(statuses).toContain('inapplicable');
   for (const status of statuses) {
     expect(['observed', 'failed', 'unavailable', 'unknown', 'inapplicable']).toContain(status);
   }
@@ -287,6 +287,98 @@ describe('evidence review claim model', () => {
     expect(artifactById(review, 'validation-execution')?.observedStatus).toBe('observed');
     expect(artifactById(review, 'validation-execution')?.durability).toBe('reproducible_local');
     expect(artifactById(review, 'validation-execution')?.citationRequirement).toContain('local summary output alone is not authority-durable evidence');
+  });
+
+  test('snapshot artifact durability distinguishes materialized files, snapshot pointers, and path escapes', () => {
+    const dir = workspaceTempDir('materialized-artifact-');
+    const overlayPath = join(dir, 'overlay.diff');
+    writeFileSync(overlayPath, 'diff --git a/example b/example\n');
+    const relativeOverlay = relative(process.cwd(), overlayPath);
+
+    const { stdout: materializedStdout } = runSummary(clonePlan({ artifacts: { overlayDiff: relativeOverlay } }), ['--format', 'json'], dir);
+    const materializedReview = JSON.parse(materializedStdout);
+    expect(artifactById(materializedReview, 'snapshot-artifacts')).toMatchObject({
+      observedStatus: 'observed',
+      durability: 'materialized_local',
+      uriOrPath: relativeOverlay,
+    });
+    expect(claimById(materializedReview, 'artifact-durability')?.status).toBe('supported');
+
+    const { stdout: snapshotStdout } = runSummary(clonePlan({ artifacts: { overlayDiff: 'snapshot://example/overlay.diff' } }), ['--format', 'json']);
+    const snapshotReview = JSON.parse(snapshotStdout);
+    expect(artifactById(snapshotReview, 'snapshot-artifacts')).toMatchObject({
+      observedStatus: 'observed',
+      durability: 'ephemeral',
+      uriOrPath: 'snapshot://example/overlay.diff',
+    });
+    expect(artifactById(snapshotReview, 'snapshot-artifacts')?.citationRequirement).toContain('snapshot:// references are pointers');
+
+    const { stdout: escapedStdout } = runSummary(clonePlan({ artifacts: { overlayDiff: '../outside/overlay.diff' } }), ['--format', 'json']);
+    const escapedReview = JSON.parse(escapedStdout);
+    expect(artifactById(escapedReview, 'snapshot-artifacts')?.durability).not.toBe('materialized_local');
+    expect(artifactById(escapedReview, 'snapshot-artifacts')?.uriOrPath).toBeNull();
+    expect(claimById(escapedReview, 'artifact-durability')?.limitedBy).toContain('snapshot-artifact-limitation-1');
+  });
+
+  test('rollback posture distinguishes inverse patches, preview no-op, and applied mutation without rollback', () => {
+    const dir = workspaceTempDir('rollback-artifact-');
+    const inversePatchPath = join(dir, 'inverse.patch');
+    writeFileSync(inversePatchPath, 'diff --git a/example b/example\n');
+    const relativeInversePatch = relative(process.cwd(), inversePatchPath);
+
+    const { stdout: inverseStdout } = runSummary(clonePlan({
+      apply: { applied: true },
+      rollback: { inversePatch: relativeInversePatch },
+    }), ['--format', 'json'], dir);
+    const inverseReview = JSON.parse(inverseStdout);
+    expect(inverseReview.rollback).toMatchObject({ available: true, status: 'inverse_patch_materialized', inversePatch: relativeInversePatch });
+    expect(artifactById(inverseReview, 'rollback')).toMatchObject({ observedStatus: 'observed', durability: 'materialized_local' });
+    expect(claimById(inverseReview, 'rollback-posture')?.status).toBe('supported');
+
+    const { stdout: previewStdout } = runSummary(clonePlan({ apply: { applied: false }, rollback: {} }), ['--format', 'json']);
+    const previewReview = JSON.parse(previewStdout);
+    expect(previewReview.rollback).toMatchObject({ available: false, notNeeded: true, status: 'not_needed_preview' });
+    expect(artifactById(previewReview, 'rollback')?.observedStatus).toBe('inapplicable');
+    expect(claimById(previewReview, 'rollback-posture')?.claim).toContain('not needed');
+
+    const { stdout: missingStdout } = runSummary(clonePlan({ apply: { applied: true }, rollback: {} }), ['--format', 'json']);
+    const missingReview = JSON.parse(missingStdout);
+    expect(missingReview.rollback).toMatchObject({ available: false, notNeeded: false, status: 'unavailable_after_apply' });
+    expect(artifactById(missingReview, 'rollback')?.observedStatus).toBe('unavailable');
+    expect(claimById(missingReview, 'rollback-posture')?.status).toBe('contradicted');
+    expect(missingReview.limitations.find((item: any) => item.id === 'rollback-limitation-1')?.severity).toBe('blocking');
+  });
+
+  test('applied safe-write verification mismatch is a blocking visible limitation', () => {
+    const { stdout } = runSummary(clonePlan({
+      apply: { applied: true },
+      rollback: { command: 'git apply -R .test-results/example.patch' },
+      verification: { appliedDiffMatchesSnapshot: false, method: 'test_mismatch' },
+    }), ['--format', 'json']);
+    const review = JSON.parse(stdout);
+
+    expect(review.verification.appliedDiffMatchesSnapshot).toBe(false);
+    expect(artifactById(review, 'apply-verification')?.observedStatus).toBe('failed');
+    expect(claimById(review, 'apply-verification')?.status).toBe('contradicted');
+    expect(review.limitations.find((item: any) => item.id === 'apply-verification-limitation-1')).toMatchObject({
+      sourceArtifact: 'apply-verification',
+      severity: 'blocking',
+    });
+  });
+
+  test('malicious rollback command is not promoted as available rollback evidence', () => {
+    const forgedCommand = 'rm -rf /\n## FORGED ROLLBACK OK';
+    const { stdout } = runSummary(clonePlan({
+      apply: { applied: true },
+      rollback: { command: forgedCommand },
+    }), ['--format', 'json']);
+    const review = JSON.parse(stdout);
+
+    expect(review.rollback.available).toBe(false);
+    expect(review.rollback.command).toBeNull();
+    expect(review.rollback.status).toBe('untrusted_command_unavailable_after_apply');
+    expect(artifactById(review, 'rollback')?.observedStatus).toBe('unavailable');
+    expect(claimById(review, 'rollback-posture')?.status).toBe('contradicted');
   });
 
   test('selected recommendations remain structurally distinct when command strings overlap', () => {

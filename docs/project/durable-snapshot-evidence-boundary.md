@@ -137,7 +137,10 @@ Those may require a later ADR if real workflows need them.
 Small acceptable follow-ups:
 
 - add optional `durability` and `citationRequirement` fields to evidence-review artifacts;
-- document `snapshot://` as ephemeral unless materialized;
+- document and enforce `snapshot://` as ephemeral unless materialized;
+- classify workspace-contained materialized artifact paths separately from missing, absolute, escaped, or unsupported URI references;
+- distinguish plausible workspace-local `git apply -R` command-backed rollback, materialized inverse patches, preview-only no-op rollback, untrusted rollback commands, and unavailable rollback after applied mutation;
+- preserve applied safe-write verification mismatches as visible blocking limitations;
 - add tests ensuring rollback absence remains visible;
 - add curated fixtures for stable sample output.
 

@@ -239,6 +239,89 @@ function firstString(values: unknown[]): string | null {
   return null;
 }
 
+function hasUriScheme(value: string): boolean {
+  return /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value);
+}
+
+function isSnapshotUri(value: string): boolean {
+  return value.startsWith('snapshot://');
+}
+
+function isSafeRelativeWorkspaceRef(ref: string): boolean {
+  if (!ref || isAbsolute(ref) || hasUriScheme(ref)) return false;
+  const workspaceRoot = realpathSync(process.cwd());
+  return isContainedPath(workspaceRoot, resolve(workspaceRoot, ref));
+}
+
+function isWorkspaceMaterializedFile(ref: string): boolean {
+  if (!isSafeRelativeWorkspaceRef(ref)) return false;
+  const workspaceRoot = realpathSync(process.cwd());
+  const lexicalPath = resolve(workspaceRoot, ref);
+  try {
+    const stat = statSync(lexicalPath);
+    if (!stat.isFile()) return false;
+    const realPath = realpathSync(lexicalPath);
+    return isContainedPath(workspaceRoot, realPath);
+  } catch {
+    return false;
+  }
+}
+
+function rollbackCommandIsPlausible(command: string): boolean {
+  const match = command.match(/^git apply\s+(?:-R|--reverse)\s+([^\s;&|`$<>]+)$/);
+  return !!match && isSafeRelativeWorkspaceRef(match[1]);
+}
+
+type ArtifactRefSummary = {
+  observed: boolean;
+  durability: EvidenceDurability;
+  uriOrPath: string | null;
+  citationRequirement: string;
+  materialized: boolean;
+  snapshotPointer: boolean;
+  unsafeOrMissingLocal: boolean;
+};
+
+function summarizeArtifactRefs(refs: string[]): ArtifactRefSummary {
+  const candidates = refs.filter((ref) => ref.length > 0);
+  const materializedRef = candidates.find(isWorkspaceMaterializedFile) || null;
+  const snapshotRef = candidates.find(isSnapshotUri) || null;
+  const unsafeOrMissingLocal = candidates.some((ref) => !isSnapshotUri(ref) && !isWorkspaceMaterializedFile(ref));
+  if (materializedRef) {
+    return {
+      observed: true,
+      durability: 'materialized_local',
+      uriOrPath: materializedRef,
+      citationRequirement: 'local artifact path was workspace-contained and materialized when reviewed; cite path plus command context, not as authority-durable evidence',
+      materialized: true,
+      snapshotPointer: !!snapshotRef,
+      unsafeOrMissingLocal,
+    };
+  }
+  if (snapshotRef) {
+    return {
+      observed: true,
+      durability: 'ephemeral',
+      uriOrPath: snapshotRef,
+      citationRequirement: 'snapshot:// references are pointers, not durable proof, unless materialized or attached to AK evidence',
+      materialized: false,
+      snapshotPointer: true,
+      unsafeOrMissingLocal,
+    };
+  }
+  return {
+    observed: candidates.length > 0,
+    durability: 'ephemeral',
+    uriOrPath: null,
+    citationRequirement: unsafeOrMissingLocal
+      ? 'artifact references were not promoted because they were missing, absolute, escaped the workspace, or used unsupported URI schemes'
+      : 'no snapshot artifact reference was recorded',
+    materialized: false,
+    snapshotPointer: false,
+    unsafeOrMissingLocal,
+  };
+}
+
 type CheckCommandEvidence = { command: string; ok: boolean | null };
 
 function checkCommandEvidence(entry: any): CheckCommandEvidence | null {
@@ -309,6 +392,64 @@ function detectInput(raw: any): { kind: string; payload: any; packet?: any } {
   throw new Error('Unsupported evidence schema');
 }
 
+function normalizeRollback(plan: any) {
+  const applied = plan?.apply?.applied === true;
+  const rawCommand = typeof plan?.rollback?.command === 'string' && plan.rollback.command.trim() ? plan.rollback.command : null;
+  const command = rawCommand && rollbackCommandIsPlausible(rawCommand) ? rawCommand : null;
+  const inversePatch = firstString([plan?.rollback?.inversePatch, plan?.rollback?.inversePatchPath, plan?.rollback?.artifact]);
+  const inversePatchSummary = inversePatch ? summarizeArtifactRefs([inversePatch]) : null;
+  const hasMaterializedInversePatch = inversePatchSummary?.materialized === true;
+  if (command) {
+    return {
+      available: true,
+      notNeeded: false,
+      status: 'command_available',
+      command,
+      inversePatch,
+      reason: 'Rollback command is recorded; cite command context before use.',
+    };
+  }
+  if (hasMaterializedInversePatch) {
+    return {
+      available: true,
+      notNeeded: false,
+      status: 'inverse_patch_materialized',
+      command: null,
+      inversePatch,
+      reason: 'Materialized inverse patch is recorded as local rollback evidence.',
+    };
+  }
+  if (!applied) {
+    return {
+      available: false,
+      notNeeded: true,
+      status: 'not_needed_preview',
+      command: null,
+      inversePatch,
+      reason: 'No source mutation occurred; rollback is not needed for preview-only evidence.',
+    };
+  }
+  return {
+    available: false,
+    notNeeded: false,
+    status: rawCommand ? 'untrusted_command_unavailable_after_apply' : 'unavailable_after_apply',
+    command: null,
+    inversePatch,
+    reason: rawCommand
+      ? 'Applied evidence has no plausible workspace-local git apply -R rollback command or materialized inverse patch.'
+      : 'Applied evidence has no rollback command or materialized inverse patch.',
+  };
+}
+
+function normalizeVerification(plan: any) {
+  const verification = plan?.verification && typeof plan.verification === 'object' ? plan.verification : null;
+  return {
+    appliedDiffMatchesSnapshot: typeof verification?.appliedDiffMatchesSnapshot === 'boolean' ? verification.appliedDiffMatchesSnapshot : null,
+    method: typeof verification?.method === 'string' ? verification.method : null,
+    diagnostics: verification?.diagnostics && typeof verification.diagnostics === 'object' ? verification.diagnostics : null,
+  };
+}
+
 function normalizeValidationPlan(plan: any, packet?: any) {
   const graph = plan?.graphImpact || {};
   return {
@@ -363,10 +504,8 @@ function normalizeValidationPlan(plan: any, packet?: any) {
       planningHints: strings(graph?.planningHints),
     },
     artifacts: plan?.artifacts || {},
-    rollback: {
-      available: !!plan?.rollback?.command,
-      command: plan?.rollback?.command || null,
-    },
+    rollback: normalizeRollback(plan),
+    verification: normalizeVerification(plan),
     safety: {
       sourceMutated: plan?.apply?.applied === true,
       targetStatusPreserved: packet?.target?.statusPreserved ?? packet?.target?.cleanAfter ?? null,
@@ -440,8 +579,11 @@ function withConceptualModel(review: any) {
   const selectedCommands = strings(review?.commands?.selected);
   const recommendedMinimum = strings(review?.commands?.recommendedMinimum);
   const recommendedBroader = strings(review?.commands?.recommendedBroader);
-  const hasArtifacts = Object.values(review?.artifacts || {}).some(Boolean);
+  const artifactSummary = summarizeArtifactRefs(strings(Object.values(review?.artifacts || {})));
+  const hasArtifacts = artifactSummary.observed;
   const rollbackAvailable = review?.rollback?.available === true;
+  const rollbackNotNeeded = review?.rollback?.notNeeded === true;
+  const rollbackUnavailableAfterApply = review?.outcome?.applied === true && !rollbackAvailable;
   const checkOkObserved = typeof review?.checks?.ok === 'boolean';
   const failedGateChecks = strings(review?.checks?.failedGateChecks);
   const selectedEvidence = selectedCommandEvidence(review, selectedCommands);
@@ -470,13 +612,22 @@ function withConceptualModel(review: any) {
   const validationExecutionDurability: EvidenceDurability = validationExecutionState === 'observed' || validationExecutionState === 'failed'
     ? 'reproducible_local'
     : 'ephemeral';
+  const rollbackArtifactState: EvidenceObservedState = rollbackAvailable ? 'observed' : rollbackNotNeeded ? 'inapplicable' : 'unavailable';
+  const rollbackDurability: EvidenceDurability = reviewWithLimitations?.rollback?.status === 'inverse_patch_materialized'
+    ? 'materialized_local'
+    : rollbackAvailable ? 'reproducible_local' : 'ephemeral';
+  const verificationApplicable = reviewWithLimitations?.outcome?.applied === true || typeof reviewWithLimitations?.verification?.appliedDiffMatchesSnapshot === 'boolean';
+  const verificationFailed = reviewWithLimitations?.outcome?.applied === true && reviewWithLimitations?.verification?.appliedDiffMatchesSnapshot === false;
+  const verificationObserved = typeof reviewWithLimitations?.verification?.appliedDiffMatchesSnapshot === 'boolean';
+  const verificationState = verificationFailed ? 'failed' : evidenceState('optional', verificationObserved, false, verificationApplicable);
 
   const evidenceArtifacts = [
     artifact('source', reviewWithLimitations?.source?.kind || 'unknown', reviewWithLimitations?.source?.schema || null, 'observed', 'reproducible_local', null, 'cite input schema and command used to generate this review'),
     artifact('validation-execution', 'validation_execution', null, validationExecutionState, validationExecutionDurability, null, 'cite AK evidence id or explicit command transcript when available; local summary output alone is not authority-durable evidence'),
     artifact('graph-impact', 'graph_impact', null, evidenceState('optional', graphObserved, false, graphApplicable), graphObserved ? 'reproducible_local' : 'ephemeral', null, 'cite limitations and regeneration command; do not infer no impact from absence'),
-    artifact('snapshot-artifacts', 'snapshot_artifacts', null, evidenceState('optional', hasArtifacts, false), 'ephemeral', firstString([reviewWithLimitations?.artifacts?.overlayDiff, reviewWithLimitations?.artifacts?.status, reviewWithLimitations?.artifacts?.progress]), 'snapshot:// references are pointers, not durable proof, unless materialized or attached to AK evidence'),
-    artifact('rollback', 'rollback', null, rollbackAvailable ? 'observed' : 'unavailable', rollbackAvailable ? 'reproducible_local' : 'ephemeral', reviewWithLimitations?.rollback?.command || null, 'cite concrete rollback command or materialized inverse patch; otherwise treat rollback as unavailable'),
+    artifact('snapshot-artifacts', 'snapshot_artifacts', null, evidenceState('optional', hasArtifacts, false), artifactSummary.durability, artifactSummary.uriOrPath, artifactSummary.citationRequirement),
+    artifact('rollback', 'rollback', null, rollbackArtifactState, rollbackDurability, reviewWithLimitations?.rollback?.command || reviewWithLimitations?.rollback?.inversePatch || null, rollbackNotNeeded ? 'no rollback needed because this evidence is preview-only and no source mutation occurred' : 'cite concrete rollback command or materialized inverse patch; otherwise treat rollback as unavailable'),
+    artifact('apply-verification', 'apply_verification', null, verificationState, verificationObserved ? 'reproducible_local' : 'ephemeral', null, 'cite applied-diff verification evidence when source mutation is claimed; mismatch blocks apply-safety claims'),
   ];
 
   const authorityBoundaries = [
@@ -500,20 +651,49 @@ function withConceptualModel(review: any) {
     ['graph-limitations'],
     ['continue-or-stop'],
   ));
+  const artifactLimitations = artifactSummary.unsafeOrMissingLocal ? [limitation(
+    'snapshot-artifact-limitation-1',
+    'One or more artifact references were not promoted to materialized evidence because they were missing, absolute, escaped the workspace, or used unsupported URI schemes.',
+    'snapshot-artifacts',
+    ['artifact-durability'],
+    ['continue-or-stop'],
+  )] : [];
+  const rollbackLimitations = rollbackUnavailableAfterApply ? [limitation(
+    'rollback-limitation-1',
+    'Applied evidence has no rollback command or materialized inverse patch; rollback is unavailable after mutation.',
+    'rollback',
+    ['rollback-posture'],
+    ['continue-or-stop'],
+    'blocking',
+  )] : [];
+  const verificationLimitations = verificationFailed ? [limitation(
+    'apply-verification-limitation-1',
+    'Applied diff does not match the reviewed snapshot artifact; stop or inspect before treating apply evidence as valid.',
+    'apply-verification',
+    ['apply-verification'],
+    ['continue-or-stop'],
+    'blocking',
+  )] : [];
   const previewLimitations = reviewWithLimitations?.outcome?.previewOnly ? [limitation(
     'preview-boundary-limitation-1',
-    'Preview-only evidence does not prove apply safety or rollback availability.',
+    'Preview-only evidence does not prove apply safety; rollback is not needed unless a source mutation is applied.',
     'rollback',
     ['preview-boundary'],
     ['continue-or-stop'],
   )] : [];
-  const reviewLimitations = validationLimitations.concat(graphLimitations, previewLimitations);
+  const reviewLimitations = validationLimitations.concat(graphLimitations, artifactLimitations, rollbackLimitations, verificationLimitations, previewLimitations);
   const validationLimitationIds = validationLimitations.map((item) => item.id);
   const graphLimitationIds = graphLimitations.map((item) => item.id);
+  const artifactLimitationIds = artifactLimitations.map((item) => item.id);
+  const rollbackLimitationIds = rollbackLimitations.map((item) => item.id);
+  const verificationLimitationIds = verificationLimitations.map((item) => item.id);
   const previewLimitationIds = previewLimitations.map((item) => item.id);
   const continueLimitingClaims = [
     ...(checksPassedWithObservedCommands ? [] : ['checks-result']),
     ...(limitations.length ? ['graph-limitations'] : []),
+    ...(artifactLimitations.length ? ['artifact-durability'] : []),
+    ...(rollbackLimitations.length ? ['rollback-posture'] : []),
+    ...(verificationLimitations.length ? ['apply-verification'] : []),
     ...(previewLimitations.length ? ['preview-boundary'] : []),
   ];
   const continueUncertainty = continueLimitingClaims.length
@@ -554,6 +734,36 @@ function withConceptualModel(review: any) {
       graphLimitationIds,
       'Missing or fallback-shaped graph evidence qualifies continuation decisions; it does not imply no impact.',
       ['not-production-readiness'],
+      ['continue-or-stop'],
+    ),
+    claim(
+      'artifact-durability',
+      artifactSummary.materialized ? 'At least one snapshot artifact reference is materialized as a workspace-local file.' : 'Snapshot artifact references are not materialized local proof.',
+      artifactSummary.materialized ? 'supported' : artifactSummary.snapshotPointer ? 'weakened' : artifactSummary.unsafeOrMissingLocal ? 'weakened' : 'unresolved',
+      ['snapshot-artifacts'],
+      artifactLimitationIds,
+      'Artifact references must distinguish materialized local files from ephemeral snapshot pointers, missing files, unsupported URIs, and path escapes.',
+      ['not-canonical-authority'],
+      ['continue-or-stop'],
+    ),
+    claim(
+      'rollback-posture',
+      rollbackAvailable ? 'Rollback evidence is recorded.' : rollbackNotNeeded ? 'Rollback is not needed because no source mutation was applied.' : 'Rollback evidence is unavailable after mutation.',
+      rollbackAvailable || rollbackNotNeeded ? 'supported' : rollbackUnavailableAfterApply ? 'contradicted' : 'unresolved',
+      ['rollback'],
+      rollbackLimitationIds,
+      'Rollback availability requires a command or materialized inverse patch; preview-only evidence does not need rollback because it does not mutate source.',
+      ['not-canonical-authority', 'no-implicit-mutation'],
+      ['continue-or-stop'],
+    ),
+    claim(
+      'apply-verification',
+      verificationFailed ? 'Applied diff verification contradicts the reviewed snapshot.' : verificationObserved ? 'Applied diff verification evidence is recorded.' : 'Applied diff verification is not recorded for this review.',
+      verificationFailed ? 'contradicted' : verificationObserved ? 'supported' : verificationApplicable ? 'unresolved' : 'weakened',
+      ['apply-verification'],
+      verificationLimitationIds,
+      'Applied mutation evidence must preserve whether the applied diff matched the reviewed snapshot; mismatch blocks apply-safety claims.',
+      ['not-production-readiness', 'not-canonical-authority'],
       ['continue-or-stop'],
     ),
     claim(
@@ -632,7 +842,7 @@ function renderMarkdown(review: any): string {
     `### Operator decision points\n\n` +
     `${arr(review.operatorDecisionPoints).map((p: any) => `- ${mdInline(p.id)}: ${strings(p.options).map(mdInline).join(', ')}; uncertainty: ${mdInline(p.residualUncertainty || 'not recorded')}`).join('\n') || '- none'}\n\n` +
     `### Evidence artifact durability\n\n` +
-    `${arr(review.evidenceArtifacts).map((a: any) => `- ${mdInline(a.id)}: ${mdInline(a.observedStatus)}; durability=${mdInline(a.durability)}; cite=${mdInline(a.citationRequirement)}`).join('\n') || '- none'}\n\n` +
+    `${arr(review.evidenceArtifacts).map((a: any) => `- ${mdInline(a.id)}: ${mdInline(a.observedStatus)}; durability=${mdInline(a.durability)}; ref=${mdInline(a.uriOrPath || 'not recorded')}; cite=${mdInline(a.citationRequirement)}`).join('\n') || '- none'}\n\n` +
     `### First-class limitations\n\n` +
     `${arr(review.limitations).map((l: any) => `- ${mdInline(l.id)}: ${mdInline(l.severity || 'warning')} — ${mdInline(l.limitation)}; source=${mdInline(l.sourceArtifact || 'unknown')}`).join('\n') || '- none'}\n\n` +
     `## 2. Changed or affected scope\n\n` +
@@ -668,7 +878,12 @@ function renderMarkdown(review: any): string {
     `- Status: ${mdInline(artifacts.status || 'not recorded')}\n` +
     `- Progress: ${mdInline(artifacts.progress || 'not recorded')}\n` +
     `- Rollback available: ${mdInline(review.rollback.available)}\n` +
-    `- Rollback command: ${mdInline(review.rollback.command || 'not recorded')}\n\n` +
+    `- Rollback not needed: ${mdInline(review.rollback.notNeeded === true)}\n` +
+    `- Rollback status: ${mdInline(review.rollback.status || 'not recorded')}\n` +
+    `- Rollback command: ${mdInline(review.rollback.command || 'not recorded')}\n` +
+    `- Rollback inverse patch: ${mdInline(review.rollback.inversePatch || 'not recorded')}\n` +
+    `- Rollback reason: ${mdInline(review.rollback.reason || 'not recorded')}\n` +
+    `- Applied diff matches snapshot: ${mdInline(review.verification?.appliedDiffMatchesSnapshot ?? 'not recorded')}\n\n` +
     `## 7. Safety and authority boundary\n\n` +
     `- Source mutated: ${safety.sourceMutated === true}\n` +
     `- Target status preserved: ${mdInline(safety.targetStatusPreserved ?? 'not applicable')}\n` +

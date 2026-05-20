@@ -249,13 +249,22 @@ Implementations may normalize input into this shape before rendering:
   },
   "rollback": {
     "available": false,
-    "command": null
+    "notNeeded": true,
+    "status": "not_needed_preview",
+    "command": null,
+    "inversePatch": null,
+    "reason": "No source mutation occurred; rollback is not needed for preview-only evidence."
+  },
+  "verification": {
+    "appliedDiffMatchesSnapshot": null,
+    "method": null,
+    "diagnostics": null
   },
   "operatorQuestions": []
 }
 ```
 
-The first-class `evidenceArtifacts`, `limitations`, `claims`, `authorityBoundaries`, and `operatorDecisionPoints` fields are required to prevent the review from collapsing artifacts into claims, claims into authority, limitations into green status, bundle gates into selected-command execution, or recommendations into executed commands. `ReviewClaim.limitedBy` must reference `limitations[].id` values, not artifact IDs. Evidence artifacts also carry durability and citation requirements so `snapshot://` pointers are not mistaken for durable proof. Graph-impact fields preserve review context such as seed, requested edges, backend/freshness, per-edge evidence/status, limitations, and caller context count when present; they do not claim whole-program graph completeness. Markdown renderers must neutralize caller-controlled evidence text so graph seeds, edge names/statuses, limitation strings, commands, and other evidence text cannot forge headings, status banners, inline markdown emphasis/links, or completion claims. CLI error paths must use sanitized messages rather than runtime stack traces or reflected caller-controlled values.
+The first-class `evidenceArtifacts`, `limitations`, `claims`, `authorityBoundaries`, and `operatorDecisionPoints` fields are required to prevent the review from collapsing artifacts into claims, claims into authority, limitations into green status, bundle gates into selected-command execution, or recommendations into executed commands. `ReviewClaim.limitedBy` must reference `limitations[].id` values, not artifact IDs. Evidence artifacts also carry durability and citation requirements so `snapshot://` pointers are not mistaken for durable proof: workspace-contained materialized artifact paths may be classified as `materialized_local`, while `snapshot://`, missing, absolute, escaped, or unsupported URI references must not be promoted. Rollback posture must distinguish plausible workspace-local `git apply -R` command-backed rollback, materialized inverse patches, preview-only no-op rollback, untrusted rollback commands, and unavailable rollback after applied mutation. Applied safe-write verification, when present, must remain visible so an applied-diff/snapshot mismatch becomes a blocking limitation rather than a green apply claim. Graph-impact fields preserve review context such as seed, requested edges, backend/freshness, per-edge evidence/status, limitations, and caller context count when present; they do not claim whole-program graph completeness. Markdown renderers must neutralize caller-controlled evidence text so graph seeds, edge names/statuses, limitation strings, commands, and other evidence text cannot forge headings, status banners, inline markdown emphasis/links, or completion claims. CLI error paths must use sanitized messages rather than runtime stack traces or reflected caller-controlled values.
 
 ## Validation checks for an implementation wave
 
@@ -266,22 +275,24 @@ Any implementation of this contract must validate:
 3. selected vs recommended commands are distinct in output;
 4. graph requested edges, per-edge evidence/status, and limitations/fallback notes are visible;
 5. preview/apply posture is visible;
-6. rollback absence/presence is visible;
-7. production-readiness caveat is visible;
-8. untrusted evidence text cannot forge markdown headings/status or inline emphasis/link claims;
-9. alpha packet bundle gates remain distinct from selected-command execution evidence;
-10. command-level failed selected checks contradict aggregate clean-pass claims instead of being hidden, including duplicate selected command strings that must consume distinct execution evidence entries;
-11. the structural selected-vs-recommended command distinction does not cite unavailable validation-execution evidence as support;
-12. applied posture from embedded validation plans remains visible when rendering packet-level evidence;
-13. oversized evidence inputs fail closed before parsing, including post-open growth before unbounded reads;
-14. path escapes, symlink escapes, TOCTOU replacement/mutation, missing/unreadable inputs, and non-regular evidence inputs fail closed without leaking input contents;
-15. workspace containment has a stat-identity fallback when fd-link realpath helpers are unavailable;
-16. unsupported schemas, malformed JSON, missing option values, unsupported formats, and unsupported extract modes fail with sanitized errors that do not expose stacks, source paths, or reflected caller-controlled text;
-17. validationPlan extraction works consistently for every supported evidence input kind that embeds a validation plan;
-18. generated validation-plan comparison fails closed when graph-impact review context disappears from generated preview/check evidence;
-19. the committed normalized sample fixture matches current summary output;
-20. docs strict and direction check pass;
-21. if runtime contracts change, `bun run alpha:mvp:check` still passes.
+6. rollback absence/presence is visible, including preview-only no-op rollback, untrusted rollback command, and applied-without-rollback cases;
+7. snapshot artifact durability distinguishes materialized local files from `snapshot://` pointers and unsafe/path-escaping references;
+8. applied safe-write verification mismatch is visible as a blocking limitation;
+9. production-readiness caveat is visible;
+10. untrusted evidence text cannot forge markdown headings/status or inline emphasis/link claims;
+11. alpha packet bundle gates remain distinct from selected-command execution evidence;
+12. command-level failed selected checks contradict aggregate clean-pass claims instead of being hidden, including duplicate selected command strings that must consume distinct execution evidence entries;
+13. the structural selected-vs-recommended command distinction does not cite unavailable validation-execution evidence as support;
+14. applied posture from embedded validation plans remains visible when rendering packet-level evidence;
+15. oversized evidence inputs fail closed before parsing, including post-open growth before unbounded reads;
+16. path escapes, symlink escapes, TOCTOU replacement/mutation, missing/unreadable inputs, and non-regular evidence inputs fail closed without leaking input contents;
+17. workspace containment has a stat-identity fallback when fd-link realpath helpers are unavailable;
+18. unsupported schemas, malformed JSON, missing option values, unsupported formats, and unsupported extract modes fail with sanitized errors that do not expose stacks, source paths, or reflected caller-controlled text;
+19. validationPlan extraction works consistently for every supported evidence input kind that embeds a validation plan;
+20. generated validation-plan comparison fails closed when graph-impact review context disappears from generated preview/check evidence;
+21. the committed normalized sample fixture matches current summary output;
+22. docs strict and direction check pass;
+23. if runtime contracts change, `bun run alpha:mvp:check` still passes.
 
 ## Non-goals
 
