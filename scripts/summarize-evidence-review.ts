@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { closeSync, constants, fstatSync, openSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { closeSync, constants, fstatSync, openSync, readFileSync, realpathSync, statSync, type Stats } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
 
 function argValue(name: string): string | null {
@@ -27,8 +27,32 @@ function openedFdRealpath(fd: number): string {
   }
 }
 
-function readJson(path: string): any {
-  const workspaceRoot = realpathSync(process.cwd());
+function sameObservedFile(a: Stats, b: Stats): boolean {
+  return a.dev === b.dev && a.ino === b.ino && a.size === b.size && a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs;
+}
+
+function assertSameObservedFile(label: string, expected: Stats, actual: Stats) {
+  if (!sameObservedFile(expected, actual)) {
+    throw new Error(`Evidence input changed while it was being ${label}`);
+  }
+}
+
+function parseEvidenceJson(text: string): any {
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error('Evidence input is not valid JSON');
+  }
+}
+
+type ReadJsonOptions = {
+  workspaceRoot?: string;
+  afterInitialStat?: () => void;
+  afterOpenStat?: () => void;
+};
+
+export function readJson(path: string, options: ReadJsonOptions = {}): any {
+  const workspaceRoot = realpathSync(options.workspaceRoot || process.cwd());
   const lexicalPath = resolve(workspaceRoot, path);
   if (!isContainedPath(workspaceRoot, lexicalPath)) {
     throw new Error('Evidence input must stay within the workspace');
@@ -44,6 +68,8 @@ function readJson(path: string): any {
     throw new Error('Evidence input must be a regular file');
   }
 
+  options.afterInitialStat?.();
+
   let fd: number;
   try {
     fd = openSync(lexicalPath, constants.O_RDONLY | constants.O_NONBLOCK);
@@ -56,6 +82,7 @@ function readJson(path: string): any {
     if (!openedStat.isFile()) {
       throw new Error('Evidence input must be a regular file');
     }
+    assertSameObservedFile('opened', initialStat, openedStat);
     if (openedStat.size > maxInputBytes) {
       throw new Error(`Evidence input too large: ${openedStat.size} bytes exceeds ${maxInputBytes} byte limit`);
     }
@@ -65,7 +92,10 @@ function readJson(path: string): any {
       throw new Error('Evidence input must stay within the workspace');
     }
 
-    return JSON.parse(readFileSync(fd, 'utf8'));
+    options.afterOpenStat?.();
+    const text = readFileSync(fd, 'utf8');
+    assertSameObservedFile('read', openedStat, fstatSync(fd));
+    return parseEvidenceJson(text);
   } finally {
     closeSync(fd);
   }
@@ -536,10 +566,12 @@ function main() {
   }
 }
 
-try {
-  main();
-} catch (error) {
-  const message = error instanceof Error ? error.message : 'Unknown evidence review error';
-  console.error(`evidence-review: ${message}`);
-  process.exit(1);
+if (import.meta.main) {
+  try {
+    main();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown evidence review error';
+    console.error(`evidence-review: ${message}`);
+    process.exit(1);
+  }
 }

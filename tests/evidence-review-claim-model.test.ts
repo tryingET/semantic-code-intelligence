@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -332,7 +332,31 @@ describe('evidence review claim model', () => {
     expect(result.stdout + result.stderr).not.toContain('symlink-secret-marker');
   });
 
-  test('summary rejects missing and non-regular evidence inputs before parsing', () => {
+  test('read boundary rejects evidence input replaced after stat before open', async () => {
+    const { readJson } = await import('../scripts/summarize-evidence-review.ts');
+    const dir = workspaceTempDir('toctou-replace-');
+    const inputPath = join(dir, 'input.json');
+    const replacementPath = join(dir, 'replacement.json');
+    writeFileSync(inputPath, JSON.stringify(sampleValidationPlan()));
+    writeFileSync(replacementPath, JSON.stringify({ ...sampleValidationPlan(), graphImpact: { limitations: ['replacement-secret-marker'] } }));
+
+    expect(() => readJson(relative(process.cwd(), inputPath), {
+      afterInitialStat: () => renameSync(replacementPath, inputPath),
+    })).toThrow('Evidence input changed while it was being opened');
+  });
+
+  test('read boundary rejects evidence input mutated after open before read', async () => {
+    const { readJson } = await import('../scripts/summarize-evidence-review.ts');
+    const dir = workspaceTempDir('toctou-mutate-');
+    const inputPath = join(dir, 'input.json');
+    writeFileSync(inputPath, JSON.stringify(sampleValidationPlan()));
+
+    expect(() => readJson(relative(process.cwd(), inputPath), {
+      afterOpenStat: () => writeFileSync(inputPath, JSON.stringify({ ...sampleValidationPlan(), padding: 'mutated-after-open' })),
+    })).toThrow('Evidence input changed while it was being read');
+  });
+
+  test('summary rejects missing, unreadable, and non-regular evidence inputs before parsing', () => {
     const dir = workspaceTempDir('nonregular-');
     const missing = join(dir, 'missing.json');
     const missingResult = spawnSync('bun', ['run', script, '--input', relative(process.cwd(), missing), '--format', 'json'], {
@@ -341,6 +365,19 @@ describe('evidence review claim model', () => {
     });
     expect(missingResult.status).not.toBe(0);
     expect(missingResult.stderr).toContain('Evidence input is unavailable or unreadable');
+
+    if (typeof process.getuid !== 'function' || process.getuid() !== 0) {
+      const unreadable = join(dir, 'unreadable.json');
+      writeFileSync(unreadable, JSON.stringify(sampleValidationPlan()));
+      chmodSync(unreadable, 0o000);
+      const unreadableResult = spawnSync('bun', ['run', script, '--input', relative(process.cwd(), unreadable), '--format', 'json'], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+      });
+      chmodSync(unreadable, 0o600);
+      expect(unreadableResult.status).not.toBe(0);
+      expect(unreadableResult.stderr).toContain('Evidence input is unavailable or unreadable');
+    }
 
     const inputDir = join(dir, 'input-dir.json');
     mkdirSync(inputDir);
@@ -414,7 +451,7 @@ describe('evidence review claim model', () => {
     });
 
     expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain('evidence-review:');
+    expect(result.stderr).toContain('evidence-review: Evidence input is not valid JSON');
     expect(result.stdout + result.stderr).not.toContain('json-secret-marker');
     expect(result.stderr).not.toContain(process.cwd());
     expect(result.stderr).not.toContain('readJson');
