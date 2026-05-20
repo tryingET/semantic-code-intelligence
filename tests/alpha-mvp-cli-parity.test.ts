@@ -78,6 +78,7 @@ describe('Alpha MVP CLI fallback parity', () => {
         expect(checked.payload.ok).toBe(true);
         expect(checked.payload.stage?.accepted).toBe(true);
         expect(checked.payload.checks?.ok).toBe(true);
+        expect(checked.payload.validationPlan?.checks?.commands?.[0]).toMatchObject({ command: 'true', ok: true });
 
         const safePreview = await workflow('safe_write', {
             patch: patchPlanningDiff,
@@ -90,6 +91,7 @@ describe('Alpha MVP CLI fallback parity', () => {
         expect(safePreview.payload.mode).toBe('preview_validate');
         expect(safePreview.payload.applied).toBe(false);
         expect(safePreview.payload.risk.category).toBe('docs_only');
+        expect(safePreview.payload.validationPlan?.checks?.commands?.[0]).toMatchObject({ command: 'true', ok: true });
 
         const refusedApply = await workflow('safe_write', {
             patch: patchPlanningDiff,

@@ -920,6 +920,7 @@ export class MCPAdapter {
             commands,
             checksOk: !!checksOut?.ok,
             checksElapsedMs: checksOut?.elapsedMs || null,
+            checkCommands: Array.isArray(checksOut?.commands) ? checksOut.commands : [],
             checkRecommendations,
             impactSummary,
             applied,
@@ -934,7 +935,7 @@ export class MCPAdapter {
             snapshot,
             checkRecommendations,
             validationPlan,
-            checks: { ok: !!checksOut?.ok, commands, elapsedMs: checksOut?.elapsedMs || null },
+            checks: { ok: !!checksOut?.ok, commands: Array.isArray(checksOut?.commands) ? checksOut.commands : [], elapsedMs: checksOut?.elapsedMs || null },
             verification,
             applied,
             next: applied ? 'review git diff; rollback artifact available' : 'inspect snapshot artifact; set apply:true with ALLOW_SNAPSHOT_APPLY=1 only when ready',
@@ -1192,6 +1193,7 @@ export class MCPAdapter {
             commands,
             checksOk: ok,
             checksElapsedMs: checksOut?.elapsedMs || null,
+            checkCommands: Array.isArray(checksOut?.commands) ? checksOut.commands : [],
             checkRecommendations,
             impactSummary,
             applied: false,
@@ -1515,7 +1517,7 @@ export class MCPAdapter {
                 {
                     type: 'text',
                     text: JSON.stringify(
-                        { snapshot, ok: res.ok, elapsedMs: res.elapsedMs, output: res.output.slice(-4000) },
+                        { snapshot, ok: res.ok, elapsedMs: res.elapsedMs, commands: res.commands || [], output: res.output.slice(-4000) },
                         null,
                         2
                     ),
@@ -2110,6 +2112,7 @@ export class MCPAdapter {
         commands: string[];
         checksOk: boolean;
         checksElapsedMs: number | null;
+        checkCommands?: Array<{ command: string; ok?: boolean | null; elapsedMs?: number; exitCode?: number | null; timedOut?: boolean }>;
         checkRecommendations?: any;
         impactSummary?: any;
         applied: boolean;
@@ -2142,7 +2145,7 @@ export class MCPAdapter {
                       planningHints: Array.isArray(args.impactSummary?.planningHints) ? args.impactSummary.planningHints : [],
                   }
                 : null,
-            checks: { ok: args.checksOk, elapsedMs: args.checksElapsedMs },
+            checks: { ok: args.checksOk, elapsedMs: args.checksElapsedMs, commands: Array.isArray(args.checkCommands) ? args.checkCommands : [] },
             artifacts: args.snapshotArtifacts
                 ? { overlayDiff: args.snapshotArtifacts.overlayDiff, status: args.snapshotArtifacts.status, progress: args.snapshotArtifacts.progress }
                 : null,

@@ -515,7 +515,7 @@ export class CLIAdapter {
             const payload = {
                 snapshot: snap.id,
                 accepted: true,
-                checks: { ok: r.ok, elapsedMs: r.elapsedMs, output: r.output.slice(-4000) },
+                checks: { ok: r.ok, elapsedMs: r.elapsedMs, commands: r.commands || [], output: r.output.slice(-4000) },
             };
             return options.json
                 ? JSON.stringify(payload, null, 2)
@@ -537,7 +537,7 @@ export class CLIAdapter {
         const snapId = options.snapshot;
         if (!snapId) return this.formatError('snapshot required');
         const r = await overlayStore.runChecks(snapId, options.commands || [], options.timeoutSec || 120);
-        const payload = { snapshot: snapId, ok: r.ok, elapsedMs: r.elapsedMs, output: r.output.slice(-4000) };
+        const payload = { snapshot: snapId, ok: r.ok, elapsedMs: r.elapsedMs, commands: r.commands || [], output: r.output.slice(-4000) };
         return options.json ? JSON.stringify(payload, null, 2) : `${snapId} ${r.ok ? 'OK' : 'FAIL'} (${r.elapsedMs}ms)`;
     }
 

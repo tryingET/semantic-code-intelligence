@@ -354,7 +354,12 @@ export class OverlayStore {
         commands: string[],
         timeoutSec = 120,
         opts: { onlyTouched?: boolean } = {}
-    ): Promise<{ ok: boolean; output: string; elapsedMs: number }> {
+    ): Promise<{
+        ok: boolean;
+        output: string;
+        elapsedMs: number;
+        commands: Array<{ command: string; ok: boolean; elapsedMs: number; exitCode: number | null; timedOut: boolean }>;
+    }> {
         this.assertValidId(snapshotId);
         const start = Date.now();
         // Materialize snapshot into .ontology/snapshots/<id>
@@ -440,34 +445,48 @@ export class OverlayStore {
         // Rationale: values >600s lead to excessively long CI/dev runs and can hang pipelines.
         // HTTP already clamps to 600; this keeps MCP/CLI parity and centralizes the guard.
         const perCommandTimeoutSec = Math.max(1, Math.min(600, Math.floor(Number(timeoutSec) || 120)));
+        const commandResults: Array<{ command: string; ok: boolean; elapsedMs: number; exitCode: number | null; timedOut: boolean }> = [];
 
         for (const cmd of cmdList) {
             await this.logProgress(snapshotId, `run:${cmd}:start`);
             output.push(`$ ${cmd}\n`);
             const [bin, ...args] = cmd.split(' ');
-            const ok = await new Promise<boolean>((resolve) => {
+            const commandStart = Date.now();
+            const result = await new Promise<{ ok: boolean; exitCode: number | null; timedOut: boolean }>((resolve) => {
                 const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd });
-                child.stdout.on('data', (d) => output.push(String(d)));
-                child.stderr.on('data', (d) => output.push(String(d)));
+                let settled = false;
+                const finish = (value: { ok: boolean; exitCode: number | null; timedOut: boolean }) => {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(timer);
+                    resolve(value);
+                };
                 const timer = setTimeout(() => {
                     try {
                         child.kill('SIGKILL');
                     } catch {}
                     void this.logProgress(snapshotId, `run:${cmd}:timeout`);
-                    resolve(false);
+                    finish({ ok: false, exitCode: null, timedOut: true });
                 }, perCommandTimeoutSec * 1000);
+                child.stdout.on('data', (d) => output.push(String(d)));
+                child.stderr.on('data', (d) => output.push(String(d)));
+                child.on('error', (error) => {
+                    output.push(String(error?.message || error));
+                    void this.logProgress(snapshotId, `run:${cmd}:error`);
+                    finish({ ok: false, exitCode: null, timedOut: false });
+                });
                 child.on('close', (code) => {
-                    clearTimeout(timer);
                     void this.logProgress(snapshotId, `run:${cmd}:done code=${code}`);
-                    resolve(code === 0);
+                    finish({ ok: code === 0, exitCode: typeof code === 'number' ? code : null, timedOut: false });
                 });
             });
-            if (!ok) {
-                return { ok: false, output: output.join(''), elapsedMs: Date.now() - start };
+            commandResults.push({ command: cmd, ok: result.ok, elapsedMs: Date.now() - commandStart, exitCode: result.exitCode, timedOut: result.timedOut });
+            if (!result.ok) {
+                return { ok: false, output: output.join(''), elapsedMs: Date.now() - start, commands: commandResults };
             }
         }
         await this.logProgress(snapshotId, 'checks:done');
-        return { ok: true, output: output.join(''), elapsedMs: Date.now() - start };
+        return { ok: true, output: output.join(''), elapsedMs: Date.now() - start, commands: commandResults };
     }
 
     async applyToWorkingTree(

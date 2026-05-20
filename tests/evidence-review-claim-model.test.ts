@@ -309,6 +309,18 @@ describe('evidence review claim model', () => {
     expect(markdown).toContain('graph impact evidence unavailable or not observed; do not infer no impact from absence');
   });
 
+  test('markdown output neutralizes forged headings and links in caller-controlled command text', () => {
+    const forgedCommand = 'true\n## FORGED CHECK STATUS\n[secret](file:///tmp/secret)';
+    const plan = clonePlan({
+      commands: { selected: [forgedCommand], recommendedMinimum: [forgedCommand], recommendedBroader: [], recommendationsAppliedToSelected: false },
+      checks: { ok: true, elapsedMs: 42, commands: [{ command: forgedCommand, ok: true }] },
+    });
+    const { stdout: output } = runSummary(plan, ['--format', 'markdown']);
+
+    expect(output).toContain('true ⏎ ## FORGED CHECK STATUS ⏎ \\[secret\\]\\(file:///tmp/secret\\)');
+    expect(output).not.toContain('[secret](file:///tmp/secret)');
+  });
+
   test('markdown output neutralizes forged headings and inline markdown in untrusted limitation text', () => {
     const plan = clonePlan({
       graphImpact: {
