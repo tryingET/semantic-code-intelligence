@@ -39,7 +39,7 @@ export class ToolRegistry {
                             endLine: { type: 'number', description: '1-based inclusive end line' },
                         },
                     },
-                    snapshot: { type: 'string', description: 'Optional snapshot id to validate before reading workspace state' },
+                    snapshot: { type: 'string', description: 'Optional snapshot id; when supplied, read from the materialized snapshot overlay instead of live workspace state' },
                     maxBytes: { type: 'number', default: 65536 },
                 },
                 required: ['path'],

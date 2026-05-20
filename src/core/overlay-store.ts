@@ -345,7 +345,10 @@ export class OverlayStore {
             if (this.which('git')) {
                 const applied = spawnSync(
                     'bash',
-                    ['-lc', `git -C ${JSON.stringify(dir)} apply --whitespace=nowarn overlay.diff`],
+                    [
+                        '-lc',
+                        `GIT_CEILING_DIRECTORIES=${JSON.stringify(snapsRoot)} git -C ${JSON.stringify(dir)} apply --whitespace=nowarn overlay.diff`,
+                    ],
                     { stdio: 'pipe' }
                 );
                 if (applied.status !== 0 && this.which('patch')) {

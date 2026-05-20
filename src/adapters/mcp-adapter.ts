@@ -416,23 +416,50 @@ export class MCPAdapter {
         }
     }
 
+    private snapshotReadPath(requestedPath: string, snapshotRoot: string): string {
+        const workspaceRoot = this.getWorkspaceRoot();
+        const decodedPath = this.pathInputFromMcpFile(requestedPath, workspaceRoot);
+        if (!path.isAbsolute(decodedPath)) return decodedPath;
+
+        const absolutePath = path.resolve(decodedPath);
+        const workspaceRelative = path.relative(workspaceRoot, absolutePath);
+        if (workspaceRelative && !workspaceRelative.startsWith('..') && !path.isAbsolute(workspaceRelative)) {
+            return workspaceRelative;
+        }
+
+        const snapshotRelative = path.relative(path.resolve(snapshotRoot), absolutePath);
+        if (snapshotRelative && !snapshotRelative.startsWith('..') && !path.isAbsolute(snapshotRelative)) {
+            return snapshotRelative;
+        }
+
+        return decodedPath;
+    }
+
+    private async resolveReadFileRoot(args: Record<string, any>, requestedPath: string): Promise<{ workspaceRoot: string; readPath: string }> {
+        const snapshot = typeof args?.snapshot === 'string' ? args.snapshot.trim() : '';
+        if (!snapshot) return { workspaceRoot: process.cwd(), readPath: requestedPath };
+
+        try {
+            overlayStore.ensureSnapshot(snapshot);
+            const ensureMaterialized = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
+            const snapshotRoot = ensureMaterialized ? await ensureMaterialized(snapshot) : null;
+            if (!snapshotRoot) throw new Error('Snapshot could not be materialized');
+            return { workspaceRoot: snapshotRoot, readPath: this.snapshotReadPath(requestedPath, snapshotRoot) };
+        } catch (error: any) {
+            throw new CoreError('InvalidParams', error?.message || 'Invalid snapshot id');
+        }
+    }
+
     private async handleReadFile(args: Record<string, any>) {
         const requestedPath = typeof args?.path === 'string' ? args.path.trim() : '';
         if (!requestedPath) {
             return handleAdapterError(new CoreError('InvalidParams', 'Missing required parameter: path'), 'mcp');
         }
 
-        if (typeof args?.snapshot === 'string' && args.snapshot.trim()) {
-            try {
-                overlayStore.ensureSnapshot(args.snapshot.trim());
-            } catch (error: any) {
-                return handleAdapterError(new CoreError('InvalidParams', error?.message || 'Invalid snapshot id'), 'mcp');
-            }
-        }
-
         let opened: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
         try {
-            opened = await openWorkspaceFileForRead(requestedPath, { workspaceRoot: process.cwd(), inputLabel: 'read_file path' });
+            const readTarget = await this.resolveReadFileRoot(args, requestedPath);
+            opened = await openWorkspaceFileForRead(readTarget.readPath, { workspaceRoot: readTarget.workspaceRoot, inputLabel: 'read_file path' });
 
             const maxBytesRaw = Number(args?.maxBytes ?? 65_536);
             const maxBytes = Number.isFinite(maxBytesRaw) ? Math.max(1, Math.min(262_144, Math.floor(maxBytesRaw))) : 65_536;
