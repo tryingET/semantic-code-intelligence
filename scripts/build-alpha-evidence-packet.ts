@@ -1,16 +1,19 @@
 #!/usr/bin/env bun
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { maxElapsed, sanitizeEvidence, summarizeCalls } from './evidence-summary-utils';
 
+const evidenceRoot = process.env.SCI_ALPHA_EVIDENCE_ROOT || '.test-results';
 const files = {
-    alpha: '.test-results/alpha-mvp-dogfood.json',
-    selfHosted: '.test-results/self-hosted-cli-dogfood.json',
-    structural: '.test-results/structural-workflow-dogfood.json',
-    graph: '.test-results/graph-impact-dogfood.json',
-    recommendChecks: '.test-results/recommend-checks-dogfood.json',
-    safeWrite: '.test-results/safe-write-dogfood.json',
-    validationPlanComparison: '.test-results/validation-plan-comparison.json',
-    evidenceHistory: '.test-results/alpha-evidence-history.json',
-    gate: '.test-results/alpha-evidence-check.json',
+    alpha: join(evidenceRoot, 'alpha-mvp-dogfood.json'),
+    selfHosted: join(evidenceRoot, 'self-hosted-cli-dogfood.json'),
+    structural: join(evidenceRoot, 'structural-workflow-dogfood.json'),
+    graph: join(evidenceRoot, 'graph-impact-dogfood.json'),
+    recommendChecks: join(evidenceRoot, 'recommend-checks-dogfood.json'),
+    safeWrite: join(evidenceRoot, 'safe-write-dogfood.json'),
+    validationPlanComparison: join(evidenceRoot, 'validation-plan-comparison.json'),
+    evidenceHistory: join(evidenceRoot, 'alpha-evidence-history.json'),
+    gate: join(evidenceRoot, 'alpha-evidence-check.json'),
 };
 
 function readJson(path: string): any {
@@ -23,19 +26,6 @@ function safeRead(path: string): { ok: true; value: any } | { ok: false; error: 
     } catch (error) {
         return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
-}
-
-function maxElapsed(calls: any[]): number {
-    return Math.max(0, ...calls.map((call) => Number(call?.elapsedMs || 0)).filter((value) => Number.isFinite(value)));
-}
-
-function summarizeCalls(calls: any[]) {
-    return calls.map((call) => ({
-        name: String(call?.name || ''),
-        success: call?.success === true,
-        elapsedMs: Number(call?.elapsedMs || 0),
-        observation: typeof call?.observation === 'string' ? call.observation : undefined,
-    }));
 }
 
 const loaded = Object.fromEntries(Object.entries(files).map(([key, path]) => [key, safeRead(path)]));
@@ -60,21 +50,43 @@ const preview = safeWriteCalls.find((call) => call?.payload?.mode === 'preview_v
 
 const gateChecks = Array.isArray(gate?.checks) ? gate.checks : [];
 const failedGateChecks = gateChecks.filter((check) => check?.ok !== true).map((check) => check?.name);
+const sourceFilesOk =
+    alpha?.ok === true &&
+    selfHosted?.ok === true &&
+    structural?.ok === true &&
+    graph?.ok === true &&
+    recommendChecks?.ok === true &&
+    safeWrite?.ok === true &&
+    validationPlanComparison?.ok === true &&
+    evidenceHistory?.ok === true &&
+    gate?.ok === true;
+const sciFirstDiscoveryOk = selfHosted?.selfHosting?.sciFirstDiscovery?.complete === true;
+const selfHostedWorkspaceUnchanged = selfHosted?.selfHosting?.workspaceUnchanged === true;
+const safeWritePreviewPresent = !!preview;
+const safeWritePreviewRecommendationsPresent = safeWriteCalls.some((call) => call?.payload?.mode === 'preview_validate' && call?.payload?.checkRecommendations?.workflow === 'recommend_checks');
+const safeWritePreviewValidationPlanPresent = safeWriteCalls.some((call) => call?.payload?.mode === 'preview_validate' && call?.payload?.validationPlan?.schema === 'semantic-code-intelligence.validation_plan.v1');
+const safeWriteFixtureCleanAfterRollback = safeWrite?.assertions?.fixtureCleanAfterRollback === true;
+const cleanApplyVerified = !!cleanApply;
+const mismatchFailsClosed = !!mismatch;
+const rollbackRestoredExactly = safeWrite?.assertions?.rollbackRestoredExactly === true;
+const mismatchRollbackPreservedPreexistingDirtyChange = safeWrite?.assertions?.mismatchRollbackPreservedPreexistingDirtyChange === true;
+const derivedClaimsOk =
+    sciFirstDiscoveryOk &&
+    selfHostedWorkspaceUnchanged &&
+    safeWritePreviewPresent &&
+    safeWritePreviewRecommendationsPresent &&
+    safeWritePreviewValidationPlanPresent &&
+    safeWriteFixtureCleanAfterRollback &&
+    cleanApplyVerified &&
+    mismatchFailsClosed &&
+    rollbackRestoredExactly &&
+    mismatchRollbackPreservedPreexistingDirtyChange;
 
 const packet = {
     schema: 'semantic-code-intelligence.alpha_evidence_packet.v1',
     generatedAt: new Date().toISOString(),
-    ok:
-        alpha?.ok === true &&
-        selfHosted?.ok === true &&
-        structural?.ok === true &&
-        graph?.ok === true &&
-        recommendChecks?.ok === true &&
-        safeWrite?.ok === true &&
-        validationPlanComparison?.ok === true &&
-        evidenceHistory?.ok === true &&
-        gate?.ok === true,
-    sourceFiles: files,
+    ok: sourceFilesOk && derivedClaimsOk,
+    sourceFiles: sanitizeEvidence(files),
     evidenceGate: {
         ok: gate?.ok === true,
         checkCount: gateChecks.length,
@@ -83,67 +95,66 @@ const packet = {
     },
     toolCoverage: {
         alphaSummaryCount: Array.isArray(alpha?.summary) ? alpha.summary.length : 0,
-        alphaTools: Array.isArray(alpha?.summary) ? alpha.summary.map((entry: any) => entry?.name).filter(Boolean) : [],
+        alphaTools: sanitizeEvidence(Array.isArray(alpha?.summary) ? alpha.summary.map((entry: any) => entry?.name).filter(Boolean) : []),
         maxAlphaCallElapsedMs: Array.isArray(alpha?.summary) ? maxElapsed(alpha.summary) : 0,
     },
     sciFirstDiscovery: {
-        ok: selfHosted?.selfHosting?.sciFirstDiscovery?.complete === true,
-        expectedFirstTools: selfHosted?.selfHosting?.sciFirstDiscovery?.expectedFirstTools || [],
-        actualFirstTools: selfHosted?.selfHosting?.sciFirstDiscovery?.actualFirstTools || [],
-        workspaceUnchanged: selfHosted?.selfHosting?.workspaceUnchanged === true,
+        ok: sciFirstDiscoveryOk,
+        expectedFirstTools: sanitizeEvidence(selfHosted?.selfHosting?.sciFirstDiscovery?.expectedFirstTools || []),
+        actualFirstTools: sanitizeEvidence(selfHosted?.selfHosting?.sciFirstDiscovery?.actualFirstTools || []),
+        workspaceUnchanged: selfHostedWorkspaceUnchanged,
         maxCallElapsedMs: Array.isArray(selfHosted?.calls) ? maxElapsed(selfHosted.calls) : 0,
     },
     graphImpact: {
         ok: graph?.ok === true,
-        target: graph?.target || null,
-        symbol: graph?.symbol || null,
-        assertions: graph?.assertions || null,
-        fileImpact: graph?.impact?.file || null,
-        symbolImpact: graph?.impact?.symbol || null,
+        target: sanitizeEvidence(graph?.target || null),
+        symbol: sanitizeEvidence(graph?.symbol || null),
+        assertions: sanitizeEvidence(graph?.assertions || null),
+        fileImpact: sanitizeEvidence(graph?.impact?.file || null),
+        symbolImpact: sanitizeEvidence(graph?.impact?.symbol || null),
         maxCallElapsedMs: Array.isArray(graph?.calls) ? maxElapsed(graph.calls) : 0,
     },
     checkRecommendations: {
         ok: recommendChecks?.ok === true,
-        assertions: recommendChecks?.assertions || null,
+        assertions: sanitizeEvidence(recommendChecks?.assertions || null),
         calls: summarizeCalls(Array.isArray(recommendChecks?.calls) ? recommendChecks.calls : []),
         maxCallElapsedMs: Array.isArray(recommendChecks?.calls) ? maxElapsed(recommendChecks.calls) : 0,
     },
     previewFirstMutation: {
         structuralOk: structural?.ok === true,
         structuralCalls: summarizeCalls(Array.isArray(structural?.calls) ? structural.calls : []),
-        safeWritePreviewPresent: !!preview,
-        safeWritePreviewRecommendationsPresent: safeWriteCalls.some((call) => call?.payload?.mode === 'preview_validate' && call?.payload?.checkRecommendations?.workflow === 'recommend_checks'),
-        safeWritePreviewValidationPlanPresent: safeWriteCalls.some((call) => call?.payload?.mode === 'preview_validate' && call?.payload?.validationPlan?.schema === 'semantic-code-intelligence.validation_plan.v1'),
-        validationPlanSample: preview?.payload?.validationPlan || null,
-        safeWriteFixtureCleanAfterRollback: safeWrite?.assertions?.fixtureCleanAfterRollback === true,
+        safeWritePreviewPresent,
+        safeWritePreviewRecommendationsPresent,
+        safeWritePreviewValidationPlanPresent,
+        validationPlanSample: sanitizeEvidence(preview?.payload?.validationPlan || null),
+        safeWriteFixtureCleanAfterRollback,
     },
     validationPlanComparison: {
         ok: validationPlanComparison?.ok === true,
         comparedPlanCount: validationPlanComparison?.comparedPlanCount || 0,
-        stableFields: validationPlanComparison?.stableFields || [],
-        ignoredVolatileFields: validationPlanComparison?.ignoredVolatileFields || [],
-        drift: validationPlanComparison?.drift || [],
-        operatorSummary: validationPlanComparison?.operatorSummary || null,
-        remediationCatalog: validationPlanComparison?.remediationCatalog || null,
+        stableFields: sanitizeEvidence(validationPlanComparison?.stableFields || []),
+        ignoredVolatileFields: sanitizeEvidence(validationPlanComparison?.ignoredVolatileFields || []),
+        drift: sanitizeEvidence(validationPlanComparison?.drift || []),
+        operatorSummary: sanitizeEvidence(validationPlanComparison?.operatorSummary || null),
+        remediationCatalog: sanitizeEvidence(validationPlanComparison?.remediationCatalog || null),
     },
     evidenceHistory: {
         ok: evidenceHistory?.ok === true,
-        baseline: evidenceHistory?.baseline || null,
-        comparisonPolicy: evidenceHistory?.comparisonPolicy || null,
-        comparisons: evidenceHistory?.comparisons || [],
-        warnings: evidenceHistory?.warnings || [],
-        overBudget: evidenceHistory?.overBudget || [],
-        operatorSummary: evidenceHistory?.operatorSummary || null,
+        baseline: sanitizeEvidence(evidenceHistory?.baseline || null),
+        comparisonPolicy: sanitizeEvidence(evidenceHistory?.comparisonPolicy || null),
+        comparisons: sanitizeEvidence(evidenceHistory?.comparisons || []),
+        warnings: sanitizeEvidence(evidenceHistory?.warnings || []),
+        overBudget: sanitizeEvidence(evidenceHistory?.overBudget || []),
+        operatorSummary: sanitizeEvidence(evidenceHistory?.operatorSummary || null),
     },
     safeWriteVerification: {
         ok: safeWrite?.ok === true,
-        cleanApplyVerified: !!cleanApply,
+        cleanApplyVerified,
         cleanApplyMethod: cleanApply?.payload?.verification?.method || null,
-        mismatchFailsClosed: !!mismatch,
+        mismatchFailsClosed,
         mismatchMethod: mismatch?.payload?.verification?.method || null,
-        rollbackRestoredExactly: safeWrite?.assertions?.rollbackRestoredExactly === true,
-        mismatchRollbackPreservedPreexistingDirtyChange:
-            safeWrite?.assertions?.mismatchRollbackPreservedPreexistingDirtyChange === true,
+        rollbackRestoredExactly,
+        mismatchRollbackPreservedPreexistingDirtyChange,
     },
     validationCommands: [
         'bun run typecheck',
@@ -185,7 +196,7 @@ const packet = {
     loadErrors: Object.fromEntries(
         Object.entries(loaded)
             .filter(([, result]) => !result.ok)
-            .map(([key, result]: [string, any]) => [key, result.error])
+            .map(([key, result]: [string, any]) => [key, sanitizeEvidence(result.error)])
     ),
 };
 

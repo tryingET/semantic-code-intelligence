@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, realpathSync, renameSync, writeSync } from 'node:fs';
-import { dirname, isAbsolute, relative, resolve } from 'node:path';
+import { dirname, relative, resolve } from 'node:path';
 import { readJson } from './summarize-evidence-review';
+import { callFailed, isContainedPath, redactString, sanitizeEvidence, strings } from './evidence-summary-utils';
 
 const defaultInputPath = '.test-results/target-validation-plan-dogfood.json';
 const defaultOutputPath = '.test-results/target-dogfood-issue.json';
@@ -35,39 +36,10 @@ function validateCliOptions(format: string) {
   }
 }
 
-function isContainedPath(root: string, candidate: string): boolean {
-  const rel = relative(root, candidate);
-  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
-}
-
 function workspaceRelative(path: string | null | undefined, workspaceRoot = realpathSync(process.cwd())): string | null {
   if (!path) return null;
   const resolved = resolve(workspaceRoot, path);
   return isContainedPath(workspaceRoot, resolved) ? relative(workspaceRoot, resolved) || '.' : null;
-}
-
-function redactString(value: string): string {
-  const home = process.env.HOME || '';
-  let text = value;
-  if (home) text = text.split(home).join('<home>');
-  text = text.split(process.cwd()).join('<workspace>');
-  text = text.replace(/\b[A-Za-z_][A-Za-z0-9_]*(TOKEN|SECRET|PASSWORD|KEY)\s*=\s*[^\s,;]+/gi, '<redacted-secret>');
-  text = text.replace(/\b(gh[pousr]_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{20,})\b/g, '<redacted-token>');
-  text = text.replace(/(^|[\s'"(])\/(?:home|Users|tmp|var|private|mnt|opt)\/[^\s'"),;]+/g, '$1<absolute-path>');
-  return text;
-}
-
-function sanitize(value: any): any {
-  if (typeof value === 'string') return redactString(value);
-  if (Array.isArray(value)) return value.map(sanitize);
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, sanitize(item)]));
-  }
-  return value;
-}
-
-function strings(value: any): string[] {
-  return Array.isArray(value) ? value.map(String).filter(Boolean).map(redactString) : [];
 }
 
 function mdInline(value: unknown): string {
@@ -80,7 +52,7 @@ function mdInline(value: unknown): string {
 function failedCalls(evidence: any) {
   return Array.isArray(evidence?.calls)
     ? evidence.calls
-        .filter((call: any) => call?.success !== true)
+        .filter(callFailed)
         .map((call: any) => ({
           name: String(call?.name || 'unknown'),
           exitCode: typeof call?.exitCode === 'number' ? call.exitCode : null,
@@ -97,7 +69,8 @@ function failedCalls(evidence: any) {
 
 function classify(evidence: any, operatorNote: string | null) {
   const failures = failedCalls(evidence);
-  if (evidence?.ok === true && !operatorNote) {
+  const targetStatusRisk = evidence?.target?.statusPreserved === false || evidence?.target?.cleanAfter === false;
+  if (evidence?.ok === true && !operatorNote && failures.length === 0 && !targetStatusRisk) {
     return { trigger: 'none', severity: 'info', category: 'no_issue_detected' };
   }
   if (evidence?.failure === 'target_not_clean') return { trigger: 'dogfood_failure', severity: 'warning', category: 'target_precondition' };
@@ -109,8 +82,9 @@ function classify(evidence: any, operatorNote: string | null) {
   if (failures.some((call: any) => call.name === 'graph_expand')) {
     return { trigger: 'dogfood_failure', severity: 'warning', category: 'graph_or_navigation_path' };
   }
+  if (targetStatusRisk) return { trigger: evidence?.ok === true ? 'target_status_contradiction' : 'dogfood_failure', severity: 'blocking', category: 'target_status_risk' };
   if (operatorNote) return { trigger: 'operator_reported_friction', severity: evidence?.ok === true ? 'warning' : 'blocking', category: 'operator_reported' };
-  return { trigger: 'dogfood_failure', severity: evidence?.ok === true ? 'info' : 'blocking', category: 'unclassified_target_dogfood_failure' };
+  return { trigger: 'dogfood_failure', severity: evidence?.ok === true ? 'warning' : 'blocking', category: 'unclassified_target_dogfood_failure' };
 }
 
 function suggestedActions(classification: any, evidence: any): string[] {
@@ -128,6 +102,8 @@ function suggestedActions(classification: any, evidence: any): string[] {
     actions.push('Inspect graph_expand limitations and backend provenance before claiming impact coverage.');
   } else if (classification.category === 'no_issue_detected') {
     actions.push('No target issue was detected; avoid adding confidence-only dogfood unless a concrete target failure or operator friction appears.');
+  } else if (classification.category === 'target_status_risk') {
+    actions.push('Stop and verify target workspace status manually; a green top-level dogfood result cannot override dirty or unpreserved target status evidence.');
   } else {
     actions.push('Classify the failed call into precondition, navigation, recommendation, preview/check, cleanup, or target-owner issue before implementing a fix.');
   }
@@ -143,7 +119,7 @@ function buildIssue(evidence: any, options: { inputPath: string; operatorNote: s
   }
   const classification = classify(evidence, options.operatorNote);
   const failures = failedCalls(evidence);
-  const target = sanitize({
+  const target = sanitizeEvidence({
     label: evidence?.target?.label || null,
     nonSciRepo: evidence?.target?.nonSciRepo === true,
     cleanBefore: evidence?.target?.cleanBefore === true,
@@ -177,8 +153,8 @@ function buildIssue(evidence: any, options: { inputPath: string; operatorNote: s
     target,
     symptoms: {
       failedCallCount: failures.length,
-      failedCalls: sanitize(failures),
-      assertions: sanitize(evidence?.assertions || null),
+      failedCalls: sanitizeEvidence(failures),
+      assertions: sanitizeEvidence(evidence?.assertions || null),
       interpretationDoesNotProve: strings(evidence?.interpretation?.does_not_prove),
     },
     operatorReport: options.operatorNote ? redactString(options.operatorNote) : null,

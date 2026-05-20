@@ -117,6 +117,50 @@ describe('target dogfood issue capture', () => {
     expect(issue.nextActions.join('\n')).toContain('avoid adding confidence-only dogfood');
   });
 
+  test('captures semantic workflow failure even when process success is true', () => {
+    const { issue } = runCapture(failedEvidence({
+      ok: false,
+      calls: [
+        {
+          name: 'patch_checks_in_snapshot',
+          exitCode: 0,
+          success: true,
+          elapsedMs: 12,
+          stderrClean: true,
+          observation: 'process succeeded but validation failed',
+          payload: { workflow: 'patch_checks_in_snapshot', ok: false, checks: { ok: false } },
+        },
+      ],
+    }));
+
+    expect(issue.issueRequired).toBe(true);
+    expect(issue.classification.category).toBe('validation_plan_path');
+    expect(issue.symptoms.failedCallCount).toBe(1);
+    expect(issue.symptoms.failedCalls[0].checkOk).toBe(false);
+  });
+
+  test('top-level ok cannot hide failed calls or target status risk', () => {
+    const { issue } = runCapture(successfulEvidence({
+      target: { label: 'contradictory-target', nonSciRepo: true, cleanBefore: true, cleanAfter: false, statusPreserved: false },
+      calls: [{ name: 'graph_expand', exitCode: 0, success: true, payload: { workflow: 'graph_expand', ok: false } }],
+    }));
+
+    expect(issue.issueRequired).toBe(true);
+    expect(issue.classification.category).toBe('graph_or_navigation_path');
+    expect(issue.symptoms.failedCallCount).toBe(1);
+    expect(issue.nextActions.join('\n')).toContain('unresolved target mutation risk must fail closed');
+  });
+
+  test('top-level ok cannot hide target status risk when calls look clean', () => {
+    const { issue } = runCapture(successfulEvidence({
+      target: { label: 'dirty-target', nonSciRepo: true, cleanBefore: true, cleanAfter: false, statusPreserved: false },
+    }));
+
+    expect(issue.issueRequired).toBe(true);
+    expect(issue.trigger.kind).toBe('target_status_contradiction');
+    expect(issue.classification.category).toBe('target_status_risk');
+  });
+
   test('operator note can capture friction even when dogfood succeeds', () => {
     const { issue } = runCapture(successfulEvidence(), ['--operator-note', 'graph output was too sparse', '--scenario', 'target graph review']);
 
