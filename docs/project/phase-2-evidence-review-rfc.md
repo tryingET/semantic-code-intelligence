@@ -396,7 +396,7 @@ Later implementation evidence:
 
 - the summary output now exposes first-class `evidenceArtifacts`, `limitations`, `claims`, `authorityBoundaries`, and `operatorDecisionPoints` fields;
 - `tests/fixtures/evidence-review-claim-model-sample.json` provides a committed normalized sample;
-- `tests/evidence-review-claim-model.test.ts` covers read-only rendering, selected-vs-recommended command separation, alpha packet bundle-gate vs selected-command execution separation, absence states, first-class graph limitation visibility, limitation reference integrity, markdown-forgery neutralization, inline markdown neutralization, oversized-input refusal, workspace input containment, symlink-escape refusal, missing/non-regular input refusal, sanitized CLI errors, rollback absence, production-readiness caveats, and non-authority-durable local validation execution.
+- `tests/evidence-review-claim-model.test.ts` covers read-only rendering, selected-vs-recommended command separation, alpha packet bundle-gate vs selected-command execution separation, absence states, first-class graph limitation visibility, limitation reference integrity, markdown-forgery neutralization, inline markdown neutralization, oversized-input refusal, workspace input containment, symlink-escape refusal, TOCTOU replacement/mutation refusal, missing/unreadable/non-regular input refusal, sanitized CLI errors, rollback absence, production-readiness caveats, and non-authority-durable local validation execution.
 
 Interpretation:
 

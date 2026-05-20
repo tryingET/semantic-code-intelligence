@@ -39,7 +39,7 @@ A compliant review surface must accept at least one of these inputs:
    - snapshot artifact links (`overlay.diff`, `status`, `progress`);
    - safe-write verification/rollback evidence when present.
 
-The surface may accept richer future inputs, but these existing Phase 1 artifacts are the compatibility baseline. The SCI-owned CLI summary producer accepts evidence through workspace-contained regular JSON files only; lexical path escapes, symlink escapes, non-regular inputs, unreadable inputs, and oversized inputs must fail closed before parsing.
+The surface may accept richer future inputs, but these existing Phase 1 artifacts are the compatibility baseline. The SCI-owned CLI summary producer accepts evidence through workspace-contained regular JSON files only; lexical path escapes, symlink escapes, same-path replacement or mutation between preflight/open/read, non-regular inputs, unreadable inputs, and oversized inputs must fail closed before parsing.
 
 ## Required review sections
 
@@ -252,7 +252,7 @@ Any implementation of this contract must validate:
 8. untrusted evidence text cannot forge markdown headings/status or inline emphasis/link claims;
 9. alpha packet bundle gates remain distinct from selected-command execution evidence;
 10. oversized evidence inputs fail closed before parsing;
-11. path escapes, symlink escapes, missing/unreadable inputs, and non-regular evidence inputs fail closed without leaking input contents;
+11. path escapes, symlink escapes, TOCTOU replacement/mutation, missing/unreadable inputs, and non-regular evidence inputs fail closed without leaking input contents;
 12. unsupported schemas, malformed JSON, and unsupported formats fail with sanitized errors that do not expose stacks, source paths, or reflected caller-controlled text;
 13. docs strict and direction check pass;
 14. if runtime contracts change, `bun run alpha:mvp:check` still passes.
