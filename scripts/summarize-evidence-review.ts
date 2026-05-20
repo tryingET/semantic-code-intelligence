@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { closeSync, fstatSync, openSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { closeSync, constants, fstatSync, openSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
 
 function argValue(name: string): string | null {
@@ -46,7 +46,7 @@ function readJson(path: string): any {
 
   let fd: number;
   try {
-    fd = openSync(lexicalPath, 'r');
+    fd = openSync(lexicalPath, constants.O_RDONLY | constants.O_NONBLOCK);
   } catch {
     throw new Error('Evidence input is unavailable or unreadable');
   }
@@ -198,7 +198,7 @@ function detectInput(raw: any): { kind: string; payload: any; packet?: any } {
   if (raw?.schema === 'semantic-code-intelligence.validation_plan.v1') return { kind: 'validation_plan', payload: raw };
   if (raw?.schema === 'semantic-code-intelligence.alpha_evidence_packet.v1') return { kind: 'alpha_packet', payload: raw };
   if (raw?.schema === 'semantic-code-intelligence.target_validation_plan_dogfood.v1') return { kind: 'target_dogfood', payload: raw };
-  throw new Error(`Unsupported evidence schema: ${raw?.schema || 'unknown'}`);
+  throw new Error('Unsupported evidence schema');
 }
 
 function normalizeValidationPlan(plan: any, packet?: any) {

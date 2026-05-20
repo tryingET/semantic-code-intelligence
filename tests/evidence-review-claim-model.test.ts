@@ -299,6 +299,39 @@ describe('evidence review claim model', () => {
     expect(dirResult.stderr).toContain('Evidence input must be a regular file');
   });
 
+  test('summary rejects FIFO evidence inputs without blocking when mkfifo is available', () => {
+    const dir = workspaceTempDir('fifo-');
+    const fifoPath = join(dir, 'input.json');
+    const mkfifo = spawnSync('mkfifo', [fifoPath], { cwd: process.cwd(), encoding: 'utf8' });
+    if (mkfifo.status !== 0) return;
+
+    const result = spawnSync('bun', ['run', script, '--input', relative(process.cwd(), fifoPath), '--format', 'json'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      timeout: 2000,
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('Evidence input must be a regular file');
+  });
+
+  test('summary rejects unsupported evidence schemas without reflecting untrusted schema text', () => {
+    const dir = workspaceTempDir('bad-schema-');
+    const inputPath = join(dir, 'input.json');
+    writeFileSync(inputPath, JSON.stringify({ schema: 'schema-secret-marker\n## forged status', ok: true }));
+
+    const result = spawnSync('bun', ['run', script, '--input', relative(process.cwd(), inputPath), '--format', 'json'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('Unsupported evidence schema');
+    expect(result.stdout + result.stderr).not.toContain('schema-secret-marker');
+    expect(result.stdout + result.stderr).not.toContain('forged status');
+  });
+
   test('summary renderer is read-only for workspace and input directory', () => {
     const dir = workspaceTempDir('readonly-');
     const beforeDir = readdirSync(dir).sort();
