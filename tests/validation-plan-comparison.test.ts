@@ -129,4 +129,26 @@ describe('validation plan comparison graph context', () => {
     expect(report.ok).toBe(false);
     expect(report.drift.some((item: any) => item.failures.includes('graph_impact_context_incomplete'))).toBe(true);
   });
+
+  test('fails closed when graph edge count is missing', () => {
+    const root = makeRoot();
+    writeEvidence(root, validationPlan({
+      graphImpact: {
+        seed: { kind: 'file', value: 'src/example.ts' },
+        requestedEdges: ['imports', 'callers'],
+        evidence: [
+          { edge: 'imports', status: 'evidence' },
+          { edge: 'callers', count: 0, status: 'empty_or_unavailable' },
+        ],
+        limitations: [],
+      },
+    }));
+
+    const result = runComparison(root);
+    expect(result.status).toBe(1);
+    const report = JSON.parse(readFileSync(join(root, 'validation-plan-comparison.json'), 'utf8'));
+
+    expect(report.ok).toBe(false);
+    expect(report.drift.some((item: any) => item.actual.graphImpactValidationFailures.includes('graph_edge_count_invalid'))).toBe(true);
+  });
 });

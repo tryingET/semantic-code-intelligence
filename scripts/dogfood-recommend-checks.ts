@@ -2,6 +2,7 @@
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { validateGraphImpactContext } from './validation-plan-graph-impact';
 
 const outputPath = '.test-results/recommend-checks-dogfood.json';
 const jsonMode = process.argv.includes('--json');
@@ -113,18 +114,9 @@ function reasons(call: CallEvidence): string[] {
     return Array.isArray(call.payload?.rationale) ? call.payload.rationale.map((item: any) => String(item?.reason || '')) : [];
 }
 
-function stringArray(value: any): string[] {
-    return Array.isArray(value) ? value.map(String).filter(Boolean) : [];
-}
-
-function graphEvidenceCoversRequested(graphImpact: any): boolean {
-    const requested = stringArray(graphImpact?.requestedEdges);
-    const evidence = Array.isArray(graphImpact?.evidence) ? graphImpact.evidence : [];
-    return requested.length > 0 && requested.every((edge) => evidence.some((item: any) => item?.edge === edge && typeof item?.status === 'string'));
-}
-
 const byCase = Object.fromEntries(calls.map((call) => [call.caseName, call]));
 const threadedGraphImpact = byCase.patch_checks_recommendations_threaded.payload?.validationPlan?.graphImpact;
+const threadedGraphValidation = validateGraphImpactContext(threadedGraphImpact);
 const assertions = {
     docsOnlyMinimumNoop: commands(byCase.docs_only_patch, 'minimum').includes('true') && reasons(byCase.docs_only_patch).some((reason) => reason.includes('docs') || reason.includes('markdown')),
     tsSourceTypecheck: commands(byCase.ts_source_patch, 'minimum').includes('bun run typecheck'),
@@ -137,10 +129,9 @@ const assertions = {
         byCase.patch_checks_recommendations_threaded.payload?.validationPlan?.schema === 'semantic-code-intelligence.validation_plan.v1' &&
         byCase.patch_checks_recommendations_threaded.payload?.validationPlan?.commands?.recommendationsAppliedToSelected === false,
     patchChecksGraphContextPreserved:
-        threadedGraphImpact?.seed?.value === 'src/adapters/mcp-adapter.ts' &&
-        stringArray(threadedGraphImpact?.requestedEdges).includes('callers') &&
-        graphEvidenceCoversRequested(threadedGraphImpact) &&
-        Array.isArray(threadedGraphImpact?.limitations),
+        threadedGraphValidation.hasStableContext &&
+        threadedGraphValidation.seed?.value === 'src/adapters/mcp-adapter.ts' &&
+        threadedGraphValidation.requestedEdges.includes('callers'),
 };
 
 const evidence = {

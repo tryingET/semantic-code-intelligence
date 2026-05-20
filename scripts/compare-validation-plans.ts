@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { validateGraphImpactContext } from './validation-plan-graph-impact';
 
 const evidenceRoot = process.env.SCI_VALIDATION_PLAN_EVIDENCE_ROOT || '.test-results';
 const outputPath = join(evidenceRoot, 'validation-plan-comparison.json');
@@ -17,58 +18,8 @@ function minimum(plan: any): string[] {
   return Array.isArray(plan?.commands?.recommendedMinimum) ? plan.commands.recommendedMinimum.map(String) : [];
 }
 
-function strings(value: any): string[] {
-  return Array.isArray(value) ? value.map(String).filter(Boolean) : [];
-}
-
-const allowedGraphEvidenceStatuses = new Set(['evidence', 'limited', 'empty_or_unavailable']);
-
-function normalizeGraphImpact(graphImpact: any) {
-  if (!graphImpact || typeof graphImpact !== 'object') {
-    return {
-      present: false,
-      seed: null,
-      requestedEdges: [],
-      edgeEvidence: [],
-      limitationsFieldPresent: false,
-      hasStableContext: false,
-    };
-  }
-  const seed = graphImpact.seed && typeof graphImpact.seed === 'object'
-    ? { kind: String(graphImpact.seed.kind || ''), value: String(graphImpact.seed.value || '') }
-    : null;
-  const requestedEdges = strings(graphImpact.requestedEdges);
-  const edgeEvidence = Array.isArray(graphImpact.evidence)
-    ? graphImpact.evidence.map((item: any) => ({
-        edge: String(item?.edge || ''),
-        status: String(item?.status || ''),
-        count: Number(item?.count || 0),
-        limitations: strings(item?.limitations),
-      })).filter((item: any) => item.edge && item.status)
-    : [];
-  const evidenceByEdge = new Map(edgeEvidence.map((item: any) => [item.edge, item]));
-  const requestedEdgesCovered = requestedEdges.length > 0 && requestedEdges.every((edge) => evidenceByEdge.has(edge));
-  const statusesValid = edgeEvidence.every((item: any) => allowedGraphEvidenceStatuses.has(item.status));
-  const countsValid = edgeEvidence.every((item: any) => Number.isFinite(item.count) && item.count >= 0);
-  const limitedEdgesExplainLimitations = edgeEvidence.every((item: any) => item.status !== 'limited' || item.limitations.length > 0);
-  return {
-    present: true,
-    seed,
-    requestedEdges,
-    edgeEvidence,
-    limitationsFieldPresent: Array.isArray(graphImpact.limitations),
-    hasStableContext:
-      !!seed?.kind &&
-      !!seed?.value &&
-      requestedEdgesCovered &&
-      statusesValid &&
-      countsValid &&
-      limitedEdgesExplainLimitations,
-  };
-}
-
 function normalize(plan: any) {
-  const graphImpact = normalizeGraphImpact(plan?.graphImpact);
+  const graphImpact = validateGraphImpactContext(plan?.graphImpact);
   return {
     schema: plan?.schema || null,
     workflow: plan?.workflow || null,
@@ -87,6 +38,7 @@ function normalize(plan: any) {
     graphImpactRequestedEdges: graphImpact.requestedEdges,
     graphImpactEdgeEvidence: graphImpact.edgeEvidence,
     graphImpactLimitationsFieldPresent: graphImpact.limitationsFieldPresent,
+    graphImpactValidationFailures: graphImpact.failures,
     graphImpactHasStableContext: graphImpact.hasStableContext,
   };
 }
