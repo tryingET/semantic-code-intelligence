@@ -178,8 +178,9 @@ const packet = {
             'Production p95/p99 performance characterization.',
             'Complete whole-program call graph accuracy or rich semantic graph behavior for every language.',
             'A durable long-lived session database beyond narrow snapshot artifacts and generated evidence files.',
+            'Authority to reopen Phase 1 dogfood accumulation by default.',
         ],
-        nextRecommendedWave: 'Continue with graph richness hardening or broader external-repo diversity before broad Phase 1 closure.'
+        nextRecommendedWave: 'Phase 1 is closed as an Alpha MVP substrate. Continue only for Alpha maintenance/regression fixes, targeted hardening tied to a named closure-review gap, or an explicit Phase 2 review; do not add confidence-only dogfood by default.'
     },
     loadErrors: Object.fromEntries(
         Object.entries(loaded)
