@@ -810,57 +810,65 @@ export class AsyncEnhancedGrep {
         let timeout: NodeJS.Timeout | null = null;
         const files: string[] = [];
         let settled = false;
-        let resolveFn: (v: string[]) => void = () => {};
+        let cancelled = false;
+        const cappedFiles = () =>
+            options.maxFiles && files.length > options.maxFiles ? files.slice(0, options.maxFiles) : [...files];
+        let settle: (v: string[]) => void = () => {};
 
-        const promise = (async () => {
-            proc = await this.processPool.execute('rg', args);
-            if (options.timeout && options.timeout > 0) {
-                timeout = setTimeout(() => {
-                    try {
-                        proc?.kill('SIGTERM');
-                    } catch {}
-                }, options.timeout);
-                timeout.unref?.();
-            }
-            return new Promise<string[]>((resolve) => {
-                resolveFn = (v: string[]) => {
-                    if (!settled) {
-                        settled = true;
-                        resolve(v);
-                    }
-                };
-                proc!.stdout?.on('data', (data: Buffer) => {
-                    const lines = data.toString('utf8').split(/\r?\n/).filter(Boolean);
-                    for (const line of lines) {
-                        files.push(line);
-                    }
-                    if (options.maxFiles && files.length >= options.maxFiles) {
+        const promise = new Promise<string[]>((resolve) => {
+            settle = (v: string[]) => {
+                if (settled) return;
+                settled = true;
+                if (timeout) clearTimeout(timeout);
+                resolve(v);
+            };
+
+            (async () => {
+                try {
+                    proc = await this.processPool.execute('rg', args);
+                    if (cancelled || settled) {
                         try {
-                            proc?.kill('SIGTERM');
+                            proc.kill('SIGTERM');
                         } catch {}
+                        settle(cappedFiles());
+                        return;
                     }
-                });
-                proc!.on('close', () => {
-                    if (timeout) clearTimeout(timeout);
-                    const out =
-                        options.maxFiles && files.length > options.maxFiles ? files.slice(0, options.maxFiles) : files;
-                    resolveFn(out);
-                });
-                proc!.on('error', () => {
-                    if (timeout) clearTimeout(timeout);
-                    resolveFn([]);
-                });
-            });
-        })();
+
+                    if (options.timeout && options.timeout > 0) {
+                        timeout = setTimeout(() => {
+                            try {
+                                proc?.kill('SIGTERM');
+                            } catch {}
+                        }, options.timeout);
+                        timeout.unref?.();
+                    }
+
+                    proc.stdout?.on('data', (data: Buffer) => {
+                        if (settled) return;
+                        const lines = data.toString('utf8').split(/\r?\n/).filter(Boolean);
+                        for (const line of lines) {
+                            files.push(line);
+                        }
+                        if (options.maxFiles && files.length >= options.maxFiles) {
+                            try {
+                                proc?.kill('SIGTERM');
+                            } catch {}
+                        }
+                    });
+                    proc.on('close', () => settle(cappedFiles()));
+                    proc.on('error', () => settle([]));
+                } catch {
+                    settle([]);
+                }
+            })();
+        });
 
         const cancel = () => {
+            cancelled = true;
             try {
                 proc?.kill('SIGTERM');
             } catch {}
-            if (timeout) clearTimeout(timeout);
-            // Resolve immediately with partial results on cancel
-            const out = options.maxFiles && files.length > options.maxFiles ? files.slice(0, options.maxFiles) : files;
-            resolveFn(out);
+            settle(cappedFiles());
         };
         return { promise, cancel };
     }
@@ -929,48 +937,63 @@ export class AsyncEnhancedGrep {
         let timeout: NodeJS.Timeout | null = null;
         const files: string[] = [];
         let settled = false;
-        let resolveFn: (v: string[]) => void = () => {};
-        const promise = (async () => {
-            proc = await this.processPool.execute('fd', args);
-            if (options.timeout && options.timeout > 0) {
-                timeout = setTimeout(() => {
-                    try {
-                        proc?.kill('SIGTERM');
-                    } catch {}
-                }, options.timeout);
-            }
-            return new Promise<string[]>((resolve) => {
-                resolveFn = (v: string[]) => {
-                    if (!settled) {
-                        settled = true;
-                        resolve(v);
-                    }
-                };
-                proc!.stdout?.on('data', (data: Buffer) => {
-                    const lines = data.toString('utf8').split(/\r?\n/).filter(Boolean);
-                    for (const line of lines) files.push(line);
-                    if (options.maxFiles && files.length >= options.maxFiles) {
+        let cancelled = false;
+        const cappedFiles = () =>
+            options.maxFiles && files.length > options.maxFiles ? files.slice(0, options.maxFiles) : [...files];
+        let settle: (v: string[]) => void = () => {};
+
+        const promise = new Promise<string[]>((resolve) => {
+            settle = (v: string[]) => {
+                if (settled) return;
+                settled = true;
+                if (timeout) clearTimeout(timeout);
+                resolve(v);
+            };
+
+            (async () => {
+                try {
+                    proc = await this.processPool.execute('fd', args);
+                    if (cancelled || settled) {
                         try {
-                            proc?.kill('SIGTERM');
+                            proc.kill('SIGTERM');
                         } catch {}
+                        settle(cappedFiles());
+                        return;
                     }
-                });
-                proc!.on('close', () => {
-                    if (timeout) clearTimeout(timeout);
-                    resolveFn(files);
-                });
-                proc!.on('error', () => {
-                    if (timeout) clearTimeout(timeout);
-                    resolveFn([]);
-                });
-            });
-        })();
+
+                    if (options.timeout && options.timeout > 0) {
+                        timeout = setTimeout(() => {
+                            try {
+                                proc?.kill('SIGTERM');
+                            } catch {}
+                        }, options.timeout);
+                        timeout.unref?.();
+                    }
+
+                    proc.stdout?.on('data', (data: Buffer) => {
+                        if (settled) return;
+                        const lines = data.toString('utf8').split(/\r?\n/).filter(Boolean);
+                        for (const line of lines) files.push(line);
+                        if (options.maxFiles && files.length >= options.maxFiles) {
+                            try {
+                                proc?.kill('SIGTERM');
+                            } catch {}
+                        }
+                    });
+                    proc.on('close', () => settle(cappedFiles()));
+                    proc.on('error', () => settle([]));
+                } catch {
+                    settle([]);
+                }
+            })();
+        });
+
         const cancel = () => {
+            cancelled = true;
             try {
                 proc?.kill('SIGTERM');
             } catch {}
-            if (timeout) clearTimeout(timeout);
-            resolveFn(files);
+            settle(cappedFiles());
         };
         return { promise, cancel };
     }

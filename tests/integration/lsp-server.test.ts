@@ -7,12 +7,24 @@ import { testPaths } from '../test-helpers';
 describe('LSP Server Integration Tests', () => {
     let serverProcess: ChildProcess;
     let serverReady = false;
+    const testDbPath = path.join(process.cwd(), '.test-results', `lsp-server-${process.pid}.db`);
 
     beforeAll(async () => {
-        // Start the LSP server
+        fs.mkdirSync(path.dirname(testDbPath), { recursive: true });
+        for (const candidate of [testDbPath, `${testDbPath}-wal`, `${testDbPath}-shm`]) {
+            if (fs.existsSync(candidate)) fs.unlinkSync(candidate);
+        }
+
+        // Start the LSP server with an isolated SQLite DB so concurrent HTTP/learning
+        // integration tests cannot make initialize fail through shared repo-local state.
         const serverPath = testPaths.serverJs();
         serverProcess = spawn('bun', ['run', serverPath, '--stdio'], {
             stdio: ['pipe', 'pipe', 'pipe'],
+            env: {
+                ...process.env,
+                SEMANTIC_CODE_DB_PATH: testDbPath,
+                LAYER4_DB_PATH: testDbPath,
+            },
         });
 
         // Wait briefly for the stdio server process to attach listeners. Readiness logs must stay
@@ -38,6 +50,9 @@ describe('LSP Server Integration Tests', () => {
     afterAll(() => {
         if (serverProcess) {
             serverProcess.kill();
+        }
+        for (const candidate of [testDbPath, `${testDbPath}-wal`, `${testDbPath}-shm`]) {
+            if (fs.existsSync(candidate)) fs.unlinkSync(candidate);
         }
     });
 

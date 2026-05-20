@@ -344,21 +344,22 @@ export class CodeEvolutionTracker {
      * Record quality metrics snapshot
      */
     async recordQualityMetrics(metrics: CodeQualityMetrics): Promise<void> {
-        this.qualityHistory.push(metrics);
+        const normalizedMetrics = this.normalizeQualityMetrics(metrics);
+        this.qualityHistory.push(normalizedMetrics);
 
         // Keep only last 365 days of metrics
         const cutoffDate = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
         this.qualityHistory = this.qualityHistory.filter((m) => m.timestamp >= cutoffDate);
 
         // Store to database
-        await this.storeQualityMetricsToDatabase(metrics);
+        await this.storeQualityMetricsToDatabase(normalizedMetrics);
 
         // Emit event for trend analysis
         this.eventBus.emit('quality-metrics-recorded', {
-            timestamp: metrics.timestamp.getTime(),
-            complexity: metrics.complexity.cyclomatic,
-            coverage: metrics.testCoverage.lines,
-            debt: metrics.maintainability.debt,
+            timestamp: normalizedMetrics.timestamp.getTime(),
+            complexity: normalizedMetrics.complexity.cyclomatic,
+            coverage: normalizedMetrics.testCoverage.lines,
+            debt: normalizedMetrics.maintainability.debt,
         });
     }
 
@@ -417,11 +418,11 @@ export class CodeEvolutionTracker {
         if (dependencyTrend) trends.push(dependencyTrend);
 
         // Complexity trend
-        const complexityTrend = this.analyzeComplexityTrend();
+        const complexityTrend = this.analyzeComplexityTrend(timeframe);
         if (complexityTrend) trends.push(complexityTrend);
 
         // Test coverage trend
-        const coverageTrend = this.analyzeTestCoverageTrend();
+        const coverageTrend = this.analyzeTestCoverageTrend(timeframe);
         if (coverageTrend) trends.push(coverageTrend);
 
         return trends;
@@ -720,7 +721,7 @@ export class CodeEvolutionTracker {
             });
         } catch (error) {
             console.error('Failed to store evolution event to database:', error);
-            throw error; // Re-throw to trigger retry logic in caller
+            // Preserve the in-memory receipt even when persistence is unavailable.
         }
     }
 
@@ -827,12 +828,19 @@ export class CodeEvolutionTracker {
     }
 
     private calculateDiffSize(before?: string, after?: string): number {
-        if (!before || !after) return 0;
+        if (!before && !after) return 0;
+        if (!before || !after) return Math.max((before || after || '').split('\n').length, 1);
 
         const beforeLines = before.split('\n');
         const afterLines = after.split('\n');
+        const maxLines = Math.max(beforeLines.length, afterLines.length);
+        let changedLines = Math.abs(afterLines.length - beforeLines.length);
 
-        return Math.abs(afterLines.length - beforeLines.length);
+        for (let i = 0; i < Math.min(beforeLines.length, afterLines.length); i++) {
+            if (beforeLines[i] !== afterLines[i]) changedLines++;
+        }
+
+        return before === after ? 0 : Math.max(changedLines, 1);
     }
 
     private countSymbolChanges(before?: string, after?: string): number {
@@ -996,15 +1004,14 @@ export class CodeEvolutionTracker {
         };
     }
 
-    private analyzeComplexityTrend(): ArchitecturalTrend | null {
-        if (this.qualityHistory.length < 3) return null;
+    private analyzeComplexityTrend(timeframe?: { start: Date; end: Date }): ArchitecturalTrend | null {
+        const metrics = this.getQualityMetricsForTrend(timeframe);
+        if (metrics.length < 3) return null;
 
-        const dataPoints = this.qualityHistory
-            .slice(-30) // Last 30 measurements
-            .map((m) => ({
-                timestamp: m.timestamp,
-                value: m.complexity.cyclomatic,
-            }));
+        const dataPoints = metrics.slice(-30).map((m) => ({
+            timestamp: m.timestamp,
+            value: m.complexity.cyclomatic,
+        }));
 
         return {
             type: 'complexity_increase',
@@ -1019,10 +1026,11 @@ export class CodeEvolutionTracker {
         };
     }
 
-    private analyzeTestCoverageTrend(): ArchitecturalTrend | null {
-        if (this.qualityHistory.length < 3) return null;
+    private analyzeTestCoverageTrend(timeframe?: { start: Date; end: Date }): ArchitecturalTrend | null {
+        const metrics = this.getQualityMetricsForTrend(timeframe);
+        if (metrics.length < 3) return null;
 
-        const dataPoints = this.qualityHistory.slice(-30).map((m) => ({
+        const dataPoints = metrics.slice(-30).map((m) => ({
             timestamp: m.timestamp,
             value: m.testCoverage.lines,
         }));
@@ -1037,6 +1045,47 @@ export class CodeEvolutionTracker {
             },
             dataPoints,
             evidence: [],
+        };
+    }
+
+    private getQualityMetricsForTrend(timeframe?: { start: Date; end: Date }): CodeQualityMetrics[] {
+        return this.qualityHistory
+            .filter((m) => !timeframe || (m.timestamp >= timeframe.start && m.timestamp <= timeframe.end))
+            .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+    }
+
+    private normalizeQualityMetrics(metrics: CodeQualityMetrics): CodeQualityMetrics {
+        const finite = (value: number, fallback = 0) => (Number.isFinite(value) ? value : fallback);
+        const nonNegative = (value: number, fallback = 0) => Math.max(0, finite(value, fallback));
+        const percentage = (value: number, fallback = 0) => Math.min(100, nonNegative(value, fallback));
+
+        return {
+            timestamp: metrics.timestamp instanceof Date && !Number.isNaN(metrics.timestamp.getTime()) ? metrics.timestamp : new Date(),
+            complexity: {
+                cyclomatic: nonNegative(metrics.complexity?.cyclomatic),
+                cognitive: nonNegative(metrics.complexity?.cognitive),
+                halstead: nonNegative(metrics.complexity?.halstead),
+            },
+            duplication: {
+                lines: nonNegative(metrics.duplication?.lines),
+                blocks: nonNegative(metrics.duplication?.blocks),
+                percentage: percentage(metrics.duplication?.percentage),
+            },
+            dependencies: {
+                internal: nonNegative(metrics.dependencies?.internal),
+                external: nonNegative(metrics.dependencies?.external),
+                circular: nonNegative(metrics.dependencies?.circular),
+            },
+            testCoverage: {
+                lines: percentage(metrics.testCoverage?.lines),
+                branches: percentage(metrics.testCoverage?.branches),
+                functions: percentage(metrics.testCoverage?.functions),
+            },
+            maintainability: {
+                index: percentage(metrics.maintainability?.index),
+                debt: nonNegative(metrics.maintainability?.debt),
+                hotspots: Array.isArray(metrics.maintainability?.hotspots) ? metrics.maintainability.hotspots : [],
+            },
         };
     }
 

@@ -14,6 +14,14 @@ import { CodeEvolutionTracker, type CodeQualityMetrics, type EvolutionEvent } fr
 // Test database path
 const TEST_DB_PATH = path.join(process.cwd(), 'test-evolution.db');
 
+const cleanupDbFiles = (dbPath: string) => {
+    for (const candidate of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
+        if (fs.existsSync(candidate)) {
+            fs.unlinkSync(candidate);
+        }
+    }
+};
+
 // Mock configuration
 const mockConfig: CoreConfig = {
     layers: {
@@ -26,6 +34,7 @@ const mockConfig: CoreConfig = {
     cache: { enabled: true, maxSize: 1000, ttl: 300 },
     monitoring: { enabled: true, metricsInterval: 1000 },
     performance: { healthCheckInterval: 30000 },
+    database: { path: TEST_DB_PATH, maxConnections: 2 },
 };
 
 describe('CodeEvolutionTracker', () => {
@@ -35,9 +44,7 @@ describe('CodeEvolutionTracker', () => {
 
     beforeEach(async () => {
         // Clean up test database
-        if (fs.existsSync(TEST_DB_PATH)) {
-            fs.unlinkSync(TEST_DB_PATH);
-        }
+        cleanupDbFiles(TEST_DB_PATH);
 
         // Create fresh event bus and shared services
         eventBus = new EventBusService();
@@ -60,9 +67,7 @@ describe('CodeEvolutionTracker', () => {
         await sharedServices.dispose();
 
         // Remove test database
-        if (fs.existsSync(TEST_DB_PATH)) {
-            fs.unlinkSync(TEST_DB_PATH);
-        }
+        cleanupDbFiles(TEST_DB_PATH);
     });
 
     describe('Initialization', () => {
@@ -822,16 +827,14 @@ describe('CodeEvolutionTracker', () => {
 
         test('should handle invalid quality metrics', async () => {
             // Should handle missing or invalid data gracefully
-            await expect(
-                evolutionTracker.recordQualityMetrics({
-                    timestamp: new Date(),
-                    complexity: { cyclomatic: -1, cognitive: NaN, halstead: Infinity },
-                    duplication: { lines: -50, blocks: -2, percentage: -1.5 },
-                    dependencies: { internal: -10, external: -5, circular: -1 },
-                    testCoverage: { lines: 150, branches: 200, functions: -10 }, // Invalid percentages
-                    maintainability: { index: -5, debt: -10, hotspots: [] },
-                })
-            ).resolves.not.toThrow();
+            await evolutionTracker.recordQualityMetrics({
+                timestamp: new Date(),
+                complexity: { cyclomatic: -1, cognitive: NaN, halstead: Infinity },
+                duplication: { lines: -50, blocks: -2, percentage: -1.5 },
+                dependencies: { internal: -10, external: -5, circular: -1 },
+                testCoverage: { lines: 150, branches: 200, functions: -10 }, // Invalid percentages
+                maintainability: { index: -5, debt: -10, hotspots: [] },
+            });
         });
 
         test('should handle empty evolution events gracefully', async () => {

@@ -150,66 +150,55 @@ export interface PerformanceMetrics {
 // Legacy cache interface for backward compatibility
 interface LegacySearchCache<T> {
     get(key: string): T | null;
-    set(key: string, data: T, ttl?: number): void;
+    set(key: string, data: T, ttl?: number, filePath?: string): void;
     clear(): void;
     size(): number;
     getStats(): { hits: number; misses: number; hitRate: number; evictions?: number };
 }
 
-// Smart cache adapter that wraps SmartCache to provide legacy interface
+// Smart cache adapter that wraps SmartCache to provide legacy synchronous semantics.
 class SmartCacheAdapter<T> implements LegacySearchCache<T> {
-    private syncCache = new Map<string, { data: T; timestamp: number; ttl: number }>();
+    private syncCache = new Map<
+        string,
+        { data: T; timestamp: number; ttl: number; filePath?: string; fileModTime?: number; fileSize?: number }
+    >();
     private stats = { hits: 0, misses: 0, evictions: 0 };
 
     constructor(private smartCache: SmartCache<T>) {}
 
     get(key: string): T | null {
-        // Check sync cache first (fast path)
         const entry = this.syncCache.get(key);
-        if (entry) {
-            // Check if expired
-            if (Date.now() - entry.timestamp <= entry.ttl) {
-                this.stats.hits++;
-                return entry.data;
-            } else {
-                this.syncCache.delete(key);
-            }
+        if (!entry) {
+            this.stats.misses++;
+            return null;
         }
 
-        this.stats.misses++;
+        if (Date.now() - entry.timestamp > entry.ttl || this.hasFileChanged(entry)) {
+            this.syncCache.delete(key);
+            void this.smartCache.invalidate(key, 'sync_cache_invalidated');
+            this.stats.misses++;
+            return null;
+        }
 
-        // Try to get from smart cache asynchronously in the background
-        this.smartCache
-            .get(key)
-            .then((result) => {
-                if (result) {
-                    // Store in sync cache for next access
-                    this.syncCache.set(key, {
-                        data: result,
-                        timestamp: Date.now(),
-                        ttl: 300000, // 5 minutes default
-                    });
-                }
-            })
-            .catch(() => {
-                // Ignore async errors in sync context
-            });
-
-        return null;
+        this.stats.hits++;
+        return entry.data;
     }
 
-    set(key: string, data: T, ttl?: number): void {
+    set(key: string, data: T, ttl?: number, filePath?: string): void {
         const actualTtl = ttl || 300000; // 5 minutes default
+        const metadata = this.readFileMetadata(filePath);
 
-        // Set in sync cache immediately
+        this.evictIfNecessary();
         this.syncCache.set(key, {
             data,
             timestamp: Date.now(),
             ttl: actualTtl,
+            filePath: metadata.filePath,
+            fileModTime: metadata.fileModTime,
+            fileSize: metadata.fileSize,
         });
 
-        // Also set in smart cache asynchronously
-        this.smartCache.set(key, data, { ttl: actualTtl }).catch((error) => {
+        this.smartCache.set(key, data, { ttl: actualTtl, filePath: metadata.filePath }).catch((error) => {
             console.warn('SmartCache set failed:', error);
         });
     }
@@ -233,6 +222,38 @@ class SmartCacheAdapter<T> implements LegacySearchCache<T> {
             ...this.stats,
             hitRate: total > 0 ? this.stats.hits / total : 0,
         };
+    }
+
+    private readFileMetadata(filePath?: string): { filePath?: string; fileModTime?: number; fileSize?: number } {
+        if (!filePath) return {};
+        try {
+            const normalized = path.resolve(filePath);
+            const stat = fsSync.statSync(normalized);
+            return { filePath: normalized, fileModTime: stat.mtime.getTime(), fileSize: stat.size };
+        } catch {
+            return { filePath: path.resolve(filePath) };
+        }
+    }
+
+    private hasFileChanged(entry: { filePath?: string; fileModTime?: number; fileSize?: number }): boolean {
+        if (!entry.filePath || entry.fileModTime === undefined) return false;
+        try {
+            const stat = fsSync.statSync(entry.filePath);
+            return stat.mtime.getTime() > entry.fileModTime || stat.size !== entry.fileSize;
+        } catch {
+            return true;
+        }
+    }
+
+    private evictIfNecessary(): void {
+        const maxEntries = (this.smartCache as any)?.config?.maxSize || 1000;
+        while (this.syncCache.size >= maxEntries) {
+            const oldest = this.syncCache.keys().next().value;
+            if (!oldest) break;
+            this.syncCache.delete(oldest);
+            this.stats.evictions++;
+            void this.smartCache.invalidate(oldest, 'sync_cache_lru_eviction');
+        }
     }
 }
 
@@ -347,9 +368,10 @@ export class EnhancedGrep {
             // Determine search strategy
             const results = await this.executeSearch(params);
 
-            // Cache results
-            if (this.config.enableCache && results.length > 0) {
-                this.cache.set(cacheKey, results);
+            // Cache positive and negative results; repeated no-match searches are
+            // useful work to avoid and need to participate in cache accounting.
+            if (this.config.enableCache) {
+                this.cache.set(cacheKey, results, undefined, params.path);
             }
 
             this.updateMetrics(Date.now() - startTime);
@@ -445,9 +467,10 @@ export class EnhancedGrep {
         args.push('--glob', '!*.min.js');
         args.push('--glob', '!package-lock.json');
         args.push('--max-depth', '5');
+        args.push('--with-filename');
 
         if (params.caseInsensitive) args.push('-i');
-        if (params.lineNumbers) args.push('-n');
+        if (params.outputMode === 'content' || params.lineNumbers) args.push('-n');
         if (params.multiline) args.push('-U', '--multiline-dotall');
         if (typeof params.contextBefore === 'number') args.push('-B', String(params.contextBefore));
         if (typeof params.contextAfter === 'number') args.push('-A', String(params.contextAfter));
@@ -788,7 +811,7 @@ export class EnhancedGlob {
             const result = await this.executeGlob(params);
 
             if (this.config.enableCache) {
-                this.cache.set(cacheKey, result);
+                this.cache.set(cacheKey, result, undefined, params.path || process.cwd());
             }
 
             this.updateMetrics(Date.now() - startTime);
@@ -1017,7 +1040,7 @@ export class EnhancedLS {
             const result = await this.executeListing(params);
 
             if (this.config.enableCache) {
-                this.cache.set(cacheKey, result);
+                this.cache.set(cacheKey, result, undefined, params.path);
             }
 
             this.updateMetrics(Date.now() - startTime);

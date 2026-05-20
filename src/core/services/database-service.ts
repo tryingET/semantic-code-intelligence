@@ -110,8 +110,8 @@ CREATE TABLE IF NOT EXISTS performance_metrics (
 CREATE TABLE IF NOT EXISTS evolution_events (
   id TEXT PRIMARY KEY,
   file_path TEXT NOT NULL,
-  event_type TEXT NOT NULL,
-  type TEXT NOT NULL, -- Add legacy 'type' column for compatibility
+  event_type TEXT NOT NULL DEFAULT 'unknown',
+  type TEXT NOT NULL DEFAULT 'unknown', -- Add legacy 'type' column for compatibility
   change_summary TEXT,
   impact_score REAL NOT NULL DEFAULT 0.0,
   architectural_impact TEXT,

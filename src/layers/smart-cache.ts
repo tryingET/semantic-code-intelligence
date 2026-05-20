@@ -540,7 +540,7 @@ export class SmartCache<T> extends EventEmitter {
                 path: filePath,
                 watcher,
                 zone: zoneName,
-                lastEvent: Date.now(),
+                lastEvent: 0,
                 eventCount: 0,
             });
         } catch (error) {
