@@ -95,4 +95,19 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
             rmSync(outsideDir, { recursive: true, force: true });
         }
     }, 30000);
+
+    test('fails closed when workspace changes before lazy snapshot materialization', async () => {
+        const rel = `.tmp-overlay-lazy-base-${Date.now()}-${Math.random().toString(16).slice(2)}.txt`;
+        const abs = path.join(process.cwd(), rel);
+        const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
+        try {
+            await fs.writeFile(abs, 'before\n', 'utf8');
+            const snap = overlayStore.createSnapshot(false);
+            await fs.writeFile(abs, 'after\n', 'utf8');
+            await expect(ensure(snap.id)).rejects.toThrow('Workspace changed since snapshot creation');
+            expect(existsSync(path.join(process.cwd(), '.ontology', 'snapshots', snap.id, '.materialized'))).toBe(false);
+        } finally {
+            rmSync(abs, { force: true });
+        }
+    }, 30000);
 });

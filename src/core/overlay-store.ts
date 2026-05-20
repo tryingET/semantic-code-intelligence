@@ -23,6 +23,7 @@ type Snapshot = {
     id: string;
     createdAt: number;
     diffs: string[];
+    baseFingerprint?: string;
     touchedFiles?: Set<string>;
     lastApply?: {
         ok: boolean;
@@ -139,12 +140,69 @@ export class OverlayStore {
         const chained = previous.catch(() => undefined).then(() => current);
         this.materializeLocks.set(snapshotId, chained);
         await previous.catch(() => undefined);
+        let fileLockRelease: (() => Promise<void>) | null = null;
         try {
+            fileLockRelease = await this.acquireMaterializeFileLock(snapshotId);
             return await action();
         } finally {
+            await fileLockRelease?.().catch(() => undefined);
             release();
             if (this.materializeLocks.get(snapshotId) === chained) this.materializeLocks.delete(snapshotId);
         }
+    }
+
+    private async acquireMaterializeFileLock(snapshotId: string): Promise<() => Promise<void>> {
+        const lockDir = path.join(this.snapshotsRoot(), `${snapshotId}.lock`);
+        const deadline = Date.now() + 30_000;
+        while (true) {
+            try {
+                await fsp.mkdir(lockDir, { recursive: false });
+                await fsp.writeFile(path.join(lockDir, 'owner.json'), JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() }), 'utf8');
+                return async () => { await fsp.rm(lockDir, { recursive: true, force: true }); };
+            } catch (error: any) {
+                if (error?.code !== 'EEXIST') throw error;
+                try {
+                    const stat = await fsp.stat(lockDir);
+                    if (Date.now() - stat.mtimeMs > 5 * 60_000) await fsp.rm(lockDir, { recursive: true, force: true });
+                } catch {}
+                if (Date.now() > deadline) throw new Error('Timed out waiting for snapshot materialization lock');
+                await new Promise((resolve) => setTimeout(resolve, 50));
+            }
+        }
+    }
+
+    private workspaceBaseFingerprint(): string {
+        const root = this.resolveWorkspaceBase();
+        const hash = createHash('sha256');
+        hash.update(`root:${root}\0`);
+        const addGit = (args: string[], label: string): string => {
+            const result = spawnSync('git', args, { cwd: root, encoding: 'buffer', stdio: ['ignore', 'pipe', 'pipe'] });
+            hash.update(label);
+            hash.update('\0');
+            hash.update(result.status === 0 ? result.stdout : Buffer.from(`git-failed:${result.status}:${String(result.stderr || '')}`));
+            hash.update('\0');
+            return result.status === 0 ? result.stdout.toString('utf8') : '';
+        };
+        addGit(['rev-parse', 'HEAD'], 'head');
+        addGit(['status', '--porcelain=v1', '-z'], 'status');
+        addGit(['diff', '--binary'], 'diff');
+        addGit(['diff', '--cached', '--binary'], 'cached-diff');
+        const untracked = addGit(['ls-files', '--others', '--exclude-standard', '-z'], 'untracked-list')
+            .split('\0')
+            .filter(Boolean)
+            .slice(0, 1000);
+        for (const rel of untracked) {
+            try {
+                const { absolutePath, relativePath } = this.containedPath(root, rel, 'untracked file path');
+                const stat = fs.statSync(absolutePath);
+                if (!stat.isFile()) continue;
+                hash.update(`untracked:${relativePath}:${stat.size}:`);
+                if (stat.size <= 1024 * 1024) hash.update(fs.readFileSync(absolutePath));
+                else hash.update(String(stat.mtimeMs));
+                hash.update('\0');
+            } catch {}
+        }
+        return hash.digest('hex');
     }
 
     private serializeSnapshot(snap: Snapshot): Record<string, unknown> {
@@ -152,6 +210,7 @@ export class OverlayStore {
             id: snap.id,
             createdAt: snap.createdAt,
             diffs: snap.diffs,
+            baseFingerprint: snap.baseFingerprint || null,
             touchedFiles: snap.touchedFiles ? Array.from(snap.touchedFiles) : [],
             lastApply: snap.lastApply || null,
         };
@@ -163,7 +222,8 @@ export class OverlayStore {
         const createdAt = Number(raw?.createdAt || Date.now());
         const diffs = Array.isArray(raw?.diffs) ? raw.diffs.filter((d: any) => typeof d === 'string') : [];
         const touched = Array.isArray(raw?.touchedFiles) ? raw.touchedFiles.filter((f: any) => typeof f === 'string') : [];
-        const snap: Snapshot = { id, createdAt, diffs };
+        const baseFingerprint = typeof raw?.baseFingerprint === 'string' ? raw.baseFingerprint : undefined;
+        const snap: Snapshot = { id, createdAt, diffs, baseFingerprint };
         if (touched.length) snap.touchedFiles = new Set(touched);
         if (raw?.lastApply && typeof raw.lastApply === 'object') snap.lastApply = raw.lastApply;
         return snap;
@@ -214,18 +274,17 @@ export class OverlayStore {
     }
 
     createSnapshot(preferExisting = true): Snapshot {
-        // Optionally reuse the most recent snapshot to avoid churn
+        const baseFingerprint = this.workspaceBaseFingerprint();
+        // Optionally reuse the most recent snapshot only when it still matches the current workspace base.
         if (preferExisting) {
             this.loadAllSnapshotsFromDisk();
             const last = Array.from(this.snapshots.values()).sort((a, b) => b.createdAt - a.createdAt)[0];
-            if (last) return last;
+            if (last?.baseFingerprint === baseFingerprint) return last;
         }
         const id = randomUUID();
-        const snap: Snapshot = { id, createdAt: Date.now(), diffs: [] };
+        const snap: Snapshot = { id, createdAt: Date.now(), diffs: [], baseFingerprint };
         this.snapshots.set(id, snap);
         this.persistSnapshotSync(snap);
-        // Best-effort cleanup after creating a snapshot
-        void this.cleanup().catch(() => {});
         return snap;
     }
 
@@ -375,6 +434,9 @@ export class OverlayStore {
         const touched = snap?.touchedFiles ? Array.from(snap.touchedFiles) : [];
 
         if (currentFingerprint === desiredFingerprint) return dir;
+        if (snap?.baseFingerprint && !currentFingerprint && this.workspaceBaseFingerprint() !== snap.baseFingerprint) {
+            throw new Error('Workspace changed since snapshot creation before materialization; create a fresh snapshot');
+        }
 
         const tempDir = path.join(snapsRoot, `.${snapshotId}.${process.pid}.${Date.now()}.tmp`);
         const oldDir = path.join(snapsRoot, `.${snapshotId}.${process.pid}.${Date.now()}.old`);
