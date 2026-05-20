@@ -140,12 +140,14 @@ const evidence = {
     applied.payload?.ok === true &&
     applied.payload?.applied === true &&
     applied.payload?.verification?.appliedDiffMatchesSnapshot === true &&
+    applied.payload?.validationPlan?.verification?.appliedDiffMatchesSnapshot === true &&
     afterApply.includes(marker) &&
     rollbackResult?.status === 0 &&
     afterRollback === original &&
     mismatchApply.payload?.ok === false &&
     mismatchApply.payload?.applied === true &&
     mismatchApply.payload?.verification?.appliedDiffMatchesSnapshot === false &&
+    mismatchApply.payload?.validationPlan?.verification?.appliedDiffMatchesSnapshot === false &&
     afterMismatchApply.includes(mismatchMarker) &&
     afterMismatchApply.includes(dirtyMarker) &&
     mismatchRollbackResult?.status === 0 &&
@@ -160,11 +162,14 @@ const evidence = {
     failedChecksBlockedApply: failedApply.payload?.ok === false && afterFailedApply === original,
     guardedApplyChangedFixture: applied.payload?.applied === true && afterApply.includes(marker),
     appliedDiffMatchesSnapshot: applied.payload?.verification?.appliedDiffMatchesSnapshot === true,
+    validationPlanAppliedDiffMatchesSnapshot: applied.payload?.validationPlan?.verification?.appliedDiffMatchesSnapshot === true,
     rollbackRestoredExactly: afterRollback === original,
     dirtyTouchedFileVerificationFailsClosed:
       mismatchApply.payload?.ok === false &&
       mismatchApply.payload?.applied === true &&
       mismatchApply.payload?.verification?.appliedDiffMatchesSnapshot === false,
+    validationPlanDirtyTouchedFileVerificationFailsClosed:
+      mismatchApply.payload?.validationPlan?.verification?.appliedDiffMatchesSnapshot === false,
     mismatchRollbackPreservedPreexistingDirtyChange: afterMismatchRollback === dirtyOriginal,
     finalRestoreExact: afterFinalRestore === original,
     fixtureCleanAfterRollback: fixtureHasNoPostRollbackModification,

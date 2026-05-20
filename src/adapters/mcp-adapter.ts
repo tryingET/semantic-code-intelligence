@@ -926,6 +926,7 @@ export class MCPAdapter {
             applied,
             applyGuardSatisfied: verification.applyGuardSatisfied,
             rollback,
+            verification,
         });
         const summary = {
             ok,
@@ -2119,6 +2120,7 @@ export class MCPAdapter {
         applied: boolean;
         applyGuardSatisfied: boolean;
         rollback?: any;
+        verification?: any;
     }) {
         const recommendedMinimum = Array.isArray(args.checkRecommendations?.minimum) ? args.checkRecommendations.minimum.map(String) : [];
         const recommendedBroader = Array.isArray(args.checkRecommendations?.broader) ? args.checkRecommendations.broader.map(String) : [];
@@ -2178,6 +2180,17 @@ export class MCPAdapter {
                 : null,
             apply: { applied: args.applied, guardSatisfied: args.applyGuardSatisfied },
             rollback: args.rollback ? { available: !!args.rollback.available, command: args.rollback.command, artifact: args.rollback.artifact } : null,
+            verification: args.verification
+                ? {
+                      staged: args.verification.staged === true,
+                      checksPassed: args.verification.checksPassed === true,
+                      applyGuardSatisfied: args.verification.applyGuardSatisfied === true,
+                      applied: args.verification.applied === true,
+                      appliedDiffMatchesSnapshot: typeof args.verification.appliedDiffMatchesSnapshot === 'boolean' ? args.verification.appliedDiffMatchesSnapshot : null,
+                      method: typeof args.verification.method === 'string' ? args.verification.method : null,
+                      diagnostics: args.verification.diagnostics && typeof args.verification.diagnostics === 'object' ? args.verification.diagnostics : null,
+                  }
+                : null,
             note: 'Evidence summary only; it does not select, append, or enforce validation commands.',
         };
     }

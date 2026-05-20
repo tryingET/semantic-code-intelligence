@@ -177,13 +177,17 @@ if (safeWrite) {
     const previewRecommendations = calls.some((call) => call?.payload?.mode === 'preview_validate' && call?.payload?.checkRecommendations?.workflow === 'recommend_checks');
     const previewValidationPlan = calls.some((call) => call?.payload?.mode === 'preview_validate' && call?.payload?.validationPlan?.schema === 'semantic-code-intelligence.validation_plan.v1');
     const cleanApplyVerified = calls.some((call) => call?.payload?.applied === true && call?.payload?.verification?.appliedDiffMatchesSnapshot === true);
+    const cleanApplyValidationPlanVerified = calls.some((call) => call?.payload?.applied === true && call?.payload?.validationPlan?.verification?.appliedDiffMatchesSnapshot === true);
     const mismatchFailsClosed = calls.some((call) => call?.payload?.applied === true && call?.payload?.ok === false && call?.payload?.verification?.appliedDiffMatchesSnapshot === false);
+    const mismatchValidationPlanFailsClosed = calls.some((call) => call?.payload?.applied === true && call?.payload?.ok === false && call?.payload?.validationPlan?.verification?.appliedDiffMatchesSnapshot === false);
     checks.push({ name: 'safe_write_dogfood_ok', ok: safeWrite.ok === true, detail: { schema: safeWrite.schema } });
     checks.push({ name: 'safe_write_preview_first', ok: preview });
     checks.push({ name: 'safe_write_preview_recommendations_threaded', ok: previewRecommendations });
     checks.push({ name: 'safe_write_preview_validation_plan', ok: previewValidationPlan });
     checks.push({ name: 'safe_write_exact_apply_verified', ok: cleanApplyVerified });
+    checks.push({ name: 'safe_write_validation_plan_exact_apply_verified', ok: cleanApplyValidationPlanVerified });
     checks.push({ name: 'safe_write_mismatch_fails_closed', ok: mismatchFailsClosed });
+    checks.push({ name: 'safe_write_validation_plan_mismatch_fails_closed', ok: mismatchValidationPlanFailsClosed });
     checks.push({
         name: 'safe_write_latency_budget',
         ok: maxElapsed(calls) <= budgetsMs.safeWriteCall,
