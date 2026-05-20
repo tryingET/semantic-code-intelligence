@@ -30,10 +30,10 @@ just alpha-mvp-check
 ## 🚀 Alpha Capabilities
 
 ### 🧠 **Unified Intelligence Core**
-- **Protocol-Agnostic**: Single core serves LSP, MCP, and HTTP with identical functionality
-- **5-Layer Processing**: Fast Search (2.4ms) → AST Analysis (6ms) → Planner (1.0ms) → Semantic Graph (1.4ms) → Pattern Mining & Propagation (1.2–2.7ms)
-- **All Performance Targets Exceeded**: <100ms for 95% of requests, >90% cache hit rate
-- **Zero Code Duplication**: 83% code reduction through unified architecture
+- **Protocol-Agnostic**: one core contract is exposed through MCP, HTTP, CLI, and LSP-oriented adapters.
+- **5-Layer Processing**: Fast Search → AST Analysis → Planner → Semantic Graph → Pattern Learning & Propagation.
+- **Alpha performance posture**: validation records coarse latency evidence for representative workflows; production p95/p99 and cross-machine SLOs remain future work.
+- **Preview-first mutation posture**: patch planning and safe-write workflows stage reviewable diffs, run explicit checks, and avoid direct writes by default.
 
 ### 🔍 **Enhanced Search Intelligence**
 - **Smart Caching**: Zone-based caching with file change detection (never returns stale data)
@@ -48,11 +48,11 @@ just alpha-mvp-check
 - **Feedback Loop**: Continuously improves suggestions based on user interactions
 
 ### 🌐 **Multi-Protocol Support**
-- **LSP Protocol**: Full VS Code and IDE integration (stdio/TCP on port 7002)
-- **MCP Protocol**: MCP-compatible client integration with Streamable HTTP (port 7001)
-- **HTTP API**: REST endpoints for web applications and CI/CD (port 7000)
-- **CLI Tool**: Terminal interface with comprehensive command set
-- **Web UI Dashboard**: Real-time monitoring and pattern visualization (port 8080)
+- **MCP Protocol**: first-user integration through stdio and Streamable HTTP.
+- **HTTP API**: deterministic `/api/v1/tools/call` parity surface for harnesses and tests.
+- **CLI Tool**: local verification and target-repo fallback through machine-readable workflow calls.
+- **LSP Protocol**: adapter surface exists, but polished human IDE/workbench UX is later-phase.
+- **Dashboards / production deployment / analytics**: roadmap only until an explicit later-phase decision and evidence promote them.
 
 ## Choosing a Tool
 
@@ -511,39 +511,35 @@ The proxy integrates with MCP clients and tools:
 - Uses `LS` for directory structure analysis
 
 ### CI/CD Integration
-```yaml
-# .github/workflows/ontology-check.yml
-name: Ontology Check
-on: [pull_request]
-jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Check refactoring suggestions
-        run: |
-          semantic-code-intelligence analyze --format=github-annotation
-          semantic-code-intelligence suggest-renames --confidence=0.9
+
+CI/review automation is a later phase. The current repo-owned CI-style evidence path is the Alpha MVP validation bundle:
+
+```bash
+bun run alpha:mvp:check
+# or
+just alpha-mvp-check
 ```
+
+Do not treat pull-request annotations, autonomous suggestions, dashboards, or production deployment as supported product surfaces until a later decision names their user, interface contract, validation evidence, and rollback boundary.
 
 ## Development
 
 ### Building from Source
 ```bash
 # Install dependencies
-npm install
+bun install
 
 # Run in development mode
-npm run dev
+bun run dev
 
-# Build for production
-npm run build
+# Build adapters/CLI
+bun run build:all
 
 # Run tests
-npm test
+just test
 
-# Run linting
-npm run lint
+# Run the closed Alpha MVP validation bundle
+just alpha-mvp-check
 ```
 
 ### Architecture
@@ -573,19 +569,21 @@ The system consists of several key components:
 ### Testing
 
 ```bash
-# Run all tests
-npm test
+# Fast sliced test runner
+just test
 
-# Run specific test suites
-npm test -- --grep "ontology"
-npm test -- --grep "patterns"
-npm test -- --grep "propagation"
+# Closed Alpha MVP validation bundle
+just alpha-mvp-check
 
-# Run performance tests
-npm run test:perf
+# Package-script equivalent
+bun run alpha:mvp:check
 
-# Generate coverage report
-npm run test:coverage
+# Targeted tests
+bun test tests/alpha-mvp-tool-contract.test.ts
+
+# Optional legacy/perf/coverage surfaces
+just test-perf
+just test-coverage
 ```
 
 #### Local Testing (Sliced + Batched)
@@ -639,43 +637,21 @@ curl http://localhost:7000/patterns
 
 ## ⚡ Performance Notes (Alpha Evidence)
 
-### Layer Performance (historical benchmark notes)
+The closed Alpha MVP bundle records coarse latency evidence for representative harnessed-LLM workflows and compares current elapsed-time maxima against `docs/project/alpha-evidence-latency-baseline.json`.
 
-| Layer | Target | Achieved | Performance |
-|-------|--------|----------|-------------|
-| Layer 1: Enhanced Search | 5ms | **2.4ms** | 52% under target |
-| Layer 2: AST Analysis | 50ms | **6ms** | 88% under target |
-| Layer 3: Planner | 10ms | **1.0ms** | 90% under target |
-| Layer 4: Semantic Graph | 10ms | **1.4ms** | 86% under target |
-| Layer 5: Pattern Mining & Propagation | 20ms | **1.2–2.7ms** | 86–94% under target |
-| **Total Pipeline** | **95ms** | **13.7ms** | **86% under target** |
+Use these commands for current evidence:
 
-### Real-World Operations
+```bash
+bun run alpha:evidence:history
+bun run alpha:evidence:packet
+just alpha-mvp-check
+```
 
-| Operation | Time | Scale | Status |
-|-----------|------|-------|--------|
-| Find Definition | **<100ms** | 10K+ files | ✅ Validated |
-| Find References | **<200ms** | With fuzzy matching | ✅ Validated |
-| Rename Refactoring | **<500ms** | 50+ instances | ✅ Validated |
-| Pattern Learning | **<25ms** | Per operation | ✅ Validated |
-| Cache Hit Rate | **>90%** | Smart invalidation | ✅ Operational |
-| Initial Indexing | **<20s** | 10K files | ✅ Optimized |
+Current Alpha evidence is useful for catching obvious regressions in the supported first-user path. It is **not** production p95/p99 evidence, cross-machine performance characterization, or a general guarantee for very large repositories. See `docs/project/interactive-slo-guidance.md` and `docs/project/phase-1-closure-review.md` for the boundary.
 
-### Resource Usage Notes
+### Historical benchmark notes
 
-| Component | Memory | CPU | Status |
-|-----------|--------|-----|--------|
-| Unified Core | ~250MB | 10-20% | ✅ Stable |
-| Smart Cache | ~150MB | 2-5% | ✅ Efficient |
-| Learning System | ~75MB | 5-10% | ✅ Active |
-| Database | ~25MB | 1-3% | ✅ Optimized |
-| **Observed Total** | **~500MB** | **18-38%** | historical benchmark note |
-
-### Concurrent Performance
-- **Simultaneous Requests**: 100+ (tested)
-- **Response Time P95**: <100ms (historical benchmark note; revalidate per release)
-- **Cache Efficiency**: >90% hit rate
-- **Memory Growth**: <10MB per 10K operations
+Older benchmark tables in this repo may reference sub-100ms targets, cache hit rates, or large-repo scale. Treat those as historical notes unless refreshed through the current Alpha evidence path or a later production-readiness decision.
 
 ### Optimization Notes
 
@@ -692,11 +668,11 @@ cache:
 ```
 
 #### Performance Tuning
-1. **Layer Optimization**: Disable unused layers for better performance
-2. **Cache Zones**: Configure TTL based on change frequency
-3. **Confidence Thresholds**: Higher = fewer suggestions, faster responses
-4. **Database Optimization**: SQLite with proper indexing and connection pooling
-5. **Monitoring**: Use Web UI Dashboard for real-time performance insights
+1. **Layer Optimization**: Disable unused layers for better performance.
+2. **Cache Zones**: Configure TTL based on change frequency.
+3. **Confidence Thresholds**: Higher = fewer suggestions, faster responses.
+4. **Database Optimization**: keep storage behind configured adapters and avoid hard-coding DB assumptions into higher layers.
+5. **Monitoring**: use current CLI/HTTP health and evidence commands; dashboard-style monitoring is later-phase unless explicitly promoted.
 
 ## 🔧 Troubleshooting Guide
 
@@ -848,11 +824,11 @@ just emergency-reset
 
 ### 🆘 Getting Help
 
-1. **Check Web UI Dashboard**: `http://localhost:8080` for real-time diagnostics
-2. **Read Documentation**: Comprehensive guides in `/docs/` directory
-3. **Search Issues**: [GitHub Issues](https://github.com/tryingET/semantic-code-intelligence/issues)
-4. **Create Bug Report**: Use issue templates with system info
-5. **Performance Issues**: Include output from `just stats` and `just health`
+1. **Check local health**: run `just health` and `just status`.
+2. **Read Documentation**: start with `docs/project/product-posture.md`, `docs/project/alpha-mvp-contract.md`, and guides in `/docs/`.
+3. **Search Issues**: [GitHub Issues](https://github.com/tryingET/semantic-code-intelligence/issues).
+4. **Create Bug Report**: use issue templates with system info and the failing command.
+5. **Performance Issues**: include output from `just stats`, `just health`, and relevant Alpha evidence commands.
 
 ### Support Information Template
 ```bash
@@ -921,24 +897,23 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## 🗓️ Roadmap
 
-### ✅ Phase 1 slice landed — Harnessed LLM Alpha MVP
-- Product posture and Alpha MVP contract documented
-- `read_file` added to the tool registry and MCP/HTTP path
-- HTTP, direct MCP adapter, and MCP HTTP protocol coverage for `read_file`
-- Repeatable dogfood harness: `bun run scripts/dogfood-alpha-mvp.ts --json`
-- One-command validation: `just alpha-mvp-check`
+### ✅ Phase 1 closed — Harnessed LLM Alpha MVP substrate
+- Product posture, Alpha MVP contract, and closure boundary are documented.
+- MCP, HTTP, direct adapter, MCP HTTP, MCP stdio, and CLI fallback coverage exercise the first-user tool surface.
+- Preview-first patch planning, `safe_write`, validation plans, check recommendations, graph-impact evidence, and evidence packets are covered by the repeatable bundle.
+- One-command validation: `just alpha-mvp-check`.
 
-### 🚧 Next — Phase 1 hardening
-- Broaden direct parity coverage beyond `read_file`
-- Make dogfood evidence easier to compare across runs
-- Tighten structured error envelopes and recovery hints for harnessed LLM sessions
-- Revalidate performance claims with committed evidence rather than inherited migration notes
+### Current next-work rule
+Do **not** keep adding Phase 1 dogfood waves by default. Continue only for:
+- Alpha maintenance/regression fixes when the evidence bundle fails or an operator reports a concrete substrate bug;
+- targeted hardening tied to a named closure-review gap and a measurable trigger;
+- an explicit Phase 2 review before developer workbench, IDE, dashboard, or human-facing polish work.
 
 ### Later phases
-- Developer workbench / VS Code polish
-- CI and review automation
-- Productized deployment and dashboards
-- Marketplace, analytics, and AI-training features
+- Developer workbench / VS Code polish after explicit Phase 2 authority.
+- CI and review automation consuming the same snapshot and patch-check primitives.
+- Productized deployment and dashboards after productization evidence.
+- Marketplace, analytics, and AI-training features as roadmap only.
 
 ---
 
