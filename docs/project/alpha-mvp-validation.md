@@ -31,6 +31,7 @@ The Phase 1 Alpha MVP validation bundle proves the first-user path for harnessed
 - repeatable dogfood evidence can be emitted as machine-readable JSON;
 - `alpha:evidence:check` gates generated dogfood evidence for SCI-first discovery, preview-first mutation posture, safe-write exact verification, and coarse latency budgets;
 - `alpha:evidence:packet` emits an operator-facing evidence packet that summarizes tool coverage, SCI-first discovery, preview-first mutation, safe-write verification, validation commands, and remaining gaps;
+- the Just validation wrapper is guarded against drifting from the canonical package-script bundle or reintroducing the retired `build:tsc` alias;
 - migration hygiene still rejects stale identity drift and unsafe local artifacts.
 
 ## Local commands
@@ -66,6 +67,7 @@ Test-only subset:
 
 ```bash
 bun run alpha:mvp:test
+bun test tests/alpha-mvp-validation-surface.test.ts
 ```
 
 ## CI
@@ -148,5 +150,5 @@ When the Alpha MVP contract changes, update all of these in the same wave:
 - `scripts/check-alpha-evidence.ts`
 - `scripts/build-alpha-evidence-packet.ts`
 - target-repo/global CLI usage docs such as `docs/project/target-repo-cli-usage.md`
-- Alpha MVP tests under `tests/alpha-mvp-*.test.ts`, including CLI fallback coverage
+- Alpha MVP tests under `tests/alpha-mvp-*.test.ts`, including CLI fallback and validation-surface drift coverage
 - `.github/workflows/alpha-mvp.yml`

@@ -280,7 +280,7 @@ dogfood:
     @CI=1 ~/.bun/bin/bun run scripts/dogfood-mcp.ts
 
 dogfood_full:
-    @echo "🥣 Dogfooding (stdio MCP) — with quick checks (build:tsc)"
+    @echo "🥣 Dogfooding (stdio MCP) — with quick checks (typecheck)"
     @echo "   Flags: -w|--workspace <dir> (default: tests/fixtures)"
     @CI=1 ~/.bun/bin/bun run scripts/dogfood-mcp.ts --full
 
@@ -1987,8 +1987,8 @@ snap_diff_cli snap_id:
 
 # Safely stage and validate a patch inside a snapshot (Tool-First)
 # Usage:
-#   just safe-apply ./my.diff -- bun run build:tsc "bun test --bail=1"
-#   git diff | just safe-apply-stdin -- bun run build:tsc
+#   just safe-apply ./my.diff -- bun run typecheck "bun test --bail=1"
+#   git diff | just safe-apply-stdin -- bun run typecheck
 safe-apply file +cmds:
     @if [ -n "{{file}}" ]; then \
         bash bin/self-apply.sh -f {{file}} -- {{cmds}}; \
@@ -2027,14 +2027,9 @@ test-stop-async:
     @echo "🛑 Stopping async test run..."
     @if [ -f .test-results/async.pid ]; then kill `cat .test-results/async.pid` 2>/dev/null || true; rm -f .test-results/async.pid; else echo "No async pid"; fi
 
-# Validate Phase 1 harnessed-LLM Alpha MVP surface
+# Validate Phase 1 harnessed-LLM Alpha MVP surface through the canonical package script
 alpha-mvp-check:
-    bun run build:tsc
-    bun test tests/alpha-mvp-tool-contract.test.ts tests/alpha-mvp-mcp-parity.test.ts tests/alpha-mvp-mcp-http-protocol.test.ts tests/alpha-mvp-mcp-stdio-protocol.test.ts tests/alpha-mvp-cli-parity.test.ts
-    mkdir -p .test-results
-    bun run scripts/dogfood-alpha-mvp.ts --json > .test-results/alpha-mvp-dogfood.json
-    bun run self:dogfood:cli
-    ./scripts/migration-hygiene.sh
+    bun run alpha:mvp:check
 
 # Dogfood SCI's own CLI workflow surface against this repo
 self-dogfood-cli:
