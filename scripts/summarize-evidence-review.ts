@@ -604,7 +604,7 @@ function renderMarkdown(review: any): string {
     `- Risk: ${mdInline(review.scope.risk ? JSON.stringify(review.scope.risk) : 'not recorded')}\n` +
     `- Target: ${mdInline(review.scope.target ? JSON.stringify(review.scope.target) : 'not a target-dogfood review')}\n\n` +
     `## 3. Validation commands\n\n` +
-    `Selected commands actually run:\n${bullet(strings(commands.selected))}\n\n` +
+    `Selected commands declared for validation:\n${bullet(strings(commands.selected))}\n\n` +
     `Recommended minimum commands (advisory):\n${bullet(strings(commands.recommendedMinimum))}\n\n` +
     `Recommended broader commands (advisory):\n${bullet(strings(commands.recommendedBroader))}\n\n` +
     `- Recommendations applied to selected: ${commands.recommendationsAppliedToSelected === true}\n` +

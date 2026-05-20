@@ -136,6 +136,8 @@ describe('evidence review claim model', () => {
     expect(output).toContain('snapshot:// references are pointers, not durable proof');
     expect(output).toContain('### First-class limitations');
     expect(output).toContain('graph-impact-limitation-1');
+    expect(output).toContain('Selected commands declared for validation:');
+    expect(output).not.toContain('Selected commands actually run:');
     expect(output).toContain('Command receipts:');
     expect(output).toContain('bun test tests/example.test.ts — ok=true; exitCode=not recorded; timedOut=false; elapsedMs=not recorded');
   });

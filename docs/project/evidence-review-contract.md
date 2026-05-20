@@ -72,7 +72,8 @@ Required fields where available:
 
 Required fields:
 
-- selected commands that actually ran;
+- selected commands declared for validation;
+- observed per-command execution receipts when present;
 - recommended minimum commands;
 - recommended broader commands;
 - `recommendationsAppliedToSelected` value;
@@ -80,7 +81,7 @@ Required fields:
 
 Hard rule:
 
-> Selected commands and recommended commands must be visually distinct. Recommendations are advisory and must not appear as if they were executed unless they were actually selected. Bundle-level gate success must not be rendered as selected-command execution evidence unless selected command check results are present.
+> Selected commands, observed command receipts, and recommended commands must be visually distinct. Recommendations are advisory and must not appear as if they were executed unless they were selected and backed by observed command receipts. Bundle-level gate success must not be rendered as selected-command execution evidence unless selected command check results are present.
 
 ### 4. Check results
 
