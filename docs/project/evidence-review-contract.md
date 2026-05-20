@@ -219,9 +219,27 @@ Implementations may normalize input into this shape before rendering:
     "elapsedMs": 206
   },
   "graphImpact": {
+    "seed": { "kind": "file", "value": "src/example.ts" },
+    "languageSupport": {
+      "language": "typescript",
+      "support": "tree_sitter_best_effort",
+      "supportedEdges": ["imports", "exports", "callers", "callees"]
+    },
+    "backend": "tree_sitter",
+    "freshness": "current",
+    "requestedEdges": ["imports", "exports", "callers"],
     "hasImpactEvidence": false,
     "counts": { "imports": 0, "exports": 0, "callers": 0, "callees": 0 },
+    "evidence": [
+      {
+        "edge": "callers",
+        "count": 0,
+        "status": "limited | evidence | empty_or_unavailable",
+        "limitations": ["callers: fallback-shaped evidence"]
+      }
+    ],
     "limitations": ["fallback: graph expand unavailable"],
+    "callerContextCount": 0,
     "planningHints": []
   },
   "artifacts": {
@@ -237,7 +255,7 @@ Implementations may normalize input into this shape before rendering:
 }
 ```
 
-The first-class `evidenceArtifacts`, `limitations`, `claims`, `authorityBoundaries`, and `operatorDecisionPoints` fields are required to prevent the review from collapsing artifacts into claims, claims into authority, limitations into green status, bundle gates into selected-command execution, or recommendations into executed commands. `ReviewClaim.limitedBy` must reference `limitations[].id` values, not artifact IDs. Evidence artifacts also carry durability and citation requirements so `snapshot://` pointers are not mistaken for durable proof. Markdown renderers must neutralize caller-controlled evidence text so limitation strings cannot forge headings, status banners, inline markdown emphasis/links, or completion claims. CLI error paths must use sanitized messages rather than runtime stack traces or reflected caller-controlled values.
+The first-class `evidenceArtifacts`, `limitations`, `claims`, `authorityBoundaries`, and `operatorDecisionPoints` fields are required to prevent the review from collapsing artifacts into claims, claims into authority, limitations into green status, bundle gates into selected-command execution, or recommendations into executed commands. `ReviewClaim.limitedBy` must reference `limitations[].id` values, not artifact IDs. Evidence artifacts also carry durability and citation requirements so `snapshot://` pointers are not mistaken for durable proof. Graph-impact fields preserve review context such as seed, requested edges, backend/freshness, per-edge evidence/status, limitations, and caller context count when present; they do not claim whole-program graph completeness. Markdown renderers must neutralize caller-controlled evidence text so graph seeds, edge names/statuses, limitation strings, commands, and other evidence text cannot forge headings, status banners, inline markdown emphasis/links, or completion claims. CLI error paths must use sanitized messages rather than runtime stack traces or reflected caller-controlled values.
 
 ## Validation checks for an implementation wave
 
@@ -246,7 +264,7 @@ Any implementation of this contract must validate:
 1. rendering from `.test-results/alpha-evidence-packet.json` succeeds without workspace mutation;
 2. rendering from a standalone `validationPlan` sample succeeds;
 3. selected vs recommended commands are distinct in output;
-4. graph limitations/fallback notes are visible;
+4. graph requested edges, per-edge evidence/status, and limitations/fallback notes are visible;
 5. preview/apply posture is visible;
 6. rollback absence/presence is visible;
 7. production-readiness caveat is visible;
@@ -260,9 +278,10 @@ Any implementation of this contract must validate:
 15. workspace containment has a stat-identity fallback when fd-link realpath helpers are unavailable;
 16. unsupported schemas, malformed JSON, missing option values, unsupported formats, and unsupported extract modes fail with sanitized errors that do not expose stacks, source paths, or reflected caller-controlled text;
 17. validationPlan extraction works consistently for every supported evidence input kind that embeds a validation plan;
-18. the committed normalized sample fixture matches current summary output;
-19. docs strict and direction check pass;
-20. if runtime contracts change, `bun run alpha:mvp:check` still passes.
+18. generated validation-plan comparison fails closed when graph-impact review context disappears from generated preview/check evidence;
+19. the committed normalized sample fixture matches current summary output;
+20. docs strict and direction check pass;
+21. if runtime contracts change, `bun run alpha:mvp:check` still passes.
 
 ## Non-goals
 
