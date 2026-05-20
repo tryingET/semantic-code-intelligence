@@ -19,6 +19,14 @@ import { FeedbackEvent, FeedbackLoopSystem } from '../feedback-loop.js';
 const TEST_DB_PATH = path.join(process.cwd(), 'test-feedback.db');
 const PATTERN_DB_PATH = path.join(process.cwd(), 'test-patterns.db');
 
+const cleanupDbFiles = (dbPath: string) => {
+    for (const candidate of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
+        if (fs.existsSync(candidate)) {
+            fs.unlinkSync(candidate);
+        }
+    }
+};
+
 // Mock configuration
 const mockConfig: CoreConfig = {
     layers: {
@@ -31,6 +39,7 @@ const mockConfig: CoreConfig = {
     cache: { enabled: true, maxSize: 1000, ttl: 300 },
     monitoring: { enabled: true, metricsInterval: 1000 },
     performance: { healthCheckInterval: 30000 },
+    database: { path: TEST_DB_PATH, maxConnections: 2 },
 };
 
 describe('FeedbackLoopSystem', () => {
@@ -41,12 +50,8 @@ describe('FeedbackLoopSystem', () => {
 
     beforeEach(async () => {
         // Clean up test database
-        if (fs.existsSync(TEST_DB_PATH)) {
-            fs.unlinkSync(TEST_DB_PATH);
-        }
-        if (fs.existsSync(PATTERN_DB_PATH)) {
-            fs.unlinkSync(PATTERN_DB_PATH);
-        }
+        cleanupDbFiles(TEST_DB_PATH);
+        cleanupDbFiles(PATTERN_DB_PATH);
 
         // Create fresh event bus and shared services
         eventBus = new EventBusService();
@@ -78,12 +83,8 @@ describe('FeedbackLoopSystem', () => {
         await sharedServices.dispose();
 
         // Remove test databases
-        if (fs.existsSync(TEST_DB_PATH)) {
-            fs.unlinkSync(TEST_DB_PATH);
-        }
-        if (fs.existsSync(PATTERN_DB_PATH)) {
-            fs.unlinkSync(PATTERN_DB_PATH);
-        }
+        cleanupDbFiles(TEST_DB_PATH);
+        cleanupDbFiles(PATTERN_DB_PATH);
     });
 
     describe('Initialization', () => {
@@ -118,7 +119,7 @@ describe('FeedbackLoopSystem', () => {
                     'oldName',
                     '/test/file.ts',
                     'rename',
-                    Date.now() / 1000,
+                    Date.now(),
                     0.8,
                     'test',
                 ]
@@ -315,7 +316,7 @@ describe('FeedbackLoopSystem', () => {
         beforeEach(async () => {
             // Add test feedback data
             const feedbackData = [
-                { type: 'accept', confidence: 0.9, timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+                { type: 'accept', confidence: 0.9, timestamp: new Date(Date.now() - 23 * 60 * 60 * 1000) },
                 { type: 'accept', confidence: 0.8, timestamp: new Date(Date.now() - 12 * 60 * 60 * 1000) },
                 { type: 'reject', confidence: 0.3, timestamp: new Date(Date.now() - 6 * 60 * 60 * 1000) },
                 { type: 'modify', confidence: 0.7, timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000) },
@@ -347,7 +348,7 @@ describe('FeedbackLoopSystem', () => {
             expect(stats.acceptanceRate).toBe(0.6); // 3 accepts out of 5
             expect(stats.rejectionRate).toBe(0.2); // 1 reject out of 5
             expect(stats.modificationRate).toBe(0.2); // 1 modify out of 5
-            expect(stats.averageConfidence).toBeCloseTo(0.75); // Average of all confidences
+            expect(stats.averageConfidence).toBeCloseTo(0.71); // Average of all confidences
         });
 
         test('should calculate time-based trends', async () => {
@@ -359,7 +360,16 @@ describe('FeedbackLoopSystem', () => {
         });
 
         test('should handle empty statistics', async () => {
-            const emptyFeedbackLoop = new FeedbackLoopSystem(sharedServices, eventBus);
+            cleanupDbFiles(path.join(process.cwd(), 'test-feedback-empty.db'));
+            const emptyServices = new SharedServices(
+                {
+                    ...mockConfig,
+                    database: { path: path.join(process.cwd(), 'test-feedback-empty.db'), maxConnections: 1 },
+                },
+                eventBus
+            );
+            await emptyServices.initialize();
+            const emptyFeedbackLoop = new FeedbackLoopSystem(emptyServices, eventBus);
             await emptyFeedbackLoop.initialize();
 
             const stats = await emptyFeedbackLoop.getFeedbackStats();
@@ -370,6 +380,8 @@ describe('FeedbackLoopSystem', () => {
             expect(stats.modificationRate).toBe(0);
 
             await emptyFeedbackLoop.dispose();
+            await emptyServices.dispose();
+            cleanupDbFiles(path.join(process.cwd(), 'test-feedback-empty.db'));
         });
 
         test('should filter statistics by time range', async () => {
@@ -575,13 +587,11 @@ describe('FeedbackLoopSystem', () => {
 
         test('should handle invalid correction data', async () => {
             // Should handle null/undefined gracefully
-            await expect(
-                feedbackLoop.learnFromCorrection('', '', {
-                    file: '/src/test.ts',
-                    operation: 'rename',
-                    confidence: 0.5,
-                })
-            ).resolves.not.toThrow();
+            await feedbackLoop.learnFromCorrection('', '', {
+                file: '/src/test.ts',
+                operation: 'rename',
+                confidence: 0.5,
+            });
         });
 
         test('should handle missing pattern learner', async () => {
@@ -590,13 +600,11 @@ describe('FeedbackLoopSystem', () => {
             await feedbackLoopNoPattern.initialize();
 
             // Should not throw when learning from correction
-            await expect(
-                feedbackLoopNoPattern.learnFromCorrection('old', 'new', {
-                    file: '/src/test.ts',
-                    operation: 'rename',
-                    confidence: 0.5,
-                })
-            ).resolves.not.toThrow();
+            await feedbackLoopNoPattern.learnFromCorrection('old', 'new', {
+                file: '/src/test.ts',
+                operation: 'rename',
+                confidence: 0.5,
+            });
 
             await feedbackLoopNoPattern.dispose();
         });

@@ -16,6 +16,14 @@ import { LearningOrchestrator, type LearningPipeline } from '../learning-orchest
 // Test database path
 const TEST_DB_PATH = path.join(process.cwd(), 'test-learning-integration.db');
 
+const cleanupDbFiles = (dbPath: string) => {
+    for (const candidate of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
+        if (fs.existsSync(candidate)) {
+            fs.unlinkSync(candidate);
+        }
+    }
+};
+
 // Mock configuration
 const mockConfig: CoreConfig = {
     layers: {
@@ -28,6 +36,7 @@ const mockConfig: CoreConfig = {
     cache: { enabled: true, maxSize: 1000, ttl: 300 },
     monitoring: { enabled: true, metricsInterval: 1000 },
     performance: { healthCheckInterval: 30000 },
+    database: { path: TEST_DB_PATH, maxConnections: 2 },
 };
 
 describe('LearningOrchestrator Integration Tests', () => {
@@ -39,9 +48,7 @@ describe('LearningOrchestrator Integration Tests', () => {
 
     beforeEach(async () => {
         // Clean up test database
-        if (fs.existsSync(TEST_DB_PATH)) {
-            fs.unlinkSync(TEST_DB_PATH);
-        }
+        cleanupDbFiles(TEST_DB_PATH);
 
         // Create fresh event bus and shared services
         eventBus = new EventBusService();
@@ -82,9 +89,7 @@ describe('LearningOrchestrator Integration Tests', () => {
         await sharedServices.dispose();
 
         // Remove test database
-        if (fs.existsSync(TEST_DB_PATH)) {
-            fs.unlinkSync(TEST_DB_PATH);
-        }
+        cleanupDbFiles(TEST_DB_PATH);
     });
 
     describe('Orchestrator Initialization', () => {
@@ -861,7 +866,7 @@ describe('LearningOrchestrator Integration Tests', () => {
             });
 
             // Should initialize despite potential issues
-            await expect(invalidOrchestrator.initialize()).resolves.not.toThrow();
+            await invalidOrchestrator.initialize();
 
             await invalidOrchestrator.dispose();
         });

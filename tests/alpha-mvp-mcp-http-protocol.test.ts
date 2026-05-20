@@ -24,31 +24,42 @@ function pickRandomPort(min: number, max: number): number {
     return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-async function parseMcpBody(res: Response) {
+async function parseMcpBody(res: Response, expectedId?: number) {
     if (!res.body) return {};
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let text = '';
+    let fallback: any = undefined;
+    const consider = (candidate: any) => {
+        if (!candidate || typeof candidate !== 'object') return undefined;
+        fallback ??= candidate;
+        if (expectedId === undefined || candidate.id === expectedId) return candidate;
+        return undefined;
+    };
+
     try {
-        for (let i = 0; i < 6; i++) {
+        for (let i = 0; i < 12; i++) {
             const { value, done } = await reader.read();
             if (value) text += decoder.decode(value, { stream: !done });
+
             try {
-                return JSON.parse(text);
+                const whole = consider(JSON.parse(text));
+                if (whole) return whole;
             } catch {}
-            const line = text.split(/\r?\n/).find((candidate) => candidate.startsWith('data: '));
-            if (line) {
+
+            for (const line of text.split(/\r?\n/).filter((candidate) => candidate.startsWith('data: '))) {
                 try {
-                    return JSON.parse(line.replace(/^data:\s*/, ''));
+                    const parsed = consider(JSON.parse(line.replace(/^data:\s*/, '')));
+                    if (parsed) return parsed;
                 } catch {}
-                return {};
             }
+
             if (done) break;
         }
     } finally {
         await reader.cancel();
     }
-    return {};
+    return fallback || {};
 }
 
 const canBind = await canBindTcp('127.0.0.1');
@@ -98,7 +109,7 @@ bindDescribe('Alpha MVP MCP HTTP protocol', () => {
             headers: mcpHttpHeaders(sessionId),
             body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }),
         });
-        return { status: res.status, body: await parseMcpBody(res) };
+        return { status: res.status, body: await parseMcpBody(res, id) };
     }
 
     async function toolsList(id: number) {
@@ -107,7 +118,7 @@ bindDescribe('Alpha MVP MCP HTTP protocol', () => {
             headers: mcpHttpHeaders(sessionId),
             body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/list', params: {} }),
         });
-        return { status: res.status, body: await parseMcpBody(res) };
+        return { status: res.status, body: await parseMcpBody(res, id) };
     }
 
     test('tools/list advertises the Alpha MVP tool surface', async () => {

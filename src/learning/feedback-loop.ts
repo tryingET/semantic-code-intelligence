@@ -520,18 +520,17 @@ export class FeedbackLoopSystem {
 
     private async initializeDatabaseSchema(): Promise<void> {
         try {
-            // The feedback tables are already created in database-service.ts
-            // Just verify they exist and are accessible
-
-            // Check if learning_feedback table exists (main feedback table)
-            await this.sharedServices.database.query(
-                'SELECT name FROM sqlite_master WHERE type="table" AND name="learning_feedback"'
-            );
-
-            // Check if feedback_corrections table exists (correction tracking)
-            await this.sharedServices.database.query(
-                'SELECT name FROM sqlite_master WHERE type="table" AND name="feedback_corrections"'
-            );
+            // The feedback tables are created in database-service.ts. Verify the
+            // full-fidelity table and legacy compatibility tables are accessible.
+            for (const tableName of ['feedback_events', 'learning_feedback', 'feedback_corrections']) {
+                const rows = await this.sharedServices.database.query(
+                    'SELECT name FROM sqlite_master WHERE type="table" AND name=?',
+                    [tableName]
+                );
+                if (rows.length === 0) {
+                    throw new CoreError(`Missing feedback table: ${tableName}`, 'DB_SCHEMA_ERROR');
+                }
+            }
         } catch (error) {
             throw new CoreError(`Failed to verify feedback database schema: ${error}`, 'DB_SCHEMA_ERROR');
         }
@@ -539,36 +538,40 @@ export class FeedbackLoopSystem {
 
     private async loadFeedbackHistory(): Promise<void> {
         try {
-            // Use the existing learning_feedback table
             const rows = await this.sharedServices.database.query(
-                'SELECT * FROM learning_feedback ORDER BY timestamp DESC LIMIT 1000'
+                'SELECT * FROM feedback_events ORDER BY timestamp DESC LIMIT 1000'
             );
 
             for (const row of rows) {
-                // Map learning_feedback columns to FeedbackEvent structure
+                const rawTimestamp = typeof row.timestamp === 'number' ? row.timestamp : Number(row.timestamp);
+                const timestamp = rawTimestamp > 0 && rawTimestamp < 1_000_000_000_000 ? rawTimestamp * 1000 : rawTimestamp;
                 const feedback: FeedbackEvent = {
-                    id: String(row.id), // learning_feedback.id is INTEGER, convert to string
-                    type: row.accepted ? 'accept' : 'reject', // Map accepted boolean to type
-                    suggestionId: row.request_id, // Use request_id as suggestionId
-                    patternId: undefined, // learning_feedback doesn't have pattern_id
-                    originalSuggestion: row.suggestion,
-                    finalValue: row.actual_choice,
+                    id: String(row.id),
+                    type: this.validateFeedbackType(row.type) ? row.type : 'ignore',
+                    suggestionId: String(row.suggestion_id || ''),
+                    patternId: row.pattern_id || undefined,
+                    originalSuggestion: String(row.original_suggestion || ''),
+                    finalValue: row.final_value || undefined,
                     context: {
-                        file: 'unknown', // learning_feedback doesn't store file path
-                        operation: 'unknown', // learning_feedback doesn't store operation
-                        timestamp: new Date(row.timestamp * 1000),
-                        userId: undefined, // learning_feedback doesn't store user_id
-                        confidence: row.confidence || 0.5,
+                        file: String(row.file_path || 'unknown'),
+                        operation: String(row.operation || 'unknown'),
+                        timestamp: new Date(Number.isFinite(timestamp) ? timestamp : Date.now()),
+                        userId: row.user_id || undefined,
+                        confidence: typeof row.confidence === 'number' ? row.confidence : Number(row.confidence || 0.5),
                     },
                     metadata: {
-                        timeToDecision: undefined, // Not stored in learning_feedback
-                        keystrokes: undefined, // Not stored in learning_feedback
-                        alternativesShown: undefined, // Not stored in learning_feedback
-                        source: 'unknown', // Not stored in learning_feedback
+                        timeToDecision: row.time_to_decision ?? undefined,
+                        keystrokes: row.keystrokes ?? undefined,
+                        alternativesShown: row.alternatives_shown ?? undefined,
+                        source: typeof row.source === 'string' ? row.source : 'unknown',
                     },
                 };
 
                 this.feedbackHistory.set(feedback.id, feedback);
+            }
+
+            if (this.feedbackHistory.size === 0) {
+                await this.loadLegacyFeedbackHistory();
             }
         } catch (error) {
             console.warn('Failed to load feedback history:', error);
@@ -576,24 +579,62 @@ export class FeedbackLoopSystem {
         }
     }
 
+    private async loadLegacyFeedbackHistory(): Promise<void> {
+        const rows = await this.sharedServices.database.query(
+            'SELECT * FROM learning_feedback ORDER BY timestamp DESC LIMIT 1000'
+        );
+
+        for (const row of rows) {
+            const feedback: FeedbackEvent = {
+                id: `legacy-${String(row.id)}`,
+                type: row.accepted ? 'accept' : 'reject',
+                suggestionId: String(row.request_id || ''),
+                patternId: undefined,
+                originalSuggestion: String(row.suggestion || ''),
+                finalValue: row.actual_choice || undefined,
+                context: {
+                    file: 'unknown',
+                    operation: 'unknown',
+                    timestamp: new Date(Number(row.timestamp || 0) * 1000),
+                    userId: undefined,
+                    confidence: typeof row.confidence === 'number' ? row.confidence : Number(row.confidence || 0.5),
+                },
+                metadata: {
+                    source: 'unknown',
+                },
+            };
+
+            this.feedbackHistory.set(feedback.id, feedback);
+        }
+    }
+
     private async storeFeedbackToDatabase(feedback: FeedbackEvent): Promise<void> {
         try {
-            // Map FeedbackEvent to learning_feedback table structure
-            const accepted = feedback.type === 'accept' ? 1 : 0;
             const confidence = feedback.context?.confidence ?? 0.5;
             const timestamp = feedback.context?.timestamp ?? new Date();
 
             await this.sharedServices.database.execute(
-                `INSERT INTO learning_feedback (
-          request_id, accepted, suggestion, actual_choice, confidence, timestamp
-        ) VALUES (?, ?, ?, ?, ?, ?)`,
+                `INSERT OR REPLACE INTO feedback_events (
+          id, type, suggestion_id, pattern_id, original_suggestion, final_value,
+          file_path, operation, user_id, confidence, source, time_to_decision,
+          keystrokes, alternatives_shown, timestamp
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
+                    feedback.id,
+                    feedback.type,
                     feedback.suggestionId,
-                    accepted,
+                    feedback.patternId || null,
                     feedback.originalSuggestion,
                     feedback.finalValue || null,
+                    feedback.context.file,
+                    feedback.context.operation,
+                    feedback.context.userId || null,
                     confidence,
-                    Math.floor(timestamp.getTime() / 1000),
+                    feedback.metadata.source || 'unknown',
+                    feedback.metadata.timeToDecision ?? null,
+                    feedback.metadata.keystrokes ?? null,
+                    feedback.metadata.alternativesShown ?? null,
+                    timestamp.getTime(),
                 ]
             );
         } catch (error) {

@@ -43,9 +43,9 @@ export class LayerManager implements ILayerManager {
     private performanceHistory: PerformanceMetrics[] = [];
     private maxHistorySize = 1000;
 
-    constructor(config: CoreConfig, eventBus: EventBus) {
+    constructor(config: CoreConfig, eventBusOrServices: EventBus | { eventBus?: EventBus }, maybeEventBus?: EventBus) {
         this.config = config;
-        this.eventBus = eventBus;
+        this.eventBus = maybeEventBus || (eventBusOrServices as any)?.eventBus || (eventBusOrServices as EventBus);
     }
 
     async initialize(): Promise<void> {

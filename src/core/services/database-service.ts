@@ -61,7 +61,8 @@ CREATE TABLE IF NOT EXISTS usage_events (
   timestamp INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
 
--- Learning feedback table
+-- Legacy learning feedback table. Kept for backward compatibility with older
+-- callers that only modeled accept/reject feedback.
 CREATE TABLE IF NOT EXISTS learning_feedback (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   request_id TEXT NOT NULL,
@@ -70,6 +71,25 @@ CREATE TABLE IF NOT EXISTS learning_feedback (
   actual_choice TEXT,
   confidence REAL,
   timestamp INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+);
+
+-- Full-fidelity feedback event table used by FeedbackLoopSystem.
+CREATE TABLE IF NOT EXISTS feedback_events (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  suggestion_id TEXT NOT NULL,
+  pattern_id TEXT,
+  original_suggestion TEXT NOT NULL,
+  final_value TEXT,
+  file_path TEXT NOT NULL,
+  operation TEXT NOT NULL,
+  user_id TEXT,
+  confidence REAL NOT NULL DEFAULT 0.5,
+  source TEXT NOT NULL DEFAULT 'unknown',
+  time_to_decision INTEGER,
+  keystrokes INTEGER,
+  alternatives_shown INTEGER,
+  timestamp INTEGER NOT NULL
 );
 
 -- Performance metrics table
@@ -170,6 +190,9 @@ CREATE INDEX IF NOT EXISTS idx_usage_events_timestamp ON usage_events (timestamp
 
 CREATE INDEX IF NOT EXISTS idx_feedback_request_id ON learning_feedback (request_id);
 CREATE INDEX IF NOT EXISTS idx_feedback_timestamp ON learning_feedback (timestamp);
+CREATE INDEX IF NOT EXISTS idx_feedback_events_type ON feedback_events (type);
+CREATE INDEX IF NOT EXISTS idx_feedback_events_pattern_id ON feedback_events (pattern_id);
+CREATE INDEX IF NOT EXISTS idx_feedback_events_timestamp ON feedback_events (timestamp);
 
 CREATE INDEX IF NOT EXISTS idx_performance_layer ON performance_metrics (layer);
 CREATE INDEX IF NOT EXISTS idx_performance_operation ON performance_metrics (operation);
@@ -404,6 +427,7 @@ export class DatabaseService {
 
         if (this.pool) {
             await this.pool.dispose();
+            this.pool = undefined;
         }
 
         this.initialized = false;
@@ -411,6 +435,10 @@ export class DatabaseService {
         this.eventBus.emit('database-service:disposed', {
             timestamp: Date.now(),
         });
+    }
+
+    async close(): Promise<void> {
+        await this.dispose();
     }
 
     /**
