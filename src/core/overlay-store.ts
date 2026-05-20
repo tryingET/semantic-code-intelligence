@@ -4,6 +4,21 @@ import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
 
+export type CheckCommandReceipt = {
+    command: string;
+    ok: boolean;
+    elapsedMs: number;
+    exitCode: number | null;
+    timedOut: boolean;
+};
+
+export type CheckRunResult = {
+    ok: boolean;
+    output: string;
+    elapsedMs: number;
+    commands: CheckCommandReceipt[];
+};
+
 type Snapshot = {
     id: string;
     createdAt: number;
@@ -354,17 +369,31 @@ export class OverlayStore {
         commands: string[],
         timeoutSec = 120,
         opts: { onlyTouched?: boolean } = {}
-    ): Promise<{
-        ok: boolean;
-        output: string;
-        elapsedMs: number;
-        commands: Array<{ command: string; ok: boolean; elapsedMs: number; exitCode: number | null; timedOut: boolean }>;
-    }> {
+    ): Promise<CheckRunResult> {
         this.assertValidId(snapshotId);
         const start = Date.now();
         // Materialize snapshot into .ontology/snapshots/<id>
         const cwd = (await this.ensureMaterialized(snapshotId)) || process.cwd();
         const output: string[] = [];
+        const maxOutputBytes = 1024 * 1024;
+        let outputBytes = 0;
+        let outputTruncated = false;
+        const appendOutput = (text: string) => {
+            if (outputTruncated) return;
+            const bytes = Buffer.byteLength(text, 'utf8');
+            if (outputBytes + bytes <= maxOutputBytes) {
+                output.push(text);
+                outputBytes += bytes;
+                return;
+            }
+            const remaining = Math.max(0, maxOutputBytes - outputBytes);
+            if (remaining > 0) {
+                output.push(Buffer.from(text, 'utf8').subarray(0, remaining).toString('utf8'));
+            }
+            output.push(`\n[output truncated at ${maxOutputBytes} bytes]\n`);
+            outputBytes = maxOutputBytes;
+            outputTruncated = true;
+        };
 
         // If running under partial materialization, ensure essential directories exist
         // for common commands like build/test which require source files or local scripts.
@@ -445,33 +474,38 @@ export class OverlayStore {
         // Rationale: values >600s lead to excessively long CI/dev runs and can hang pipelines.
         // HTTP already clamps to 600; this keeps MCP/CLI parity and centralizes the guard.
         const perCommandTimeoutSec = Math.max(1, Math.min(600, Math.floor(Number(timeoutSec) || 120)));
-        const commandResults: Array<{ command: string; ok: boolean; elapsedMs: number; exitCode: number | null; timedOut: boolean }> = [];
+        const commandResults: CheckCommandReceipt[] = [];
 
-        for (const cmd of cmdList) {
+        for (const rawCmd of cmdList) {
+            const cmd = String(rawCmd);
             await this.logProgress(snapshotId, `run:${cmd}:start`);
-            output.push(`$ ${cmd}\n`);
+            appendOutput(`$ ${cmd}\n`);
             const [bin, ...args] = cmd.split(' ');
             const commandStart = Date.now();
             const result = await new Promise<{ ok: boolean; exitCode: number | null; timedOut: boolean }>((resolve) => {
-                const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd });
+                const useShell = this.which('bash');
+                const child = useShell
+                    ? spawn('bash', ['-lc', cmd], { stdio: ['ignore', 'pipe', 'pipe'], cwd })
+                    : spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd });
                 let settled = false;
+                let timer: ReturnType<typeof setTimeout>;
                 const finish = (value: { ok: boolean; exitCode: number | null; timedOut: boolean }) => {
                     if (settled) return;
                     settled = true;
                     clearTimeout(timer);
                     resolve(value);
                 };
-                const timer = setTimeout(() => {
+                timer = setTimeout(() => {
                     try {
                         child.kill('SIGKILL');
                     } catch {}
                     void this.logProgress(snapshotId, `run:${cmd}:timeout`);
                     finish({ ok: false, exitCode: null, timedOut: true });
                 }, perCommandTimeoutSec * 1000);
-                child.stdout.on('data', (d) => output.push(String(d)));
-                child.stderr.on('data', (d) => output.push(String(d)));
+                child.stdout.on('data', (d) => appendOutput(String(d)));
+                child.stderr.on('data', (d) => appendOutput(String(d)));
                 child.on('error', (error) => {
-                    output.push(String(error?.message || error));
+                    appendOutput(String(error?.message || error));
                     void this.logProgress(snapshotId, `run:${cmd}:error`);
                     finish({ ok: false, exitCode: null, timedOut: false });
                 });

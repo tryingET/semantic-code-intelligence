@@ -22,6 +22,7 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
         // Optional quick checks (true)
         const chk = await overlayStore.runChecks(snap.id, ['true'], 30);
         expect(chk.ok).toBe(true);
+        expect(chk.commands[0]).toMatchObject({ command: 'true', ok: true, exitCode: 0, timedOut: false });
 
         // Apply to working tree
         const applied = await overlayStore.applyToWorkingTree(snap.id, { check: false, reverse: false });

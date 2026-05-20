@@ -1318,6 +1318,7 @@ export class MCPAdapter {
             filesAffected: files.length,
             totalEdits: files.reduce((acc, f) => acc + (Array.isArray(changes[f]) ? changes[f].length : 0), 0),
             elapsedMs: checks.elapsedMs,
+            checks: { ok, commands: Array.isArray(checks.commands) ? checks.commands : [], elapsedMs: checks.elapsedMs },
             outputTail: (checks.output || '').slice(-4000),
             next_actions: ok
                 ? [
@@ -2064,7 +2065,7 @@ export class MCPAdapter {
             snapshotArtifacts,
             links: Object.values(snapshotArtifacts),
             stage,
-            checks: { commands, ok: !!checks.ok, elapsedMs: checks.elapsedMs, output: String(checks.output || '').slice(-4000) },
+            checks: { commands: Array.isArray(checks.commands) ? checks.commands : [], ok: !!checks.ok, elapsedMs: checks.elapsedMs, output: String(checks.output || '').slice(-4000) },
             applied,
             applyResult,
             next_actions: applied
@@ -2142,6 +2143,7 @@ export class MCPAdapter {
                 ? {
                       hasImpactEvidence: args.impactSummary?.hasImpactEvidence === true,
                       counts: impactCounts,
+                      limitations: Array.isArray(args.impactSummary?.limitations) ? args.impactSummary.limitations : [],
                       planningHints: Array.isArray(args.impactSummary?.planningHints) ? args.impactSummary.planningHints : [],
                   }
                 : null,

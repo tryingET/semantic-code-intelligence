@@ -33,6 +33,12 @@ function parseWorkflowStdout(stdout: string) {
     return { raw, payload };
 }
 
+function commandNames(receiptsOrCommands: unknown): string[] {
+    return Array.isArray(receiptsOrCommands)
+        ? receiptsOrCommands.map((entry: any) => (typeof entry === 'string' ? entry : String(entry?.command || ''))).filter(Boolean)
+        : [];
+}
+
 function compactSample(value: unknown): unknown {
     const cloned = JSON.parse(JSON.stringify(value));
     const text = cloned?.raw?.content?.[0]?.text;
@@ -153,7 +159,7 @@ const evidence = {
           patchCheckExplicit?.ok === true &&
           patchCheckExplicit?.patch?.replacementCount > 0 &&
           patchCheckDefault?.ok === true &&
-          String(patchCheckDefault?.checks?.commands?.join(' ') || '').includes('bun run typecheck') &&
+          commandNames(patchCheckDefault?.checks?.commands).join(' ').includes('bun run typecheck') &&
           String(patchCheckDefault?.checks?.output || '').includes('tsgo') &&
           refusedApply?.ok === false &&
           refusedApply?.applied === false &&

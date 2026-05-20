@@ -85,6 +85,12 @@ describe('Alpha MVP CLI fallback parity', () => {
             commands: ['true'],
             timeoutSec: 30,
             brief: true,
+            impactSummary: {
+                hasImpactEvidence: false,
+                counts: {},
+                limitations: ['test graph limitation'],
+                planningHints: ['test planning hint'],
+            },
         });
         expect(safePreview.payload.workflow).toBe('safe_write');
         expect(safePreview.payload.ok).toBe(true);
@@ -92,6 +98,7 @@ describe('Alpha MVP CLI fallback parity', () => {
         expect(safePreview.payload.applied).toBe(false);
         expect(safePreview.payload.risk.category).toBe('docs_only');
         expect(safePreview.payload.validationPlan?.checks?.commands?.[0]).toMatchObject({ command: 'true', ok: true });
+        expect(safePreview.payload.validationPlan?.graphImpact?.limitations).toEqual(['test graph limitation']);
 
         const refusedApply = await workflow('safe_write', {
             patch: patchPlanningDiff,
@@ -155,7 +162,7 @@ describe('Alpha MVP CLI fallback parity', () => {
         expect(Array.isArray(checked.payload.patch?.summary)).toBe(true);
         expect(checked.payload.snapshotArtifacts?.overlayDiff).toContain(`snapshot://${checked.payload.snapshot}/overlay.diff`);
         expect(checked.payload.next_actions.join('\n')).toContain('snapshot://');
-        expect(checked.payload.checks?.commands).toEqual(['true']);
+        expect(checked.payload.checks?.commands?.[0]).toMatchObject({ command: 'true', ok: true, exitCode: 0, timedOut: false });
 
         const artifacts = await workflow('extract_snapshot_artifacts', {
             snapshot: checked.payload.snapshot,
@@ -178,7 +185,7 @@ describe('Alpha MVP CLI fallback parity', () => {
             apply: false,
         });
         expect(defaultChecks.payload.ok).toBe(true);
-        expect(defaultChecks.payload.checks?.commands).toEqual(['bun run typecheck']);
+        expect(defaultChecks.payload.checks?.commands?.[0]).toMatchObject({ command: 'bun run typecheck', ok: true, exitCode: 0, timedOut: false });
         expect(String(defaultChecks.payload.checks?.output || '')).toContain('tsgo');
 
         const refusedApply = await workflow('structural_patch_checks', {
