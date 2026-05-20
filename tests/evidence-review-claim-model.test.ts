@@ -177,6 +177,18 @@ describe('evidence review claim model', () => {
     expect(claimById(review, 'checks-result')?.status).toBe('unresolved');
   });
 
+  test('selected checks require concrete executed command entries before support', () => {
+    const plan = clonePlan({
+      commands: { selected: ['bun test tests/example.test.ts'], recommendedMinimum: [], recommendedBroader: [], recommendationsAppliedToSelected: false },
+      checks: { ok: true, elapsedMs: 42 },
+    });
+    const { stdout } = runSummary(plan, ['--format', 'json']);
+    const review = JSON.parse(stdout);
+
+    expect(artifactById(review, 'validation-execution')?.observedStatus).toBe('unavailable');
+    expect(claimById(review, 'checks-result')?.status).toBe('unresolved');
+  });
+
   test('missing check result is unavailable rather than failed', () => {
     const plan = clonePlan({
       commands: { selected: ['echo claimed'], recommendedMinimum: [], recommendedBroader: [], recommendationsAppliedToSelected: false },
@@ -254,6 +266,20 @@ describe('evidence review claim model', () => {
     expect(markdown).not.toContain('\n## FORGED GREEN STATUS');
     expect(markdown).not.toContain('**Production-ready: true**');
     expect(markdown).not.toContain('[Applied](file:///tmp/secret)');
+  });
+
+  test('markdown output neutralizes target status preserved text', () => {
+    const packet = {
+      schema: 'semantic-code-intelligence.alpha_evidence_packet.v1',
+      ok: true,
+      target: { statusPreserved: 'yes\n## TARGET FORGED STATUS\n[secret](file:///tmp/secret)' },
+      previewFirstMutation: { validationPlanSample: sampleValidationPlan() },
+    };
+    const { stdout: markdown } = runSummary(packet, ['--format', 'markdown']);
+
+    expect(markdown).toContain('yes ⏎ ## TARGET FORGED STATUS ⏎ \\[secret\\]\\(file:///tmp/secret\\)');
+    expect(markdown).not.toContain('\n## TARGET FORGED STATUS');
+    expect(markdown).not.toContain('[secret](file:///tmp/secret)');
   });
 
   test('summary rejects oversized evidence inputs before parsing', () => {

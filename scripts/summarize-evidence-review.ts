@@ -151,6 +151,17 @@ function firstString(values: unknown[]): string | null {
   return null;
 }
 
+function checkCommandText(entry: any): string | null {
+  if (typeof entry === 'string') return entry;
+  if (entry && typeof entry.command === 'string') return entry.command;
+  return null;
+}
+
+function matchingExecutedSelectedCommands(review: any, selectedCommands: string[]): string[] {
+  const executed = new Set(arr(review?.checks?.commands).map(checkCommandText).filter((command): command is string => !!command));
+  return selectedCommands.filter((command) => executed.has(command));
+}
+
 function requireKnownReferences(label: string, ownerId: string, refs: string[], known: Set<string>) {
   for (const ref of refs) {
     if (!known.has(ref)) throw new Error(`${label} ${ownerId} references unknown id ${ref}`);
@@ -316,9 +327,10 @@ function withConceptualModel(review: any) {
   const rollbackAvailable = review?.rollback?.available === true;
   const checkOkObserved = typeof review?.checks?.ok === 'boolean';
   const failedGateChecks = strings(review?.checks?.failedGateChecks);
-  const checksFailed = (checkOkObserved && review.checks.ok === false) || failedGateChecks.length > 0;
-  const checksPassedWithObservedCommands = review?.checks?.ok === true && selectedCommands.length > 0;
-  const validationExecutionObserved = selectedCommands.length > 0 && checkOkObserved;
+  const executedSelectedCommands = matchingExecutedSelectedCommands(review, selectedCommands);
+  const validationExecutionObserved = selectedCommands.length > 0 && checkOkObserved && executedSelectedCommands.length > 0;
+  const checksFailed = validationExecutionObserved && review.checks.ok === false;
+  const checksPassedWithObservedCommands = validationExecutionObserved && review?.checks?.ok === true;
   const graphObserved = review?.graphImpact?.hasImpactEvidence === true;
   const graphApplicable = review?.source?.kind !== 'target_dogfood' || review?.scope?.sourceKind !== 'unknown';
   const rawLimitations = strings(review?.graphImpact?.limitations);
@@ -507,7 +519,7 @@ function renderMarkdown(review: any): string {
     `- Rollback command: ${mdInline(review.rollback.command || 'not recorded')}\n\n` +
     `## 7. Safety and authority boundary\n\n` +
     `- Source mutated: ${safety.sourceMutated === true}\n` +
-    `- Target status preserved: ${safety.targetStatusPreserved ?? 'not applicable'}\n` +
+    `- Target status preserved: ${mdInline(safety.targetStatusPreserved ?? 'not applicable')}\n` +
     `- Authority: ${mdInline(safety.authorityBoundary)}\n` +
     `- Boundary: ${mdInline(safety.productionBoundary)}\n`;
 }
