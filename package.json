@@ -52,6 +52,8 @@
     "validation-plan:compare": "mkdir -p .test-results && bun run scripts/compare-validation-plans.ts >/dev/null",
     "alpha:evidence:history": "mkdir -p .test-results && bun run scripts/compare-alpha-evidence-history.ts >/dev/null",
     "target-validation-plan:dogfood": "mkdir -p .test-results && bun run scripts/dogfood-target-validation-plan.ts --json",
+    "target-dogfood:issue": "bun run scripts/capture-target-dogfood-issue.ts",
+    "target-dogfood:issue:test": "bun test tests/target-dogfood-issue-capture.test.ts",
     "evidence-review:summary": "bun run scripts/summarize-evidence-review.ts",
     "evidence-review:test": "bun test tests/evidence-review-claim-model.test.ts",
     "alpha:evidence:check": "bun run scripts/check-alpha-evidence.ts > .test-results/alpha-evidence-check.json",

@@ -44,7 +44,7 @@ These tasks are AK records, not implementation authority until claimed and scope
 | `3165` | 2 | Graph fallback/language characterization | Operator finds graph impact too sparse or misleading for a concrete change. | IW71 adds `docs/project/graph-language-characterization.md` and graph dogfood assertions; no whole-program accuracy claim. |
 | `3166` | 2 | Performance evidence history calibration | Repeated `alpha:evidence:history` warnings are noisy or misleading. | Refine warning policy/baseline guidance; do not convert to production SLOs. |
 | `3167` | 1 | Durable snapshot/evidence boundary | A real workflow needs cross-process/session semantics beyond current artifacts. | IW69 adds `docs/project/durable-snapshot-evidence-boundary.md`; avoid adding a broad state layer by default. |
-| `3168` | 1 | Target dogfood issue capture | A target run fails or an operator reports target-specific friction. | Create a concrete issue capture path; do not add target proofs for confidence only. |
+| `3168` | 1 | Target dogfood issue capture | A target run fails or an operator reports target-specific friction. | Issue-candidate capture path exists via `bun run target-dogfood:issue`; it summarizes failed target dogfood without mutating targets, filing AK evidence, or adding confidence-only target proofs. |
 
 ## Non-backlog items
 

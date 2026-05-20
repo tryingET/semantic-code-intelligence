@@ -96,6 +96,29 @@ The target dogfood source-file selection supports TypeScript, JavaScript, Python
 
 If the intended target repo already has unrelated operator changes, use a temporary clean worktree or clone for the dogfood run. Do not run preview/check dogfood against a dirty owner repo unless the operator explicitly accepts dirty-preserving validation and the final target status is proven unchanged.
 
+## Target dogfood issue capture
+
+When a target dogfood run fails, or when an operator reports concrete target-specific friction, capture a bounded SCI issue candidate from the generated evidence instead of adding more confidence-only target proofs:
+
+```bash
+bun run target-dogfood:issue -- \
+  --input .test-results/target-validation-plan-dogfood.json \
+  --output .test-results/target-dogfood-issue.json
+```
+
+For operator-reported friction on an otherwise successful run, include a short note and scenario:
+
+```bash
+bun run target-dogfood:issue -- \
+  --input .test-results/target-validation-plan-dogfood.json \
+  --operator-note "graph output was too sparse for the refactor decision" \
+  --scenario "target graph impact review"
+```
+
+The capture output is a local **issue candidate** (`semantic-code-intelligence.target_dogfood_issue.v1`). It records the trigger, failure class, failed workflow calls, target cleanliness/status-preservation posture, suggested next actions, and authority caveats. It redacts local absolute paths and common secret/token shapes. It does not mutate the target repo, file an AK task, record AK evidence, claim target-owner acceptance, or add a target repo to default Alpha validation.
+
+Use the packet to decide whether to create/claim an AK-backed maintenance task or attach explicit evidence in the owning authority surface. Delete unneeded `.test-results/target-dogfood-issue.json` files after local triage.
+
 ## External dogfood evidence rule
 
 External dogfood is valuable, but it should be captured as evidence of the target-repo usage model, not as a target-specific default inside SCI.
