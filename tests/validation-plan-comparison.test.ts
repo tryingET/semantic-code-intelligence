@@ -34,7 +34,18 @@ function validationPlan(overrides: Record<string, any> = {}) {
   };
 }
 
-function writeEvidence(root: string, recommendPlan: any, safePlan = validationPlan({ workflow: 'safe_write', graphImpact: null, rollback: { command: 'git apply -R .ontology/snapshots/example/overlay.diff' } })) {
+function safeWritePlan(overrides: Record<string, any> = {}) {
+  return validationPlan({
+    workflow: 'safe_write',
+    graphImpact: null,
+    rollback: { command: 'git apply -R .ontology/snapshots/example/overlay.diff' },
+    apply: { applied: false, guardSatisfied: true },
+    verification: { staged: true, checksPassed: true, applyGuardSatisfied: true, applied: false, appliedDiffMatchesSnapshot: null },
+    ...overrides,
+  });
+}
+
+function writeEvidence(root: string, recommendPlan: any, safePlan = safeWritePlan()) {
   mkdirSync(root, { recursive: true });
   writeFileSync(join(root, 'recommend-checks-dogfood.json'), JSON.stringify({
     schema: 'semantic-code-intelligence.recommend_checks_dogfood.v1',
@@ -72,7 +83,43 @@ describe('validation plan comparison graph context', () => {
     expect(report.ok).toBe(true);
     expect(report.graphContextPlanCount).toBe(1);
     expect(report.stableFields).toContain('graphImpactRequestedEdges');
+    expect(report.stableFields).toContain('verificationAppliedDiffMatchesSnapshot');
     expect(report.interpretation.proves).toContain('At least one generated validationPlan preserves graph seed, requested edges, per-edge status, and limitations for evidence review.');
+    expect(report.interpretation.proves).toContain('safe_write validationPlan evidence preserves exact apply verification posture for downstream evidence review.');
+  });
+
+  test('fails closed when safe_write validationPlan omits verification posture', () => {
+    const root = makeRoot();
+    writeEvidence(root, validationPlan(), validationPlan({
+      workflow: 'safe_write',
+      graphImpact: null,
+      rollback: { command: 'git apply -R .ontology/snapshots/example/overlay.diff' },
+      apply: { applied: false },
+    }));
+
+    const result = runComparison(root);
+    expect(result.status).toBe(1);
+    const report = JSON.parse(readFileSync(join(root, 'validation-plan-comparison.json'), 'utf8'));
+
+    expect(report.ok).toBe(false);
+    expect(report.drift.some((item: any) => item.failures.includes('safe_write_verification_missing'))).toBe(true);
+    expect(result.stdout + result.stderr).toContain('safe_write_verification_missing');
+  });
+
+  test('fails closed when applied safe_write validationPlan omits applied-diff match state', () => {
+    const root = makeRoot();
+    writeEvidence(root, validationPlan(), safeWritePlan({
+      mode: 'apply_after_checks',
+      apply: { applied: true, guardSatisfied: true },
+      verification: { staged: true, checksPassed: true, applyGuardSatisfied: true, applied: true, appliedDiffMatchesSnapshot: null },
+    }));
+
+    const result = runComparison(root);
+    expect(result.status).toBe(1);
+    const report = JSON.parse(readFileSync(join(root, 'validation-plan-comparison.json'), 'utf8'));
+
+    expect(report.ok).toBe(false);
+    expect(report.drift.some((item: any) => item.failures.includes('safe_write_verification_incomplete'))).toBe(true);
   });
 
   test('fails closed when no generated validationPlan carries graph context', () => {

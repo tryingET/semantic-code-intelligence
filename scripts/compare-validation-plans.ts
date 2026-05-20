@@ -20,6 +20,9 @@ function minimum(plan: any): string[] {
 
 function normalize(plan: any) {
   const graphImpact = validateGraphImpactContext(plan?.graphImpact);
+  const verification = plan?.verification && typeof plan.verification === 'object' ? plan.verification : null;
+  const applied = plan?.apply?.applied === true;
+  const verificationAppliedDiffMatchesSnapshot = typeof verification?.appliedDiffMatchesSnapshot === 'boolean' ? verification.appliedDiffMatchesSnapshot : null;
   return {
     schema: plan?.schema || null,
     workflow: plan?.workflow || null,
@@ -29,10 +32,14 @@ function normalize(plan: any) {
     recommendedMinimum: minimum(plan),
     recommendationsAppliedToSelected: plan?.commands?.recommendationsAppliedToSelected === true,
     checksOk: plan?.checks?.ok === true,
-    applied: plan?.apply?.applied === true,
+    applied,
     hasArtifacts: !!plan?.artifacts?.overlayDiff,
     hasRollback: !!plan?.rollback?.command,
     riskCategory: plan?.risk?.category || null,
+    verificationPresent: !!verification,
+    verificationApplied: verification?.applied === true,
+    verificationAppliedDiffMatchesSnapshot,
+    verificationStateComplete: !!verification && verification.applied === applied && (applied ? typeof verification?.appliedDiffMatchesSnapshot === 'boolean' : verificationAppliedDiffMatchesSnapshot === null),
     graphImpactPresent: graphImpact.present,
     graphImpactSeed: graphImpact.seed,
     graphImpactRequestedEdges: graphImpact.requestedEdges,
@@ -87,6 +94,14 @@ const failureGuidance: Record<string, { explanation: string; remediation: string
     explanation: 'safe_write validation evidence no longer exposes rollback posture.',
     remediation: 'Restore rollback command/artifact fields for safe_write validationPlan output.',
   },
+  safe_write_verification_missing: {
+    explanation: 'safe_write validation evidence no longer exposes exact applied-diff verification posture.',
+    remediation: 'Thread safe_write verification into validationPlan.verification for preview, refused, clean apply, and mismatch cases.',
+  },
+  safe_write_verification_incomplete: {
+    explanation: 'safe_write validationPlan verification is present but does not preserve applied state or applied-diff match state.',
+    remediation: 'Ensure validationPlan.verification.applied mirrors apply.applied and appliedDiffMatchesSnapshot is boolean only for applied states, null for non-applied preview/refusal states.',
+  },
   graph_impact_context_missing: {
     explanation: 'Generated validationPlan evidence no longer includes a graph-bearing plan, so graph review context can drift unnoticed.',
     remediation: 'Thread graph_expand impactSummary into at least one preview/check dogfood validationPlan and preserve seed, requested edges, edge status, and limitations.',
@@ -119,6 +134,8 @@ const comparisons = normalized.map((item) => {
   if (!item.selectedCommands.length) failures.push('selected_commands_missing');
   if (!item.hasArtifacts) failures.push('snapshot_artifact_link_missing');
   if (item.workflow === 'safe_write' && !item.hasRollback) failures.push('safe_write_rollback_missing');
+  if (item.workflow === 'safe_write' && !item.verificationPresent) failures.push('safe_write_verification_missing');
+  if (item.workflow === 'safe_write' && item.verificationPresent && !item.verificationStateComplete) failures.push('safe_write_verification_incomplete');
   if (item.graphImpactPresent && (!item.graphImpactHasStableContext || !item.graphImpactLimitationsFieldPresent)) failures.push('graph_impact_context_incomplete');
   return { source: item.source, ok: failures.length === 0, failures, guidance: explainFailures(failures), expected, actual: item };
 });
@@ -145,7 +162,7 @@ const evidence = {
   ok: plans.length >= 2 && graphContextPlanCount >= 1 && drift.length === 0,
   comparedPlanCount: plans.length,
   graphContextPlanCount,
-  stableFields: ['schema', 'workflow', 'mode', 'selectedCommands', 'recommendationsAppliedToSelected', 'checksOk', 'hasArtifacts', 'hasRollback', 'graphImpactSeed', 'graphImpactRequestedEdges', 'graphImpactEdgeEvidence', 'graphImpactLimitationsFieldPresent'],
+  stableFields: ['schema', 'workflow', 'mode', 'selectedCommands', 'recommendationsAppliedToSelected', 'checksOk', 'hasArtifacts', 'hasRollback', 'verificationPresent', 'verificationApplied', 'verificationAppliedDiffMatchesSnapshot', 'graphImpactSeed', 'graphImpactRequestedEdges', 'graphImpactEdgeEvidence', 'graphImpactLimitationsFieldPresent'],
   ignoredVolatileFields: ['snapshot', 'elapsedMs', 'artifact paths with snapshot ids', 'generatedAt'],
   comparisons,
   drift,
@@ -156,6 +173,7 @@ const evidence = {
       'Current generated validationPlan evidence preserves stable safety/check-planning fields.',
       'Recommendations remain advisory and do not mutate selected commands.',
       'Preview evidence still links snapshot artifacts and safe_write rollback posture.',
+      'safe_write validationPlan evidence preserves exact apply verification posture for downstream evidence review.',
       'At least one generated validationPlan preserves graph seed, requested edges, per-edge status, and limitations for evidence review.',
     ],
     does_not_prove: ['Historical trend analysis beyond the current generated evidence bundle.'],
