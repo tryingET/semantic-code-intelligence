@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { MCPAdapter } from '../src/adapters/mcp-adapter';
+import { overlayStore } from '../src/core/overlay-store';
 
 const cleanupPaths: string[] = [];
 
@@ -17,6 +18,23 @@ function uniqueWorkspacePath(prefix: string): string {
 
 function parseToolJson(result: any): any {
     return JSON.parse(result?.content?.[0]?.text || '{}');
+}
+
+async function freshSnapshot(mcp: MCPAdapter): Promise<string> {
+    const result = await mcp.handleToolCall('get_snapshot', { preferExisting: false });
+    return parseToolJson(result).snapshot;
+}
+
+function updateOneLineDiff(relativePath: string, before: string, after: string): string {
+    return [
+        `diff --git a/${relativePath} b/${relativePath}`,
+        `--- a/${relativePath}`,
+        `+++ b/${relativePath}`,
+        '@@ -1 +1 @@',
+        `-${before}`,
+        `+${after}`,
+        '',
+    ].join('\n');
 }
 
 afterEach(() => {
@@ -75,6 +93,78 @@ describe('search workspace trust boundary', () => {
         expect(result.isError).toBe(true);
         expect(rendered).toContain('workspace');
         expect(rendered).not.toContain('outsideSecretTextSearchSymlinkLeak\n');
+    });
+
+    test('text_search searches staged snapshot overlay content without mutating live workspace results', async () => {
+        const liveText = 'search live token';
+        const snapshotText = 'search snapshot token';
+        const absPath = uniqueWorkspacePath('.tmp-text-search-snapshot-file');
+        const relPath = relative(process.cwd(), absPath);
+        writeFileSync(absPath, `${liveText}\n`);
+
+        const mcp = new MCPAdapter(undefined as any);
+        const snapshot = await freshSnapshot(mcp);
+        await mcp.handleToolCall('propose_patch', { snapshot, patch: updateOneLineDiff(relPath, liveText, snapshotText) });
+
+        const snapshotResult = await mcp.handleToolCall('text_search', { query: snapshotText, path: relPath, snapshot, maxResults: 5 });
+        const liveResult = await mcp.handleToolCall('text_search', { query: snapshotText, path: relPath, maxResults: 5 });
+        const snapshotPayload = parseToolJson(snapshotResult);
+        const livePayload = parseToolJson(liveResult);
+
+        expect(snapshotResult.isError).toBe(false);
+        expect(snapshotPayload.count).toBeGreaterThan(0);
+        expect(JSON.stringify(snapshotPayload)).toContain(snapshotText);
+        expect(Number(livePayload.count || 0)).toBe(0);
+    });
+
+    test('text_search maps absolute live-workspace paths to the same relative file inside a snapshot', async () => {
+        const liveText = 'absolute search live token';
+        const snapshotText = 'absolute search snapshot token';
+        const absPath = uniqueWorkspacePath('.tmp-text-search-snapshot-absolute');
+        const relPath = relative(process.cwd(), absPath);
+        writeFileSync(absPath, `${liveText}\n`);
+
+        const mcp = new MCPAdapter(undefined as any);
+        const snapshot = await freshSnapshot(mcp);
+        await mcp.handleToolCall('propose_patch', { snapshot, patch: updateOneLineDiff(relPath, liveText, snapshotText) });
+
+        const result = await mcp.handleToolCall('text_search', { query: snapshotText, path: absPath, snapshot, maxResults: 5 });
+        const payload = parseToolJson(result);
+
+        expect(result.isError).toBe(false);
+        expect(payload.count).toBeGreaterThan(0);
+        expect(JSON.stringify(payload)).toContain(snapshotText);
+    });
+
+    test('snapshot text_search rejects traversal and materialized symlink escapes without leaking target content', async () => {
+        const outsideDir = track(mkdtempSync(join(tmpdir(), 'sci-text-search-snapshot-outside-')));
+        const outsideFile = join(outsideDir, 'outside.txt');
+        writeFileSync(outsideFile, 'outsideSecretSnapshotTextSearchLeak\n');
+
+        const mcp = new MCPAdapter(undefined as any);
+        const snapshot = await freshSnapshot(mcp);
+        const snapshotRoot = await (overlayStore as any).ensureMaterialized(snapshot);
+        const linkRel = `.tmp-text-search-snapshot-link-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        const linkPath = track(join(snapshotRoot, linkRel));
+        mkdirSync(dirname(linkPath), { recursive: true });
+        symlinkSync(outsideFile, linkPath);
+
+        const traversal = await mcp.handleToolCall('text_search', { query: 'package', path: '../package.json', snapshot, maxResults: 5 });
+        const symlink = await mcp.handleToolCall('text_search', { query: 'outsideSecretSnapshotTextSearchLeak', path: linkRel, snapshot, maxResults: 5 });
+        const rendered = JSON.stringify(symlink);
+
+        expect(traversal.isError).toBe(true);
+        expect(symlink.isError).toBe(true);
+        expect(rendered).toContain('workspace');
+        expect(rendered).not.toContain('outsideSecretSnapshotTextSearchLeak\n');
+    });
+
+    test('text_search fails closed for unknown snapshot ids', async () => {
+        const mcp = new MCPAdapter(undefined as any);
+        const result = await mcp.handleToolCall('text_search', { query: 'anything', snapshot: '00000000-0000-4000-8000-000000000000' });
+
+        expect(result.isError).toBe(true);
+        expect(JSON.stringify(result)).toContain('Unknown snapshot id');
     });
 
     test('symbol_search rejects fileHint symlink escapes without leaking fallback text', async () => {

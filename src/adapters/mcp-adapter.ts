@@ -435,19 +435,25 @@ export class MCPAdapter {
         return decodedPath;
     }
 
-    private async resolveReadFileRoot(args: Record<string, any>, requestedPath: string): Promise<{ workspaceRoot: string; readPath: string }> {
+    private async materializedSnapshotRoot(args: Record<string, any>): Promise<string | null> {
         const snapshot = typeof args?.snapshot === 'string' ? args.snapshot.trim() : '';
-        if (!snapshot) return { workspaceRoot: process.cwd(), readPath: requestedPath };
+        if (!snapshot) return null;
 
         try {
             overlayStore.ensureSnapshot(snapshot);
             const ensureMaterialized = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
             const snapshotRoot = ensureMaterialized ? await ensureMaterialized(snapshot) : null;
             if (!snapshotRoot) throw new Error('Snapshot could not be materialized');
-            return { workspaceRoot: snapshotRoot, readPath: this.snapshotReadPath(requestedPath, snapshotRoot) };
+            return snapshotRoot;
         } catch (error: any) {
             throw new CoreError('InvalidParams', error?.message || 'Invalid snapshot id');
         }
+    }
+
+    private async resolveReadFileRoot(args: Record<string, any>, requestedPath: string): Promise<{ workspaceRoot: string; readPath: string }> {
+        const snapshotRoot = await this.materializedSnapshotRoot(args);
+        if (!snapshotRoot) return { workspaceRoot: process.cwd(), readPath: requestedPath };
+        return { workspaceRoot: snapshotRoot, readPath: this.snapshotReadPath(requestedPath, snapshotRoot) };
     }
 
     private async handleReadFile(args: Record<string, any>) {
@@ -1607,8 +1613,11 @@ export class MCPAdapter {
             const kind = (args?.kind as string) || 'literal';
             const caseInsensitive = !!args?.caseInsensitive;
             const maxResults = Math.min(Number(args?.maxResults || 200), 1000);
-            const requestedPath = String(args?.path || process.cwd());
-            const searchRoot = await resolveWorkspacePath(requestedPath, { workspaceRoot: process.cwd(), inputLabel: 'text_search path', allowRoot: true });
+            const snapshotRoot = await this.materializedSnapshotRoot(args);
+            const workspaceRoot = snapshotRoot || process.cwd();
+            const requestedPath = typeof args?.path === 'string' && args.path.trim() ? String(args.path) : '.';
+            const searchPath = snapshotRoot ? this.snapshotReadPath(requestedPath, snapshotRoot) : requestedPath;
+            const searchRoot = await resolveWorkspacePath(searchPath, { workspaceRoot, inputLabel: 'text_search path', allowRoot: true });
             const path = searchRoot.realPath;
 
             // Prepare query based on kind
@@ -1658,8 +1667,11 @@ export class MCPAdapter {
             const kind = (args?.kind as string) || 'literal';
             const caseInsensitive = !!args?.caseInsensitive;
             const maxResults = Math.min(Number(args?.maxResults || 200), 1000);
-            const requestedPath = String(args?.path || process.cwd());
-            const searchRoot = await resolveWorkspacePath(requestedPath, { workspaceRoot: process.cwd(), inputLabel: 'text_search path', allowRoot: true });
+            const snapshotRoot = await this.materializedSnapshotRoot(args);
+            const workspaceRoot = snapshotRoot || process.cwd();
+            const requestedPath = typeof args?.path === 'string' && args.path.trim() ? String(args.path) : '.';
+            const searchPath = snapshotRoot ? this.snapshotReadPath(requestedPath, snapshotRoot) : requestedPath;
+            const searchRoot = await resolveWorkspacePath(searchPath, { workspaceRoot, inputLabel: 'text_search path', allowRoot: true });
             const path = searchRoot.realPath;
             const asyncGrep = new AsyncEnhancedGrep({ cacheSize: 500, cacheTTL: 30000 });
             const pattern =
@@ -2318,8 +2330,11 @@ export class MCPAdapter {
         const glob = typeof args?.glob === 'string' ? (args.glob as string) : undefined;
         const limit = typeof args?.limit === 'number' ? args.limit : undefined;
         try {
+            const snapshotRoot = await this.materializedSnapshotRoot(args);
+            const workspaceRoot = snapshotRoot || process.cwd();
+            const queryPaths = snapshotRoot && paths ? paths.map((item) => this.snapshotReadPath(String(item), snapshotRoot)) : paths;
             const { runAstQuery } = await import('../core/ast-query.js');
-            const out = await runAstQuery({ language: language as any, query, paths, glob, limit, workspaceRoot: process.cwd() });
+            const out = await runAstQuery({ language: language as any, query, paths: queryPaths, glob, limit, workspaceRoot });
             return { content: [{ type: 'text', text: JSON.stringify(out, null, 2) }], isError: false };
         } catch (error) {
             const coreError = error instanceof CoreError
