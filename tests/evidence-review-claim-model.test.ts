@@ -177,6 +177,27 @@ describe('evidence review claim model', () => {
     expect(claimById(review, 'checks-result')?.status).toBe('unresolved');
   });
 
+  test('alpha packet does not erase embedded applied validation plan posture', () => {
+    const packet = {
+      schema: 'semantic-code-intelligence.alpha_evidence_packet.v1',
+      ok: true,
+      previewFirstMutation: {
+        validationPlanSample: clonePlan({
+          status: 'applied',
+          apply: { applied: true },
+          rollback: { command: 'git apply -R .test-results/example.patch' },
+        }),
+      },
+    };
+    const { stdout } = runSummary(packet, ['--format', 'json']);
+    const review = JSON.parse(stdout);
+
+    expect(review.outcome.applied).toBe(true);
+    expect(review.outcome.previewOnly).toBe(false);
+    expect(review.safety.sourceMutated).toBe(true);
+    expect(review.rollback.available).toBe(true);
+  });
+
   test('selected checks require concrete executed command entries before support', () => {
     const plan = clonePlan({
       commands: { selected: ['bun test tests/example.test.ts'], recommendedMinimum: [], recommendedBroader: [], recommendationsAppliedToSelected: false },
@@ -187,6 +208,19 @@ describe('evidence review claim model', () => {
 
     expect(artifactById(review, 'validation-execution')?.observedStatus).toBe('unavailable');
     expect(claimById(review, 'checks-result')?.status).toBe('unresolved');
+  });
+
+  test('selected check command failure contradicts aggregate clean-pass claims', () => {
+    const plan = clonePlan({
+      commands: { selected: ['bun test tests/example.test.ts'], recommendedMinimum: [], recommendedBroader: [], recommendationsAppliedToSelected: false },
+      checks: { ok: true, elapsedMs: 42, commands: [{ command: 'bun test tests/example.test.ts', ok: false }] },
+    });
+    const { stdout } = runSummary(plan, ['--format', 'json']);
+    const review = JSON.parse(stdout);
+
+    expect(artifactById(review, 'validation-execution')?.observedStatus).toBe('failed');
+    expect(claimById(review, 'checks-result')?.status).toBe('contradicted');
+    expect(review.limitations.find((item: any) => item.id === 'validation-execution-limitation-1')?.severity).toBe('blocking');
   });
 
   test('missing check result is unavailable rather than failed', () => {
@@ -356,6 +390,17 @@ describe('evidence review claim model', () => {
     })).toThrow('Evidence input changed while it was being read');
   });
 
+  test('read boundary keeps post-open growth bounded before parsing', async () => {
+    const { readJson } = await import('../scripts/summarize-evidence-review.ts');
+    const dir = workspaceTempDir('toctou-grow-');
+    const inputPath = join(dir, 'input.json');
+    writeFileSync(inputPath, JSON.stringify(sampleValidationPlan()));
+
+    expect(() => readJson(relative(process.cwd(), inputPath), {
+      afterOpenStat: () => writeFileSync(inputPath, `{"schema":"semantic-code-intelligence.validation_plan.v1","padding":"${'x'.repeat(10 * 1024 * 1024)}"}`),
+    })).toThrow('Evidence input too large');
+  });
+
   test('summary rejects missing, unreadable, and non-regular evidence inputs before parsing', () => {
     const dir = workspaceTempDir('nonregular-');
     const missing = join(dir, 'missing.json');
@@ -424,6 +469,17 @@ describe('evidence review claim model', () => {
     expect(result.stderr).not.toContain(' at ');
   });
 
+  test('summary rejects missing option values before reading evidence input', () => {
+    const result = spawnSync('bun', ['run', script, '--input', '--format', 'json'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('evidence-review: Missing value for --input');
+    expect(result.stderr).not.toContain('Evidence input is unavailable or unreadable');
+  });
+
   test('summary rejects unsupported formats before parsing input and without reflecting untrusted format text', () => {
     const dir = workspaceTempDir('bad-format-');
     const inputPath = join(dir, 'input.json');
@@ -456,6 +512,21 @@ describe('evidence review claim model', () => {
     expect(result.stdout + result.stderr).not.toContain('extract-secret-marker');
     expect(result.stdout + result.stderr).not.toContain('extract-before-parse-marker');
     expect(result.stderr).not.toContain(process.cwd());
+  });
+
+  test('target dogfood validationPlan extraction uses the same embedded plan search as normalization', () => {
+    const evidence = {
+      schema: 'semantic-code-intelligence.target_validation_plan_dogfood.v1',
+      ok: true,
+      target: { label: 'external-target', cleanAfter: true },
+      calls: [{ payload: { validationPlan: sampleValidationPlan() } }],
+    };
+    const { stdout } = runSummary(evidence, ['--extract', 'validationPlan', '--format', 'json']);
+    const review = JSON.parse(stdout);
+
+    expect(review.source.kind).toBe('validation_plan');
+    expect(review.scope.target.label).toBe('external-target');
+    expect(review.outcome.ok).toBe(true);
   });
 
   test('summary reports malformed JSON without source paths, code frames, or input content', () => {

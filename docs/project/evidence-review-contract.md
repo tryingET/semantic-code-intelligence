@@ -251,11 +251,14 @@ Any implementation of this contract must validate:
 7. production-readiness caveat is visible;
 8. untrusted evidence text cannot forge markdown headings/status or inline emphasis/link claims;
 9. alpha packet bundle gates remain distinct from selected-command execution evidence;
-10. oversized evidence inputs fail closed before parsing;
-11. path escapes, symlink escapes, TOCTOU replacement/mutation, missing/unreadable inputs, and non-regular evidence inputs fail closed without leaking input contents;
-12. unsupported schemas, malformed JSON, unsupported formats, and unsupported extract modes fail with sanitized errors that do not expose stacks, source paths, or reflected caller-controlled text;
-13. docs strict and direction check pass;
-14. if runtime contracts change, `bun run alpha:mvp:check` still passes.
+10. command-level failed selected checks contradict aggregate clean-pass claims instead of being hidden;
+11. applied posture from embedded validation plans remains visible when rendering packet-level evidence;
+12. oversized evidence inputs fail closed before parsing, including post-open growth before unbounded reads;
+13. path escapes, symlink escapes, TOCTOU replacement/mutation, missing/unreadable inputs, and non-regular evidence inputs fail closed without leaking input contents;
+14. unsupported schemas, malformed JSON, missing option values, unsupported formats, and unsupported extract modes fail with sanitized errors that do not expose stacks, source paths, or reflected caller-controlled text;
+15. validationPlan extraction works consistently for every supported evidence input kind that embeds a validation plan;
+16. docs strict and direction check pass;
+17. if runtime contracts change, `bun run alpha:mvp:check` still passes.
 
 ## Non-goals
 

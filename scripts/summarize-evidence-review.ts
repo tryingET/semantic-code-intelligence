@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { closeSync, constants, fstatSync, openSync, readFileSync, realpathSync, statSync, type Stats } from 'node:fs';
+import { closeSync, constants, fstatSync, openSync, readSync, realpathSync, statSync, type Stats } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
 
 function argValue(name: string): string | null {
@@ -9,12 +9,21 @@ function argValue(name: string): string | null {
   return prefixed ? prefixed.slice(name.length + 1) : null;
 }
 
+function argHasMissingValue(name: string): boolean {
+  const idx = process.argv.indexOf(name);
+  if (idx >= 0 && (!process.argv[idx + 1] || process.argv[idx + 1].startsWith('--'))) return true;
+  return process.argv.includes(`${name}=`);
+}
+
 const inputPath = argValue('--input') || '.test-results/alpha-evidence-packet.json';
 const format = argValue('--format') || 'markdown';
 const extract = argValue('--extract');
 const maxInputBytes = 10 * 1024 * 1024;
 
 function validateCliOptions() {
+  for (const name of ['--input', '--format', '--extract']) {
+    if (argHasMissingValue(name)) throw new Error(`Missing value for ${name}`);
+  }
   if (format !== 'json' && format !== 'markdown') {
     throw new Error('Unsupported --format; expected markdown or json');
   }
@@ -29,11 +38,37 @@ function isContainedPath(root: string, candidate: string): boolean {
 }
 
 function openedFdRealpath(fd: number): string {
-  try {
-    return realpathSync(`/proc/self/fd/${fd}`);
-  } catch {
-    throw new Error('Evidence input is unavailable or unreadable');
+  const candidates = process.platform === 'linux'
+    ? [`/proc/self/fd/${fd}`, `/dev/fd/${fd}`]
+    : [`/dev/fd/${fd}`, `/proc/self/fd/${fd}`];
+  for (const candidate of candidates) {
+    try {
+      return realpathSync(candidate);
+    } catch {
+      // Try the next fd-link convention before failing closed.
+    }
   }
+  throw new Error('Evidence input is unavailable or unreadable');
+}
+
+function tooLargeError(sizeDescription: string): Error {
+  return new Error(`Evidence input too large: ${sizeDescription} exceeds ${maxInputBytes} byte limit`);
+}
+
+function readBoundedUtf8(fd: number): string {
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+  while (true) {
+    const remainingWithSentinel = maxInputBytes + 1 - totalBytes;
+    if (remainingWithSentinel <= 0) throw tooLargeError('more than limit');
+    const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, remainingWithSentinel));
+    const bytesRead = readSync(fd, buffer, 0, buffer.length, null);
+    if (bytesRead === 0) break;
+    totalBytes += bytesRead;
+    if (totalBytes > maxInputBytes) throw tooLargeError(`${totalBytes} bytes`);
+    chunks.push(buffer.subarray(0, bytesRead));
+  }
+  return Buffer.concat(chunks, totalBytes).toString('utf8');
 }
 
 function sameObservedFile(a: Stats, b: Stats): boolean {
@@ -93,7 +128,7 @@ export function readJson(path: string, options: ReadJsonOptions = {}): any {
     }
     assertSameObservedFile('opened', initialStat, openedStat);
     if (openedStat.size > maxInputBytes) {
-      throw new Error(`Evidence input too large: ${openedStat.size} bytes exceeds ${maxInputBytes} byte limit`);
+      throw tooLargeError(`${openedStat.size} bytes`);
     }
 
     const realPath = openedFdRealpath(fd);
@@ -102,7 +137,7 @@ export function readJson(path: string, options: ReadJsonOptions = {}): any {
     }
 
     options.afterOpenStat?.();
-    const text = readFileSync(fd, 'utf8');
+    const text = readBoundedUtf8(fd);
     assertSameObservedFile('read', openedStat, fstatSync(fd));
     return parseEvidenceJson(text);
   } finally {
@@ -190,15 +225,17 @@ function firstString(values: unknown[]): string | null {
   return null;
 }
 
-function checkCommandText(entry: any): string | null {
-  if (typeof entry === 'string') return entry;
-  if (entry && typeof entry.command === 'string') return entry.command;
+type CheckCommandEvidence = { command: string; ok: boolean | null };
+
+function checkCommandEvidence(entry: any): CheckCommandEvidence | null {
+  if (typeof entry === 'string') return { command: entry, ok: null };
+  if (entry && typeof entry.command === 'string') return { command: entry.command, ok: typeof entry.ok === 'boolean' ? entry.ok : null };
   return null;
 }
 
-function matchingExecutedSelectedCommands(review: any, selectedCommands: string[]): string[] {
-  const executed = new Set(arr(review?.checks?.commands).map(checkCommandText).filter((command): command is string => !!command));
-  return selectedCommands.filter((command) => executed.has(command));
+function selectedCommandEvidence(review: any, selectedCommands: string[]): Array<CheckCommandEvidence | null> {
+  const executed = arr(review?.checks?.commands).map(checkCommandEvidence).filter((entry): entry is CheckCommandEvidence => !!entry);
+  return selectedCommands.map((command) => executed.find((entry) => entry.command === command) || null);
 }
 
 function requireKnownReferences(label: string, ownerId: string, refs: string[], known: Set<string>) {
@@ -236,6 +273,7 @@ function firstValidationPlan(packet: any): any | null {
     packet?.previewFirstMutation?.validationPlanSample,
     ...(arr(packet?.checkRecommendations?.calls).map((call: any) => call?.payload?.validationPlan)),
     ...(arr(packet?.previewFirstMutation?.structuralCalls).map((call: any) => call?.payload?.validationPlan)),
+    ...(arr(packet?.calls).map((call: any) => call?.payload?.validationPlan)),
   ];
   return candidates.find((plan: any) => plan?.schema === 'semantic-code-intelligence.validation_plan.v1') || null;
 }
@@ -315,8 +353,6 @@ function normalizeAlphaPacket(packet: any) {
       ...base.outcome,
       ok: packet?.ok === true,
       status: packet?.ok === true ? 'evidence_packet_ok' : 'evidence_packet_not_ok',
-      previewOnly: true,
-      applied: false,
     },
     scope: {
       ...base.scope,
@@ -339,7 +375,6 @@ function normalizeAlphaPacket(packet: any) {
     },
     safety: {
       ...base.safety,
-      sourceMutated: false,
       alphaPacketProves: strings(packet?.operatorSummary?.proves),
       alphaPacketDoesNotProve: strings(packet?.operatorSummary?.doesNotProve),
     },
@@ -366,9 +401,12 @@ function withConceptualModel(review: any) {
   const rollbackAvailable = review?.rollback?.available === true;
   const checkOkObserved = typeof review?.checks?.ok === 'boolean';
   const failedGateChecks = strings(review?.checks?.failedGateChecks);
-  const executedSelectedCommands = matchingExecutedSelectedCommands(review, selectedCommands);
-  const validationExecutionObserved = selectedCommands.length > 0 && checkOkObserved && executedSelectedCommands.length > 0;
-  const checksFailed = validationExecutionObserved && review.checks.ok === false;
+  const selectedEvidence = selectedCommandEvidence(review, selectedCommands);
+  const selectedCommandsObserved = selectedCommands.length > 0 && selectedEvidence.every((entry) => entry !== null);
+  const selectedCommandsPassed = selectedCommandsObserved && selectedEvidence.every((entry) => entry?.ok === true);
+  const selectedCommandsFailed = selectedCommandsObserved && selectedEvidence.some((entry) => entry?.ok === false);
+  const validationExecutionObserved = selectedCommandsPassed && checkOkObserved;
+  const checksFailed = selectedCommandsFailed || (selectedCommandsObserved && review.checks.ok === false);
   const checksPassedWithObservedCommands = validationExecutionObserved && review?.checks?.ok === true;
   const graphObserved = review?.graphImpact?.hasImpactEvidence === true;
   const graphApplicable = review?.source?.kind !== 'target_dogfood' || review?.scope?.sourceKind !== 'unknown';
