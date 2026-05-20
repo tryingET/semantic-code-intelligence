@@ -21,6 +21,8 @@ function strings(value: any): string[] {
   return Array.isArray(value) ? value.map(String).filter(Boolean) : [];
 }
 
+const allowedGraphEvidenceStatuses = new Set(['evidence', 'limited', 'empty_or_unavailable']);
+
 function normalizeGraphImpact(graphImpact: any) {
   if (!graphImpact || typeof graphImpact !== 'object') {
     return {
@@ -41,15 +43,27 @@ function normalizeGraphImpact(graphImpact: any) {
         edge: String(item?.edge || ''),
         status: String(item?.status || ''),
         count: Number(item?.count || 0),
+        limitations: strings(item?.limitations),
       })).filter((item: any) => item.edge && item.status)
     : [];
+  const evidenceByEdge = new Map(edgeEvidence.map((item: any) => [item.edge, item]));
+  const requestedEdgesCovered = requestedEdges.length > 0 && requestedEdges.every((edge) => evidenceByEdge.has(edge));
+  const statusesValid = edgeEvidence.every((item: any) => allowedGraphEvidenceStatuses.has(item.status));
+  const countsValid = edgeEvidence.every((item: any) => Number.isFinite(item.count) && item.count >= 0);
+  const limitedEdgesExplainLimitations = edgeEvidence.every((item: any) => item.status !== 'limited' || item.limitations.length > 0);
   return {
     present: true,
     seed,
     requestedEdges,
     edgeEvidence,
     limitationsFieldPresent: Array.isArray(graphImpact.limitations),
-    hasStableContext: !!seed?.kind && !!seed?.value && requestedEdges.length > 0 && edgeEvidence.length > 0,
+    hasStableContext:
+      !!seed?.kind &&
+      !!seed?.value &&
+      requestedEdgesCovered &&
+      statusesValid &&
+      countsValid &&
+      limitedEdgesExplainLimitations,
   };
 }
 

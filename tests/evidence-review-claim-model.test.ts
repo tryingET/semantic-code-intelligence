@@ -328,6 +328,23 @@ describe('evidence review claim model', () => {
     expect(markdown).toContain('graph impact evidence unavailable or not observed; do not infer no impact from absence');
   });
 
+  test('alpha packet preserves file-impact graph limitations in review output', () => {
+    const packet = {
+      schema: 'semantic-code-intelligence.alpha_evidence_packet.v1',
+      ok: true,
+      graphImpact: {
+        fileImpact: { hasImpactEvidence: false, counts: {}, limitations: ['file fallback limitation'], planningHints: [] },
+        symbolImpact: { limitations: ['symbol fallback limitation'] },
+      },
+      previewFirstMutation: { validationPlanSample: sampleValidationPlan() },
+    };
+    const { stdout } = runSummary(packet, ['--format', 'json']);
+    const review = JSON.parse(stdout);
+
+    expect(review.graphImpact.limitations).toContain('file fallback limitation');
+    expect(review.graphImpact.limitations).toContain('symbol fallback limitation');
+  });
+
   test('markdown output neutralizes forged headings and links in caller-controlled command text', () => {
     const forgedCommand = 'true\n## FORGED CHECK STATUS\n[secret](file:///tmp/secret)';
     const plan = clonePlan({

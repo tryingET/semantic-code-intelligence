@@ -88,9 +88,16 @@ describe('validation plan comparison graph context', () => {
     expect(result.stdout + result.stderr).toContain('graph_impact_context_missing');
   });
 
-  test('fails closed when graph-bearing validationPlan omits requested edge evidence', () => {
+  test('fails closed when graph-bearing validationPlan omits evidence for a requested edge', () => {
     const root = makeRoot();
-    writeEvidence(root, validationPlan({ graphImpact: { seed: { kind: 'file', value: 'src/example.ts' }, requestedEdges: [], evidence: [], limitations: [] } }));
+    writeEvidence(root, validationPlan({
+      graphImpact: {
+        seed: { kind: 'file', value: 'src/example.ts' },
+        requestedEdges: ['imports', 'callers'],
+        evidence: [{ edge: 'imports', count: 1, status: 'evidence' }],
+        limitations: [],
+      },
+    }));
 
     const result = runComparison(root);
     expect(result.status).toBe(1);
@@ -99,5 +106,27 @@ describe('validation plan comparison graph context', () => {
     expect(report.ok).toBe(false);
     expect(report.drift.some((item: any) => item.failures.includes('graph_impact_context_incomplete'))).toBe(true);
     expect(report.drift.some((item: any) => item.failures.includes('graph_impact_context_missing'))).toBe(true);
+  });
+
+  test('fails closed when limited graph edge evidence has no visible limitation', () => {
+    const root = makeRoot();
+    writeEvidence(root, validationPlan({
+      graphImpact: {
+        seed: { kind: 'file', value: 'src/example.ts' },
+        requestedEdges: ['imports', 'callers'],
+        evidence: [
+          { edge: 'imports', count: 1, status: 'evidence' },
+          { edge: 'callers', count: 0, status: 'limited', limitations: [] },
+        ],
+        limitations: [],
+      },
+    }));
+
+    const result = runComparison(root);
+    expect(result.status).toBe(1);
+    const report = JSON.parse(readFileSync(join(root, 'validation-plan-comparison.json'), 'utf8'));
+
+    expect(report.ok).toBe(false);
+    expect(report.drift.some((item: any) => item.failures.includes('graph_impact_context_incomplete'))).toBe(true);
   });
 });

@@ -412,7 +412,7 @@ function normalizeAlphaPacket(packet: any) {
       requestedEdges: strings(packet?.graphImpact?.fileImpact?.requestedEdges).concat(base.graphImpact.requestedEdges || []),
       counts: packet?.graphImpact?.fileImpact?.counts || base.graphImpact.counts,
       evidence: arr(packet?.graphImpact?.fileImpact?.evidence).concat(base.graphImpact.evidence || []),
-      limitations: strings(packet?.graphImpact?.symbolImpact?.limitations).concat(base.graphImpact.limitations),
+      limitations: strings(packet?.graphImpact?.fileImpact?.limitations).concat(strings(packet?.graphImpact?.symbolImpact?.limitations), base.graphImpact.limitations),
       planningHints: strings(packet?.graphImpact?.fileImpact?.planningHints).concat(base.graphImpact.planningHints),
       callerContextCount: packet?.graphImpact?.impact?.callerContext?.callerContextCount ?? packet?.graphImpact?.fileImpact?.callerContextCount ?? base.graphImpact.callerContextCount ?? null,
     },
