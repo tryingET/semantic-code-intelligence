@@ -35,6 +35,7 @@ type Snapshot = {
 
 export class OverlayStore {
     private snapshots = new Map<string, Snapshot>();
+    private materializeLocks = new Map<string, Promise<void>>();
     private wantProgress(): boolean {
         const env = process.env;
         return env.DOGFOOD_PROGRESS === '1' || env.PROGRESS_LOGS === '1';
@@ -96,6 +97,54 @@ export class OverlayStore {
             diffCount: Array.isArray(snap?.diffs) ? snap.diffs.length : 0,
         };
         await fsp.writeFile(markerPath, JSON.stringify(payload, null, 2), 'utf8');
+    }
+
+    private normalizePatchRelativePath(rawPath: string, inputLabel = 'patch path'): string | null {
+        const raw = String(rawPath || '').trim();
+        if (!raw || raw === '/dev/null') return null;
+        if (raw.includes('\0')) throw new Error(`${inputLabel} must not contain NUL bytes`);
+        if (raw.includes('\\')) throw new Error(`${inputLabel} must use POSIX-style relative paths`);
+        if (path.posix.isAbsolute(raw)) throw new Error(`${inputLabel} must stay within the workspace`);
+        const normalized = path.posix.normalize(raw);
+        if (!normalized || normalized === '.' || normalized === '..' || normalized.startsWith('../')) {
+            throw new Error(`${inputLabel} must stay within the workspace`);
+        }
+        return normalized;
+    }
+
+    private containedPath(root: string, relPath: string, inputLabel = 'path'): { absolutePath: string; relativePath: string } {
+        const relativePath = this.normalizePatchRelativePath(relPath, inputLabel);
+        if (!relativePath) throw new Error(`${inputLabel} must name a file inside the workspace`);
+        const absoluteRoot = path.resolve(root);
+        const absolutePath = path.resolve(absoluteRoot, relativePath);
+        const relativeToRoot = path.relative(absoluteRoot, absolutePath);
+        if (!relativeToRoot || relativeToRoot.startsWith('..') || path.isAbsolute(relativeToRoot)) {
+            throw new Error(`${inputLabel} must stay within the workspace`);
+        }
+        return { absolutePath, relativePath: relativeToRoot.split(path.sep).join('/') };
+    }
+
+    private spawnChecked(command: string, errorLabel: string, cwd?: string): void {
+        const result = spawnSync('bash', ['-lc', command], { stdio: 'pipe', cwd });
+        if (result.status !== 0) {
+            const output = `${String(result.stdout || '')}${String(result.stderr || '')}`.slice(-1000);
+            throw new Error(`${errorLabel}: ${output || `exit ${result.status}`}`);
+        }
+    }
+
+    private async withMaterializeLock<T>(snapshotId: string, action: () => Promise<T>): Promise<T> {
+        const previous = this.materializeLocks.get(snapshotId) || Promise.resolve();
+        let release!: () => void;
+        const current = new Promise<void>((resolve) => { release = resolve; });
+        const chained = previous.catch(() => undefined).then(() => current);
+        this.materializeLocks.set(snapshotId, chained);
+        await previous.catch(() => undefined);
+        try {
+            return await action();
+        } finally {
+            release();
+            if (this.materializeLocks.get(snapshotId) === chained) this.materializeLocks.delete(snapshotId);
+        }
     }
 
     private serializeSnapshot(snap: Snapshot): Record<string, unknown> {
@@ -227,29 +276,32 @@ export class OverlayStore {
 
     private parseTouchedFilesFromPatch(diff: string): string[] {
         const files = new Set<string>();
+        const addPath = (value: string) => {
+            const normalized = this.normalizePatchRelativePath(value, 'patch file path');
+            if (normalized && !normalized.endsWith('/')) files.add(normalized);
+        };
         const lines = diff.split(/\r?\n/);
         for (const line of lines) {
             // apply_patch format
             let m = line.match(/^\*\*\*\s+(?:Update|Add|Delete) File:\s+(.+)$/);
             if (m) {
-                files.add(m[1].trim());
+                addPath(m[1]);
                 continue;
             }
             // git unified diff header
             m = line.match(/^\+\+\+\s+[ab]\/(.+)$/) || line.match(/^---\s+[ab]\/(.+)$/);
             if (m) {
-                files.add(m[1].trim());
+                addPath(m[1]);
                 continue;
             }
             // diff --git a/path b/path
             m = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
             if (m) {
-                files.add(m[1].trim());
-                files.add(m[2].trim());
+                addPath(m[1]);
+                addPath(m[2]);
             }
         }
-        // Filter obvious non-files
-        return Array.from(files).filter((p) => p && !p.endsWith('/'));
+        return Array.from(files);
     }
 
     stagePatch(snapshotId: string, diff: string, maxSizeBytes = 512 * 1024): { accepted: boolean; message?: string } {
@@ -257,15 +309,18 @@ export class OverlayStore {
         if (Buffer.byteLength(diff, 'utf8') > maxSizeBytes) {
             return { accepted: false, message: `Patch too large (> ${maxSizeBytes} bytes)` };
         }
+        let touched: string[];
+        try {
+            touched = this.parseTouchedFilesFromPatch(diff);
+        } catch (error) {
+            return { accepted: false, message: error instanceof Error ? error.message : String(error) };
+        }
         const snap = this.ensureSnapshot(snapshotId);
         snap.diffs.push(diff);
-        try {
-            const touched = this.parseTouchedFilesFromPatch(diff);
-            if (touched.length) {
-                if (!snap.touchedFiles) snap.touchedFiles = new Set<string>();
-                for (const f of touched) snap.touchedFiles.add(f);
-            }
-        } catch {}
+        if (touched.length) {
+            if (!snap.touchedFiles) snap.touchedFiles = new Set<string>();
+            for (const f of touched) snap.touchedFiles.add(f);
+        }
         this.persistSnapshotSync(snap);
         return { accepted: true };
     }
@@ -304,6 +359,10 @@ export class OverlayStore {
 
     private async ensureMaterialized(snapshotId: string): Promise<string | null> {
         this.assertValidId(snapshotId);
+        return this.withMaterializeLock(snapshotId, () => this.ensureMaterializedUnlocked(snapshotId));
+    }
+
+    private async ensureMaterializedUnlocked(snapshotId: string): Promise<string | null> {
         const base = this.resolveWorkspaceBase();
         const snapsRoot = this.snapshotsRoot();
         const dir = path.join(snapsRoot, snapshotId);
@@ -313,101 +372,103 @@ export class OverlayStore {
         const snap = this.snapshots.get(snapshotId) || this.loadSnapshotFromDisk(snapshotId);
         const desiredFingerprint = this.snapshotDiffFingerprint(snap);
         const currentFingerprint = fs.existsSync(materializedMarker) ? this.readMaterializedFingerprint(materializedMarker) : null;
-        const isCurrent = currentFingerprint === desiredFingerprint;
         const touched = snap?.touchedFiles ? Array.from(snap.touchedFiles) : [];
 
-        if (isCurrent) return dir;
+        if (currentFingerprint === desiredFingerprint) return dir;
 
+        const tempDir = path.join(snapsRoot, `.${snapshotId}.${process.pid}.${Date.now()}.tmp`);
+        const oldDir = path.join(snapsRoot, `.${snapshotId}.${process.pid}.${Date.now()}.old`);
         await this.logProgress(snapshotId, currentFingerprint ? 'materialize:refresh-start' : 'materialize:start');
-        await fsp.rm(dir, { recursive: true, force: true }).catch(() => {});
-        await fsp.mkdir(dir, { recursive: true });
+        await fsp.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+        await fsp.mkdir(tempDir, { recursive: true });
 
-        if (preferPartial && touched.length > 0) {
-            // Partial materialize: copy only touched files and essential configs
-            await this.logProgress(snapshotId, `materialize:partial ${touched.length} files`);
-            const essential = ['tsconfig.json', 'tsconfig.build.json', 'package.json'];
-            const toCopy = [...new Set([...touched, ...essential])];
-            for (const rel of toCopy) {
-                try {
-                    const src = path.join(base, rel);
-                    const dst = path.join(dir, rel);
-                    await fsp.mkdir(path.dirname(dst), { recursive: true }).catch(() => {});
+        try {
+            if (preferPartial && touched.length > 0) {
+                // Partial materialize: copy only touched files and essential configs
+                await this.logProgress(snapshotId, `materialize:partial ${touched.length} files`);
+                const essential = ['tsconfig.json', 'tsconfig.build.json', 'package.json'];
+                const toCopy = [...new Set([...touched, ...essential])];
+                for (const rel of toCopy) {
+                    const { absolutePath: src } = this.containedPath(base, rel, 'snapshot source path');
+                    const { absolutePath: dst } = this.containedPath(tempDir, rel, 'snapshot destination path');
+                    await fsp.mkdir(path.dirname(dst), { recursive: true });
                     if (fs.existsSync(src) && fs.statSync(src).isFile()) {
-                        spawnSync('bash', ['-lc', `cp -a ${JSON.stringify(src)} ${JSON.stringify(dst)}`], {
-                            stdio: 'pipe',
-                        });
+                        this.spawnChecked(`cp -a ${JSON.stringify(src)} ${JSON.stringify(dst)}`, 'Failed to copy snapshot file');
                     }
-                } catch {}
-            }
-        } else {
-            // Full copy: prefer rsync; fallback to tar or cp
-            if (this.which('rsync')) {
-                await this.logProgress(snapshotId, `materialize:rsync ${base} -> ${dir}`);
-                spawnSync(
-                    'bash',
-                    [
-                        '-lc',
-                        `rsync -a --delete --exclude .git --exclude node_modules --exclude .ontology --exclude dist ${JSON.stringify(base)}/ ${dir}/`,
-                    ],
-                    { stdio: 'pipe' }
-                );
-            } else if (this.which('tar')) {
-                await this.logProgress(snapshotId, `materialize:tar ${base} -> ${dir}`);
-                const cmd = `tar -C ${JSON.stringify(base)} --exclude .git --exclude node_modules --exclude .ontology --exclude dist -cf - . | tar -C ${JSON.stringify(dir)} -xf -`;
-                spawnSync('bash', ['-lc', cmd], { stdio: 'pipe' });
+                }
             } else {
-                const entries = await fsp.readdir(base, { withFileTypes: true });
-                for (const ent of entries) {
-                    if (['.git', '.ontology', 'node_modules', 'dist'].includes(ent.name)) continue;
-                    const src = path.join(base, ent.name);
-                    const dest = path.join(dir, ent.name);
-                    try {
-                        spawnSync('bash', ['-lc', `cp -a ${JSON.stringify(src)} ${JSON.stringify(dest)}`], {
-                            stdio: 'pipe',
-                        });
-                    } catch {}
+                // Full copy: prefer rsync; fallback to tar or cp
+                if (this.which('rsync')) {
+                    await this.logProgress(snapshotId, `materialize:rsync ${base} -> ${tempDir}`);
+                    this.spawnChecked(
+                        `rsync -a --delete --exclude .git --exclude node_modules --exclude .ontology --exclude dist ${JSON.stringify(base)}/ ${tempDir}/`,
+                        'Failed to copy snapshot base with rsync'
+                    );
+                } else if (this.which('tar')) {
+                    await this.logProgress(snapshotId, `materialize:tar ${base} -> ${tempDir}`);
+                    const cmd = `tar -C ${JSON.stringify(base)} --exclude .git --exclude node_modules --exclude .ontology --exclude dist -cf - . | tar -C ${JSON.stringify(tempDir)} -xf -`;
+                    this.spawnChecked(cmd, 'Failed to copy snapshot base with tar');
+                } else {
+                    const entries = await fsp.readdir(base, { withFileTypes: true });
+                    for (const ent of entries) {
+                        if (['.git', '.ontology', 'node_modules', 'dist'].includes(ent.name)) continue;
+                        const src = path.join(base, ent.name);
+                        const dest = path.join(tempDir, ent.name);
+                        this.spawnChecked(`cp -a ${JSON.stringify(src)} ${JSON.stringify(dest)}`, 'Failed to copy snapshot base entry');
+                    }
                 }
             }
+
+            if (snap?.diffs.length) {
+                await this.logProgress(snapshotId, `apply:diffs ${snap.diffs.length}`);
+                const overlayText = snap.diffs.join('\n');
+                this.parseTouchedFilesFromPatch(overlayText);
+                const diffFile = path.join(tempDir, 'overlay.diff');
+                await fsp.writeFile(diffFile, overlayText, 'utf8');
+                const diffText = await fsp.readFile(diffFile, 'utf8').catch(() => '');
+                let ok = false;
+                let output = '';
+
+                if (this.which('git')) {
+                    const applied = spawnSync(
+                        'bash',
+                        [
+                            '-lc',
+                            `GIT_CEILING_DIRECTORIES=${JSON.stringify(snapsRoot)} git -C ${JSON.stringify(tempDir)} apply --whitespace=nowarn overlay.diff`,
+                        ],
+                        { stdio: 'pipe' }
+                    );
+                    ok = applied.status === 0;
+                    output += `${String(applied.stdout || '')}${String(applied.stderr || '')}`;
+                }
+
+                if (!ok && this.which('patch')) {
+                    const pLevel = /\ndiff --git a\//.test('\n' + diffText) ? 1 : 0;
+                    const patched = spawnSync('bash', ['-lc', `patch -p${pLevel} < overlay.diff`], { cwd: tempDir, stdio: 'pipe' });
+                    ok = patched.status === 0;
+                    output += `${String(patched.stdout || '')}${String(patched.stderr || '')}`;
+                }
+
+                if (!ok) {
+                    throw new Error(`Failed to materialize snapshot overlay: ${output.slice(-1000) || 'patch application failed'}`);
+                }
+                await this.logProgress(snapshotId, 'apply:done');
+            }
+
+            await this.writeMaterializedMarker(path.join(tempDir, '.materialized'), snap);
+            if (snap) await fsp.writeFile(path.join(tempDir, 'metadata.json'), JSON.stringify(this.serializeSnapshot(snap), null, 2), 'utf8');
+
+            await fsp.rm(oldDir, { recursive: true, force: true }).catch(() => {});
+            if (fs.existsSync(dir)) await fsp.rename(dir, oldDir);
+            await fsp.rename(tempDir, dir);
+            await fsp.rm(oldDir, { recursive: true, force: true }).catch(() => {});
+            if (snap) this.snapshots.set(snap.id, snap);
+            await this.logProgress(snapshotId, currentFingerprint ? 'materialize:refresh-done' : 'materialize:done');
+            return dir;
+        } catch (error) {
+            await fsp.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+            throw error;
         }
-
-        if (snap?.diffs.length) {
-            await this.logProgress(snapshotId, `apply:diffs ${snap.diffs.length}`);
-            const diffFile = path.join(dir, 'overlay.diff');
-            await fsp.writeFile(diffFile, snap.diffs.join('\n'), 'utf8');
-            const diffText = await fsp.readFile(diffFile, 'utf8').catch(() => '');
-            let ok = false;
-            let output = '';
-
-            if (this.which('git')) {
-                const applied = spawnSync(
-                    'bash',
-                    [
-                        '-lc',
-                        `GIT_CEILING_DIRECTORIES=${JSON.stringify(snapsRoot)} git -C ${JSON.stringify(dir)} apply --whitespace=nowarn overlay.diff`,
-                    ],
-                    { stdio: 'pipe' }
-                );
-                ok = applied.status === 0;
-                output += `${String(applied.stdout || '')}${String(applied.stderr || '')}`;
-            }
-
-            if (!ok && this.which('patch')) {
-                const pLevel = /\ndiff --git a\//.test('\n' + diffText) ? 1 : 0;
-                const patched = spawnSync('bash', ['-lc', `patch -p${pLevel} < overlay.diff`], { cwd: dir, stdio: 'pipe' });
-                ok = patched.status === 0;
-                output += `${String(patched.stdout || '')}${String(patched.stderr || '')}`;
-            }
-
-            if (!ok) {
-                throw new Error(`Failed to materialize snapshot overlay: ${output.slice(-1000) || 'patch application failed'}`);
-            }
-            await this.logProgress(snapshotId, 'apply:done');
-        }
-
-        await this.writeMaterializedMarker(materializedMarker, snap);
-        if (snap) this.persistSnapshotSync(snap);
-        await this.logProgress(snapshotId, currentFingerprint ? 'materialize:refresh-done' : 'materialize:done');
-        return dir;
     }
 
     async runChecks(
@@ -582,29 +643,34 @@ export class OverlayStore {
         const dir = (await this.ensureMaterialized(snapshotId)) || process.cwd();
         const diffFile = path.join(dir, 'overlay.diff');
         let output = '';
-        // Best-effort: ensure parent directories exist for files referenced in diff
+        // Best-effort: ensure parent directories exist for contained files referenced in diff.
+        // Diff-derived paths are caller-controlled, so validate containment before mkdir.
         try {
             const diffText = await fsp.readFile(diffFile, 'utf8');
             const ensureDirs = new Set<string>();
             for (const line of diffText.split(/\r?\n/)) {
                 let m = line.match(/^\+\+\+\s+b\/(.+)$/);
                 if (m && m[1]) {
-                    ensureDirs.add(path.dirname(m[1].trim()));
+                    const normalized = this.normalizePatchRelativePath(m[1], 'apply_snapshot patch path');
+                    if (normalized) ensureDirs.add(path.posix.dirname(normalized));
                 }
                 m = line.match(/^\*\*\*\s+Add File:\s+(.+)$/);
                 if (m && m[1]) {
-                    ensureDirs.add(path.dirname(m[1].trim()));
+                    const normalized = this.normalizePatchRelativePath(m[1], 'apply_snapshot patch path');
+                    if (normalized) ensureDirs.add(path.posix.dirname(normalized));
                 }
             }
             for (const rel of ensureDirs) {
                 if (!rel || rel === '.' || rel === '/') continue;
-                const abs = path.resolve(process.cwd(), rel);
-                try {
-                    await fsp.mkdir(abs, { recursive: true });
-                } catch {}
+                const { absolutePath } = this.containedPath(process.cwd(), rel, 'apply_snapshot directory');
+                await fsp.mkdir(absolutePath, { recursive: true });
             }
-        } catch {
-            // ignore ensure-dir errors
+        } catch (error) {
+            return {
+                ok: false,
+                output: `Invalid apply_snapshot patch paths: ${error instanceof Error ? error.message : String(error)}`,
+                elapsedMs: Date.now() - start,
+            };
         }
         const argsGit = [
             '-lc',

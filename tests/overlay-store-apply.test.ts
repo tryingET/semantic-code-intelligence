@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { rmSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { overlayStore } from '../src/core/overlay-store.js';
 
@@ -65,6 +66,33 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
             expect(await fs.readFile(abs, 'utf8')).toBe('one\n');
         } finally {
             rmSync(abs, { force: true });
+        }
+    }, 30000);
+
+    test('rejects escaping patch paths before staging', () => {
+        const snap = overlayStore.createSnapshot(false);
+        const rejected = overlayStore.stagePatch(
+            snap.id,
+            'diff --git a/../../outside.txt b/../../outside.txt\n--- a/../../outside.txt\n+++ b/../../outside.txt\n@@ -1 +1 @@\n-old\n+new\n'
+        );
+
+        expect(rejected.accepted).toBe(false);
+        expect(rejected.message).toContain('workspace');
+    });
+
+    test('does not mark failed materialization current or create escaped paths', async () => {
+        const outsideDir = path.join(tmpdir(), `sci-overlay-escape-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+        const snap = overlayStore.createSnapshot(false);
+        const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
+        (snap as any).diffs.push(
+            `diff --git a/../../${path.basename(outsideDir)}/file.txt b/../../${path.basename(outsideDir)}/file.txt\n--- a/../../${path.basename(outsideDir)}/file.txt\n+++ b/../../${path.basename(outsideDir)}/file.txt\n@@ -1 +1 @@\n-old\n+new\n`
+        );
+        try {
+            await expect(ensure(snap.id)).rejects.toThrow('workspace');
+            expect(existsSync(path.join(process.cwd(), '.ontology', 'snapshots', snap.id, '.materialized'))).toBe(false);
+            expect(existsSync(outsideDir)).toBe(false);
+        } finally {
+            rmSync(outsideDir, { recursive: true, force: true });
         }
     }, 30000);
 });
