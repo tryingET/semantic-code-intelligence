@@ -80,7 +80,7 @@ Required fields:
 
 Hard rule:
 
-> Selected commands and recommended commands must be visually distinct. Recommendations are advisory and must not appear as if they were executed unless they were actually selected.
+> Selected commands and recommended commands must be visually distinct. Recommendations are advisory and must not appear as if they were executed unless they were actually selected. Bundle-level gate success must not be rendered as selected-command execution evidence unless selected command check results are present.
 
 ### 4. Check results
 
@@ -236,7 +236,7 @@ Implementations may normalize input into this shape before rendering:
 }
 ```
 
-The first-class `evidenceArtifacts`, `limitations`, `claims`, `authorityBoundaries`, and `operatorDecisionPoints` fields are required to prevent the review from collapsing artifacts into claims, claims into authority, limitations into green status, or recommendations into executed commands. `ReviewClaim.limitedBy` must reference `limitations[].id` values, not artifact IDs. Evidence artifacts also carry durability and citation requirements so `snapshot://` pointers are not mistaken for durable proof. Markdown renderers must neutralize caller-controlled evidence text so limitation strings cannot forge headings, status banners, or completion claims.
+The first-class `evidenceArtifacts`, `limitations`, `claims`, `authorityBoundaries`, and `operatorDecisionPoints` fields are required to prevent the review from collapsing artifacts into claims, claims into authority, limitations into green status, bundle gates into selected-command execution, or recommendations into executed commands. `ReviewClaim.limitedBy` must reference `limitations[].id` values, not artifact IDs. Evidence artifacts also carry durability and citation requirements so `snapshot://` pointers are not mistaken for durable proof. Markdown renderers must neutralize caller-controlled evidence text so limitation strings cannot forge headings, status banners, inline markdown emphasis/links, or completion claims. CLI error paths must use sanitized messages rather than runtime stack traces or reflected caller-controlled values.
 
 ## Validation checks for an implementation wave
 
@@ -249,11 +249,13 @@ Any implementation of this contract must validate:
 5. preview/apply posture is visible;
 6. rollback absence/presence is visible;
 7. production-readiness caveat is visible;
-8. untrusted evidence text cannot forge markdown headings/status;
-9. oversized evidence inputs fail closed before parsing;
-10. path escapes, symlink escapes, missing/unreadable inputs, and non-regular evidence inputs fail closed without leaking input contents;
-11. docs strict and direction check pass;
-12. if runtime contracts change, `bun run alpha:mvp:check` still passes.
+8. untrusted evidence text cannot forge markdown headings/status or inline emphasis/link claims;
+9. alpha packet bundle gates remain distinct from selected-command execution evidence;
+10. oversized evidence inputs fail closed before parsing;
+11. path escapes, symlink escapes, missing/unreadable inputs, and non-regular evidence inputs fail closed without leaking input contents;
+12. unsupported schemas, malformed JSON, and unsupported formats fail with sanitized errors that do not expose stacks, source paths, or reflected caller-controlled text;
+13. docs strict and direction check pass;
+14. if runtime contracts change, `bun run alpha:mvp:check` still passes.
 
 ## Non-goals
 

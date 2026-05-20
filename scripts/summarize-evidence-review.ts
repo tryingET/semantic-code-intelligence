@@ -140,7 +140,8 @@ function limitation(id: string, text: string, sourceArtifact: string, affectsCla
 function mdInline(value: unknown): string {
   return String(value ?? '')
     .replace(/\r?\n/g, ' ⏎ ')
-    .replace(/[<>]/g, (ch) => (ch === '<' ? '&lt;' : '&gt;'));
+    .replace(/[<>]/g, (ch) => (ch === '<' ? '&lt;' : '&gt;'))
+    .replace(/([\\`*_\[\]()!])/g, '\\$1');
 }
 
 function firstString(values: unknown[]): string | null {
@@ -275,7 +276,7 @@ function normalizeAlphaPacket(packet: any) {
     },
     checks: {
       ...base.checks,
-      ok: typeof packet?.evidenceGate?.ok === 'boolean' ? packet.evidenceGate.ok : null,
+      bundleGateOk: typeof packet?.evidenceGate?.ok === 'boolean' ? packet.evidenceGate.ok : null,
       failedGateChecks: strings(packet?.evidenceGate?.failedChecks),
       budgetsMs: packet?.evidenceGate?.budgetsMs || null,
     },
@@ -511,12 +512,22 @@ function renderMarkdown(review: any): string {
     `- Boundary: ${mdInline(safety.productionBoundary)}\n`;
 }
 
-const raw = readJson(inputPath);
-const review = normalize(raw);
-if (format === 'json') {
-  console.log(JSON.stringify(review, null, 2));
-} else if (format === 'markdown') {
-  console.log(renderMarkdown(review));
-} else {
-  throw new Error(`Unsupported --format ${format}; expected markdown or json`);
+function main() {
+  const raw = readJson(inputPath);
+  const review = normalize(raw);
+  if (format === 'json') {
+    console.log(JSON.stringify(review, null, 2));
+  } else if (format === 'markdown') {
+    console.log(renderMarkdown(review));
+  } else {
+    throw new Error('Unsupported --format; expected markdown or json');
+  }
+}
+
+try {
+  main();
+} catch (error) {
+  const message = error instanceof Error ? error.message : 'Unknown evidence review error';
+  console.error(`evidence-review: ${message}`);
+  process.exit(1);
 }

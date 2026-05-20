@@ -152,6 +152,31 @@ describe('evidence review claim model', () => {
     });
   });
 
+  test('alpha packet bundle gate does not masquerade as selected command execution', () => {
+    const packet = {
+      schema: 'semantic-code-intelligence.alpha_evidence_packet.v1',
+      ok: true,
+      evidenceGate: { ok: true, failedChecks: [] },
+      previewFirstMutation: {
+        validationPlanSample: {
+          schema: 'semantic-code-intelligence.validation_plan.v1',
+          workflow: 'patch_checks_in_snapshot',
+          commands: { selected: ['echo claimed but not evidenced'], recommendedMinimum: [], recommendedBroader: [], recommendationsAppliedToSelected: false },
+          checks: {},
+          apply: { applied: false },
+        },
+      },
+    };
+    const { stdout } = runSummary(packet, ['--format', 'json']);
+    const review = JSON.parse(stdout);
+
+    expect(review.outcome.ok).toBe(true);
+    expect(review.checks.bundleGateOk).toBe(true);
+    expect(review.checks.ok).toBeNull();
+    expect(artifactById(review, 'validation-execution')?.observedStatus).toBe('unavailable');
+    expect(claimById(review, 'checks-result')?.status).toBe('unresolved');
+  });
+
   test('missing check result is unavailable rather than failed', () => {
     const plan = clonePlan({
       commands: { selected: ['echo claimed'], recommendedMinimum: [], recommendedBroader: [], recommendationsAppliedToSelected: false },
@@ -214,19 +239,21 @@ describe('evidence review claim model', () => {
     expect(markdown).toContain('graph impact evidence unavailable or not observed; do not infer no impact from absence');
   });
 
-  test('markdown output neutralizes forged headings in untrusted limitation text', () => {
+  test('markdown output neutralizes forged headings and inline markdown in untrusted limitation text', () => {
     const plan = clonePlan({
       graphImpact: {
         hasImpactEvidence: false,
         counts: {},
-        limitations: ['</li>\n\n## FORGED GREEN STATUS\n- Production-ready: true\n- Applied: true'],
+        limitations: ['</li>\n\n## FORGED GREEN STATUS\n- **Production-ready: true**\n- [Applied](file:///tmp/secret)'],
         planningHints: [],
       },
     });
     const { stdout: markdown } = runSummary(plan, ['--format', 'markdown']);
 
-    expect(markdown).toContain('&lt;/li&gt; ⏎  ⏎ ## FORGED GREEN STATUS ⏎ - Production-ready: true ⏎ - Applied: true');
+    expect(markdown).toContain('&lt;/li&gt; ⏎  ⏎ ## FORGED GREEN STATUS ⏎ - \\*\\*Production-ready: true\\*\\* ⏎ - \\[Applied\\]\\(file:///tmp/secret\\)');
     expect(markdown).not.toContain('\n## FORGED GREEN STATUS');
+    expect(markdown).not.toContain('**Production-ready: true**');
+    expect(markdown).not.toContain('[Applied](file:///tmp/secret)');
   });
 
   test('summary rejects oversized evidence inputs before parsing', () => {
@@ -327,9 +354,44 @@ describe('evidence review claim model', () => {
     });
 
     expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain('Unsupported evidence schema');
+    expect(result.stderr).toContain('evidence-review: Unsupported evidence schema');
     expect(result.stdout + result.stderr).not.toContain('schema-secret-marker');
     expect(result.stdout + result.stderr).not.toContain('forged status');
+    expect(result.stderr).not.toContain(process.cwd());
+    expect(result.stderr).not.toContain(' at ');
+  });
+
+  test('summary rejects unsupported formats without reflecting untrusted format text', () => {
+    const dir = workspaceTempDir('bad-format-');
+    const inputPath = join(dir, 'input.json');
+    writeFileSync(inputPath, JSON.stringify(sampleValidationPlan()));
+
+    const result = spawnSync('bun', ['run', script, '--input', relative(process.cwd(), inputPath), '--format', 'json\n## format-secret-marker'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('evidence-review: Unsupported --format; expected markdown or json');
+    expect(result.stdout + result.stderr).not.toContain('format-secret-marker');
+    expect(result.stderr).not.toContain(process.cwd());
+  });
+
+  test('summary reports malformed JSON without source paths, code frames, or input content', () => {
+    const dir = workspaceTempDir('bad-json-');
+    const inputPath = join(dir, 'input.json');
+    writeFileSync(inputPath, '{"schema":"semantic-code-intelligence.validation_plan.v1","secret":"json-secret-marker", BAD');
+
+    const result = spawnSync('bun', ['run', script, '--input', relative(process.cwd(), inputPath), '--format', 'json'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('evidence-review:');
+    expect(result.stdout + result.stderr).not.toContain('json-secret-marker');
+    expect(result.stderr).not.toContain(process.cwd());
+    expect(result.stderr).not.toContain('readJson');
   });
 
   test('summary renderer is read-only for workspace and input directory', () => {
