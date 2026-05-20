@@ -176,7 +176,7 @@
       "claim": "Selected command evidence remains structurally distinct from recommended command advice.",
       "status": "supported",
       "supportedBy": [
-        "validation-execution"
+        "source"
       ],
       "limitedBy": [],
       "warrant": "Selected and recommended commands are represented as separate fields; overlapping command strings are allowed when recommendations were intentionally selected.",

@@ -112,9 +112,13 @@ describe('evidence review claim model', () => {
     assertClaimModel(review);
   });
 
-  test('committed sample normalized JSON proves the claim model', () => {
+  test('committed sample normalized JSON proves and matches the current claim model', () => {
     const review = JSON.parse(readFileSync(sampleOutputFixture, 'utf8'));
+    const { stdout } = runSummary(sampleValidationPlan(), ['--format', 'json']);
+    const currentReview = JSON.parse(stdout);
+
     assertClaimModel(review);
+    expect(review).toEqual(currentReview);
     expect(review.source.kind).toBe('validation_plan');
     expect(review.claims.find((claim: any) => claim.id === 'preview-boundary')?.status).toBe('weakened');
   });
@@ -145,6 +149,7 @@ describe('evidence review claim model', () => {
     expect(artifactById(review, 'validation-execution')?.observedStatus).toBe('unavailable');
     expect(artifactById(review, 'validation-execution')?.durability).toBe('ephemeral');
     expect(claimById(review, 'checks-result')?.status).toBe('unresolved');
+    expect(claimById(review, 'command-distinction')?.supportedBy).toEqual(['source']);
     expect(claimById(review, 'checks-result')?.limitedBy).toContain('validation-execution-limitation-1');
     expect(review.limitations.find((item: any) => item.id === 'validation-execution-limitation-1')).toMatchObject({
       sourceArtifact: 'validation-execution',
@@ -221,6 +226,25 @@ describe('evidence review claim model', () => {
     expect(artifactById(review, 'validation-execution')?.observedStatus).toBe('failed');
     expect(claimById(review, 'checks-result')?.status).toBe('contradicted');
     expect(review.limitations.find((item: any) => item.id === 'validation-execution-limitation-1')?.severity).toBe('blocking');
+  });
+
+  test('duplicate selected commands consume distinct execution evidence entries', () => {
+    const plan = clonePlan({
+      commands: { selected: ['bun test tests/example.test.ts', 'bun test tests/example.test.ts'], recommendedMinimum: [], recommendedBroader: [], recommendationsAppliedToSelected: false },
+      checks: {
+        ok: true,
+        elapsedMs: 42,
+        commands: [
+          { command: 'bun test tests/example.test.ts', ok: true },
+          { command: 'bun test tests/example.test.ts', ok: false },
+        ],
+      },
+    });
+    const { stdout } = runSummary(plan, ['--format', 'json']);
+    const review = JSON.parse(stdout);
+
+    expect(artifactById(review, 'validation-execution')?.observedStatus).toBe('failed');
+    expect(claimById(review, 'checks-result')?.status).toBe('contradicted');
   });
 
   test('missing check result is unavailable rather than failed', () => {
@@ -364,6 +388,17 @@ describe('evidence review claim model', () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('Evidence input must stay within the workspace');
     expect(result.stdout + result.stderr).not.toContain('symlink-secret-marker');
+  });
+
+  test('read boundary succeeds through stat-identity fallback when fd-link paths are unavailable', async () => {
+    const { readJson } = await import('../scripts/summarize-evidence-review.ts');
+    const dir = workspaceTempDir('fdlink-fallback-');
+    const inputPath = join(dir, 'input.json');
+    writeFileSync(inputPath, JSON.stringify(sampleValidationPlan()));
+
+    const evidence = readJson(relative(process.cwd(), inputPath), { fdLinkCandidates: [] });
+
+    expect(evidence.schema).toBe('semantic-code-intelligence.validation_plan.v1');
   });
 
   test('read boundary rejects evidence input replaced after stat before open', async () => {

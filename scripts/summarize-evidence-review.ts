@@ -37,18 +37,21 @@ function isContainedPath(root: string, candidate: string): boolean {
   return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
 }
 
-function openedFdRealpath(fd: number): string {
-  const candidates = process.platform === 'linux'
+function defaultFdLinkCandidates(fd: number): string[] {
+  return process.platform === 'linux'
     ? [`/proc/self/fd/${fd}`, `/dev/fd/${fd}`]
     : [`/dev/fd/${fd}`, `/proc/self/fd/${fd}`];
+}
+
+function openedFdRealpath(fd: number, candidates = defaultFdLinkCandidates(fd)): string | null {
   for (const candidate of candidates) {
     try {
       return realpathSync(candidate);
     } catch {
-      // Try the next fd-link convention before failing closed.
+      // Try the next fd-link convention before falling back to stat identity.
     }
   }
-  throw new Error('Evidence input is unavailable or unreadable');
+  return null;
 }
 
 function tooLargeError(sizeDescription: string): Error {
@@ -93,6 +96,7 @@ type ReadJsonOptions = {
   workspaceRoot?: string;
   afterInitialStat?: () => void;
   afterOpenStat?: () => void;
+  fdLinkCandidates?: string[];
 };
 
 export function readJson(path: string, options: ReadJsonOptions = {}): any {
@@ -110,6 +114,16 @@ export function readJson(path: string, options: ReadJsonOptions = {}): any {
   }
   if (!initialStat.isFile()) {
     throw new Error('Evidence input must be a regular file');
+  }
+
+  let lexicalRealPath;
+  try {
+    lexicalRealPath = realpathSync(lexicalPath);
+  } catch {
+    throw new Error('Evidence input is unavailable or unreadable');
+  }
+  if (!isContainedPath(workspaceRoot, lexicalRealPath)) {
+    throw new Error('Evidence input must stay within the workspace');
   }
 
   options.afterInitialStat?.();
@@ -131,8 +145,8 @@ export function readJson(path: string, options: ReadJsonOptions = {}): any {
       throw tooLargeError(`${openedStat.size} bytes`);
     }
 
-    const realPath = openedFdRealpath(fd);
-    if (!isContainedPath(workspaceRoot, realPath)) {
+    const realPath = openedFdRealpath(fd, options.fdLinkCandidates);
+    if (realPath && !isContainedPath(workspaceRoot, realPath)) {
       throw new Error('Evidence input must stay within the workspace');
     }
 
@@ -234,8 +248,13 @@ function checkCommandEvidence(entry: any): CheckCommandEvidence | null {
 }
 
 function selectedCommandEvidence(review: any, selectedCommands: string[]): Array<CheckCommandEvidence | null> {
-  const executed = arr(review?.checks?.commands).map(checkCommandEvidence).filter((entry): entry is CheckCommandEvidence => !!entry);
-  return selectedCommands.map((command) => executed.find((entry) => entry.command === command) || null);
+  const executedByCommand = new Map<string, CheckCommandEvidence[]>();
+  for (const entry of arr(review?.checks?.commands).map(checkCommandEvidence).filter((item): item is CheckCommandEvidence => !!item)) {
+    const entries = executedByCommand.get(entry.command) || [];
+    entries.push(entry);
+    executedByCommand.set(entry.command, entries);
+  }
+  return selectedCommands.map((command) => executedByCommand.get(command)?.shift() || null);
 }
 
 function requireKnownReferences(label: string, ownerId: string, refs: string[], known: Set<string>) {
@@ -497,7 +516,7 @@ function withConceptualModel(review: any) {
       'command-distinction',
       'Selected command evidence remains structurally distinct from recommended command advice.',
       'supported',
-      ['validation-execution'],
+      ['source'],
       [],
       'Selected and recommended commands are represented as separate fields; overlapping command strings are allowed when recommendations were intentionally selected.',
       ['not-canonical-authority'],
