@@ -32,9 +32,12 @@ Core/application workflow services:
 ├── src/core/workflows/structural-workflow.ts
 │   # ast-grep structural search/patch orchestration and
 │   # preview-first structural patch checks
-└── src/core/workflows/graph-expand-workflow.ts
-    # graph expansion orchestration, SCIP/AST fallback shaping,
-    # and impact-summary evidence assembly
+├── src/core/workflows/graph-expand-workflow.ts
+│   # graph expansion orchestration, SCIP/AST fallback shaping,
+│   # and impact-summary evidence assembly
+└── src/core/workflows/workspace-query-workflow.ts
+    # read/search/symbol/AST-query workspace operations and
+    # configured-snapshot path resolution
 ```
 
 ## 🔧 Architecture Principles
@@ -219,7 +222,7 @@ Performance targets maintained through delegation:
 
 - **Protocol-only adapter work**: request parsing, response formatting, protocol errors, transport-specific logging, and tool routing.
 - **Core/application work**: snapshot creation, patch conversion, check execution, guarded apply, rollback/verification posture, validation-plan assembly, and check-recommendation payloads.
-- **Current restored slices**: `src/core/workflows/snapshot-patch-workflow.ts` owns snapshot patch/check/apply workflows, `src/core/workflows/structural-workflow.ts` owns ast-grep structural workflow orchestration, and `src/core/workflows/graph-expand-workflow.ts` owns graph expansion/impact-summary orchestration that had accreted inside `MCPAdapter`.
+- **Current restored slices**: `src/core/workflows/snapshot-patch-workflow.ts` owns snapshot patch/check/apply workflows, `src/core/workflows/structural-workflow.ts` owns ast-grep structural workflow orchestration, `src/core/workflows/graph-expand-workflow.ts` owns graph expansion/impact-summary orchestration, and `src/core/workflows/workspace-query-workflow.ts` owns read/search/symbol/AST-query workspace operations that had accreted inside `MCPAdapter`.
 - **Regression coverage**: direct service tests plus MCP/HTTP/CLI parity tests should protect workflow behavior while keeping the adapter boundary visible.
 
 ## 🛠 Integration Instructions
