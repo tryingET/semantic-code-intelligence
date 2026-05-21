@@ -35,6 +35,38 @@ describe('RenameWorkflowService', () => {
         expect(result).toBe('ALPHA beta GAMMA\n');
     });
 
+    test('shapes rename preview, plan, and apply payloads without MCP protocol objects', async () => {
+        const service = new RenameWorkflowService({
+            workspaceRoot: () => process.cwd(),
+            coreAnalyzer: {
+                rename: async (request: any) => ({
+                    data: {
+                        changes: {
+                            [request.uri]: [
+                                {
+                                    range: { start: { line: 0, character: 0 }, end: { line: 0, character: request.oldName.length } },
+                                    newText: request.newName,
+                                },
+                            ],
+                        },
+                    },
+                    performance: { total: 1 },
+                    requestId: 'rename-1',
+                }),
+            },
+        });
+
+        const renamed = payload(await service.renameSymbol({ oldName: 'oldName', newName: 'newName', preview: true }));
+        expect(renamed).toMatchObject({ schemaVersion: 2, preview: true, requestId: 'rename-1' });
+        expect(renamed.summary).toContain('1 files affected with 1 edits');
+
+        const planned = payload(await service.planRename({ oldName: 'oldName', newName: 'newName' }));
+        expect(planned).toMatchObject({ schemaVersion: 2, preview: true, summary: { filesAffected: 1, totalEdits: 1 } });
+
+        const applied = payload(await service.applyRename({ changes: { 'file:///tmp/a.ts': [] } }));
+        expect(applied).toEqual({ schemaVersion: 2, status: 'applied', changes: { 'file:///tmp/a.ts': [] } });
+    });
+
     test('stages safe rename diffs in configured workspace snapshots', async () => {
         const workspaceRoot = tempWorkspace();
         const target = join(workspaceRoot, 'target.ts');

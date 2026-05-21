@@ -39,8 +39,8 @@ Core/application workflow services:
 │   # read/search/symbol/AST-query workspace operations and
 │   # configured-snapshot path resolution
 ├── src/core/workflows/rename-workflow.ts
-│   # safe rename planning-to-snapshot orchestration,
-│   # text edit application, diff staging, and optional checks
+│   # rename/plan/apply payload shaping, safe rename
+│   # planning-to-snapshot orchestration, diff staging, and checks
 └── src/core/workflows/navigation-workflow.ts
     # find-definition/find-references resolution, fallback scans,
     # workspace containment filtering, and response payload shaping
@@ -228,7 +228,7 @@ Performance targets maintained through delegation:
 
 - **Protocol-only adapter work**: request parsing, response formatting, protocol errors, transport-specific logging, and tool routing.
 - **Core/application work**: snapshot creation, patch conversion, check execution, guarded apply, rollback/verification posture, validation-plan assembly, and check-recommendation payloads.
-- **Current restored slices**: `src/core/workflows/snapshot-patch-workflow.ts` owns snapshot patch/check/apply workflows, `src/core/workflows/structural-workflow.ts` owns ast-grep structural workflow orchestration, `src/core/workflows/graph-expand-workflow.ts` owns graph expansion/impact-summary orchestration, `src/core/workflows/workspace-query-workflow.ts` owns read/search/symbol/AST-query workspace operations, `src/core/workflows/rename-workflow.ts` owns safe rename planning-to-snapshot orchestration, and `src/core/workflows/navigation-workflow.ts` owns find-definition/find-references resolution logic that had accreted inside `MCPAdapter`.
+- **Current restored slices**: `src/core/workflows/snapshot-patch-workflow.ts` owns snapshot patch/check/apply workflows, `src/core/workflows/structural-workflow.ts` owns ast-grep structural workflow orchestration, `src/core/workflows/graph-expand-workflow.ts` owns graph expansion/impact-summary orchestration, `src/core/workflows/workspace-query-workflow.ts` owns read/search/symbol/AST-query workspace operations, `src/core/workflows/rename-workflow.ts` owns rename/plan/apply payload shaping and safe rename planning-to-snapshot orchestration, and `src/core/workflows/navigation-workflow.ts` owns find-definition/find-references resolution logic that had accreted inside `MCPAdapter`.
 - **Regression coverage**: direct service tests plus MCP/HTTP/CLI parity tests should protect workflow behavior while keeping the adapter boundary visible.
 
 ## 🛠 Integration Instructions

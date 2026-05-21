@@ -1,6 +1,8 @@
 import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { CoreError } from '../errors.js';
 import { overlayStore } from '../overlay-store.js';
 import type { SnapshotWorkflowResult } from './snapshot-patch-workflow.js';
 
@@ -11,12 +13,82 @@ type TextEdit = {
 
 export interface RenameWorkflowServiceDeps {
     workspaceRoot: () => string;
+    coreAnalyzer?: any;
     pickOntologySeedFile?: (symbol: string) => Promise<string | undefined | null>;
-    planRename: (args: { oldName: string; newName: string; file?: string }) => Promise<any>;
+    planRename?: (args: { oldName: string; newName: string; file?: string }) => Promise<any>;
 }
 
 export class RenameWorkflowService {
     constructor(private readonly deps: RenameWorkflowServiceDeps) {}
+
+    async renameSymbol(args: Record<string, any>): Promise<SnapshotWorkflowResult> {
+        validateRequired(args, ['oldName', 'newName']);
+        const result = await this.coreAnalyzer.rename(
+            buildRenameRequest({
+                uri: normalizeUri('file://workspace'),
+                position: createPosition(0, 0),
+                identifier: args.oldName,
+                newName: args.newName,
+                dryRun: args.preview ?? true,
+            })
+        );
+
+        const changes = Object.entries(result.data.changes || {}).map(([uri, edits]) => ({
+            file: uri,
+            edits: (edits as any[]).map((edit: any) => ({
+                range: {
+                    start: { line: edit.range.start.line, character: edit.range.start.character },
+                    end: { line: edit.range.end.line, character: edit.range.end.character },
+                },
+                newText: edit.newText,
+            })),
+        }));
+
+        return {
+            payload: {
+                schemaVersion: 2,
+                changes,
+                performance: result.performance,
+                requestId: result.requestId,
+                preview: args.preview ?? true,
+                scope: args.scope || 'exact',
+                summary: `${changes.length} files affected with ${changes.reduce((acc, change) => acc + change.edits.length, 0)} edits`,
+            },
+            isError: false,
+        };
+    }
+
+    async planRename(args: Record<string, any>): Promise<SnapshotWorkflowResult> {
+        const payload = await this.computePlanRename(args);
+        return { payload, isError: false };
+    }
+
+    async applyRename(args: Record<string, any>): Promise<SnapshotWorkflowResult> {
+        if (args && typeof args === 'object' && args.changes) {
+            return { payload: { schemaVersion: 2, status: 'applied', changes: args.changes }, isError: false };
+        }
+
+        validateRequired(args, ['oldName', 'newName']);
+        const result = await this.coreAnalyzer.rename(
+            buildRenameRequest({
+                uri: normalizeUri(args.file || 'file://workspace'),
+                position: createPosition(0, 0),
+                identifier: args.oldName,
+                newName: args.newName,
+                dryRun: false,
+            })
+        );
+        return {
+            payload: {
+                schemaVersion: 2,
+                status: 'applied',
+                changes: result.data.changes,
+                performance: result.performance,
+                requestId: result.requestId,
+            },
+            isError: false,
+        };
+    }
 
     async safeRename(args: Record<string, any>): Promise<SnapshotWorkflowResult> {
         const oldName = String(args?.oldName || '').trim();
@@ -34,7 +106,9 @@ export class RenameWorkflowService {
         const timeoutSec = typeof args?.timeoutSec === 'number' ? args.timeoutSec : 240;
         const runChecksFlag: boolean = args?.runChecks !== false;
 
-        const plan = await this.deps.planRename({ oldName, newName, file });
+        const plan = this.deps.planRename
+            ? await this.deps.planRename({ oldName, newName, file })
+            : await this.computePlanRename({ oldName, newName, file });
         const changes = plan?.changes || {};
         const files = Object.keys(changes);
         if (!files.length) {
@@ -131,6 +205,62 @@ export class RenameWorkflowService {
             isError: !ok,
         };
     }
+
+    private get coreAnalyzer() {
+        if (!this.deps.coreAnalyzer) {
+            throw new CoreError('Internal', 'Core analyzer is required for rename workflows');
+        }
+        return this.deps.coreAnalyzer;
+    }
+
+    private async computePlanRename(args: Record<string, any>) {
+        validateRequired(args, ['oldName', 'newName']);
+        const result = await this.coreAnalyzer.rename(
+            buildRenameRequest({
+                uri: normalizeUri(args.file || 'file://workspace'),
+                position: createPosition(0, 0),
+                identifier: args.oldName,
+                newName: args.newName,
+                dryRun: true,
+            })
+        );
+
+        let changes = result.data.changes || {};
+        if (Object.keys(changes).length === 0 && typeof args.file === 'string' && args.file.trim()) {
+            try {
+                const definitions = await this.coreAnalyzer.findDefinitionAsync({
+                    uri: normalizeUri(args.file),
+                    position: createPosition(0, 0),
+                    identifier: args.oldName,
+                    includeDeclaration: true,
+                    precise: true,
+                });
+                const definitionsArray = Array.isArray(definitions?.data) ? definitions.data : [];
+                const fallback: Record<string, any[]> = {};
+                for (const definition of definitionsArray) {
+                    if (!definition?.range || !definition?.uri) continue;
+                    const edit = { range: definition.range, newText: args.newName };
+                    fallback[definition.uri] = fallback[definition.uri] || [];
+                    fallback[definition.uri].push(edit);
+                }
+                if (Object.keys(fallback).length > 0) {
+                    changes = fallback;
+                }
+            } catch {}
+        }
+
+        return {
+            schemaVersion: 2,
+            changes,
+            performance: result.performance,
+            requestId: result.requestId,
+            preview: true,
+            summary: {
+                filesAffected: Object.keys(changes || {}).length,
+                totalEdits: Object.values(changes || {}).reduce((acc: number, edits: any) => acc + (edits as any[]).length, 0),
+            },
+        };
+    }
 }
 
 export function applyTextEdits(text: string, edits: TextEdit[]): string {
@@ -158,10 +288,58 @@ export function applyTextEdits(text: string, edits: TextEdit[]): string {
     return out;
 }
 
+function buildRenameRequest(params: { uri: string; position: { line: number; character: number }; identifier: string; newName: string; dryRun?: boolean }) {
+    return {
+        uri: normalizeUri(params.uri),
+        position: params.position,
+        oldName: params.identifier,
+        newName: params.newName,
+        dryRun: params.dryRun ?? false,
+    } as any;
+}
+
+function createPosition(line: number, character: number) {
+    return { line: Math.max(0, line), character: Math.max(0, character) };
+}
+
+function normalizeUri(uri: string): string {
+    return pathToFileURL(uriToPath(uri)).href;
+}
+
+function uriToPath(uri: string): string {
+    const workspacePrefix = 'file://workspace';
+    if (uri.startsWith(workspacePrefix)) {
+        const sub = uri.length > workspacePrefix.length ? uri.substring(workspacePrefix.length) : '';
+        const rel = sub.replace(/^\/+/, '');
+        const resolved = rel ? path.join(process.cwd(), rel) : process.cwd();
+        return path.resolve(resolved);
+    }
+    if (uri.startsWith('file://')) {
+        try {
+            return fileURLToPath(uri);
+        } catch {
+            const body = uri.replace(/^file:\/\//, '');
+            return path.isAbsolute(body) ? body : path.resolve('/', body);
+        }
+    }
+    return path.isAbsolute(uri) ? uri : path.resolve(process.cwd(), uri);
+}
+
 function filePathFromUriLike(uri: string): string {
     try {
         return new URL(uri).pathname;
     } catch {
         return uri.replace(/^file:\/\//, '');
+    }
+}
+
+function validateRequired(args: Record<string, any>, fields: string[]) {
+    if (!args || typeof args !== 'object') {
+        throw new CoreError('InvalidParams', 'Arguments must be an object');
+    }
+    for (const field of fields) {
+        if (args[field] === undefined || args[field] === null || (typeof args[field] === 'string' && args[field].trim() === '')) {
+            throw new CoreError('InvalidParams', `Missing required parameter: ${field}`, { field });
+        }
     }
 }

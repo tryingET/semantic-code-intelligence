@@ -36,7 +36,6 @@ import {
     buildCompletionRequest,
     buildFindDefinitionRequest,
     buildFindReferencesRequest,
-    buildRenameRequest,
     completionToWireCompletion,
     createPosition,
     definitionToApiResponse,
@@ -104,15 +103,8 @@ export class MCPAdapter {
         });
         this.renameWorkflows = new RenameWorkflowService({
             workspaceRoot: () => this.getWorkspaceRoot(),
+            coreAnalyzer: this.coreAnalyzer,
             pickOntologySeedFile: (symbol) => this.pickOntologySeedFile(symbol),
-            planRename: async (renameArgs) => {
-                const result = await this.handlePlanRename(renameArgs, {
-                    component: 'MCPAdapter',
-                    operation: 'workflow_safe_rename',
-                    timestamp: Date.now(),
-                });
-                return this.safeParseContent(result);
-            },
         });
         this.navigationWorkflows = new NavigationWorkflowService({
             workspaceRoot: () => this.getWorkspaceRoot(),
@@ -993,175 +985,34 @@ export class MCPAdapter {
     /**
      * Handle rename_symbol tool call with validation
      */
-    private async handleRenameSymbol(args: Record<string, any>, context: ErrorContext) {
-        this.validateArgs(args, ['oldName', 'newName'], context);
-
-        const request = buildRenameRequest({
-            uri: normalizeUri('file://workspace'),
-            position: createPosition(0, 0),
-            identifier: args.oldName,
-            newName: args.newName,
-            dryRun: args.preview ?? true,
-        });
-
-        const result = await this.coreAnalyzer.rename(request);
-
-        const changes = Object.entries(result.data.changes || {}).map(([uri, edits]) => ({
-            file: uri,
-            edits: (edits as any[]).map((edit: any) => ({
-                range: {
-                    start: { line: edit.range.start.line, character: edit.range.start.character },
-                    end: { line: edit.range.end.line, character: edit.range.end.character },
-                },
-                newText: edit.newText,
-            })),
-        }));
-
-        if (process.env.DEBUG && !process.env.SILENT_MODE) {
-            try {
-                adapterLogger.debug('rename_symbol returning content payload');
-            } catch {}
+    private async handleRenameSymbol(args: Record<string, any>, _context: ErrorContext) {
+        try {
+            return this.formatSnapshotWorkflowResult(await this.renameWorkflows.renameSymbol(args));
+        } catch (error) {
+            return handleAdapterError(error, 'mcp');
         }
-        return {
-            content: [
-                {
-                    type: 'text',
-                    text: JSON.stringify(
-                        {
-                            schemaVersion: 2,
-                            changes,
-                            performance: result.performance,
-                            requestId: result.requestId,
-                            preview: args.preview ?? true,
-                            scope: args.scope || 'exact',
-                            summary: `${changes.length} files affected with ${changes.reduce((acc, c) => acc + c.edits.length, 0)} edits`,
-                        },
-                        null,
-                        2
-                    ),
-                },
-            ],
-            isError: false,
-        };
     }
 
     /**
      * Handle plan_rename tool call
      */
-    private async handlePlanRename(args: Record<string, any>, context: ErrorContext) {
-        this.validateArgs(args, ['oldName', 'newName'], context);
-
-        const request = buildRenameRequest({
-            uri: normalizeUri(args.file || 'file://workspace'),
-            position: createPosition(0, 0),
-            identifier: args.oldName,
-            newName: args.newName,
-            dryRun: true,
-        });
-
-        const result = await this.coreAnalyzer.rename(request);
-        let changes = result.data.changes || {};
-        // Fallback: if no changes and a file context was provided, generate a minimal definition-based edit
-        if (Object.keys(changes).length === 0 && typeof args.file === 'string' && args.file.trim()) {
-            try {
-                const defs = await (this.coreAnalyzer as any).findDefinitionAsync({
-                    uri: normalizeUri(args.file),
-                    position: createPosition(0, 0),
-                    identifier: args.oldName,
-                    includeDeclaration: true,
-                    precise: true,
-                });
-                const defsArr = Array.isArray(defs?.data) ? defs.data : [];
-                const fallback: Record<string, any[]> = {};
-                for (const d of defsArr) {
-                    if (!d?.range || !d?.uri) continue;
-                    const edit = { range: d.range, newText: args.newName };
-                    fallback[d.uri] = fallback[d.uri] || [];
-                    fallback[d.uri].push(edit);
-                }
-                if (Object.keys(fallback).length > 0) {
-                    changes = fallback;
-                }
-            } catch {
-                // ignore fallback errors
-            }
+    private async handlePlanRename(args: Record<string, any>, _context: ErrorContext) {
+        try {
+            return this.formatSnapshotWorkflowResult(await this.renameWorkflows.planRename(args));
+        } catch (error) {
+            return handleAdapterError(error, 'mcp');
         }
-
-        return {
-            content: [
-                {
-                    type: 'text',
-                    text: JSON.stringify(
-                        {
-                            schemaVersion: 2,
-                            changes,
-                            performance: result.performance,
-                            requestId: result.requestId,
-                            preview: true,
-                            summary: {
-                                filesAffected: Object.keys(changes || {}).length,
-                                totalEdits: Object.values(changes || {}).reduce(
-                                    (acc: number, edits: any) => acc + (edits as any[]).length,
-                                    0
-                                ),
-                            },
-                        },
-                        null,
-                        2
-                    ),
-                },
-            ],
-            isError: false,
-        };
     }
 
     /**
      * Handle apply_rename tool call
-     * For now, delegate to rename with dryRun=false if both oldName/newName are provided; otherwise accept direct changes
      */
-    private async handleApplyRename(args: Record<string, any>, context: ErrorContext) {
-        // If explicit plan supplied, return it as applied (core doesn’t persist edits here)
-        if (args && typeof args === 'object' && args.changes) {
-            return {
-                content: [
-                    {
-                        type: 'text',
-                        text: JSON.stringify({ schemaVersion: 2, status: 'applied', changes: args.changes }, null, 2),
-                    },
-                ],
-                isError: false,
-            };
+    private async handleApplyRename(args: Record<string, any>, _context: ErrorContext) {
+        try {
+            return this.formatSnapshotWorkflowResult(await this.renameWorkflows.applyRename(args));
+        } catch (error) {
+            return handleAdapterError(error, 'mcp');
         }
-
-        // Or execute a rename apply
-        this.validateArgs(args, ['oldName', 'newName'], context);
-        const request = buildRenameRequest({
-            uri: normalizeUri(args.file || 'file://workspace'),
-            position: createPosition(0, 0),
-            identifier: args.oldName,
-            newName: args.newName,
-            dryRun: false,
-        });
-        const result = await this.coreAnalyzer.rename(request);
-        return {
-            content: [
-                {
-                    type: 'text',
-                    text: JSON.stringify(
-                        {
-                            schemaVersion: 2,
-                            status: 'applied',
-                            changes: result.data.changes,
-                            performance: result.performance,
-                            requestId: result.requestId,
-                        },
-                        null,
-                        2
-                    ),
-                },
-            ],
-            isError: false,
-        };
     }
 
     /**
