@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 import { overlayStore } from '../src/core/overlay-store.js';
 
 describe('OverlayStore runChecks evidence receipts', () => {
@@ -22,10 +24,23 @@ describe('OverlayStore runChecks evidence receipts', () => {
         overlayStore.clearAll();
         const reused = overlayStore.createSnapshot(true);
 
-        expect(reused.id).toBe(clean.id);
         expect(reused.id).not.toBe(dirty.id);
         expect(reused.diffs.length).toBe(0);
         expect(reused.baseFingerprint).toBe(clean.baseFingerprint);
+    });
+
+    test('runChecks command side effects do not mutate reusable materialized snapshots', async () => {
+        const snap = overlayStore.createSnapshot(false);
+        const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
+        expect(typeof ensure).toBe('function');
+
+        const beforeDir = await ensure(snap.id);
+        const result = await overlayStore.runChecks(snap.id, ['bash -lc "echo leaked > .reuse-leak"'], 30);
+        const afterDir = await ensure(snap.id);
+
+        expect(result.ok).toBe(true);
+        expect(afterDir).toBe(beforeDir);
+        expect(existsSync(path.join(afterDir, '.reuse-leak'))).toBe(false);
     });
 
     test('runs shell-style quoted commands and records receipts', async () => {

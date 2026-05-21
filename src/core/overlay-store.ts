@@ -571,6 +571,38 @@ export class OverlayStore {
         }
     }
 
+    private async createCheckWorkspace(snapshotId: string, materializedDir: string): Promise<{ cwd: string; cleanup: () => Promise<void> }> {
+        this.assertValidId(snapshotId);
+        const snapsRoot = this.snapshotsRoot();
+        const checkDir = path.join(snapsRoot, `.${snapshotId}.${process.pid}.${Date.now()}.${randomUUID()}.check`);
+        await fsp.rm(checkDir, { recursive: true, force: true }).catch(() => {});
+        await fsp.mkdir(checkDir, { recursive: true });
+        try {
+            if (this.which('rsync')) {
+                this.spawnChecked(
+                    `rsync -a --delete ${JSON.stringify(materializedDir)}/ ${JSON.stringify(checkDir)}/`,
+                    'Failed to copy snapshot check workspace'
+                );
+            } else if (this.which('tar')) {
+                this.spawnChecked(
+                    `tar -C ${JSON.stringify(materializedDir)} -cf - . | tar -C ${JSON.stringify(checkDir)} -xf -`,
+                    'Failed to copy snapshot check workspace'
+                );
+            } else {
+                const entries = await fsp.readdir(materializedDir, { withFileTypes: true });
+                for (const ent of entries) {
+                    const src = path.join(materializedDir, ent.name);
+                    const dest = path.join(checkDir, ent.name);
+                    this.spawnChecked(`cp -a ${JSON.stringify(src)} ${JSON.stringify(dest)}`, 'Failed to copy snapshot check workspace entry');
+                }
+            }
+            return { cwd: checkDir, cleanup: async () => { await fsp.rm(checkDir, { recursive: true, force: true }); } };
+        } catch (error) {
+            await fsp.rm(checkDir, { recursive: true, force: true }).catch(() => {});
+            throw error;
+        }
+    }
+
     async runChecks(
         snapshotId: string,
         commands: string[],
@@ -579,8 +611,13 @@ export class OverlayStore {
     ): Promise<CheckRunResult> {
         this.assertValidId(snapshotId);
         const start = Date.now();
-        // Materialize snapshot into .ontology/snapshots/<id>
-        const cwd = (await this.ensureMaterialized(snapshotId)) || process.cwd();
+        // Materialize snapshot into .ontology/snapshots/<id>, then run commands in a disposable copy.
+        // Check commands are caller-controlled and may write files; they must not mutate the reusable
+        // materialized snapshot cache used by later read/search/navigation calls.
+        const materializedCwd = (await this.ensureMaterialized(snapshotId)) || process.cwd();
+        const checkWorkspace = await this.createCheckWorkspace(snapshotId, materializedCwd);
+        const cwd = checkWorkspace.cwd;
+        try {
         const output: string[] = [];
         const maxOutputBytes = 1024 * 1024;
         let outputBytes = 0;
@@ -691,9 +728,10 @@ export class OverlayStore {
             const commandStart = Date.now();
             const result = await new Promise<{ ok: boolean; exitCode: number | null; timedOut: boolean }>((resolve) => {
                 const useShell = this.which('bash');
+                const env = { ...process.env, GIT_CEILING_DIRECTORIES: this.snapshotsRoot() };
                 const child = useShell
-                    ? spawn('bash', ['-lc', cmd], { stdio: ['ignore', 'pipe', 'pipe'], cwd })
-                    : spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd });
+                    ? spawn('bash', ['-lc', cmd], { stdio: ['ignore', 'pipe', 'pipe'], cwd, env })
+                    : spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd, env });
                 let settled = false;
                 let timer: ReturnType<typeof setTimeout>;
                 const finish = (value: { ok: boolean; exitCode: number | null; timedOut: boolean }) => {
@@ -728,6 +766,9 @@ export class OverlayStore {
         }
         await this.logProgress(snapshotId, 'checks:done');
         return { ok: true, output: output.join(''), elapsedMs: Date.now() - start, commands: commandResults };
+        } finally {
+            await checkWorkspace.cleanup().catch(() => undefined);
+        }
     }
 
     async applyToWorkingTree(
