@@ -71,7 +71,8 @@ For `patch_checks_in_snapshot`, `structural_patch_checks`, and `safe_write` prev
 - treat structural patch/check latency as preview/check workflow latency unless the evidence isolates pure structural matching;
 - use cheap checks such as `true` for shape/protocol dogfood;
 - use real validation commands when the change is meaningful;
-- inspect `validationPlan.commands.selected` to explain what actually ran.
+- inspect `validationPlan.commands.selected` to explain what actually ran;
+- when evidence-history warnings include a selected-command receipt summary, use it to separate command runtime from snapshot/workflow overhead without treating the local receipt as authority-durable evidence.
 
 If checks exceed the interactive band, reduce check scope when truthful (for example narrow test files) or tell the operator the workflow is now validation-heavy rather than navigation-heavy.
 

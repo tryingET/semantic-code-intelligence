@@ -31,10 +31,22 @@ const fallbackBudgetsMs: Record<string, number> = {
     safeWrite: 15_000,
 };
 
+type CommandReceiptSummary = {
+    count: number;
+    slowest: {
+        command: string;
+        elapsedMs: number;
+        ok?: boolean;
+        exitCode?: number;
+        timedOut?: boolean;
+    };
+};
+
 type SlowestCall = {
     name: string;
     elapsedMs: number;
     observation?: string;
+    commandReceiptSummary?: CommandReceiptSummary;
 } | null;
 
 function readJson(path: string): any {
@@ -61,17 +73,61 @@ function finiteElapsed(call: any): number {
     return Number.isFinite(value) && value > 0 ? value : 0;
 }
 
-function slowestCall(calls: any[]): SlowestCall {
+function commandReceiptsFor(call: any): any[] {
+    const candidates = [
+        call?.sample?.result?.commands,
+        call?.sample?.payload?.checks?.commands,
+        call?.sample?.payload?.validationPlan?.checks?.commands,
+        call?.payload?.checks?.commands,
+        call?.payload?.validationPlan?.checks?.commands,
+    ];
+    for (const candidate of candidates) {
+        if (Array.isArray(candidate)) return candidate;
+    }
+    return [];
+}
+
+function commandReceiptSummary(call: any): CommandReceiptSummary | undefined {
+    const receipts = commandReceiptsFor(call);
+    let slowest: any = null;
+    for (const receipt of receipts) {
+        if (!receipt || typeof receipt !== 'object') continue;
+        if (!slowest || finiteElapsed(receipt) > finiteElapsed(slowest)) slowest = receipt;
+    }
+    if (!slowest) return undefined;
+    const exitCode = Number(slowest?.exitCode);
+    return {
+        count: receipts.length,
+        slowest: {
+            command: redactString(String(slowest?.command || 'unknown')),
+            elapsedMs: finiteElapsed(slowest),
+            ...(typeof slowest?.ok === 'boolean' ? { ok: slowest.ok } : {}),
+            ...(Number.isFinite(exitCode) ? { exitCode } : {}),
+            ...(typeof slowest?.timedOut === 'boolean' ? { timedOut: slowest.timedOut } : {}),
+        },
+    };
+}
+
+function matchingRawCall(slowest: any, rawCalls: any[]): any {
+    const name = String(slowest?.name || '');
+    const sameName = rawCalls.filter((call) => String(call?.name || '') === name);
+    if (sameName.length === 0) return slowest;
+    return sameName.reduce((best, call) => (finiteElapsed(call) > finiteElapsed(best) ? call : best), sameName[0]);
+}
+
+function slowestCall(calls: any[], rawCalls: any[] = calls): SlowestCall {
     let slowest: any = null;
     for (const call of calls) {
         if (!slowest || finiteElapsed(call) > finiteElapsed(slowest)) slowest = call;
     }
     if (!slowest) return null;
     const observation = typeof slowest?.observation === 'string' ? redactString(slowest.observation) : undefined;
+    const commandSummary = commandReceiptSummary(matchingRawCall(slowest, rawCalls));
     return {
         name: String(slowest?.name || 'unknown'),
         elapsedMs: finiteElapsed(slowest),
         ...(observation ? { observation } : {}),
+        ...(commandSummary ? { commandReceiptSummary: commandSummary } : {}),
     };
 }
 
@@ -82,6 +138,10 @@ function maxElapsed(calls: any[]): number {
 function callsFor(key: string, evidence: any): any[] {
     if (key === 'alpha') return Array.isArray(evidence?.summary) ? evidence.summary : [];
     return Array.isArray(evidence?.calls) ? evidence.calls : [];
+}
+
+function rawCallsFor(evidence: any, fallbackCalls: any[]): any[] {
+    return Array.isArray(evidence?.calls) ? evidence.calls : fallbackCalls;
 }
 
 function budgetFor(key: string, gate: any): number {
@@ -149,7 +209,8 @@ const comparisons = Object.entries(evidenceFiles)
     .map(([key, path]) => {
         const evidence = readJson(path);
         const calls = callsFor(key, evidence);
-        const slowest = slowestCall(calls);
+        const rawCalls = rawCallsFor(evidence, calls);
+        const slowest = slowestCall(calls, rawCalls);
         const currentMaxElapsedMs = maxElapsed(calls);
         const baselineMaxElapsedMs = Number(baseline?.baselines?.[key]?.maxElapsedMs || 0);
         const budgetMs = budgetFor(key, gate);

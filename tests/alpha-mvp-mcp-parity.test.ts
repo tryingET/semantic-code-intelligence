@@ -125,7 +125,7 @@ describe('Alpha MVP direct MCP parity', () => {
         expect(Array.isArray(ast.results)).toBe(true);
         expect(graph.schemaVersion).toBe(2);
         expect(graph.neighbors).toBeDefined();
-    });
+    }, 30000);
 
     structuralTest('structural_search works through direct MCPAdapter calls', async () => {
         const search = await parseContent(

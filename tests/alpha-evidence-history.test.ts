@@ -134,6 +134,52 @@ describe('alpha evidence history comparison', () => {
     expect(report.warnings[0].remediationHint).toContain('<redacted-secret>');
   });
 
+  test('validation warnings include sanitized selected-command receipt summaries when available', () => {
+    const { root, baselinePath } = makeEvidenceRoot({
+      [evidenceNames.alpha]: {
+        ok: true,
+        summary: [{ name: 'run_checks', success: true, elapsedMs: 1900, observation: 'Run explicit selected checks' }],
+        calls: [{
+          name: 'run_checks',
+          success: true,
+          elapsedMs: 1900,
+          observation: 'Run explicit selected checks',
+          sample: {
+            result: {
+              ok: true,
+              elapsedMs: 1800,
+              commands: [
+                { command: `echo SECRET_KEY=command-secret ${process.cwd()} /tmp/private-check`, ok: true, elapsedMs: 1700, exitCode: 0, timedOut: false, stdout: 'do not copy stdout' },
+              ],
+              output: 'do not copy aggregate output',
+            },
+          },
+        }],
+      },
+    });
+
+    const result = runHistory(root, baselinePath);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).not.toContain('SECRET_KEY=command-secret');
+    expect(result.stdout).not.toContain(process.cwd());
+    expect(result.stdout).not.toContain('/tmp/private-check');
+    expect(result.stdout).not.toContain('do not copy stdout');
+    expect(result.stdout).not.toContain('do not copy aggregate output');
+    const report = JSON.parse(result.stdout);
+
+    expect(report.warnings[0].slowestCall.commandReceiptSummary).toMatchObject({
+      count: 1,
+      slowest: {
+        elapsedMs: 1700,
+        ok: true,
+        exitCode: 0,
+        timedOut: false,
+      },
+    });
+    expect(report.warnings[0].slowestCall.commandReceiptSummary.slowest.command).toContain('echo <redacted-secret>');
+    expect(report.warnings[0].slowestCall.commandReceiptSummary.slowest.command).toContain('<absolute-path>');
+  });
+
   test('overlapping structural check workflow names classify as validation rather than structural matching', () => {
     const { root, baselinePath } = makeEvidenceRoot({
       [evidenceNames.structural]: {
