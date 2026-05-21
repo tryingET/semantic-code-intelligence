@@ -205,9 +205,9 @@ export class ToolRegistry {
                     edges: {
                         type: 'array',
                         items: { type: 'string', enum: ['imports', 'exports', 'callers', 'callees'] },
-                        default: ['imports', 'exports'],
+                        description: 'Defaults to imports/exports for file seeds and callers/callees for symbol-only seeds.',
                     },
-                    depth: { type: 'number', default: 1 },
+                    depth: { type: 'number', default: 1, description: 'Reserved for future recursive expansion; current graph_expand returns one-hop evidence.' },
                     limit: { type: 'number', default: 50 },
                     scipIndexPath: {
                         type: 'string',

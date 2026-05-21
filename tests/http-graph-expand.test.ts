@@ -63,7 +63,7 @@ bindDescribe('HTTP /api/v1/graph-expand fallback', () => {
         expect(body.data.neighbors).toBeDefined();
     });
 
-    test('nonexistent file returns success with empty neighbors (fallback)', async () => {
+    test('nonexistent file fails closed instead of returning empty fallback evidence', async () => {
         const res = await fetch(`${base}/api/v1/graph-expand`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
@@ -74,15 +74,12 @@ bindDescribe('HTTP /api/v1/graph-expand fallback', () => {
                 limit: 10,
             }),
         });
-        expect(res.status).toBe(200);
+        expect(res.status).toBe(400);
         const body = await res.json();
-        expect(body.success).toBe(true);
-        expect(body.data).toBeDefined();
-        expect(body.data.neighbors).toBeDefined();
-        expect(Array.isArray(body.data.neighbors.imports)).toBe(true);
-        expect(Array.isArray(body.data.neighbors.exports)).toBe(true);
-        expect(Array.isArray(body.data.neighbors.callers)).toBe(true);
-        expect(Array.isArray(body.data.neighbors.callees)).toBe(true);
+        expect(body.success).toBe(false);
+        expect(body.error?.code).toBe('InvalidParams');
+        expect(body.error?.message).toContain('does not exist');
+        expect(JSON.stringify(body)).not.toContain('impactSummary');
     });
 
     test('invalid symbol returns success with neighbors object (non-fatal)', async () => {

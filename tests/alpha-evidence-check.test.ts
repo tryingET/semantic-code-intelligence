@@ -48,6 +48,7 @@ function goodEvidenceFiles() {
         goLimitationsVisible: true,
         unsupportedExtensionCharacterized: true,
         backendProvenancePresent: true,
+        summariesHaveRequestedEdges: true,
       },
       calls: [{ name: 'graph_expand', success: true, elapsedMs: 1 }],
     },

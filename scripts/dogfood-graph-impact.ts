@@ -68,12 +68,12 @@ calls.push(fileImpact);
 const symbolImpact = workflow(
     'graph_expand',
     {
-        symbol: 'expandNeighbors',
+        symbol: 'uniqueGraphTarget',
         edges: ['callers', 'callees'],
         depth: 1,
         limit: 50,
     },
-    'Use graph_expand from a symbol seed to return caller/callee edge status and structured limitations when evidence is sparse.'
+    'Use graph_expand from a symbol seed fixture to return positive caller/callee evidence plus structured limitations.'
 );
 calls.push(symbolImpact);
 
@@ -161,8 +161,9 @@ const evidence = {
         Array.isArray(fileSummary.planningHints) &&
         fileSummary.planningHints.length > 0 &&
         Array.isArray(symbolSummary.evidence) &&
-        symbolSummary.evidence.some((item: any) => item.edge === 'callers') &&
-        symbolSummary.evidence.some((item: any) => item.edge === 'callees') &&
+        symbolSummary.evidence.some((item: any) => item.edge === 'callers' && item.status === 'evidence') &&
+        symbolSummary.evidence.some((item: any) => item.edge === 'callees' && item.status === 'evidence') &&
+        Number(symbolCounts.callers || 0) > 0 &&
         Number(symbolCounts.callees || 0) > 0 &&
         Number(callerContextCounts.callers || 0) > 0 &&
         Number(callerContextSummary.callerContextCount || 0) > 0 &&
@@ -187,18 +188,25 @@ const evidence = {
         unsupportedSummary?.languageSupport?.support === 'unknown_extension' &&
         Array.isArray(unsupportedSummary?.limitations) &&
         unsupportedSummary.limitations.length > 0 &&
+        unsupportedSummary?.hasImpactEvidence === false &&
+        ['imports', 'exports', 'callers', 'callees'].every((edge) => Number(unsupportedSummary?.counts?.[edge] || 0) === 0) &&
         fileSummary?.backend === 'tree_sitter' &&
         fileSummary?.freshness === 'current' &&
         symbolSummary?.discoveryBackend === 'rg' &&
-        unsupportedSummary?.backend === 'fallback',
+        unsupportedSummary?.backend === 'fallback' &&
+        Array.isArray(fileSummary.requestedEdges) &&
+        fileSummary.requestedEdges.includes('imports') &&
+        fileSummary.requestedEdges.includes('callees') &&
+        Array.isArray(symbolSummary.requestedEdges) &&
+        symbolSummary.requestedEdges.includes('callers'),
     target: 'src/core/code-graph.ts',
     symbol: 'expandNeighbors',
     assertions: {
         fileImpactHasImports: Number(fileCounts.imports || 0) > 0,
         fileImpactHasCallees: Number(fileCounts.callees || 0) > 0,
         fileImpactHasPlanningHints: Array.isArray(fileSummary.planningHints) && fileSummary.planningHints.length > 0,
-        symbolImpactHasCallerStatus: Array.isArray(symbolSummary.evidence) && symbolSummary.evidence.some((item: any) => item.edge === 'callers'),
-        symbolImpactHasCallees: Number(symbolCounts.callees || 0) > 0,
+        symbolImpactHasCallerStatus: Array.isArray(symbolSummary.evidence) && symbolSummary.evidence.some((item: any) => item.edge === 'callers' && item.status === 'evidence') && Number(symbolCounts.callers || 0) > 0,
+        symbolImpactHasCallees: Array.isArray(symbolSummary.evidence) && symbolSummary.evidence.some((item: any) => item.edge === 'callees' && item.status === 'evidence') && Number(symbolCounts.callees || 0) > 0,
         symbolImpactHasLimitations: Array.isArray(symbolSummary.limitations) && symbolSummary.limitations.length > 0,
         callerContextPresent: Number(callerContextCounts.callers || 0) > 0 && Number(callerContextSummary.callerContextCount || 0) > 0,
         pythonLanguageCharacterized: pythonSummary?.languageSupport?.language === 'python' && pythonSummary?.languageSupport?.support === 'tree_sitter_best_effort',
@@ -218,7 +226,12 @@ const evidence = {
             Number(goSummary?.counts?.exports || 0) > 0 &&
             Number(goSummary?.counts?.callees || 0) > 0,
         goLimitationsVisible: Array.isArray(goSummary?.limitations) && goSummary.limitations.some((item: string) => item.includes('go: tree-sitter graph evidence is syntactic')),
-        unsupportedExtensionCharacterized: unsupportedSummary?.languageSupport?.support === 'unknown_extension' && Array.isArray(unsupportedSummary?.limitations) && unsupportedSummary.limitations.length > 0,
+        unsupportedExtensionCharacterized:
+            unsupportedSummary?.languageSupport?.support === 'unknown_extension' &&
+            Array.isArray(unsupportedSummary?.limitations) &&
+            unsupportedSummary.limitations.length > 0 &&
+            unsupportedSummary?.hasImpactEvidence === false &&
+            ['imports', 'exports', 'callers', 'callees'].every((edge) => Number(unsupportedSummary?.counts?.[edge] || 0) === 0),
         backendProvenancePresent:
             fileSummary?.backend === 'tree_sitter' &&
             fileSummary?.freshness === 'current' &&

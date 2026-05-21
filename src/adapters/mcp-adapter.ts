@@ -2557,9 +2557,9 @@ export class MCPAdapter {
         const counts = Object.fromEntries(
             ['imports', 'exports', 'callers', 'callees'].map((edge) => [edge, Array.isArray(neighbors[edge]) ? neighbors[edge].length : 0])
         );
-        const requestedEdges = Array.isArray(args?.edges) ? args.edges.map(String) : ['imports', 'exports'];
         const hasFileSeed = typeof args?.file === 'string' && args.file.trim().length > 0;
         const hasSymbolSeed = typeof args?.symbol === 'string' && args.symbol.trim().length > 0;
+        const requestedEdges = Array.isArray(args?.edges) ? args.edges.map(String) : hasFileSeed ? ['imports', 'exports'] : ['callers', 'callees'];
         const languageSupport = out?.languageSupport && typeof out.languageSupport === 'object' ? out.languageSupport : this.inferGraphLanguage(hasFileSeed ? args.file : undefined);
         const note = typeof out?.note === 'string' ? out.note : '';
         const noteLimitations = note
@@ -2571,7 +2571,8 @@ export class MCPAdapter {
         const languageLimitations = requestedEdges
             .filter((edge: string) => !languageSupport.supportedEdges.includes(edge) && languageSupport.support !== 'symbol_seed_best_effort')
             .map((edge: string) => `${edge}: ${languageSupport.language} graph extraction is ${languageSupport.support}; supported edges: ${languageSupport.supportedEdges.join(', ') || 'none'}`);
-        const limitations = noteLimitations.concat(languageLimitations);
+        const depthLimitations = Number(args?.depth || 1) > 1 ? ['depth: recursive graph expansion is not implemented; returned evidence is one-hop best effort'] : [];
+        const limitations = noteLimitations.concat(languageLimitations, depthLimitations);
         const evidence = requestedEdges.map((edge: string) => {
             const count = Number((counts as any)[edge] || 0);
             const edgeLimitations = limitations.filter((item: string) => item.toLowerCase().startsWith(`${edge.toLowerCase()}:`));
@@ -2693,13 +2694,12 @@ export class MCPAdapter {
     }
 
     private async handleGraphExpand(args: Record<string, any>) {
-        const edges = Array.isArray(args?.edges) ? (args.edges as string[]) : ['imports', 'exports'];
         const rawFile = typeof args?.file === 'string' ? (args.file as string) : undefined;
         const symbol = typeof args?.symbol === 'string' ? (args.symbol as string) : undefined;
+        const edges = Array.isArray(args?.edges) ? (args.edges as string[]) : rawFile ? ['imports', 'exports'] : ['callers', 'callees'];
         if (!rawFile && !symbol) return { content: [{ type: 'text', text: 'file or symbol required' }], isError: true };
         let file: string | undefined;
         let scipFile: string | undefined;
-        let allowMissingWorkspaceFileFallback = false;
         const hasScipIndex = typeof args?.scipIndexPath === 'string' && args.scipIndexPath.trim();
         try {
             if (rawFile && hasScipIndex) {
@@ -2708,17 +2708,7 @@ export class MCPAdapter {
                 // index, then require realpath/opened-file containment for fallback AST reads.
                 scipFile = this.resolveMcpWorkspaceLexicalPath(rawFile, 'graph_expand file').relativePath;
             } else if (rawFile) {
-                const lexicalFile = this.resolveMcpWorkspaceLexicalPath(rawFile, 'graph_expand file');
-                try {
-                    file = (await this.resolveMcpWorkspaceFile(rawFile, 'graph_expand file')).path;
-                } catch (error) {
-                    if (error instanceof CoreError && error.message.includes('does not exist or cannot be resolved')) {
-                        file = lexicalFile.path;
-                        allowMissingWorkspaceFileFallback = true;
-                    } else {
-                        throw error;
-                    }
-                }
+                file = (await this.resolveMcpWorkspaceFile(rawFile, 'graph_expand file')).path;
             }
             const scipOut = await this.expandGraphFromScip(args, edges, scipFile || file, symbol);
             if (scipOut) {
@@ -2745,17 +2735,7 @@ export class MCPAdapter {
                 } catch {}
             }
             if (rawFile && !file) {
-                const lexicalFile = this.resolveMcpWorkspaceLexicalPath(rawFile, 'graph_expand file');
-                try {
-                    file = (await this.resolveMcpWorkspaceFile(rawFile, 'graph_expand file')).path;
-                } catch (error) {
-                    if (error instanceof CoreError && error.message.includes('does not exist or cannot be resolved')) {
-                        file = lexicalFile.path;
-                        allowMissingWorkspaceFileFallback = true;
-                    } else {
-                        throw error;
-                    }
-                }
+                file = (await this.resolveMcpWorkspaceFile(rawFile, 'graph_expand file')).path;
             }
             const out = await expandNeighbors({
                 file,
@@ -2769,7 +2749,7 @@ export class MCPAdapter {
             const payload = { schemaVersion: 2, ...out, impactSummary: this.summarizeGraphImpact(out, args) };
             return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: false };
         } catch (error) {
-            if ((error instanceof CoreError && !allowMissingWorkspaceFileFallback) || (typeof args?.scipIndexPath === 'string' && args.scipIndexPath.trim())) {
+            if (error instanceof CoreError || (typeof args?.scipIndexPath === 'string' && args.scipIndexPath.trim())) {
                 return handleAdapterError(error, 'mcp');
             }
             const neighbors: Record<string, any[]> = { imports: [], exports: [], callers: [], callees: [] };

@@ -22,7 +22,7 @@ Make `graph_expand` limitations predictable for harnessed LLM coding sessions. T
 
 | Source kind | Extensions | Support posture | Best-supported edges | Known limitations |
 |---|---|---|---|---|
-| TypeScript | `.ts`, `.tsx` | Tree-sitter best effort | imports, exports, in-file callers, in-file/file-scoped callees | Symbol-only callees are not implemented; caller context is best effort; not whole-program typed graph |
+| TypeScript | `.ts`, `.tsx` | Tree-sitter best effort | imports, exports, in-file callers, in-file/file-scoped callees | Symbol-only callees are syntactic and bounded by candidate definition files; caller context is best effort; not whole-program typed graph |
 | JavaScript | `.js`, `.jsx` | Tree-sitter best effort | imports, exports, in-file callers, in-file/file-scoped callees | Same as TypeScript, without TypeScript type semantics |
 | Python | `.py` | Tree-sitter best effort | imports, exports, callers, callees | Export evidence is syntactic module-level public definitions/assignments; no `__all__`, package, import-resolution, or runtime API analysis is performed; caller/callee extraction is syntactic and not Python import-resolution aware |
 | Rust | `.rs` | Tree-sitter best effort | imports, exports, in-file callers, in-file/file-scoped callees | Syntactic only; no type-aware method resolution, trait dispatch, module/crate resolution, or macro expansion; public/export evidence is visibility-text based |
@@ -61,16 +61,17 @@ The provenance shape is forward-compatible with future `live_lsp` backends. Curr
 Requested edges that are unsupported for the inferred language appear as `limited` evidence with limitations such as:
 
 ```text
-exports: python graph extraction is tree_sitter_best_effort; supported edges: imports, callers, callees
+imports: md graph extraction is unknown_extension; supported edges: none
 ```
 
-Unsupported or unknown file extensions must not be hidden behind a green check.
+Unsupported or unknown file extensions must not be hidden behind a green check. Missing file seeds fail closed as invalid input instead of returning successful empty fallback evidence.
 
 ## Operator interpretation
 
 - Non-empty edge counts are useful planning evidence, not proof of complete impact.
 - `limited` edge status means the edge was requested but the language/source kind cannot currently produce reliable evidence for it.
 - `empty_or_unavailable` means no evidence was observed and no specific limitation was available; do not infer no impact.
+- `depth` is currently a reserved/one-hop field; `depth > 1` returns one-hop evidence with an explicit limitation until recursive expansion is implemented.
 - File+symbol caller evidence may include best-effort `caller`/`callerKind`; confirm broad edits with `find_references`.
 - File+symbol and symbol-only callee extraction treat the requested symbol as a literal scoped selector. If that symbol is not found in the file or bounded candidate definition files, `callees` returns limited empty evidence instead of widening to file-wide callees.
 - For Python, treat imports and export-like module-level definitions as useful syntactic planning hints, not package API proof.
@@ -79,7 +80,7 @@ Unsupported or unknown file extensions must not be hidden behind a green check.
 
 ## Dogfood coverage
 
-`scripts/dogfood-graph-impact.ts` now covers:
+`tests/mcp-graph-expand-capability-contract.test.ts` is the executable capability contract tying the support matrix to positive and negative fixtures. `scripts/dogfood-graph-impact.ts` now covers:
 
 1. TypeScript file impact with imports/callees/planning hints;
 2. symbol-seed caller evidence plus syntactic callee extraction from bounded candidate definition files;

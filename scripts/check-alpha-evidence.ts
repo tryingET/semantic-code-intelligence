@@ -136,7 +136,8 @@ if (graph) {
             graph?.assertions?.goLanguageCharacterized === true &&
             graph?.assertions?.goLimitationsVisible === true &&
             graph?.assertions?.unsupportedExtensionCharacterized === true &&
-            graph?.assertions?.backendProvenancePresent === true,
+            graph?.assertions?.backendProvenancePresent === true &&
+            graph?.assertions?.summariesHaveRequestedEdges === true,
         detail: graph?.assertions || null,
     });
     checks.push({

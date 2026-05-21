@@ -50,19 +50,20 @@ async function loadLanguageForFile(file: string): Promise<{ id: GraphLanguage; l
 }
 
 const TS_IMPORTS = `
- (import_statement
-   source: (string) @import.source
-   (import_clause
-     (named_imports (import_specifier name: (identifier) @import.name alias: (identifier)? @import.alias)*)?
-     (namespace_import (identifier) @import.namespace)?
-     (identifier)? @import.default)?)
+  (import_statement source: (string) @import.source)
+  (import_statement (import_clause (identifier) @import.default))
+  (import_specifier name: (identifier) @import.name)
+  (import_specifier alias: (identifier) @import.alias)
+  (namespace_import (identifier) @import.namespace)
 `;
 const TS_EXPORTS = `
- (export_statement
-   (function_declaration name: (identifier) @export.func)?
-   (class_declaration name: (type_identifier) @export.class)?
-   (variable_declaration (variable_declarator name: (identifier) @export.var))?
-   declaration: (_)? @export.decl)
+  (export_statement declaration: (function_declaration name: (identifier) @export.func))
+  (export_statement declaration: (class_declaration name: (type_identifier) @export.class))
+  (export_statement declaration: (lexical_declaration (variable_declarator name: (identifier) @export.var)))
+  (export_statement declaration: (variable_declaration (variable_declarator name: (identifier) @export.var)))
+  (export_statement (export_clause (export_specifier name: (identifier) @export.name)))
+  (export_statement (export_clause (export_specifier alias: (identifier) @export.alias)))
+  (export_statement value: (_) @export.default)
 `;
 
 const PY_IMPORTS = `
@@ -131,6 +132,8 @@ function symbolBodyQueryForLanguage(id: GraphLanguage): string | null {
     return `
       (function_declaration name: (identifier) @sym.name body: (statement_block) @sym.body)
       (method_definition name: (property_identifier) @sym.name body: (statement_block) @sym.body)
+      (variable_declarator name: (identifier) @sym.name value: (arrow_function body: (_) @sym.body))
+      (variable_declarator name: (identifier) @sym.name value: (function_expression body: (statement_block) @sym.body))
     `;
 }
 
@@ -196,6 +199,19 @@ function insideAny(node: any, bodies: any[]): boolean {
     return false;
 }
 
+function symbolBodyForNameNode(nameNode: any): any {
+    const parent = nameNode?.parent;
+    const directBody = parent?.childForFieldName?.('body');
+    if (directBody) return directBody;
+    if (parent?.type === 'variable_declarator') {
+        const value = parent.childForFieldName?.('value');
+        if (value?.type === 'arrow_function' || value?.type === 'function_expression') {
+            return value.childForFieldName?.('body') || value;
+        }
+    }
+    return null;
+}
+
 function findSymbolBodies(symbol: string, id: GraphLanguage, lang: any, tree: any): any[] {
     if (!symbol) return [];
     const qstr = symbolBodyQueryForLanguage(id);
@@ -207,7 +223,7 @@ function findSymbolBodies(symbol: string, id: GraphLanguage, lang: any, tree: an
         const seen = new Set<any>();
         for (const c of caps) {
             if (c.name !== 'sym.name' || c.node.text !== symbol) continue;
-            const body = c.node.parent?.childForFieldName?.('body');
+            const body = symbolBodyForNameNode(c.node);
             if (body && !seen.has(body)) {
                 seen.add(body);
                 bodies.push(body);

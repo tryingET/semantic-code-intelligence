@@ -38,21 +38,15 @@ describe('MCP graph_expand hardening', () => {
         await analyzer?.dispose?.();
     });
 
-    test('fallback returns empty neighbors for invalid file', async () => {
+    test('missing file seeds fail closed instead of returning successful empty fallback evidence', async () => {
         const res = await mcp.handleToolCall('graph_expand', {
             file: 'this/does/not/exist.ts',
             edges: ['imports', 'exports', 'callers', 'callees'],
         });
-        const obj = await parse(res);
-        expect(obj.neighbors).toBeDefined();
-        expect(Array.isArray(obj.neighbors.imports)).toBe(true);
-        expect(Array.isArray(obj.neighbors.exports)).toBe(true);
-        expect(Array.isArray(obj.neighbors.callers)).toBe(true);
-        expect(Array.isArray(obj.neighbors.callees)).toBe(true);
-        expect(obj.impactSummary?.backend).toBe('fallback');
-        expect(obj.impactSummary?.freshness).toBe('unknown');
-        expect(obj.impactSummary?.provenance?.backend).toBe('fallback');
-        expect(obj.impactSummary?.provenance?.indexPath).toBeNull();
+        const body = JSON.stringify(res);
+        expect(res.isError).toBe(true);
+        expect(body).toContain('does not exist');
+        expect(body).not.toContain('impactSummary');
     });
 
     test('impact summary exposes tree-sitter provenance for supported file seeds', async () => {

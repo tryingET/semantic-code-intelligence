@@ -1462,7 +1462,7 @@ export class HTTPAdapter {
                                                     enum: ['imports', 'exports', 'callers', 'callees'],
                                                 },
                                             },
-                                            depth: { type: 'integer' },
+                                            depth: { type: 'integer', description: 'Reserved for future recursive expansion; current graph_expand returns one-hop evidence.' },
                                             limit: { type: 'integer' },
                                         },
                                     },
