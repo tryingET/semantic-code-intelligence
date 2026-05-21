@@ -446,7 +446,7 @@ export class MCPAdapter {
         try {
             overlayStore.ensureSnapshot(snapshot, { workspaceRoot: this.getWorkspaceRoot() });
             const ensureMaterialized = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
-            const snapshotRoot = ensureMaterialized ? await ensureMaterialized(snapshot) : null;
+            const snapshotRoot = ensureMaterialized ? await ensureMaterialized(snapshot, { workspaceRoot: this.getWorkspaceRoot() }) : null;
             if (!snapshotRoot) throw new Error('Snapshot could not be materialized');
             return snapshotRoot;
         } catch (error: any) {
@@ -849,7 +849,7 @@ export class MCPAdapter {
             let dir: string | null = null;
             if (includeContent) {
                 const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
-                dir = ensure ? await ensure(snapshot) : status.materialized ? snapshotDir : null;
+                dir = ensure ? await ensure(snapshot, { workspaceRoot: this.getWorkspaceRoot() }) : status.materialized ? snapshotDir : null;
                 status.materialized = !!dir && (await hasMaterializedMarker());
             }
             if (includeContent && dir) {
@@ -1006,11 +1006,11 @@ export class MCPAdapter {
             !!stageOut?.accepted &&
             !!checksOut?.ok &&
             (apply ? applied && verification.appliedDiffMatchesSnapshot === true : true);
-        const rollbackDiffPath = path.resolve(this.getWorkspaceRoot(), '.ontology', 'snapshots', snapshot, 'overlay.diff');
+        const rollbackArgs = JSON.stringify({ snapshot, reverse: true });
         const rollback = {
             available: !!snapshot,
-            strategy: 'reverse_patch',
-            command: `git -C ${JSON.stringify(this.getWorkspaceRoot())} apply -R ${JSON.stringify(rollbackDiffPath)}`,
+            strategy: 'reverse_snapshot_apply',
+            command: `cd ${JSON.stringify(this.getWorkspaceRoot())} && ALLOW_SNAPSHOT_APPLY=1 semantic-code-intelligence workflow apply_snapshot --args ${JSON.stringify(rollbackArgs)} --json`,
             artifact: snapshotArtifacts.overlayDiff,
         };
         const validationPlan = this.buildValidationPlan({
@@ -1071,7 +1071,7 @@ export class MCPAdapter {
         const method = 'git_diff_patch_id_and_reverse_check_vs_snapshot_overlay';
         try {
             const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
-            const dir = ensure ? await ensure(snapshot) : null;
+            const dir = ensure ? await ensure(snapshot, { workspaceRoot: this.getWorkspaceRoot() }) : null;
             const diffFile = dir ? path.join(dir, 'overlay.diff') : path.resolve(this.getWorkspaceRoot(), '.ontology', 'snapshots', snapshot, 'overlay.diff');
             const diffStat = await fs.stat(diffFile).catch(() => null);
             if (!diffStat?.isFile()) {
@@ -1389,7 +1389,7 @@ export class MCPAdapter {
         const diffParts: string[] = [];
         const root = this.getWorkspaceRoot();
         const tmpRootBase = runChecksFlag
-            ? (await (overlayStore as any).ensureMaterialized?.(snap.id)) || ''
+            ? (await (overlayStore as any).ensureMaterialized?.(snap.id, { workspaceRoot: this.getWorkspaceRoot() })) || ''
             : path.resolve(this.getWorkspaceRoot(), '.ontology', 'tmp-diffs');
         if (!tmpRootBase) {
             const out = { ok: false, reason: 'snapshot_failed', message: 'Failed to prepare snapshot' };

@@ -350,8 +350,12 @@ export class OverlayStore {
         const trimmed = String(id).trim();
         this.assertValidId(trimmed);
         const workspaceRoot = opts.workspaceRoot ? this.resolveWorkspaceBase(opts.workspaceRoot) : undefined;
-        const found = this.snapshots.get(trimmed) || this.loadSnapshotFromDisk(trimmed, workspaceRoot);
-        if (!found) {
+        const inMemory = this.snapshots.get(trimmed);
+        if (inMemory && workspaceRoot && this.resolveWorkspaceBase(inMemory.workspaceRoot) !== workspaceRoot) {
+            throw new Error('Unknown snapshot id');
+        }
+        const found = inMemory || this.loadSnapshotFromDisk(trimmed, workspaceRoot);
+        if (!found || (workspaceRoot && this.resolveWorkspaceBase(found.workspaceRoot) !== workspaceRoot)) {
             throw new Error('Unknown snapshot id');
         }
         return found;
@@ -545,9 +549,9 @@ export class OverlayStore {
         return path.resolve('.');
     }
 
-    private async ensureMaterialized(snapshotId: string): Promise<string | null> {
+    private async ensureMaterialized(snapshotId: string, opts: { workspaceRoot?: string } = {}): Promise<string | null> {
         this.assertValidId(snapshotId);
-        const snap = this.ensureSnapshot(snapshotId);
+        const snap = this.ensureSnapshot(snapshotId, opts);
         return this.withMaterializeLock(snapshotId, snap.workspaceRoot, () => this.ensureMaterializedUnlocked(snapshotId));
     }
 

@@ -159,7 +159,7 @@ export function registerCommonPrompts(server: Server): void {
 }
 
 // Register common resources (monitoring and snapshot artifacts).
-export function registerCommonResources(server: Server): void {
+export function registerCommonResources(server: Server, opts: { workspaceRoot?: string } = {}): void {
     server.setRequestHandler(ListResourcesRequestSchema, async () => ({
         resources: [
             {
@@ -215,13 +215,15 @@ export function registerCommonResources(server: Server): void {
                 const hostId = uri.host ? decodeURIComponent(uri.host) : '';
                 const id = hostId || parts[0];
                 const tail = hostId ? parts[0] : parts[1];
+                const extra = hostId ? parts.slice(1) : parts.slice(2);
                 if (!id) throw new Error('Missing snapshot id');
+                if (extra.length > 0) throw new McpError(ErrorCode.InvalidParams, `Unsupported resource ${uriStr}`);
                 if (tail === 'overlay.diff') {
                     const fs = await import('node:fs/promises');
                     const path = await import('node:path');
                     const { overlayStore } = await import('../core/overlay-store.js');
                     const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
-                    const dir = ensure ? await ensure(id) : undefined;
+                    const dir = ensure ? await ensure(id, { workspaceRoot: opts.workspaceRoot }) : undefined;
                     const diffPath = path.join(dir || '', 'overlay.diff');
                     let text = '';
                     try {
@@ -235,7 +237,7 @@ export function registerCommonResources(server: Server): void {
                     const { overlayStore } = await import('../core/overlay-store.js');
                     let snap: any = null;
                     try {
-                        snap = (overlayStore as any).getStatus?.(id) || null;
+                        snap = (overlayStore as any).getStatus?.(id, { workspaceRoot: opts.workspaceRoot }) || null;
                     } catch {}
                     const body = JSON.stringify(
                         { id, exists: !!snap, diffCount: snap?.diffsCount || 0, createdAt: snap?.createdAt || null, touchedFiles: snap?.touchedFiles || [] },
@@ -250,7 +252,7 @@ export function registerCommonResources(server: Server): void {
                     const { overlayStore } = await import('../core/overlay-store.js');
                     let snapshotDir = '';
                     try {
-                        snapshotDir = (overlayStore as any).getSnapshotDirectory?.(id) || '';
+                        snapshotDir = (overlayStore as any).getSnapshotDirectory?.(id, { workspaceRoot: opts.workspaceRoot }) || '';
                     } catch {}
                     const logPath = snapshotDir ? path.join(snapshotDir, 'progress.log') : '';
                     let text = '';
@@ -264,6 +266,7 @@ export function registerCommonResources(server: Server): void {
             }
             throw new McpError(ErrorCode.InvalidParams, `Unsupported resource ${uriStr}`);
         } catch (e) {
+            if (e instanceof McpError) throw e;
             throw new McpError(ErrorCode.InternalError, e instanceof Error ? e.message : String(e));
         }
     });

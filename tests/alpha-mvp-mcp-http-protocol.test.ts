@@ -280,6 +280,9 @@ bindDescribe('Alpha MVP MCP HTTP protocol', () => {
         const snapshotStatus = JSON.parse(statusResource.body?.result?.contents?.[0]?.text || '{}');
         expect(snapshotStatus).toMatchObject({ id: snapshotId, exists: true, diffCount: 1 });
 
+        const malformedResource = await resourcesRead(35, `snapshot://${snapshotId}/overlay.diff/extra`);
+        expect(malformedResource.body?.error?.code).toBe(-32602);
+
         const after = await Bun.file(patchPlanningTarget).text();
         expect(after).toBe(before);
         expect(after).not.toContain(patchPlanningMarker);

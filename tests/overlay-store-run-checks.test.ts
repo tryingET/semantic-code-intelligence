@@ -51,6 +51,23 @@ describe('OverlayStore runChecks evidence receipts', () => {
         }
     });
 
+    test('configured-workspace lookups reject in-memory snapshots from another workspace', async () => {
+        const workspaceA = path.join(tmpdir(), `sci-snapshot-a-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+        const workspaceB = path.join(tmpdir(), `sci-snapshot-b-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+        await mkdir(workspaceA, { recursive: true });
+        await mkdir(workspaceB, { recursive: true });
+        try {
+            const snapA = overlayStore.createSnapshot(false, { workspaceRoot: workspaceA });
+
+            expect(() => overlayStore.ensureSnapshot(snapA.id, { workspaceRoot: workspaceB })).toThrow('Unknown snapshot id');
+            await expect(overlayStore.runChecks(snapA.id, ['true'], 30, { workspaceRoot: workspaceB })).rejects.toThrow('Unknown snapshot id');
+        } finally {
+            overlayStore.clearAll();
+            await rm(workspaceA, { recursive: true, force: true });
+            await rm(workspaceB, { recursive: true, force: true });
+        }
+    });
+
     test('runChecks command side effects do not mutate reusable materialized snapshots', async () => {
         const snap = overlayStore.createSnapshot(false);
         const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);

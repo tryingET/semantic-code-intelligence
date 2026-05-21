@@ -249,7 +249,7 @@ async function createMcpServer(desiredSid?: string): Promise<SessionRecord> {
         console.warn('[MCP HTTP] Prompts registration skipped:', (e as Error)?.message || String(e));
     }
     try {
-        registerCommonResources(server);
+        registerCommonResources(server, { workspaceRoot });
     } catch (e) {
         // eslint-disable-next-line no-console
         console.warn('[MCP HTTP] Resources registration skipped:', (e as Error)?.message || String(e));

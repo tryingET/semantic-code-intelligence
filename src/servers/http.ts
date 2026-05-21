@@ -952,7 +952,7 @@ export class HTTPServer {
                                 });
                             const { overlayStore } = await import('../core/overlay-store.js');
                             const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
-                            const dir = ensure ? await ensure(id) : null;
+                            const dir = ensure ? await ensure(id, { workspaceRoot: this.config.workspaceRoot }) : null;
                             if (!dir)
                                 return new Response(JSON.stringify({ success: false, error: 'Snapshot not found' }), {
                                     status: 404,
@@ -994,7 +994,7 @@ export class HTTPServer {
                                     headers: { 'Content-Type': 'application/json' },
                                 });
                             const { overlayStore } = await import('../core/overlay-store.js');
-                            const status = (overlayStore as any).getStatus?.(id);
+                            const status = (overlayStore as any).getStatus?.(id, { workspaceRoot: this.config.workspaceRoot });
                             if (!status)
                                 return new Response(JSON.stringify({ success: false, error: 'Snapshot not found' }), {
                                     status: 404,
@@ -1032,7 +1032,7 @@ export class HTTPServer {
                             const { overlayStore } = await import('../core/overlay-store.js');
                             let snapshotDir = '';
                             try {
-                                snapshotDir = (overlayStore as any).getSnapshotDirectory?.(id) || '';
+                                snapshotDir = (overlayStore as any).getSnapshotDirectory?.(id, { workspaceRoot: this.config.workspaceRoot }) || '';
                             } catch {}
                             const file = snapshotDir ? Bun.file(`${snapshotDir}/progress.log`) : null;
                             if (!file || !(await file.exists())) {
