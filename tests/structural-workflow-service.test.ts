@@ -1,0 +1,43 @@
+import { afterEach, describe, expect, test } from 'bun:test';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { StructuralWorkflowService, normalizeStructuralPaths } from '../src/core/workflows/structural-workflow.js';
+
+const roots: string[] = [];
+function tempWorkspace() {
+    const root = mkdtempSync(join(tmpdir(), 'sci-structural-workflow-'));
+    roots.push(root);
+    return root;
+}
+
+afterEach(() => {
+    while (roots.length) rmSync(roots.pop()!, { recursive: true, force: true });
+});
+
+describe('StructuralWorkflowService', () => {
+    test('builds structural diffs without MCP protocol objects', async () => {
+        const workspaceRoot = tempWorkspace();
+        writeFileSync(join(workspaceRoot, 'sample.ts'), 'const value = 1;\n', 'utf8');
+        const service = new StructuralWorkflowService({ workspaceRoot: () => workspaceRoot });
+
+        const built = await service.buildStructuralDiff([
+            {
+                file: 'sample.ts',
+                replacement: 'const renamed',
+                range: { byteOffset: { start: 0, end: 'const value'.length } },
+            },
+        ]);
+
+        expect(built.files).toEqual(['sample.ts']);
+        expect(built.replacementCount).toBe(1);
+        expect(built.diff).toContain('diff --git a/sample.ts b/sample.ts');
+        expect(built.diff).toContain('-const value = 1;');
+        expect(built.diff).toContain('+const renamed = 1;');
+    });
+
+    test('rejects structural paths outside the configured workspace', () => {
+        const workspaceRoot = tempWorkspace();
+        expect(() => normalizeStructuralPaths(['../outside'], workspaceRoot)).toThrow('structural paths must stay within the workspace');
+    });
+});
