@@ -11,19 +11,19 @@ type: "plan"
 
 Date: 2026-05-19
 Task: AK `3224` — investigate graph_expand support plan for Rust/Clojure/Go
-Posture: doc-only investigation; no grammar dependency install in this repo; no full support implemented
+Posture: Rust/Go syntactic tree-sitter support implemented; Clojure remains investigation-only; no automatic SCIP generation
 
 ## Current limitation summary
 
-`graph_expand` is currently implemented as a best-effort tree-sitter-backed graph helper for TypeScript, JavaScript, and Python file seeds, plus a grep-seeded symbol fallback. Rust, Clojure, and Go are characterized as unsupported-extension fallback in `docs/project/graph-language-characterization.md` and `src/adapters/mcp-adapter.ts`.
+`graph_expand` is currently implemented as a best-effort tree-sitter-backed graph helper for TypeScript, JavaScript, Python, Rust, and Go file seeds, plus a grep-seeded symbol fallback. Clojure is still characterized as unsupported-extension fallback in `docs/project/graph-language-characterization.md` and `src/adapters/mcp-adapter.ts`.
 
 That limitation is mostly a current tooling and query-coverage gap, not an inherent language impossibility:
 
-- `package.json` currently includes `tree-sitter`, `tree-sitter-typescript`, `tree-sitter-javascript`, and `tree-sitter-python` only.
-- `src/core/code-graph.ts` `loadLanguageForFile()` only loads `.ts/.tsx`, `.js/.jsx`, and `.py` grammars.
-- `src/adapters/mcp-adapter.ts` `inferGraphLanguage()` intentionally marks `.rs`, `.clj/.cljs/.cljc`, and `.go` as `unsupported_extension`.
-- Graph extraction currently uses a small number of TypeScript/JavaScript-shaped queries plus Python imports; it does not define Rust, Clojure, or Go import/export/caller/callee queries.
-- Existing graph dogfood covers TypeScript, symbol fallback, Python export limitation, and unsupported/unknown extension behavior, but no Rust/Clojure/Go fixtures.
+- `package.json` now includes `tree-sitter`, `tree-sitter-typescript`, `tree-sitter-javascript`, `tree-sitter-python`, `tree-sitter-rust`, and `tree-sitter-go`.
+- `src/core/code-graph.ts` `loadLanguageForFile()` loads `.ts/.tsx`, `.js/.jsx`, `.py`, `.rs`, and `.go` grammars.
+- `src/adapters/mcp-adapter.ts` `inferGraphLanguage()` marks `.rs` and `.go` as `tree_sitter_best_effort`; `.clj/.cljs/.cljc` remains `unsupported_extension`.
+- Graph extraction defines Rust and Go import/export/caller/callee queries, while keeping the results syntactic and file-local.
+- Existing graph dogfood covers TypeScript, symbol fallback, Python export limitation, Rust syntactic limitations, Go syntactic limitations, and unsupported/unknown extension behavior.
 
 The support target should stay honest: syntactic, file-local, best-effort graph evidence for harnessed LLM coding sessions. It must not claim whole-program graph accuracy.
 
@@ -120,6 +120,8 @@ Until that evidence exists, use `rg` for bounded symbol/no-file candidate discov
 Landed after the initial plan:
 
 - `graph_expand` impact summaries expose backend provenance/freshness fields for current `tree_sitter` and `fallback` behavior.
+- Rust and Go file seeds now return syntactic tree-sitter best-effort imports, exports, in-file callers, and file-scoped callees with explicit no-type-resolution limitations.
+- Rust and Go fixtures and dogfood assertions cover non-empty edge evidence, exported-symbol filtering, and caller-controlled symbol literal handling.
 - `src/core/scip-reader.ts` provides a read-only generic SCIP reader spike that can load an existing `index.scip`, summarize documents/occurrences/languages, and query definitions, references, and file-local occurrences.
 - `graph_expand` can optionally consume an explicit workspace-contained `scipIndexPath` and return `backend: "scip"` evidence for file imports/exports and symbol definitions/references.
 - Explicit SCIP artifact ingestion now fails closed for invalid, malformed, oversized, out-of-workspace, symlink-escaping, or post-open containment-failing indexes instead of silently falling back.
@@ -128,14 +130,15 @@ Landed after the initial plan:
 
 ## Current code surfaces to change later
 
-A minimal implementation wave would touch at least:
+The Rust/Go syntactic implementation wave touched:
 
-1. `package.json` and lockfile — add grammar dependencies.
-2. build scripts in `package.json` — add `--external tree-sitter-rust`, `--external tree-sitter-clojure`, and `--external tree-sitter-go` if the packages are loaded dynamically like the existing grammars.
-3. `src/core/code-graph.ts` — load grammars by extension and route per-language query sets.
-4. `src/adapters/mcp-adapter.ts` — change `inferGraphLanguage()` support matrix only after the corresponding extractor and dogfood assertion exist.
-5. `scripts/dogfood-graph-impact.ts` and `scripts/check-alpha-evidence.ts` — add language characterization assertions.
-6. `docs/project/graph-language-characterization.md` — update the support matrix and interpretation text after implementation evidence exists.
+1. `package.json` and lockfile — added Rust/Go grammar dependencies and build externals.
+2. `src/core/code-graph.ts` — loads Rust/Go grammars by extension and routes per-language query sets.
+3. `src/adapters/mcp-adapter.ts` — updates `inferGraphLanguage()` support matrix after extractor and dogfood assertions exist.
+4. `scripts/dogfood-graph-impact.ts` and `scripts/check-alpha-evidence.ts` — add Rust/Go language characterization assertions.
+5. `docs/project/graph-language-characterization.md` — updates the support matrix and interpretation text.
+
+Remaining future implementation surfaces for richer semantics are SCIP/LSP producers/consumers, Clojure-specific analysis, and any AST-query-wide language support expansion. `src/layers/tree-sitter.ts` and `src/core/ast-query.ts` are separate AST/search surfaces and were not broadened by this narrow graph slice.
 
 `src/layers/tree-sitter.ts` and `src/core/ast-query.ts` are separate AST/search surfaces. They do not have to change for a narrow `graph_expand` slice unless the implementation deliberately broadens language support for `ast_query`/Layer 2 too.
 

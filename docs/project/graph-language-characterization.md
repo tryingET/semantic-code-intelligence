@@ -25,8 +25,10 @@ Make `graph_expand` limitations predictable for harnessed LLM coding sessions. T
 | TypeScript | `.ts`, `.tsx` | Tree-sitter best effort | imports, exports, in-file callers, in-file/file-scoped callees | Symbol-only callees are not implemented; caller context is best effort; not whole-program typed graph |
 | JavaScript | `.js`, `.jsx` | Tree-sitter best effort | imports, exports, in-file callers, in-file/file-scoped callees | Same as TypeScript, without TypeScript type semantics |
 | Python | `.py` | Tree-sitter best effort | imports, callers, callees | Export extraction is not implemented; caller/callee extraction is syntactic and not Python import-resolution aware |
+| Rust | `.rs` | Tree-sitter best effort | imports, exports, in-file callers, in-file/file-scoped callees | Syntactic only; no type-aware method resolution, trait dispatch, module/crate resolution, or macro expansion; public/export evidence is visibility-text based |
+| Go | `.go` | Tree-sitter best effort | imports, exports, in-file callers, in-file/file-scoped callees | Syntactic only; no package/module resolution, interface dispatch, build-tag evaluation, or type-aware selector resolution; export evidence is uppercase-name based |
 | Symbol-only seed | no file | Grep-seeded best effort | callers | Callees and import/export extraction require file context; results depend on symbol-map/grep seed coverage |
-| Unsupported source | `.rs`, `.clj`, `.cljs`, `.cljc`, `.md`, and unknown extensions | Unsupported or unknown-extension fallback | none by file seed | Return structured empty/limited evidence; use text/symbol search and target-specific tools instead |
+| Unsupported source | `.clj`, `.cljs`, `.cljc`, `.md`, and unknown extensions | Unsupported or unknown-extension fallback | none by file seed | Return structured empty/limited evidence; use text/symbol search and target-specific tools instead |
 
 ## Impact summary contract
 
@@ -72,7 +74,8 @@ Unsupported or unknown file extensions must not be hidden behind a green check.
 - File+symbol caller evidence may include best-effort `caller`/`callerKind`; confirm broad edits with `find_references`.
 - File+symbol callee extraction treats the requested symbol as a literal scoped selector. If that symbol is not found in the file, `callees` returns limited empty evidence instead of widening to file-wide callees.
 - For Python, treat imports as useful and exports as unavailable/limited.
-- For Rust/Clojure/Markdown/unknown files, use text search, symbol search, AST/structural tools when available, or target-specific checks instead of graph evidence.
+- For Rust and Go, treat graph evidence as useful syntactic planning hints. Confirm broad edits with `find_references`, explicit checks, or an explicit SCIP index when available.
+- For Clojure/Markdown/unknown files, use text search, symbol search, AST/structural tools when available, or target-specific checks instead of graph evidence.
 
 ## Dogfood coverage
 
@@ -82,7 +85,9 @@ Unsupported or unknown file extensions must not be hidden behind a green check.
 2. symbol-seed caller/callee limitations;
 3. file+symbol caller context;
 4. Python support plus export limitation;
-5. unsupported/unknown extension fallback using a markdown seed.
+5. Rust support plus syntactic/no-type-resolution limitation;
+6. Go support plus syntactic/no-type-resolution limitation;
+7. unsupported/unknown extension fallback using a markdown seed.
 
 `alpha:evidence:check` requires these graph characterization assertions before alpha evidence passes.
 
@@ -92,7 +97,7 @@ This characterization does not claim:
 
 - complete whole-program graph accuracy;
 - typed call graph behavior;
-- rich graph support for Rust/Clojure/Markdown;
+- rich semantic graph support for Rust, Go, Clojure, or Markdown beyond the characterized syntactic/file-local evidence;
 - Python import-resolution semantics;
 - production readiness.
 
@@ -101,7 +106,8 @@ This characterization does not claim:
 Only add these when a real workflow needs them:
 
 - richer Python export/module relationship extraction;
-- Rust/Clojure graph support behind explicit language adapters;
+- richer Rust/Go graph semantics through explicit SCIP or LSP-backed adapters;
+- Clojure graph support behind an explicit language adapter;
 - content-addressed graph evidence snapshots;
 - SCIP/LSIF-backed definition/reference enrichment;
 - language-server-assisted typed graph edges behind feature flags.

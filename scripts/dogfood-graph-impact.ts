@@ -102,6 +102,32 @@ const pythonImpact = workflow(
 );
 calls.push(pythonImpact);
 
+const rustImpact = workflow(
+    'graph_expand',
+    {
+        file: 'tests/fixtures/graph/rust/sample.rs',
+        symbol: 'render',
+        edges: ['imports', 'exports', 'callers', 'callees'],
+        depth: 1,
+        limit: 30,
+    },
+    'Use graph_expand against Rust to characterize syntactic tree-sitter import/export/callee evidence plus explicit semantic limitations.'
+);
+calls.push(rustImpact);
+
+const goImpact = workflow(
+    'graph_expand',
+    {
+        file: 'tests/fixtures/graph/go/sample.go',
+        symbol: 'Render',
+        edges: ['imports', 'exports', 'callers', 'callees'],
+        depth: 1,
+        limit: 30,
+    },
+    'Use graph_expand against Go to characterize syntactic tree-sitter import/export/callee evidence plus explicit semantic limitations.'
+);
+calls.push(goImpact);
+
 const unsupportedImpact = workflow(
     'graph_expand',
     {
@@ -118,6 +144,8 @@ const fileSummary = fileImpact.payload?.impactSummary || {};
 const symbolSummary = symbolImpact.payload?.impactSummary || {};
 const callerContextSummary = callerContextImpact.payload?.impactSummary || {};
 const pythonSummary = pythonImpact.payload?.impactSummary || {};
+const rustSummary = rustImpact.payload?.impactSummary || {};
+const goSummary = goImpact.payload?.impactSummary || {};
 const unsupportedSummary = unsupportedImpact.payload?.impactSummary || {};
 const fileCounts = fileSummary.counts || {};
 const symbolCounts = symbolSummary.counts || {};
@@ -140,6 +168,20 @@ const evidence = {
         pythonSummary?.languageSupport?.language === 'python' &&
         Array.isArray(pythonSummary?.limitations) &&
         pythonSummary.limitations.some((item: string) => item.includes('exports: python')) &&
+        rustSummary?.languageSupport?.language === 'rust' &&
+        rustSummary?.languageSupport?.support === 'tree_sitter_best_effort' &&
+        Number(rustSummary?.counts?.imports || 0) > 0 &&
+        Number(rustSummary?.counts?.exports || 0) > 0 &&
+        Number(rustSummary?.counts?.callees || 0) > 0 &&
+        Array.isArray(rustSummary?.limitations) &&
+        rustSummary.limitations.some((item: string) => item.includes('rust: tree-sitter graph evidence is syntactic')) &&
+        goSummary?.languageSupport?.language === 'go' &&
+        goSummary?.languageSupport?.support === 'tree_sitter_best_effort' &&
+        Number(goSummary?.counts?.imports || 0) > 0 &&
+        Number(goSummary?.counts?.exports || 0) > 0 &&
+        Number(goSummary?.counts?.callees || 0) > 0 &&
+        Array.isArray(goSummary?.limitations) &&
+        goSummary.limitations.some((item: string) => item.includes('go: tree-sitter graph evidence is syntactic')) &&
         unsupportedSummary?.languageSupport?.support === 'unknown_extension' &&
         Array.isArray(unsupportedSummary?.limitations) &&
         unsupportedSummary.limitations.length > 0 &&
@@ -158,6 +200,20 @@ const evidence = {
         callerContextPresent: Number(callerContextCounts.callers || 0) > 0 && Number(callerContextSummary.callerContextCount || 0) > 0,
         pythonLanguageCharacterized: pythonSummary?.languageSupport?.language === 'python' && pythonSummary?.languageSupport?.support === 'tree_sitter_best_effort',
         pythonExportLimitationVisible: Array.isArray(pythonSummary?.limitations) && pythonSummary.limitations.some((item: string) => item.includes('exports: python')),
+        rustLanguageCharacterized:
+            rustSummary?.languageSupport?.language === 'rust' &&
+            rustSummary?.languageSupport?.support === 'tree_sitter_best_effort' &&
+            Number(rustSummary?.counts?.imports || 0) > 0 &&
+            Number(rustSummary?.counts?.exports || 0) > 0 &&
+            Number(rustSummary?.counts?.callees || 0) > 0,
+        rustLimitationsVisible: Array.isArray(rustSummary?.limitations) && rustSummary.limitations.some((item: string) => item.includes('rust: tree-sitter graph evidence is syntactic')),
+        goLanguageCharacterized:
+            goSummary?.languageSupport?.language === 'go' &&
+            goSummary?.languageSupport?.support === 'tree_sitter_best_effort' &&
+            Number(goSummary?.counts?.imports || 0) > 0 &&
+            Number(goSummary?.counts?.exports || 0) > 0 &&
+            Number(goSummary?.counts?.callees || 0) > 0,
+        goLimitationsVisible: Array.isArray(goSummary?.limitations) && goSummary.limitations.some((item: string) => item.includes('go: tree-sitter graph evidence is syntactic')),
         unsupportedExtensionCharacterized: unsupportedSummary?.languageSupport?.support === 'unknown_extension' && Array.isArray(unsupportedSummary?.limitations) && unsupportedSummary.limitations.length > 0,
         backendProvenancePresent:
             fileSummary?.backend === 'tree_sitter' &&
@@ -177,6 +233,8 @@ const evidence = {
         symbol: symbolSummary,
         callerContext: callerContextSummary,
         python: pythonSummary,
+        rust: rustSummary,
+        go: goSummary,
         unsupported: unsupportedSummary,
     },
     calls: calls.map((call) => ({
@@ -201,12 +259,12 @@ const evidence = {
             'File-scoped graph expansion exposes import/callee evidence and planning hints.',
             'Symbol-scoped graph expansion exposes caller/callee edge status with structured limitations when evidence is sparse.',
             'File+symbol caller expansion includes best-effort enclosing callable context for call sites.',
-            'Graph impact summaries characterize best-effort language support, backend provenance, and unsupported-extension limitations.',
+            'Graph impact summaries characterize best-effort language support, including Rust and Go syntactic tree-sitter evidence, backend provenance, and unsupported-extension limitations.',
         ],
         does_not_prove: [
             'Complete whole-program call graph accuracy.',
             'Rich semantic graph behavior for every language.',
-            'Graph support for unsupported source types such as Markdown, Rust, or Clojure.',
+            'Graph support for unsupported source types such as Markdown or Clojure.',
         ],
     },
 };

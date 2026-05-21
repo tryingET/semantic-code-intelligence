@@ -22,10 +22,10 @@
   "scripts": {
     "build": "bun run build:all",
     "build:all": "bun run build:lsp && bun run build:mcp-stdio && bun run build:mcp-http && bun run build:http && bun run build:cli",
-    "build:lsp": "bun build ./src/servers/lsp.ts --target=bun --outdir=dist/lsp --format=esm --external tree-sitter --external tree-sitter-typescript --external tree-sitter-javascript --external tree-sitter-python --external pg --external bun:sqlite --external express --external cors",
-    "build:mcp-stdio": "bun build ./src/servers/mcp.ts --target=bun --outdir=dist/mcp --format=esm --external tree-sitter --external tree-sitter-typescript --external tree-sitter-javascript --external tree-sitter-python --external pg --external bun:sqlite --external express --external cors",
-    "build:http": "bun build ./src/servers/http.ts --target=bun --outdir=dist/http --format=esm --external tree-sitter --external tree-sitter-typescript --external tree-sitter-javascript --external tree-sitter-python --external pg --external bun:sqlite --external express --external cors",
-    "build:cli": "bun build ./src/servers/cli.ts --target=bun --outdir=dist/cli --format=esm --external tree-sitter --external tree-sitter-typescript --external tree-sitter-javascript --external tree-sitter-python --external pg --external bun:sqlite --external express --external cors",
+    "build:lsp": "bun build ./src/servers/lsp.ts --target=bun --outdir=dist/lsp --format=esm --external tree-sitter --external tree-sitter-typescript --external tree-sitter-javascript --external tree-sitter-python --external tree-sitter-rust --external tree-sitter-go --external pg --external bun:sqlite --external express --external cors",
+    "build:mcp-stdio": "bun build ./src/servers/mcp.ts --target=bun --outdir=dist/mcp --format=esm --external tree-sitter --external tree-sitter-typescript --external tree-sitter-javascript --external tree-sitter-python --external tree-sitter-rust --external tree-sitter-go --external pg --external bun:sqlite --external express --external cors",
+    "build:http": "bun build ./src/servers/http.ts --target=bun --outdir=dist/http --format=esm --external tree-sitter --external tree-sitter-typescript --external tree-sitter-javascript --external tree-sitter-python --external tree-sitter-rust --external tree-sitter-go --external pg --external bun:sqlite --external express --external cors",
+    "build:cli": "bun build ./src/servers/cli.ts --target=bun --outdir=dist/cli --format=esm --external tree-sitter --external tree-sitter-typescript --external tree-sitter-javascript --external tree-sitter-python --external tree-sitter-rust --external tree-sitter-go --external pg --external bun:sqlite --external express --external cors",
     "cli:install-local": "bun run build:cli && bun link",
     "start": "bun run dist/lsp/lsp.js --stdio",
     "start:mcp": "bun run dist/mcp/mcp.js",
@@ -42,7 +42,7 @@
     "lint": "bunx @biomejs/biome check --write .",
     "format": "bunx @biomejs/biome format --write .",
     "clean": "rimraf dist",
-    "build:mcp-http": "bun build ./src/servers/mcp-http.ts --target=bun --outdir=dist/mcp-http --format=esm --external tree-sitter --external tree-sitter-typescript --external tree-sitter-javascript --external tree-sitter-python --external pg --external bun:sqlite --external express --external cors",
+    "build:mcp-http": "bun build ./src/servers/mcp-http.ts --target=bun --outdir=dist/mcp-http --format=esm --external tree-sitter --external tree-sitter-typescript --external tree-sitter-javascript --external tree-sitter-python --external tree-sitter-rust --external tree-sitter-go --external pg --external bun:sqlite --external express --external cors",
     "prepack": "bun run build:all",
     "alpha:mvp:test": "bun test tests/alpha-mvp-tool-contract.test.ts tests/alpha-mvp-mcp-parity.test.ts tests/alpha-mvp-mcp-http-protocol.test.ts tests/alpha-mvp-mcp-stdio-protocol.test.ts tests/alpha-mvp-cli-parity.test.ts",
     "alpha:mvp:dogfood": "bun run scripts/dogfood-alpha-mvp.ts --json",
@@ -94,8 +94,10 @@
     "lru-cache": "^11.1.0",
     "minimatch": "^10.0.1",
     "tree-sitter": "^0.21.0",
+    "tree-sitter-go": "0.21.2",
     "tree-sitter-javascript": "^0.23.1",
     "tree-sitter-python": "^0.23.6",
+    "tree-sitter-rust": "0.21.0",
     "tree-sitter-typescript": "^0.23.2",
     "uuid": "^11.1.0",
     "vscode-languageserver": "^9.0.1",
@@ -119,8 +121,10 @@
   },
   "trustedDependencies": [
     "tree-sitter",
+    "tree-sitter-go",
     "tree-sitter-javascript",
     "tree-sitter-python",
+    "tree-sitter-rust",
     "tree-sitter-typescript"
   ]
 }

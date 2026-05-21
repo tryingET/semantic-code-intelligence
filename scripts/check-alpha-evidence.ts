@@ -129,6 +129,10 @@ if (graph) {
             graph?.assertions?.callerContextPresent === true &&
             graph?.assertions?.pythonLanguageCharacterized === true &&
             graph?.assertions?.pythonExportLimitationVisible === true &&
+            graph?.assertions?.rustLanguageCharacterized === true &&
+            graph?.assertions?.rustLimitationsVisible === true &&
+            graph?.assertions?.goLanguageCharacterized === true &&
+            graph?.assertions?.goLimitationsVisible === true &&
             graph?.assertions?.unsupportedExtensionCharacterized === true &&
             graph?.assertions?.backendProvenancePresent === true,
         detail: graph?.assertions || null,

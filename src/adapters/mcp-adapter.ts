@@ -2544,7 +2544,9 @@ export class MCPAdapter {
         if (/\.(ts|tsx)$/.test(value)) return { language: 'typescript', support: 'tree_sitter_best_effort', supportedEdges: ['imports', 'exports', 'callers', 'callees'] };
         if (/\.(js|jsx)$/.test(value)) return { language: 'javascript', support: 'tree_sitter_best_effort', supportedEdges: ['imports', 'exports', 'callers', 'callees'] };
         if (/\.py$/.test(value)) return { language: 'python', support: 'tree_sitter_best_effort', supportedEdges: ['imports', 'callers', 'callees'] };
-        if (/\.(rs|clj|cljs|cljc|java|go|rb|php|cs|cpp|c|h|hpp)$/.test(value)) return { language: value.replace(/^.*\./, ''), support: 'unsupported_extension', supportedEdges: [] };
+        if (/\.rs$/.test(value)) return { language: 'rust', support: 'tree_sitter_best_effort', supportedEdges: ['imports', 'exports', 'callers', 'callees'] };
+        if (/\.go$/.test(value)) return { language: 'go', support: 'tree_sitter_best_effort', supportedEdges: ['imports', 'exports', 'callers', 'callees'] };
+        if (/\.(clj|cljs|cljc|java|rb|php|cs|cpp|c|h|hpp)$/.test(value)) return { language: value.replace(/^.*\./, ''), support: 'unsupported_extension', supportedEdges: [] };
         return seed
             ? { language: 'unknown', support: 'unknown_extension', supportedEdges: [] }
             : { language: 'symbol_seed', support: 'symbol_seed_best_effort', supportedEdges: ['callers'] };
