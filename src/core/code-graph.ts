@@ -184,6 +184,41 @@ function enclosingCallableForNode(node: any): { name: string; kind: string } | n
     return null;
 }
 
+function insideAny(node: any, bodies: any[]): boolean {
+    if (!bodies.length) return true;
+    const s = node.startIndex ?? 0;
+    const e = node.endIndex ?? 0;
+    for (const b of bodies) {
+        const bs = b.startIndex ?? 0;
+        const be = b.endIndex ?? 0;
+        if (s >= bs && e <= be) return true;
+    }
+    return false;
+}
+
+function findSymbolBodies(symbol: string, id: GraphLanguage, lang: any, tree: any): any[] {
+    if (!symbol) return [];
+    const qstr = symbolBodyQueryForLanguage(id);
+    if (!qstr) return [];
+    try {
+        const Q = new Query(lang, qstr);
+        const caps = Q.captures(tree.rootNode);
+        const bodies: any[] = [];
+        const seen = new Set<any>();
+        for (const c of caps) {
+            if (c.name !== 'sym.name' || c.node.text !== symbol) continue;
+            const body = c.node.parent?.childForFieldName?.('body');
+            if (body && !seen.has(body)) {
+                seen.add(body);
+                bodies.push(body);
+            }
+        }
+        return bodies;
+    } catch {
+        return [];
+    }
+}
+
 function isGoExportedName(name: string): boolean {
     return /^[A-Z]/.test(name);
 }
@@ -269,41 +304,6 @@ export async function expandNeighbors(opts: {
         const tree = parser.parse(text);
         const notes: string[] = [...languageGraphLimitations(id)];
 
-        const insideAny = (node: any, bodies: any[]): boolean => {
-            if (!bodies.length) return true;
-            const s = node.startIndex ?? 0;
-            const e = node.endIndex ?? 0;
-            for (const b of bodies) {
-                const bs = b.startIndex ?? 0;
-                const be = b.endIndex ?? 0;
-                if (s >= bs && e <= be) return true;
-            }
-            return false;
-        };
-
-        const findSymbolBodies = (symbol: string): any[] => {
-            if (!symbol) return [];
-            const qstr = symbolBodyQueryForLanguage(id);
-            if (!qstr) return [];
-            try {
-                const Q = new Query(lang, qstr);
-                const caps = Q.captures(tree.rootNode);
-                const bodies: any[] = [];
-                const seen = new Set<any>();
-                for (const c of caps) {
-                    if (c.name !== 'sym.name' || c.node.text !== symbol) continue;
-                    const body = c.node.parent?.childForFieldName?.('body');
-                    if (body && !seen.has(body)) {
-                        seen.add(body);
-                        bodies.push(body);
-                    }
-                }
-                return bodies;
-            } catch {
-                return [];
-            }
-        };
-
         const by = (edge: string, qstr: string, include?: (node: any) => boolean) => {
             const q = new Query(lang, qstr);
             const caps = q.captures(tree.rootNode);
@@ -331,7 +331,7 @@ export async function expandNeighbors(opts: {
             // the evidence scoped to that literal symbol; do not silently widen a missing
             // or malformed symbol to file-wide callees.
             const hasSymbolScope = typeof opts.symbol === 'string' && opts.symbol.length > 0;
-            const symbolBodies = hasSymbolScope ? findSymbolBodies(opts.symbol as string) : [];
+            const symbolBodies = hasSymbolScope ? findSymbolBodies(opts.symbol as string, id, lang, tree) : [];
             if (hasSymbolScope && symbolBodies.length === 0) {
                 notes.push('callees: requested symbol not found in file; scoped callee extraction unavailable');
             }
@@ -388,7 +388,11 @@ export async function expandNeighbors(opts: {
         const notes: string[] = [];
         // Best-effort callers: grep for word-boundary matches and confirm via AST
         const grep = new AsyncEnhancedGrep({ cacheSize: 500, cacheTTL: 30000 });
-        const pattern = `\\b${symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`;
+        // AsyncEnhancedGrep treats the pattern as a search string for this path;
+        // AST filtering below is the authority for call/name matching. Avoid regex
+        // word-boundary wrappers here because they become literal search text and
+        // can erase both caller and definition seed candidates.
+        const pattern = symbol;
         const max = Math.min(limit, 1000);
         const containedSeedFiles: string[] = [];
         for (const seedFile of opts.seedFiles || []) {
@@ -415,6 +419,7 @@ export async function expandNeighbors(opts: {
         }
         const matches = accMatches;
         const files = Array.from(new Set(matches.map((m) => m.file))).slice(0, 200);
+        let foundDefinitionBodies = false;
         for (const file of files) {
             try {
                 const opened = await openWorkspaceFileForRead(file, { workspaceRoot, inputLabel: 'graph_expand search result' });
@@ -430,22 +435,40 @@ export async function expandNeighbors(opts: {
                 const tree = parser.parse(text);
                 const Q = new Query(lang, callQueryForLanguage(id));
                 const caps = Q.captures(tree.rootNode);
+                const symbolBodies = edges.includes('callees') ? findSymbolBodies(symbol, id, lang, tree) : [];
+                if (symbolBodies.length > 0) foundDefinitionBodies = true;
                 for (const cap of caps) {
                     const n = cap.node;
-                    if ((cap.name !== 'call.func' && cap.name !== 'call.method' && cap.name !== 'call.macro') || n.text !== symbol) continue;
-                    const caller = enclosingCallableForNode(n);
-                    neighbors.callers.push({
-                        file,
-                        start: { line: n.startPosition.row, column: n.startPosition.column },
-                        caller: caller?.name || null,
-                        callerKind: caller?.kind || null,
-                    });
+                    if (cap.name !== 'call.func' && cap.name !== 'call.method' && cap.name !== 'call.macro') continue;
+                    if (edges.includes('callers') && n.text === symbol) {
+                        const caller = enclosingCallableForNode(n);
+                        neighbors.callers.push({
+                            file,
+                            start: { line: n.startPosition.row, column: n.startPosition.column },
+                            caller: caller?.name || null,
+                            callerKind: caller?.kind || null,
+                        });
+                    }
+                    if (edges.includes('callees') && symbolBodies.length > 0 && insideAny(n, symbolBodies)) {
+                        neighbors.callees.push({
+                            file,
+                            name: n.text,
+                            start: { line: n.startPosition.row, column: n.startPosition.column },
+                        });
+                    }
+                    if (neighbors.callers.length >= limit && neighbors.callees.length >= limit) break;
                 }
-                if (neighbors.callers.length >= limit) break;
+                if (neighbors.callers.length > limit) neighbors.callers = neighbors.callers.slice(0, limit);
+                if (neighbors.callees.length > limit) neighbors.callees = neighbors.callees.slice(0, limit);
+                if (neighbors.callers.length >= limit && (!edges.includes('callees') || neighbors.callees.length >= limit)) break;
             } catch {}
         }
         if (edges.includes('callees')) {
-            notes.push('callees: provide file+symbol to scope callees extraction to a definition body (symbol-only callees is not implemented yet)');
+            if (!foundDefinitionBodies) {
+                notes.push('callees: symbol definition body not found in bounded candidate files; scoped callee extraction unavailable');
+            } else {
+                notes.push('callees: symbol-only callees are syntactic and scoped to bounded candidate definition files; not whole-program typed call graph evidence');
+            }
         }
         if (edges.some((e) => e === 'imports' || e === 'exports')) {
             notes.push('imports/exports: provide file to extract import/export neighbors');

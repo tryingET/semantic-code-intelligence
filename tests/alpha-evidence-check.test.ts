@@ -36,6 +36,7 @@ function goodEvidenceFiles() {
         fileImpactHasCallees: true,
         fileImpactHasPlanningHints: true,
         symbolImpactHasCallerStatus: true,
+        symbolImpactHasCallees: true,
         symbolImpactHasLimitations: true,
         callerContextPresent: true,
         pythonLanguageCharacterized: true,

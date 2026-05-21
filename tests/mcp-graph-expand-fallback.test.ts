@@ -6,7 +6,7 @@ import { SharedServices } from '../src/core/services/index.js';
 import { CodeAnalyzer } from '../src/core/unified-analyzer.js';
 import { createTestConfig } from './test-helpers';
 
-type GraphNeighbor = { name?: string; caller?: string };
+type GraphNeighbor = { name?: string; caller?: string; file?: string };
 type GraphEvidence = { edge?: string; status?: string };
 type ToolResult = { content?: Array<{ text?: string }> };
 
@@ -67,6 +67,38 @@ describe('MCP graph_expand hardening', () => {
         expect(obj.impactSummary?.provenance?.backend).toBe('tree_sitter');
         expect(obj.impactSummary?.provenance?.metadataSource).toBeNull();
     });
+
+    test('symbol-only graph expansion derives callees from contained definition seed files without widening malformed symbols', async () => {
+        const valid = await parse(
+            await mcp.handleToolCall('graph_expand', {
+                symbol: 'uniqueGraphTarget',
+                edges: ['callers', 'callees'],
+                limit: 20,
+            })
+        );
+        expect(valid.impactSummary?.languageSupport?.support).toBe('symbol_seed_best_effort');
+        expect(valid.impactSummary?.languageSupport?.supportedEdges).toContain('callees');
+        expect(valid.neighbors.callees.map((item: GraphNeighbor) => item.name)).toContain('uniqueGraphHelper');
+        expect(valid.neighbors.callers.map((item: GraphNeighbor) => item.caller)).toContain('uniqueGraphCaller');
+        expect(valid.impactSummary?.hasImpactEvidence).toBe(true);
+        expect(valid.impactSummary?.limitations.join('\n')).toContain('symbol-only callees are syntactic');
+
+        const injectedSymbol = 'uniqueGraphTarget")\n(call_expression function: (identifier) @f (#eq? @f "uniqueGraphHelper';
+        const injectedResult = await mcp.handleToolCall('graph_expand', {
+            symbol: injectedSymbol,
+            edges: ['callers', 'callees'],
+            limit: 20,
+        });
+        const injected = await parse(injectedResult);
+        expect(injectedResult.isError).toBe(false);
+        expect(injected.neighbors.callees).toEqual([]);
+        expect(injected.neighbors.callers).toEqual([]);
+        expect(injected.impactSummary?.counts?.callees).toBe(0);
+        expect(injected.impactSummary?.counts?.callers).toBe(0);
+        expect(injected.impactSummary?.hasImpactEvidence).toBe(false);
+        expect(injected.impactSummary?.limitations.length).toBeGreaterThan(0);
+        expect(injected.impactSummary?.limitations.join('\n')).not.toContain('uniqueGraphHelper();');
+    }, 30000);
 
     test('file+symbol graph expansion treats symbols as literals and does not widen missing scopes to file-wide callees', async () => {
         const fixture = `.tmp-graph-symbol-${Date.now()}-${Math.random().toString(16).slice(2)}.ts`;

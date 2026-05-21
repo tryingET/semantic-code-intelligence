@@ -68,7 +68,7 @@ Phase 1 has moved from posture to a repeatable Alpha MVP validation bundle. The 
 - self-hosted structural dogfood records JSON evidence for ast-grep search, snapshot patch artifacts, tsgo-default checks, apply guard refusal, and unchanged working-tree posture;
 - dogfood evidence is emitted as JSON and verifies that preview-first patch planning does not mutate the working tree;
 - impact-aware check recommendation dogfood records JSON evidence that docs-only, TS source, test-file, and graph-impact inputs produce explicit advisory validation commands;
-- graph-impact dogfood characterizes TypeScript, Python module-level exports, Rust, Go, symbol-seed, and unsupported-extension graph evidence with explicit backend provenance and syntactic/fallback limitations;
+- graph-impact dogfood characterizes TypeScript, Python module-level exports, Rust, Go, symbol-seed caller/callee, and unsupported-extension graph evidence with explicit backend provenance and syntactic/fallback limitations;
 - validation-plan evidence summarizes selected commands, recommendations, check results, snapshot artifacts, apply/rollback posture, and stable-field drift comparison with remediation hints;
 - IW50 closure review (`docs/project/phase-1-closure-review.md`) closes Phase 1 as an Alpha MVP substrate for the first user while preserving production-readiness gaps;
 - target-repo CLI usage is now proven as an installed/global command invoked from a non-SCI repository cwd through a harnessed `pi -p` session, without SCI knowing target repo paths;

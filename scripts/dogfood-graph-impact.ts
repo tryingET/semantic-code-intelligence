@@ -163,6 +163,7 @@ const evidence = {
         Array.isArray(symbolSummary.evidence) &&
         symbolSummary.evidence.some((item: any) => item.edge === 'callers') &&
         symbolSummary.evidence.some((item: any) => item.edge === 'callees') &&
+        Number(symbolCounts.callees || 0) > 0 &&
         Number(callerContextCounts.callers || 0) > 0 &&
         Number(callerContextSummary.callerContextCount || 0) > 0 &&
         pythonSummary?.languageSupport?.language === 'python' &&
@@ -197,6 +198,7 @@ const evidence = {
         fileImpactHasCallees: Number(fileCounts.callees || 0) > 0,
         fileImpactHasPlanningHints: Array.isArray(fileSummary.planningHints) && fileSummary.planningHints.length > 0,
         symbolImpactHasCallerStatus: Array.isArray(symbolSummary.evidence) && symbolSummary.evidence.some((item: any) => item.edge === 'callers'),
+        symbolImpactHasCallees: Number(symbolCounts.callees || 0) > 0,
         symbolImpactHasLimitations: Array.isArray(symbolSummary.limitations) && symbolSummary.limitations.length > 0,
         callerContextPresent: Number(callerContextCounts.callers || 0) > 0 && Number(callerContextSummary.callerContextCount || 0) > 0,
         pythonLanguageCharacterized: pythonSummary?.languageSupport?.language === 'python' && pythonSummary?.languageSupport?.support === 'tree_sitter_best_effort',
@@ -259,7 +261,7 @@ const evidence = {
         proves: [
             'graph_expand returns operator-readable impactSummary evidence for harnessed LLM change planning.',
             'File-scoped graph expansion exposes import/callee evidence and planning hints.',
-            'Symbol-scoped graph expansion exposes caller/callee edge status with structured limitations when evidence is sparse.',
+            'Symbol-scoped graph expansion exposes caller/callee edge status and syntactic callee evidence when bounded candidate definition files are available.',
             'File+symbol caller expansion includes best-effort enclosing callable context for call sites.',
             'Graph impact summaries characterize best-effort language support, including Rust and Go syntactic tree-sitter evidence, backend provenance, and unsupported-extension limitations.',
         ],

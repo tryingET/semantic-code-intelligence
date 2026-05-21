@@ -2549,7 +2549,7 @@ export class MCPAdapter {
         if (/\.(clj|cljs|cljc|java|rb|php|cs|cpp|c|h|hpp)$/.test(value)) return { language: value.replace(/^.*\./, ''), support: 'unsupported_extension', supportedEdges: [] };
         return seed
             ? { language: 'unknown', support: 'unknown_extension', supportedEdges: [] }
-            : { language: 'symbol_seed', support: 'symbol_seed_best_effort', supportedEdges: ['callers'] };
+            : { language: 'symbol_seed', support: 'symbol_seed_best_effort', supportedEdges: ['callers', 'callees'] };
     }
 
     private summarizeGraphImpact(out: any, args: Record<string, any>) {

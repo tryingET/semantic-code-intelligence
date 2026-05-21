@@ -27,7 +27,7 @@ Make `graph_expand` limitations predictable for harnessed LLM coding sessions. T
 | Python | `.py` | Tree-sitter best effort | imports, exports, callers, callees | Export evidence is syntactic module-level public definitions/assignments; no `__all__`, package, import-resolution, or runtime API analysis is performed; caller/callee extraction is syntactic and not Python import-resolution aware |
 | Rust | `.rs` | Tree-sitter best effort | imports, exports, in-file callers, in-file/file-scoped callees | Syntactic only; no type-aware method resolution, trait dispatch, module/crate resolution, or macro expansion; public/export evidence is visibility-text based |
 | Go | `.go` | Tree-sitter best effort | imports, exports, in-file callers, in-file/file-scoped callees | Syntactic only; no package/module resolution, interface dispatch, build-tag evaluation, or type-aware selector resolution; export evidence is uppercase-name based |
-| Symbol-only seed | no file | Grep-seeded best effort | callers | Callees and import/export extraction require file context; results depend on symbol-map/grep seed coverage |
+| Symbol-only seed | no file | Grep-seeded best effort | callers, callees | Caller evidence comes from text search plus AST confirmation; callee evidence is syntactic and scoped to bounded candidate definition files; imports/exports require file context |
 | Unsupported source | `.clj`, `.cljs`, `.cljc`, `.md`, and unknown extensions | Unsupported or unknown-extension fallback | none by file seed | Return structured empty/limited evidence; use text/symbol search and target-specific tools instead |
 
 ## Impact summary contract
@@ -72,7 +72,7 @@ Unsupported or unknown file extensions must not be hidden behind a green check.
 - `limited` edge status means the edge was requested but the language/source kind cannot currently produce reliable evidence for it.
 - `empty_or_unavailable` means no evidence was observed and no specific limitation was available; do not infer no impact.
 - File+symbol caller evidence may include best-effort `caller`/`callerKind`; confirm broad edits with `find_references`.
-- File+symbol callee extraction treats the requested symbol as a literal scoped selector. If that symbol is not found in the file, `callees` returns limited empty evidence instead of widening to file-wide callees.
+- File+symbol and symbol-only callee extraction treat the requested symbol as a literal scoped selector. If that symbol is not found in the file or bounded candidate definition files, `callees` returns limited empty evidence instead of widening to file-wide callees.
 - For Python, treat imports and export-like module-level definitions as useful syntactic planning hints, not package API proof.
 - For Rust and Go, treat graph evidence as useful syntactic planning hints. Confirm broad edits with `find_references`, explicit checks, or an explicit SCIP index when available.
 - For Clojure/Markdown/unknown files, use text search, symbol search, AST/structural tools when available, or target-specific checks instead of graph evidence.
@@ -82,7 +82,7 @@ Unsupported or unknown file extensions must not be hidden behind a green check.
 `scripts/dogfood-graph-impact.ts` now covers:
 
 1. TypeScript file impact with imports/callees/planning hints;
-2. symbol-seed caller/callee limitations;
+2. symbol-seed caller evidence plus syntactic callee extraction from bounded candidate definition files;
 3. file+symbol caller context;
 4. Python support plus syntactic module-level export limitation;
 5. Rust support plus syntactic/no-type-resolution limitation;
