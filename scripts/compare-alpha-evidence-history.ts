@@ -186,17 +186,20 @@ function latencyAttributionFor(call: SlowestCall, baselineMs: number, budgetMs: 
             selectedCommandElapsedMs: 0,
             toolOverheadElapsedMs: totalElapsedMs,
             commandRuntimeShare: 0,
+            evidenceConsistent: true,
             overheadStatus: classify(totalElapsedMs, baselineMs, budgetMs),
         };
     }
-    const toolOverheadElapsedMs = Math.max(0, totalElapsedMs - commandElapsedMs);
+    const evidenceConsistent = commandElapsedMs <= totalElapsedMs;
+    const toolOverheadElapsedMs = evidenceConsistent ? Math.max(0, totalElapsedMs - commandElapsedMs) : totalElapsedMs;
     const commandRuntimeShare = totalElapsedMs > 0 ? Number((commandElapsedMs / totalElapsedMs).toFixed(3)) : 0;
     return {
-        kind: 'selected_command_runtime',
+        kind: evidenceConsistent ? 'selected_command_runtime' : 'inconsistent_selected_command_runtime',
         totalElapsedMs,
         selectedCommandElapsedMs: commandElapsedMs,
         toolOverheadElapsedMs,
         commandRuntimeShare,
+        evidenceConsistent,
         overheadStatus: classify(toolOverheadElapsedMs, baselineMs, budgetMs),
     };
 }
@@ -204,6 +207,7 @@ function latencyAttributionFor(call: SlowestCall, baselineMs: number, budgetMs: 
 function calibrateStatus(status: string, attribution: Record<string, unknown>): string {
     if (status !== 'slower_than_baseline') return status;
     if (attribution.kind !== 'selected_command_runtime') return status;
+    if (attribution.evidenceConsistent !== true) return status;
     if (attribution.overheadStatus === 'slower_than_baseline') return status;
     if (typeof attribution.commandRuntimeShare !== 'number' || attribution.commandRuntimeShare < 0.5) return status;
     return 'within_noise_band_command_dominated';

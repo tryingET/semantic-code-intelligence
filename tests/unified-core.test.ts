@@ -232,6 +232,47 @@ describe('Unified Core Architecture', () => {
             // Should not have duplicates
             expect(uniqueLocations.size).toBe(result.data.length);
         });
+
+        test('should account ambiguous reference result shaping as Layer 1 when escalation is disabled', async () => {
+            const analyzerAny = context.codeAnalyzer as any;
+            const originalSearch = analyzerAny.asyncSearchTools.search;
+            const originalEscalation = (context.config.performance as any).escalation;
+
+            const names = [
+                ...Array.from({ length: 40 }, () => 'fooDominant'),
+                ...Array.from({ length: 5 }, () => 'fooAlpha'),
+                ...Array.from({ length: 5 }, () => 'fooBeta'),
+                ...Array.from({ length: 5 }, () => 'fooGamma'),
+                ...Array.from({ length: 5 }, () => 'fooDelta'),
+            ];
+            analyzerAny.asyncSearchTools.search = async () =>
+                names.map((name, index) => ({
+                    file: `/tmp/sci-reference-shaping-${index}.ts`,
+                    line: index + 1,
+                    column: 7,
+                    text: `const ${name} = ${index};`,
+                }));
+            (context.config.performance as any).escalation = { policy: 'never' };
+
+            try {
+                const result = await context.codeAnalyzer.findReferences({
+                    identifier: 'foo',
+                    uri: 'file:///tmp/sci-reference-shaping.ts',
+                    position: testPosition,
+                    maxResults: 100,
+                });
+
+                expect(result.cacheHit).toBe(false);
+                expect(result.data.length).toBe(40);
+                expect(new Set(result.data.map((ref) => ref.name))).toEqual(new Set(['fooDominant']));
+                expect(result.performance.layer1).toBeGreaterThan(0);
+                expect(result.performance.layer2).toBe(0);
+                expect(result.performance.total).toBe(result.performance.layer1);
+            } finally {
+                analyzerAny.asyncSearchTools.search = originalSearch;
+                (context.config.performance as any).escalation = originalEscalation;
+            }
+        });
     });
 
     describe('Rename Operations', () => {

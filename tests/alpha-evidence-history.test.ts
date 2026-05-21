@@ -303,6 +303,40 @@ describe('alpha evidence history comparison', () => {
     });
   });
 
+  test('inconsistent command receipts greater than call elapsed do not suppress raw drift', () => {
+    const { root, baselinePath } = makeEvidenceRoot({
+      [evidenceNames.alpha]: {
+        ok: true,
+        summary: [{ name: 'run_checks', success: true, elapsedMs: 1500, observation: 'Inconsistent receipt' }],
+        calls: [{
+          name: 'run_checks',
+          success: true,
+          elapsedMs: 1500,
+          observation: 'Inconsistent receipt',
+          sample: { result: { commands: [{ command: 'true', ok: true, elapsedMs: 2000, exitCode: 0, timedOut: false }] } },
+        }],
+      },
+    });
+
+    const result = runHistory(root, baselinePath);
+    expect(result.status, result.stderr).toBe(0);
+    const report = JSON.parse(result.stdout);
+
+    expect(report.warnings[0]).toMatchObject({
+      key: 'alpha',
+      status: 'slower_than_baseline',
+      rawStatus: 'slower_than_baseline',
+      latencyAttribution: {
+        kind: 'inconsistent_selected_command_runtime',
+        selectedCommandElapsedMs: 2000,
+        toolOverheadElapsedMs: 1500,
+        commandRuntimeShare: 1.333,
+        evidenceConsistent: false,
+        overheadStatus: 'slower_than_baseline',
+      },
+    });
+  });
+
   test('selected-command-dominated baseline drift is attributed without becoming a warning', () => {
     const { root, baselinePath } = makeEvidenceRoot({
       [evidenceNames.structural]: {

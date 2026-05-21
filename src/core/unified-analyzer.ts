@@ -831,7 +831,7 @@ export class CodeAnalyzer {
                 });
             }
 
-            const layer1Time = this.elapsedObservedLayerMs(layer1Start);
+            let layer1Time = this.elapsedObservedLayerMs(layer1Start);
             let layer2Time = 0;
             let finalRefs: Reference[] = references;
 
@@ -855,7 +855,7 @@ export class CodeAnalyzer {
                 if (topName) {
                     const t0 = this.monotonicNowMs();
                     finalRefs = finalRefs.filter((r) => r.name === topName);
-                    layer2Time += this.elapsedObservedLayerMs(t0); // account as precision step time
+                    layer1Time += this.elapsedObservedLayerMs(t0); // account as async-search result shaping time
                 }
             }
 
