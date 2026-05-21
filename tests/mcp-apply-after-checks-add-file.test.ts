@@ -36,6 +36,7 @@ describe('MCP apply_after_checks add-new-file (unified)', () => {
         // Ensure file does not exist before
         try {
             await fs.rm(targetAbs, { force: true });
+            await fs.rm(path.join(process.cwd(), 'dev'), { recursive: true, force: true });
         } catch {}
         const existsBefore = await fs
             .readFile(targetAbs, 'utf8')
@@ -74,5 +75,10 @@ describe('MCP apply_after_checks add-new-file (unified)', () => {
                 .catch(() => false);
             expect(existsAfterRevert).toBe(false);
         }
+        const devNullCreated = await fs
+            .readFile(path.join(process.cwd(), 'dev/null'), 'utf8')
+            .then(() => true)
+            .catch(() => false);
+        expect(devNullCreated).toBe(false);
     }, 30000);
 });

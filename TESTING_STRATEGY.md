@@ -203,8 +203,8 @@ just test-slices slices=6
 # CI-like run locally (6 slices, steady batch size)
 just test-ci-like
 
-# Tune via env
-SLICES=6 BATCH_SIZE=10 TIMEOUT=180000 BUN_JOBS=1 just test-fast
+# Tune via env (larger batches are opt-in)
+SLICES=6 BATCH_SIZE=2 TIMEOUT=180000 BUN_JOBS=1 just test-fast
 
 # Guard package/workflow/review command drift
 bun run command-surface:check
@@ -231,7 +231,8 @@ just test-slices-balanced slices=6 hot_top=3
 Notes:
 - `bun run command-surface:check` rejects broad raw `bun test` workflow/template drift, stale built CLI paths, unsupported CLI smoke commands, and unfrozen root workflow installs.
 - `SLICES` controls total slices; `slice` selects which to run.
-- `BATCH_SIZE` files per `bun test` invocation; `BUN_JOBS=1` recommended.
+- `BATCH_SIZE` files per `bun test` invocation; normal local/agent runners default to `1` to avoid mixed HTTP/CLI test contention, and larger batches are explicit opt-in.
+- `BUN_JOBS=1` is recommended.
 - `TIMEOUT` per-batch timeout in ms.
 
 ### MCP Server Integration

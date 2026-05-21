@@ -113,6 +113,30 @@ export class OverlayStore {
         return normalized;
     }
 
+    private normalizeUnifiedDiffForGitApply(diff: string): string {
+        const lines = diff.split(/\r?\n/);
+        const out: string[] = [];
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            out.push(line);
+            if (!line.startsWith('diff --git ')) continue;
+
+            let hasMode = false;
+            let hasNewFileNull = false;
+            let hasDeletedFileNull = false;
+            for (let j = i + 1; j < lines.length && !lines[j].startsWith('diff --git '); j++) {
+                const blockLine = lines[j];
+                if (/^(new|deleted) file mode\s+\d+/.test(blockLine)) hasMode = true;
+                if (blockLine === '--- /dev/null') hasNewFileNull = true;
+                if (blockLine === '+++ /dev/null') hasDeletedFileNull = true;
+                if (blockLine.startsWith('@@ ')) break;
+            }
+            if (!hasMode && hasNewFileNull) out.push('new file mode 100644');
+            if (!hasMode && hasDeletedFileNull) out.push('deleted file mode 100644');
+        }
+        return out.join('\n');
+    }
+
     private containedPath(root: string, relPath: string, inputLabel = 'path'): { absolutePath: string; relativePath: string } {
         const relativePath = this.normalizePatchRelativePath(relPath, inputLabel);
         if (!relativePath) throw new Error(`${inputLabel} must name a file inside the workspace`);
@@ -368,9 +392,10 @@ export class OverlayStore {
         if (Buffer.byteLength(diff, 'utf8') > maxSizeBytes) {
             return { accepted: false, message: `Patch too large (> ${maxSizeBytes} bytes)` };
         }
+        const normalizedDiff = this.normalizeUnifiedDiffForGitApply(diff);
         let touched: string[];
         try {
-            touched = this.parseTouchedFilesFromPatch(diff);
+            touched = this.parseTouchedFilesFromPatch(normalizedDiff);
         } catch (error) {
             return { accepted: false, message: error instanceof Error ? error.message : String(error) };
         }
@@ -378,7 +403,7 @@ export class OverlayStore {
             return { accepted: false, message: 'invalid_patch: no workspace files found in diff' };
         }
         const snap = this.ensureSnapshot(snapshotId);
-        snap.diffs.push(diff);
+        snap.diffs.push(normalizedDiff);
         if (touched.length) {
             if (!snap.touchedFiles) snap.touchedFiles = new Set<string>();
             for (const f of touched) snap.touchedFiles.add(f);

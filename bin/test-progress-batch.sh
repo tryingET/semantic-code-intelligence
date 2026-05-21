@@ -12,10 +12,23 @@ set -euo pipefail
 #  - PERF: when set (e.g., PERF=1), you can include perf suites in FILE_GLOB below
 #  - BUN_JOBS: recommended 1 for stable sequential behavior
 
-BATCH_SIZE=${BATCH_SIZE:-10}
+BATCH_SIZE=${BATCH_SIZE:-1}
 TIMEOUT_MS=${TIMEOUT:-300000}
 BAIL=${BAIL:-}
 MAX_FILES=${MAX_FILES:-}
+
+if ! [[ ${BATCH_SIZE} =~ ^[0-9]+$ ]] || [[ ${BATCH_SIZE} -lt 1 ]]; then
+  echo "Invalid BATCH_SIZE: ${BATCH_SIZE}" >&2
+  exit 2
+fi
+if ! [[ ${TIMEOUT_MS} =~ ^[0-9]+$ ]] || [[ ${TIMEOUT_MS} -lt 1 ]]; then
+  echo "Invalid TIMEOUT: ${TIMEOUT_MS}" >&2
+  exit 2
+fi
+if [[ -n "${MAX_FILES}" ]] && { ! [[ ${MAX_FILES} =~ ^[0-9]+$ ]] || [[ ${MAX_FILES} -lt 0 ]]; }; then
+  echo "Invalid MAX_FILES: ${MAX_FILES}" >&2
+  exit 2
+fi
 
 # Collect test files. Prefer explicit list via FILE_LIST; otherwise discover.
 if [[ -n "${FILE_LIST:-}" && -f "${FILE_LIST}" ]]; then

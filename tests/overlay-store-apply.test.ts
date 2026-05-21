@@ -40,6 +40,34 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
         expect(afterRevert).toEqual(before);
     }, 30000);
 
+    test('normalizes add-file diffs so git apply does not create dev/null', async () => {
+        const targetRel = `tests/fixtures/overlay_new_${Date.now()}_${Math.random().toString(16).slice(2)}.ts`;
+        const targetAbs = path.join(process.cwd(), targetRel);
+        const devNullAbs = path.join(process.cwd(), 'dev/null');
+        try {
+            rmSync(path.join(process.cwd(), 'dev'), { recursive: true, force: true });
+            rmSync(targetAbs, { force: true });
+            const snap = overlayStore.createSnapshot(false);
+            const patch = `diff --git a/${targetRel} b/${targetRel}\n--- /dev/null\n+++ b/${targetRel}\n@@ -0,0 +1,1 @@\n+export const overlayAddFile = true;\n`;
+            const staged = overlayStore.stagePatch(snap.id, patch);
+            expect(staged.accepted).toBe(true);
+            expect((snap as any).diffs[0]).toContain('new file mode 100644');
+
+            const applied = await overlayStore.applyToWorkingTree(snap.id, { check: false, reverse: false });
+            expect(applied.ok).toBe(true);
+            expect(existsSync(devNullAbs)).toBe(false);
+            expect(await fs.readFile(targetAbs, 'utf8')).toContain('overlayAddFile');
+
+            const reverted = await overlayStore.applyToWorkingTree(snap.id, { check: false, reverse: true });
+            expect(reverted.ok).toBe(true);
+            expect(existsSync(targetAbs)).toBe(false);
+            expect(existsSync(devNullAbs)).toBe(false);
+        } finally {
+            rmSync(targetAbs, { force: true });
+            rmSync(path.join(process.cwd(), 'dev'), { recursive: true, force: true });
+        }
+    }, 30000);
+
     test('refreshes materialized snapshot when new staged diffs are added', async () => {
         const rel = `.tmp-overlay-rematerialize-${Date.now()}-${Math.random().toString(16).slice(2)}.txt`;
         const abs = path.join(process.cwd(), rel);

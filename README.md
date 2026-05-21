@@ -609,14 +609,14 @@ just test-slices slices=6
 # CI-like run locally (6 slices, steady batch size)
 just test-ci-like
 
-# Tune via env vars
-SLICES=6 BATCH_SIZE=10 TIMEOUT=180000 BUN_JOBS=1 just test-fast
+# Tune via env vars (larger batches are opt-in)
+SLICES=6 BATCH_SIZE=2 TIMEOUT=180000 BUN_JOBS=1 just test-fast
 ```
 
 Notes:
 - `bun run command-surface:check` guards package, workflow, and review-template commands against drifting back to broad raw `bun test`, stale CLI paths, or unfrozen root installs.
 - `SLICES` = number of slices (defaults to 4 if not set in some runners).
-- `BATCH_SIZE` = number of files per `bun test` invocation (default 8–10 depending on runner).
+- `BATCH_SIZE` = number of files per `bun test` invocation. Normal local/agent runners default to `1` to avoid mixed HTTP/CLI test contention; larger batches are explicit opt-in.
 - `TIMEOUT` = per-batch timeout in ms (default 180000).
 - `BUN_JOBS=1` is recommended for stability and lower variance.
 

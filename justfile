@@ -494,21 +494,21 @@ test-watch:
 # Progressive batch runner (prints per-batch progress)
 test-batch:
     @echo "🧪 Running tests in batches (progress after each batch)"
-    @echo "   Env: BATCH_SIZE (default 8), TIMEOUT (ms, default 180000), BUN_JOBS (default 1)"
-    @BATCH_SIZE=${BATCH_SIZE:-8} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} bin/test-progress-batch.sh
+    @echo "   Env: BATCH_SIZE (default 1), TIMEOUT (ms, default 180000), BUN_JOBS (default 1)"
+    @BATCH_SIZE=${BATCH_SIZE:-1} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} bin/test-progress-batch.sh
 
 # Slice the test suite into N parts and run one slice
 test-sliced slices="4" slice="1":
     @echo "🧪 Running test slice {{slice}}/{{slices}} (batched with progress)"
-    @echo "   Override with: just test-sliced <N> <K> [BATCH_SIZE=8 TIMEOUT=180000]"
-    @SLICES={{slices}} SLICE={{slice}} BATCH_SIZE=${BATCH_SIZE:-8} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} bin/test-slicer.sh
+    @echo "   Override with: just test-sliced <N> <K> [BATCH_SIZE=1 TIMEOUT=180000]"
+    @SLICES={{slices}} SLICE={{slice}} BATCH_SIZE=${BATCH_SIZE:-1} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} bin/test-slicer.sh
 
 # Run all slices sequentially (useful locally to get periodic feedback)
 test-slices slices="4":
     @n={{slices}}; i=1; \
     while [ "$i" -le "$n" ]; do \
         echo "================ SLICE $i/$n ================"; \
-        SLICES="$n" SLICE="$i" BATCH_SIZE=${BATCH_SIZE:-8} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} L2_MAX_PARSE_FILES=${L2_MAX_PARSE_FILES:-10} ESCALATION_POLICY=${ESCALATION_POLICY:-never} BAIL=${BAIL:-} bin/test-slicer.sh || exit $?; \
+        SLICES="$n" SLICE="$i" BATCH_SIZE=${BATCH_SIZE:-1} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} L2_MAX_PARSE_FILES=${L2_MAX_PARSE_FILES:-10} ESCALATION_POLICY=${ESCALATION_POLICY:-never} BAIL=${BAIL:-} bin/test-slicer.sh || exit $?; \
         i=`expr $i + 1`; \
     done
 
@@ -527,14 +527,14 @@ test-ci-like-balanced:
 # Auto-sliced test runner (detect CPU, clamp slices; sequential for clean output)
 test-fast:
     @SLICES=${SLICES:-4}; echo "🧪 Running $SLICES slices (batched)"
-    @SLICES=${SLICES:-4}; i=1; while [ $i -le $SLICES ]; do echo "================ SLICE $i/$SLICES ================"; SLICES=$SLICES SLICE=$i BATCH_SIZE=${BATCH_SIZE:-8} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} bin/test-slicer.sh || exit $?; i=`expr $i + 1`; done
+    @SLICES=${SLICES:-4}; i=1; while [ $i -le $SLICES ]; do echo "================ SLICE $i/$SLICES ================"; SLICES=$SLICES SLICE=$i BATCH_SIZE=${BATCH_SIZE:-1} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} bin/test-slicer.sh || exit $?; i=`expr $i + 1`; done
 
  
 
 # Batch + analyze (local)
 test-batch-analyze:
     @echo "🧪 Running batch + analysis" 
-    @BATCH_SIZE=${BATCH_SIZE:-8} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} bin/test-progress-batch.sh
+    @BATCH_SIZE=${BATCH_SIZE:-1} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} bin/test-progress-batch.sh
     @bun run scripts/analyze-batch-report.ts
 
 # Extremely fast smoke tests (<2 min on dev hw)
@@ -562,7 +562,7 @@ smoke:
 # Slice + analyze (local)
 test-sliced-analyze slices="4" slice="1":
     @echo "🧪 Running test slice {{slice}}/{{slices}} + analysis"
-    @SLICES={{slices}} SLICE={{slice}} BATCH_SIZE=${BATCH_SIZE:-8} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} bin/test-slicer.sh
+    @SLICES={{slices}} SLICE={{slice}} BATCH_SIZE=${BATCH_SIZE:-1} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} bin/test-slicer.sh
     @bun run scripts/analyze-batch-report.ts .test-results/batch-report.jsonl
 
 # === E2E INTEGRATION TESTS ===
@@ -637,12 +637,12 @@ slice-list slices="6" slice="1" suite="tests":
 # Run a custom suite path in slices
 suite-sliced slices="4" slice="1" suite="tests":
     @echo "🧪 Running suite '{{suite}}' slice {{slice}}/{{slices}} (batched)"
-    @SLICES={{slices}} SLICE={{slice}} SUITE_DIR={{suite}} BATCH_SIZE=${BATCH_SIZE:-8} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} bin/test-slicer.sh
+    @SLICES={{slices}} SLICE={{slice}} SUITE_DIR={{suite}} BATCH_SIZE=${BATCH_SIZE:-1} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} bin/test-slicer.sh
 
 suite-slices slices="4" suite="tests":
     @for i in `seq 1 {{slices}}`; do \
         echo "================ SUITE '{{suite}}' SLICE $$i/{{slices}} ================"; \
-        SLICES={{slices}} SLICE=$$i SUITE_DIR={{suite}} BATCH_SIZE=${BATCH_SIZE:-8} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} bin/test-slicer.sh || exit $$?; \
+        SLICES={{slices}} SLICE=$$i SUITE_DIR={{suite}} BATCH_SIZE=${BATCH_SIZE:-1} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} bin/test-slicer.sh || exit $$?; \
       done
 
 # Aggregate analysis for local slices directory (downloaded CI artifacts or local runs)
@@ -668,7 +668,7 @@ e2e-slices-analyze slices="2":
 # Run slices in parallel (main tests)
 test-slices-par slices="6" jobs="3":
     @echo "🧪 Running {{slices}} slices in parallel (jobs={{jobs}})"
-    @seq 1 {{slices}} | xargs -n1 -P {{jobs}} -I{} bash -lc 'echo "== SLICE {} / {{slices}} =="; SLICES={{slices}} SLICE={} BATCH_SIZE=${BATCH_SIZE:-8} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} bin/test-slicer.sh'
+    @seq 1 {{slices}} | xargs -n1 -P {{jobs}} -I{} bash -lc 'echo "== SLICE {} / {{slices}} =="; SLICES={{slices}} SLICE={} BATCH_SIZE=${BATCH_SIZE:-1} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} bin/test-slicer.sh'
 
 # Run E2E slices in parallel
 e2e-slices-par slices="2" jobs="2":
@@ -682,11 +682,11 @@ test-slices-par-analyze slices="6" jobs="3":
 
 # Gated analysis examples (local)
 test-batch-gated warn_ms="120000" warn_max="6" fail_on_slow="0":
-    @BATCH_SIZE=${BATCH_SIZE:-8} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} bin/test-progress-batch.sh
+    @BATCH_SIZE=${BATCH_SIZE:-1} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} bin/test-progress-batch.sh
     @WARN_MS={{warn_ms}} WARN_MAX={{warn_max}} FAIL_ON_SLOW={{fail_on_slow}} bun run scripts/analyze-batch-report.ts
 
 suite-sliced-gated slices="4" slice="1" suite="tests" warn_ms="120000" warn_max="6" fail_on_slow="0":
-    @SLICES={{slices}} SLICE={{slice}} SUITE_DIR={{suite}} BATCH_SIZE=${BATCH_SIZE:-8} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} bin/test-slicer.sh
+    @SLICES={{slices}} SLICE={{slice}} SUITE_DIR={{suite}} BATCH_SIZE=${BATCH_SIZE:-1} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} bin/test-slicer.sh
     @WARN_MS={{warn_ms}} WARN_MAX={{warn_max}} FAIL_ON_SLOW={{fail_on_slow}} bun run scripts/analyze-batch-report.ts .test-results/batch-report.jsonl
 
 # Development mode - start with auto-reload (VISION.md compliant)
@@ -1988,7 +1988,7 @@ test-slices-balanced slices="6" hot_top="0":
     @n={{slices}}; i=1; \
     while [ "$i" -le "$n" ]; do \
         echo "================ BALANCED SLICE $i/$n ================"; \
-        SLICES="$n" SLICE="$i" BALANCE_SLICES=1 HOT_SLICE_TOP={{hot_top}} BATCH_SIZE=${BATCH_SIZE:-8} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} bin/test-slicer.sh || exit $?; \
+        SLICES="$n" SLICE="$i" BALANCE_SLICES=1 HOT_SLICE_TOP={{hot_top}} BATCH_SIZE=${BATCH_SIZE:-1} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} bin/test-slicer.sh || exit $?; \
         i=`expr $i + 1`; \
     done
 test-async:

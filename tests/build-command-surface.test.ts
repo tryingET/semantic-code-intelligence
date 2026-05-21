@@ -32,6 +32,7 @@ describe('build command surface', () => {
         const packageJson = JSON.parse(readText('package.json')) as { scripts?: Record<string, string> };
         const runner = readText('scripts/run-normal-tests.sh');
         const slicer = readText('bin/test-slicer.sh');
+        const justfile = readText('justfile');
 
         expect(packageJson.scripts?.test).toBe('scripts/run-normal-tests.sh');
         expect(packageJson.scripts?.['test:nonperf']).toBe('scripts/run-normal-tests.sh');
@@ -39,13 +40,45 @@ describe('build command surface', () => {
         expect(packageJson.scripts?.['test:coverage']).toBe('scripts/run-coverage-tests.sh');
         expect(packageJson.scripts?.['command-surface:check']).toBe('bun run scripts/check-command-surface.ts');
         expect(runner).toContain('bin/test-slicer.sh');
+        expect(runner).toContain('BATCH_SIZE=${BATCH_SIZE:-1}');
         expect(runner).toContain('BUN_JOBS=${BUN_JOBS:-1}');
+        expect(runner).toContain('require_positive_int BATCH_SIZE "$BATCH_SIZE"');
         expect(runner).not.toContain('bun test\n');
+        expect(slicer).toContain('BATCH_SIZE=${BATCH_SIZE:-1}');
+        expect(slicer).toContain('Invalid BATCH_SIZE');
         expect(slicer).toContain('mapfile -t slice_files <<< "$output"');
         expect(slicer).not.toContain('slice_files=( $output )');
+        expect(recipeBody(justfile, 'test-fast')).toContain('BATCH_SIZE=${BATCH_SIZE:-1}');
+        expect(recipeBody(justfile, 'test-slices slices="4"')).toContain('BATCH_SIZE=${BATCH_SIZE:-1}');
+    });
+
+    test('normal test runners fail closed for invalid batch sizing', () => {
+        const proc = spawnSync('bash', ['scripts/run-normal-tests.sh'], {
+            cwd: process.cwd(),
+            encoding: 'utf8',
+            env: { ...process.env, BATCH_SIZE: '0' },
+        });
+        expect(proc.status).toBe(2);
+        expect(proc.stderr).toContain('Invalid BATCH_SIZE: 0');
+
+        const slicerProc = spawnSync('bash', ['bin/test-slicer.sh'], {
+            cwd: process.cwd(),
+            encoding: 'utf8',
+            env: { ...process.env, SLICES: '1', SLICE: '1', BATCH_SIZE: 'nope' },
+        });
+        expect(slicerProc.status).toBe(2);
+        expect(slicerProc.stderr).toContain('Invalid BATCH_SIZE: nope');
     });
 
     test('batch runner preserves JSONL shape and refuses symlink report outputs', () => {
+        const invalidProc = spawnSync('bash', ['bin/test-progress-batch.sh'], {
+            cwd: process.cwd(),
+            encoding: 'utf8',
+            env: { ...process.env, BATCH_SIZE: '0' },
+        });
+        expect(invalidProc.status).toBe(2);
+        expect(invalidProc.stderr).toContain('Invalid BATCH_SIZE: 0');
+
         const dir = mkdtempSync(join(tmpdir(), 'sci-batch-runner-'));
         try {
             const list = join(dir, 'files.lst');
