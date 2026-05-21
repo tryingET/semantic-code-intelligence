@@ -39,6 +39,7 @@ function goodEvidenceFiles() {
         symbolImpactHasLimitations: true,
         callerContextPresent: true,
         pythonLanguageCharacterized: true,
+        pythonExportsCharacterized: true,
         pythonExportLimitationVisible: true,
         rustLanguageCharacterized: true,
         rustLimitationsVisible: true,

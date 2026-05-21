@@ -166,8 +166,9 @@ const evidence = {
         Number(callerContextCounts.callers || 0) > 0 &&
         Number(callerContextSummary.callerContextCount || 0) > 0 &&
         pythonSummary?.languageSupport?.language === 'python' &&
+        Number(pythonSummary?.counts?.exports || 0) > 0 &&
         Array.isArray(pythonSummary?.limitations) &&
-        pythonSummary.limitations.some((item: string) => item.includes('exports: python')) &&
+        pythonSummary.limitations.some((item: string) => item.includes('python: export evidence is syntactic')) &&
         rustSummary?.languageSupport?.language === 'rust' &&
         rustSummary?.languageSupport?.support === 'tree_sitter_best_effort' &&
         Number(rustSummary?.counts?.imports || 0) > 0 &&
@@ -199,7 +200,8 @@ const evidence = {
         symbolImpactHasLimitations: Array.isArray(symbolSummary.limitations) && symbolSummary.limitations.length > 0,
         callerContextPresent: Number(callerContextCounts.callers || 0) > 0 && Number(callerContextSummary.callerContextCount || 0) > 0,
         pythonLanguageCharacterized: pythonSummary?.languageSupport?.language === 'python' && pythonSummary?.languageSupport?.support === 'tree_sitter_best_effort',
-        pythonExportLimitationVisible: Array.isArray(pythonSummary?.limitations) && pythonSummary.limitations.some((item: string) => item.includes('exports: python')),
+        pythonExportsCharacterized: Number(pythonSummary?.counts?.exports || 0) > 0,
+        pythonExportLimitationVisible: Array.isArray(pythonSummary?.limitations) && pythonSummary.limitations.some((item: string) => item.includes('python: export evidence is syntactic')),
         rustLanguageCharacterized:
             rustSummary?.languageSupport?.language === 'rust' &&
             rustSummary?.languageSupport?.support === 'tree_sitter_best_effort' &&

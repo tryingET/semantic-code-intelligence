@@ -128,6 +128,7 @@ if (graph) {
             graph?.assertions?.symbolImpactHasLimitations === true &&
             graph?.assertions?.callerContextPresent === true &&
             graph?.assertions?.pythonLanguageCharacterized === true &&
+            graph?.assertions?.pythonExportsCharacterized === true &&
             graph?.assertions?.pythonExportLimitationVisible === true &&
             graph?.assertions?.rustLanguageCharacterized === true &&
             graph?.assertions?.rustLimitationsVisible === true &&

@@ -70,6 +70,12 @@ const PY_IMPORTS = `
   (import_from_statement module_name: (dotted_name) @import.from name: (dotted_name) @import.name)
 `;
 
+const PY_EXPORTS = `
+  (function_definition name: (identifier) @export.func)
+  (class_definition name: (identifier) @export.class)
+  (assignment left: (identifier) @export.var)
+`;
+
 const RUST_IMPORTS = `
   (use_declaration) @import.declaration
 `;
@@ -103,7 +109,7 @@ function importQueryForLanguage(id: GraphLanguage): string {
 }
 
 function exportQueryForLanguage(id: GraphLanguage): string | null {
-    if (id === 'python') return null;
+    if (id === 'python') return PY_EXPORTS;
     if (id === 'rust') return RUST_EXPORTS;
     if (id === 'go') return GO_EXPORTS;
     return TS_EXPORTS;
@@ -182,6 +188,20 @@ function isGoExportedName(name: string): boolean {
     return /^[A-Z]/.test(name);
 }
 
+function isPythonTopLevelPublicName(node: any): boolean {
+    const name = String(node?.text || '');
+    if (!name || name.startsWith('_')) return false;
+    const parent = node?.parent;
+    if (!parent) return false;
+    if (parent.type === 'function_definition' || parent.type === 'class_definition') {
+        return parent.parent?.type === 'module';
+    }
+    if (parent.type === 'assignment') {
+        return parent.parent?.type === 'expression_statement' && parent.parent?.parent?.type === 'module';
+    }
+    return false;
+}
+
 function rustDeclarationNode(node: any): any {
     let cur = node?.parent;
     while (cur) {
@@ -198,12 +218,16 @@ function isRustPublicExport(node: any): boolean {
 
 function includeExportCapture(id: GraphLanguage, node: any): boolean {
     if (!String(node?.text || '').trim()) return false;
+    if (id === 'python') return isPythonTopLevelPublicName(node);
     if (id === 'go') return isGoExportedName(String(node.text));
     if (id === 'rust') return isRustPublicExport(node);
     return true;
 }
 
 function languageGraphLimitations(id: GraphLanguage): string[] {
+    if (id === 'python') {
+        return ['python: export evidence is syntactic module-level public definitions/assignments; no __all__, package, import-resolution, or runtime API analysis is performed'];
+    }
     if (id === 'rust') {
         return [
             'rust: tree-sitter graph evidence is syntactic; no type-aware method resolution, trait dispatch, module/crate resolution, or macro expansion is performed',

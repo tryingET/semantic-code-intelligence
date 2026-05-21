@@ -24,7 +24,7 @@ Make `graph_expand` limitations predictable for harnessed LLM coding sessions. T
 |---|---|---|---|---|
 | TypeScript | `.ts`, `.tsx` | Tree-sitter best effort | imports, exports, in-file callers, in-file/file-scoped callees | Symbol-only callees are not implemented; caller context is best effort; not whole-program typed graph |
 | JavaScript | `.js`, `.jsx` | Tree-sitter best effort | imports, exports, in-file callers, in-file/file-scoped callees | Same as TypeScript, without TypeScript type semantics |
-| Python | `.py` | Tree-sitter best effort | imports, callers, callees | Export extraction is not implemented; caller/callee extraction is syntactic and not Python import-resolution aware |
+| Python | `.py` | Tree-sitter best effort | imports, exports, callers, callees | Export evidence is syntactic module-level public definitions/assignments; no `__all__`, package, import-resolution, or runtime API analysis is performed; caller/callee extraction is syntactic and not Python import-resolution aware |
 | Rust | `.rs` | Tree-sitter best effort | imports, exports, in-file callers, in-file/file-scoped callees | Syntactic only; no type-aware method resolution, trait dispatch, module/crate resolution, or macro expansion; public/export evidence is visibility-text based |
 | Go | `.go` | Tree-sitter best effort | imports, exports, in-file callers, in-file/file-scoped callees | Syntactic only; no package/module resolution, interface dispatch, build-tag evaluation, or type-aware selector resolution; export evidence is uppercase-name based |
 | Symbol-only seed | no file | Grep-seeded best effort | callers | Callees and import/export extraction require file context; results depend on symbol-map/grep seed coverage |
@@ -73,7 +73,7 @@ Unsupported or unknown file extensions must not be hidden behind a green check.
 - `empty_or_unavailable` means no evidence was observed and no specific limitation was available; do not infer no impact.
 - File+symbol caller evidence may include best-effort `caller`/`callerKind`; confirm broad edits with `find_references`.
 - File+symbol callee extraction treats the requested symbol as a literal scoped selector. If that symbol is not found in the file, `callees` returns limited empty evidence instead of widening to file-wide callees.
-- For Python, treat imports as useful and exports as unavailable/limited.
+- For Python, treat imports and export-like module-level definitions as useful syntactic planning hints, not package API proof.
 - For Rust and Go, treat graph evidence as useful syntactic planning hints. Confirm broad edits with `find_references`, explicit checks, or an explicit SCIP index when available.
 - For Clojure/Markdown/unknown files, use text search, symbol search, AST/structural tools when available, or target-specific checks instead of graph evidence.
 
@@ -84,7 +84,7 @@ Unsupported or unknown file extensions must not be hidden behind a green check.
 1. TypeScript file impact with imports/callees/planning hints;
 2. symbol-seed caller/callee limitations;
 3. file+symbol caller context;
-4. Python support plus export limitation;
+4. Python support plus syntactic module-level export limitation;
 5. Rust support plus syntactic/no-type-resolution limitation;
 6. Go support plus syntactic/no-type-resolution limitation;
 7. unsupported/unknown extension fallback using a markdown seed.
@@ -98,14 +98,14 @@ This characterization does not claim:
 - complete whole-program graph accuracy;
 - typed call graph behavior;
 - rich semantic graph support for Rust, Go, Clojure, or Markdown beyond the characterized syntactic/file-local evidence;
-- Python import-resolution semantics;
+- Python import-resolution, `__all__`, or package API semantics;
 - production readiness.
 
 ## Future hardening candidates
 
 Only add these when a real workflow needs them:
 
-- richer Python export/module relationship extraction;
+- richer Python `__all__`, package, and module relationship extraction;
 - richer Rust/Go graph semantics through explicit SCIP or LSP-backed adapters;
 - Clojure graph support behind an explicit language adapter;
 - content-addressed graph evidence snapshots;
