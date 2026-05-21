@@ -205,6 +205,9 @@ just test-ci-like
 
 # Tune via env
 SLICES=6 BATCH_SIZE=10 TIMEOUT=180000 BUN_JOBS=1 just test-fast
+
+# Guard package/workflow/review command drift
+bun run command-surface:check
 ```
 
 ### Balanced Slices (Stabilize tail latency)
@@ -226,6 +229,7 @@ just test-slices-balanced slices=6 hot_top=3
 ```
 
 Notes:
+- `bun run command-surface:check` rejects broad raw `bun test` workflow/template drift, stale built CLI paths, unsupported CLI smoke commands, and unfrozen root workflow installs.
 - `SLICES` controls total slices; `slice` selects which to run.
 - `BATCH_SIZE` files per `bun test` invocation; `BUN_JOBS=1` recommended.
 - `TIMEOUT` per-batch timeout in ms.
@@ -572,7 +576,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: oven-sh/setup-bun@v1
-      - run: bun install
+      - run: bun install --frozen-lockfile
       - run: just init
       
       # Unit tests

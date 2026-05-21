@@ -509,7 +509,7 @@ jobs:
       - name: Generate coverage (single run)
         run: |
           echo "📊 Generating test coverage in a dedicated job..."
-          bun test --coverage tests/ --timeout 300000
+          bun run test:coverage
 
       - name: Upload Coverage Reports
         uses: codecov/codecov-action@v4

@@ -584,6 +584,9 @@ bun test tests/alpha-mvp-tool-contract.test.ts
 # Optional legacy/perf/coverage surfaces
 just test-perf
 just test-coverage
+
+# Command-surface drift guard
+bun run command-surface:check
 ```
 
 #### Local Testing (Sliced + Batched)
@@ -611,6 +614,7 @@ SLICES=6 BATCH_SIZE=10 TIMEOUT=180000 BUN_JOBS=1 just test-fast
 ```
 
 Notes:
+- `bun run command-surface:check` guards package, workflow, and review-template commands against drifting back to broad raw `bun test`, stale CLI paths, or unfrozen root installs.
 - `SLICES` = number of slices (defaults to 4 if not set in some runners).
 - `BATCH_SIZE` = number of files per `bun test` invocation (default 8–10 depending on runner).
 - `TIMEOUT` = per-batch timeout in ms (default 180000).

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
 function readText(path: string): string {
@@ -13,6 +14,18 @@ function recipeBody(justfile: string, recipeName: string): string {
 }
 
 describe('build command surface', () => {
+    test('command-surface audit passes for package, workflow, and review surfaces', () => {
+        const proc = spawnSync('bun', ['run', 'scripts/check-command-surface.ts', '--json'], {
+            cwd: process.cwd(),
+            encoding: 'utf8',
+        });
+
+        expect(proc.status, proc.stderr || proc.stdout).toBe(0);
+        const report = JSON.parse(proc.stdout) as { ok: boolean; violations: unknown[] };
+        expect(report.ok).toBe(true);
+        expect(report.violations).toEqual([]);
+    });
+
     test('package test delegates to the sliced normal-test runner', () => {
         const packageJson = JSON.parse(readText('package.json')) as { scripts?: Record<string, string> };
         const runner = readText('scripts/run-normal-tests.sh');
@@ -20,6 +33,8 @@ describe('build command surface', () => {
         expect(packageJson.scripts?.test).toBe('scripts/run-normal-tests.sh');
         expect(packageJson.scripts?.['test:nonperf']).toBe('scripts/run-normal-tests.sh');
         expect(packageJson.scripts?.['test:raw']).toBe('bun test');
+        expect(packageJson.scripts?.['test:coverage']).toBe('scripts/run-coverage-tests.sh');
+        expect(packageJson.scripts?.['command-surface:check']).toBe('bun run scripts/check-command-surface.ts');
         expect(runner).toContain('bin/test-slicer.sh');
         expect(runner).toContain('BUN_JOBS=${BUN_JOBS:-1}');
         expect(runner).not.toContain('bun test\n');
