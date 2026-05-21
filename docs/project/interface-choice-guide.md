@@ -101,6 +101,8 @@ It is useful because:
 - tests can call exact tools with exact arguments;
 - it exercises server routing without MCP protocol ceremony.
 
+Interpret `success:false` as a tool-invocation/transport error. A valid tool call may still return a domain payload with `ok:false` (for example failed checks or refused apply) that the caller should inspect as ordinary result data.
+
 Do not overstate it as the primary product interface. The Alpha contract still prioritizes MCP tools first, then HTTP parity/non-MCP harnesses, then CLI fallback.
 
 ### Direct MCPAdapter tests

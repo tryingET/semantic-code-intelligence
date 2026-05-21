@@ -65,3 +65,27 @@ test('propose_patch rejects stale apply_patch hunks before accepting invalid ove
     expect(String(propOut?.content?.[0]?.text || propOut)).toContain('apply_patch hunk did not match');
     await analyzer.dispose?.();
 });
+
+test('propose_patch rejects sparse apply_patch hunks when changed lines are ambiguous', async () => {
+    const fixture = path.join(process.cwd(), 'tests/fixtures/temp-ambiguous-apply-patch.ts');
+    await fs.writeFile(fixture, ['export const repeated = 1;', 'export const repeated = 1;', ''].join('\n'), 'utf8');
+    const cfg = createDefaultCoreConfig();
+    const analyzer = await createCodeAnalyzer({ ...cfg, workspaceRoot: process.cwd() });
+    await analyzer.initialize();
+    try {
+        const mcp = new MCPAdapter(analyzer);
+        const snapRes = await mcp.handleToolCall('get_snapshot', { preferExisting: false });
+        const snapOut = await parseContent(snapRes);
+        const snapshot = snapOut?.snapshot || snapOut?.id;
+        const ambiguousPatch = `*** Begin Patch\n*** Update File: tests/fixtures/temp-ambiguous-apply-patch.ts\n@@\n missing context\n-export const repeated = 1;\n+export const repeated = 2;\n*** End Patch\n`;
+
+        const prop = await mcp.handleToolCall('propose_patch', { snapshot, patch: ambiguousPatch });
+        const propOut = await parseContent(prop);
+
+        expect(prop.isError).toBe(true);
+        expect(String(propOut?.content?.[0]?.text || propOut)).toContain('apply_patch hunk is ambiguous');
+    } finally {
+        await analyzer.dispose?.();
+        await fs.rm(fixture, { force: true });
+    }
+});

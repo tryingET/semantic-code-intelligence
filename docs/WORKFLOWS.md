@@ -240,7 +240,7 @@ For edits intended to be applied (apply_after_checks / apply_snapshot), prefer g
 
 Notes
 - Parent directories must exist in the working tree for new files; create them first (e.g., `mkdir -p tests/temp`).
-- The server accepts `apply_patch` format (`*** Begin Patch` … `*** End Patch`) and auto-converts it to unified for staging. For application, unified diff yields more predictable results across environments.
+- The server accepts `apply_patch` format (`*** Begin Patch` … `*** End Patch`) and converts accepted patches to valid unified diffs for staging. Update hunks are matched against workspace-contained files; stale, unmatched, or ambiguous sparse hunks fail before an invalid overlay diff is accepted.
 - Applying to working tree is guarded by `ALLOW_SNAPSHOT_APPLY=1`. Without it, workflows only stage and run checks in snapshots.
 - Reverting: use `apply_snapshot` with `{ reverse: true }` and the same snapshot id.
 
@@ -249,6 +249,7 @@ Notes
 - Purpose: Stage patch → run checks → optionally apply to working tree when allowed.
 - HTTP/MCP tool: `apply_after_checks` with arguments `{ patch, commands?: string[], timeoutSec?: number }`.
 - Guard: Requires `ALLOW_SNAPSHOT_APPLY=1` to write to working tree.
+- Domain outcomes such as failed checks or refused/non-applied patches are returned as structured tool results (for example `ok:false`, `applied:false`), not as HTTP transport failures unless the tool invocation itself is invalid.
 - Typical flow:
   1) `get_snapshot` (optional convenience)
   2) `propose_patch` (stage)

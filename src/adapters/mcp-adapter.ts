@@ -1502,8 +1502,9 @@ export class MCPAdapter {
             if (fileLines.length && fileLines[fileLines.length - 1] === '') fileLines.pop();
             return fileLines;
         };
-        const findSequence = (haystack: string[], needle: string[], startAt: number): number => {
-            if (!needle.length) return -1;
+        const findSequences = (haystack: string[], needle: string[], startAt: number): number[] => {
+            if (!needle.length) return [];
+            const matches: number[] = [];
             for (let pos = Math.max(0, startAt); pos <= haystack.length - needle.length; pos++) {
                 let ok = true;
                 for (let offset = 0; offset < needle.length; offset++) {
@@ -1512,10 +1513,11 @@ export class MCPAdapter {
                         break;
                     }
                 }
-                if (ok) return pos;
+                if (ok) matches.push(pos);
             }
-            return -1;
+            return matches;
         };
+        const findSequence = (haystack: string[], needle: string[], startAt: number): number => findSequences(haystack, needle, startAt)[0] ?? -1;
         const buildHunks = async (kind: string, file: string, rawChunk: string[]) => {
             const hunks: HunkLine[][] = [];
             let current: HunkLine[] = [];
@@ -1570,8 +1572,10 @@ export class MCPAdapter {
                 const changed = hunk.filter((line) => line.op !== ' ');
                 const oldChanged = changed.filter((line) => line.op === '-').map((line) => line.text);
                 const newChanged = changed.filter((line) => line.op !== '-').map((line) => line.text);
-                const changedMatch = findSequence(sourceLines, oldChanged, cursor);
-                if (changedMatch < 0) throw new Error(`apply_patch hunk did not match ${file}`);
+                const changedMatches = findSequences(sourceLines, oldChanged, cursor);
+                if (changedMatches.length === 0) throw new Error(`apply_patch hunk did not match ${file}`);
+                if (changedMatches.length > 1) throw new Error(`apply_patch hunk is ambiguous for ${file}`);
+                const changedMatch = changedMatches[0];
                 cursor = changedMatch + Math.max(oldChanged.length, 1);
                 return [
                     `@@ -${changedMatch + 1},${oldChanged.length} +${changedMatch + 1},${newChanged.length} @@`,

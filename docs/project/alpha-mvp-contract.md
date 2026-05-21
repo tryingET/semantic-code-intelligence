@@ -47,7 +47,7 @@ The Alpha MVP tool surface is:
 | `find_references` | Return bounded reference candidates; any supplied file or URI context must stay workspace-contained before core delegation. | Symbol/query, file/range candidates, cap metadata. |
 | `graph_expand` | Expand file/symbol neighborhoods through imports, exports, callers, callees, or semantic edges where available, with a concise impact summary for change planning; file seeds, symbol-derived seed files, and fallback grep reads must stay workspace-contained. | Node id, edge types, depth, neighbors, fallback/limitation status, edge counts, best-effort caller context, impact evidence status, and planning hints. |
 | `recommend_checks` | Recommend transparent validation commands from touched files, a patch, and optional graph impact summary. It is advisory and does not run checks. | Minimum and broader command lists, rationale items tied to files/reasons, confidence, and input summary. |
-| `propose_patch` | Accept a patch proposal as a reviewable diff and reject invalid patch shapes. | Patch id or structured result; invalid-patch diagnostics on failure. |
+| `propose_patch` | Accept a patch proposal as a reviewable diff and reject invalid patch shapes; `apply_patch` input is converted to valid unified diff only when hunks match workspace-contained files without ambiguity. | Patch id or structured result; invalid-patch diagnostics on failure. |
 | `run_checks` | Run explicit validation commands or configured checks and return outcomes. | Commands, per-command pass/fail receipts, exit codes where available, stdout/stderr summaries, duration. |
 | `structural_search` | Run ast-grep-backed structural search over bounded repo-relative paths with explicit result, timeout, and output-buffer limits. | Workflow/backend availability, language, pattern, paths, limits, match count, cap status, file/range/snippet matches. |
 | `structural_patch_checks` | Generate an ast-grep structural rewrite diff, stage it in a snapshot, run explicit checks, and avoid working-tree writes by default. | Match count, patch file/replacement/diff-byte summary, snapshot id and artifact links, check result, applied=false unless explicitly guarded. |
@@ -59,6 +59,7 @@ The Alpha MVP tool surface is:
 - Results should be bounded by limits rather than unbounded repository traversal.
 - File-reading, text-search roots, symbol fallback hints, structural-snippet paths, graph expansion seeds, and navigation file/URI contexts must be contained after lexical normalization and realpath resolution; direct file reads also verify opened descriptors so symlink or TOCTOU-shaped escapes fail closed.
 - Errors should be structured enough for a harnessed LLM to recover without guessing.
+- HTTP `/api/v1/tools/call` distinguishes tool-invocation errors from domain outcomes: explicit tool errors return `success:false`, while valid tool calls may return payloads such as `ok:false` for failed checks, refused apply, or other non-successful domain states.
 - Stdio protocol paths must keep stdout clean.
 - Tool names and documentation use the canonical Semantic Code Intelligence identity; no pre-rename compatibility names are retained during alpha.
 

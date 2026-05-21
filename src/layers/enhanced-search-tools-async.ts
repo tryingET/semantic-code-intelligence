@@ -575,6 +575,14 @@ export class AsyncEnhancedGrep {
                         child?.stderr?.destroy?.();
                     } catch {}
                 });
+                if (cancelled) {
+                    try {
+                        child.kill('SIGTERM');
+                    } catch {}
+                    armHardKill();
+                    emitter.emit('end');
+                    return;
+                }
 
                 // Set up timeout
                 let timeout: NodeJS.Timeout | null = null;
@@ -725,30 +733,32 @@ export class AsyncEnhancedGrep {
         const stream = this.searchStream(options);
         const results: StreamingGrepResult[] = [];
         let done = false;
+        let settle: (value: StreamingGrepResult[]) => void = () => {};
+        const finish = () => settle([...results]);
         const promise = new Promise<StreamingGrepResult[]>((resolve) => {
+            settle = (value) => {
+                if (done) return;
+                done = true;
+                resolve(value);
+            };
             stream.on('data', (res) => {
                 if (done) return;
                 results.push(res);
                 if (options.maxResults && results.length >= options.maxResults) {
-                    done = true;
                     stream.cancel();
-                    resolve(results);
+                    finish();
                 }
             });
-            stream.on('end', () => {
-                if (!done) {
-                    done = true;
-                    resolve(results);
-                }
-            });
-            stream.on('error', () => {
-                if (!done) {
-                    done = true;
-                    resolve(results);
-                }
-            });
+            stream.on('end', finish);
+            stream.on('error', finish);
         });
-        return { promise, cancel: () => stream.cancel() };
+        return {
+            promise,
+            cancel: () => {
+                stream.cancel();
+                finish();
+            },
+        };
     }
 
     /**
