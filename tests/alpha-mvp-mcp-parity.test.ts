@@ -18,6 +18,7 @@ const patchPlanningDiff = `diff --git a/${patchPlanningTarget} b/${patchPlanning
  # Alpha MVP contract — harnessed LLM coding sessions
 +${patchPlanningMarker}
 `;
+const alphaPerCallBudgetMs = 15_000;
 
 async function parseContent(res: any): Promise<any> {
     const txt = res?.content?.[0]?.text;
@@ -27,6 +28,14 @@ async function parseContent(res: any): Promise<any> {
     } catch {
         return txt;
     }
+}
+
+async function callWithAlphaBudget(mcp: MCPAdapter, name: string, args: Record<string, unknown>): Promise<any> {
+    const started = Date.now();
+    const result = await mcp.handleToolCall(name, args);
+    const elapsedMs = Date.now() - started;
+    expect(elapsedMs, `${name} exceeded Alpha per-call budget`).toBeLessThanOrEqual(alphaPerCallBudgetMs);
+    return result;
 }
 
 describe('Alpha MVP direct MCP parity', () => {
@@ -75,17 +84,17 @@ describe('Alpha MVP direct MCP parity', () => {
 
     test('navigation cluster works through direct MCPAdapter calls', async () => {
         const textSearch = await parseContent(
-            await mcp.handleToolCall('text_search', { query: 'handleReadFile', path: `${process.cwd()}/src`, maxResults: 5 })
+            await callWithAlphaBudget(mcp, 'text_search', { query: 'handleReadFile', path: `${process.cwd()}/src`, maxResults: 5 })
         );
         const symbolSearch = await parseContent(
-            await mcp.handleToolCall('symbol_search', {
+            await callWithAlphaBudget(mcp, 'symbol_search', {
                 query: 'handleReadFile',
                 maxResults: 5,
                 fileHint: 'src/adapters/mcp-adapter.ts',
             })
         );
         const definition = await parseContent(
-            await mcp.handleToolCall('find_definition', {
+            await callWithAlphaBudget(mcp, 'find_definition', {
                 symbol: 'handleReadFile',
                 file: 'src/adapters/mcp-adapter.ts',
                 precise: true,
@@ -93,7 +102,7 @@ describe('Alpha MVP direct MCP parity', () => {
             })
         );
         const references = await parseContent(
-            await mcp.handleToolCall('find_references', {
+            await callWithAlphaBudget(mcp, 'find_references', {
                 symbol: 'handleReadFile',
                 file: 'src/adapters/mcp-adapter.ts',
                 includeDeclaration: true,
@@ -101,7 +110,7 @@ describe('Alpha MVP direct MCP parity', () => {
             })
         );
         const ast = await parseContent(
-            await mcp.handleToolCall('ast_query', {
+            await callWithAlphaBudget(mcp, 'ast_query', {
                 language: 'typescript',
                 query: '(program) @root',
                 paths: ['src/adapters/mcp-adapter.ts'],
@@ -109,7 +118,7 @@ describe('Alpha MVP direct MCP parity', () => {
             })
         );
         const graph = await parseContent(
-            await mcp.handleToolCall('graph_expand', {
+            await callWithAlphaBudget(mcp, 'graph_expand', {
                 file: 'src/adapters/mcp-adapter.ts',
                 edges: ['imports', 'exports'],
                 depth: 1,
