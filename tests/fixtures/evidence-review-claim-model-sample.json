@@ -395,7 +395,7 @@
     "gates": [
       {
         "id": "claim-model-fields",
-        "status": "satisfied",
+        "status": "present",
         "evidence": [
           "evidenceArtifacts",
           "claims",
@@ -404,11 +404,11 @@
           "operatorDecisionPoints"
         ],
         "limitation": "The normalized review carries the first-class claim model fields required before reconsidering handoff.",
-        "nextAction": "Keep evidence review CLI/markdown/JSON-only unless all ADR-0002 reconsideration gates and owner acceptance are satisfied."
+        "nextAction": "Keep evidence review CLI/markdown/JSON-only unless all ADR-0002 reconsideration gates are present and owner acceptance is recorded outside SCI."
       },
       {
         "id": "absence-states",
-        "status": "satisfied",
+        "status": "present",
         "evidence": [
           "observed",
           "failed",
@@ -421,7 +421,7 @@
       },
       {
         "id": "selected-vs-recommended-commands",
-        "status": "satisfied",
+        "status": "present",
         "evidence": [
           "commands.selected",
           "commands.recommendedMinimum",
@@ -433,7 +433,7 @@
       },
       {
         "id": "read-only-boundary",
-        "status": "satisfied",
+        "status": "present",
         "evidence": [
           "authorityBoundaries.no-implicit-mutation"
         ],

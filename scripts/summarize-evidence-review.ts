@@ -206,7 +206,7 @@ type ReviewClaim = {
 
 type AuthorityBoundary = { id: string; boundary: string; affectedScope: string };
 type OperatorDecisionPoint = { id: string; options: string[]; supportingClaims: string[]; limitingClaims: string[]; residualUncertainty: string };
-type HandoffGateStatus = 'satisfied' | 'missing' | 'not_asserted';
+type HandoffGateStatus = 'present' | 'missing' | 'not_asserted';
 type HandoffReadinessGate = { id: string; status: HandoffGateStatus; evidence: string[]; limitation: string; nextAction: string };
 type HandoffReadiness = { status: 'blocked'; decision: 'cli_only'; summary: string; gates: HandoffReadinessGate[]; nextActions: string[]; authorityBoundary: string };
 
@@ -392,28 +392,28 @@ function buildHandoffReadiness(review: any): HandoffReadiness {
   const gates = [
     handoffGate(
       'claim-model-fields',
-      hasClaimModel ? 'satisfied' : 'missing',
+      hasClaimModel ? 'present' : 'missing',
       ['evidenceArtifacts', 'claims', 'limitations', 'authorityBoundaries', 'operatorDecisionPoints'].filter((field) => arr(review?.[field]).length > 0),
       hasClaimModel ? 'The normalized review carries the first-class claim model fields required before reconsidering handoff.' : 'The normalized review is missing one or more first-class claim model fields.',
-      'Keep evidence review CLI/markdown/JSON-only unless all ADR-0002 reconsideration gates and owner acceptance are satisfied.',
+      'Keep evidence review CLI/markdown/JSON-only unless all ADR-0002 reconsideration gates are present and owner acceptance is recorded outside SCI.',
     ),
     handoffGate(
       'absence-states',
-      observedStatesValid ? 'satisfied' : 'missing',
+      observedStatesValid ? 'present' : 'missing',
       ['observed', 'failed', 'unavailable', 'unknown', 'inapplicable'],
       observedStatesValid ? 'Evidence artifact observedStatus values are constrained to the supported absence-state vocabulary.' : 'One or more evidence artifact states are outside the supported absence-state vocabulary.',
       'Treat unsupported evidence states as schema drift and block handoff.',
     ),
     handoffGate(
       'selected-vs-recommended-commands',
-      commandDistinction ? 'satisfied' : 'missing',
+      commandDistinction ? 'present' : 'missing',
       ['commands.selected', 'commands.recommendedMinimum', 'commands.recommendedBroader', 'commands.recommendationsAppliedToSelected'],
       commandDistinction ? 'Selected validation commands remain structurally distinct from advisory recommendations.' : 'Selected and recommended command fields are not structurally distinct.',
       'Do not render recommendations as executed commands or silently add them to selected validation.',
     ),
     handoffGate(
       'read-only-boundary',
-      readOnlyBoundary ? 'satisfied' : 'missing',
+      readOnlyBoundary ? 'present' : 'missing',
       readOnlyBoundary ? ['authorityBoundaries.no-implicit-mutation'] : [],
       readOnlyBoundary ? 'The review preserves a no-implicit-mutation boundary for source, snapshots, target repos, AK, and databases.' : 'The review does not expose the no-implicit-mutation authority boundary.',
       'Do not attach host handoff or UI behavior that can mutate owner surfaces through this summary.',

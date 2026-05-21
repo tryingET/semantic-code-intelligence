@@ -90,9 +90,11 @@ function assertClaimModel(review: any) {
   expect(review.handoffReadiness.decision).toBe('cli_only');
   expect(review.handoffReadiness.authorityBoundary).toContain('not AK evidence');
   expect(review.handoffReadiness.gates.map((gate: any) => gate.id)).toContain('host-owner-acceptance');
+  expect(review.handoffReadiness.gates.find((gate: any) => gate.id === 'claim-model-fields')?.status).toBe('present');
   expect(review.handoffReadiness.gates.find((gate: any) => gate.id === 'host-owner-acceptance')?.status).toBe('missing');
   expect(review.handoffReadiness.gates.find((gate: any) => gate.id === 'sample-and-test-evidence')?.status).toBe('not_asserted');
   expect(review.handoffReadiness.nextActions.join('\n')).toContain('explicit Pi/operator-workbench owner acceptance');
+  expect(JSON.stringify(review.handoffReadiness)).not.toContain('satisfied');
 
   expect(review.limitations.map((limitation: any) => limitation.id)).toContain('graph-impact-limitation-1');
   expect(review.limitations[0].sourceArtifact).toBe('graph-impact');
