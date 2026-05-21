@@ -1,18 +1,20 @@
 #!/usr/bin/env bun
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
+import { redactString } from './evidence-summary-utils';
 
-const outputPath = '.test-results/alpha-evidence-history.json';
-const baselinePath = 'docs/project/alpha-evidence-latency-baseline.json';
+const evidenceRoot = process.env.SCI_ALPHA_EVIDENCE_ROOT || '.test-results';
+const outputPath = join(evidenceRoot, 'alpha-evidence-history.json');
+const baselinePath = process.env.SCI_ALPHA_EVIDENCE_BASELINE || 'docs/project/alpha-evidence-latency-baseline.json';
 
 const evidenceFiles = {
-    alpha: '.test-results/alpha-mvp-dogfood.json',
-    selfHosted: '.test-results/self-hosted-cli-dogfood.json',
-    structural: '.test-results/structural-workflow-dogfood.json',
-    graph: '.test-results/graph-impact-dogfood.json',
-    recommendChecks: '.test-results/recommend-checks-dogfood.json',
-    safeWrite: '.test-results/safe-write-dogfood.json',
-    gate: '.test-results/alpha-evidence-check.json',
+    alpha: join(evidenceRoot, 'alpha-mvp-dogfood.json'),
+    selfHosted: join(evidenceRoot, 'self-hosted-cli-dogfood.json'),
+    structural: join(evidenceRoot, 'structural-workflow-dogfood.json'),
+    graph: join(evidenceRoot, 'graph-impact-dogfood.json'),
+    recommendChecks: join(evidenceRoot, 'recommend-checks-dogfood.json'),
+    safeWrite: join(evidenceRoot, 'safe-write-dogfood.json'),
+    gate: join(evidenceRoot, 'alpha-evidence-check.json'),
 };
 
 const fallbackBudgetsMs: Record<string, number> = {
@@ -24,12 +26,37 @@ const fallbackBudgetsMs: Record<string, number> = {
     safeWrite: 15_000,
 };
 
+type SlowestCall = {
+    name: string;
+    elapsedMs: number;
+    observation?: string;
+} | null;
+
 function readJson(path: string): any {
     return JSON.parse(readFileSync(path, 'utf8'));
 }
 
+function finiteElapsed(call: any): number {
+    const value = Number(call?.elapsedMs || 0);
+    return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function slowestCall(calls: any[]): SlowestCall {
+    let slowest: any = null;
+    for (const call of calls) {
+        if (!slowest || finiteElapsed(call) > finiteElapsed(slowest)) slowest = call;
+    }
+    if (!slowest) return null;
+    const observation = typeof slowest?.observation === 'string' ? redactString(slowest.observation) : undefined;
+    return {
+        name: String(slowest?.name || 'unknown'),
+        elapsedMs: finiteElapsed(slowest),
+        ...(observation ? { observation } : {}),
+    };
+}
+
 function maxElapsed(calls: any[]): number {
-    return Math.max(0, ...calls.map((call) => Number(call?.elapsedMs || 0)).filter((value) => Number.isFinite(value)));
+    return slowestCall(calls)?.elapsedMs || 0;
 }
 
 function callsFor(key: string, evidence: any): any[] {
@@ -53,6 +80,44 @@ function classify(currentMs: number, baselineMs: number, budgetMs: number): stri
     return 'within_noise_band';
 }
 
+function likelyLatencyArea(call: SlowestCall): string {
+    const name = call?.name || '';
+    if (!name) return 'unknown';
+    if (name.startsWith('cli:')) return 'cli_startup_or_workflow';
+    if (/text_search|symbol_search|search/i.test(name)) return 'search';
+    if (/find_definition|find_references|definition|reference/i.test(name)) return 'navigation_resolution';
+    if (/graph/i.test(name)) return 'graph_expansion';
+    if (/structural|ast_query/i.test(name)) return 'structural_analysis';
+    if (/run_checks|check|safe_write|patch_checks/i.test(name)) return 'validation_or_snapshot_checks';
+    if (/snapshot|propose_patch|patch/i.test(name)) return 'snapshot_or_patch_planning';
+    if (/read_file/i.test(name)) return 'bounded_file_read';
+    return 'unknown';
+}
+
+function remediationFor(area: string, call: SlowestCall): string {
+    const name = call?.name || 'unknown';
+    switch (area) {
+        case 'cli_startup_or_workflow':
+            return `Slowest call is ${name}; inspect CLI startup/process cost before treating tool logic as slow.`;
+        case 'search':
+            return `Slowest call is ${name}; inspect search breadth, path hints, result caps, and ignore handling before raising budgets.`;
+        case 'navigation_resolution':
+            return `Slowest call is ${name}; inspect symbol/definition/reference fallback path and file hints before raising budgets.`;
+        case 'graph_expansion':
+            return `Slowest call is ${name}; inspect graph edge request breadth, fallback provenance, and caller-context expansion.`;
+        case 'structural_analysis':
+            return `Slowest call is ${name}; inspect AST/ast-grep path scope, pattern complexity, and timeout caps.`;
+        case 'validation_or_snapshot_checks':
+            return `Slowest call is ${name}; inspect selected commands, snapshot materialization, and external check execution.`;
+        case 'snapshot_or_patch_planning':
+            return `Slowest call is ${name}; inspect snapshot creation/materialization and patch size before raising budgets.`;
+        case 'bounded_file_read':
+            return `Slowest call is ${name}; inspect file size/range and path containment overhead.`;
+        default:
+            return `Slowest call is ${name}; classify startup, search, graph, structural matching, or external command cost before raising budgets.`;
+    }
+}
+
 const baseline = readJson(baselinePath);
 const gate = readJson(evidenceFiles.gate);
 
@@ -60,12 +125,15 @@ const comparisons = Object.entries(evidenceFiles)
     .filter(([key]) => key !== 'gate')
     .map(([key, path]) => {
         const evidence = readJson(path);
-        const currentMaxElapsedMs = maxElapsed(callsFor(key, evidence));
+        const calls = callsFor(key, evidence);
+        const slowest = slowestCall(calls);
+        const currentMaxElapsedMs = maxElapsed(calls);
         const baselineMaxElapsedMs = Number(baseline?.baselines?.[key]?.maxElapsedMs || 0);
         const budgetMs = budgetFor(key, gate);
         const deltaMs = currentMaxElapsedMs - baselineMaxElapsedMs;
         const ratio = baselineMaxElapsedMs > 0 ? Number((currentMaxElapsedMs / baselineMaxElapsedMs).toFixed(3)) : null;
         const status = classify(currentMaxElapsedMs, baselineMaxElapsedMs, budgetMs);
+        const likelyArea = likelyLatencyArea(slowest);
         return {
             key,
             sourceFile: path,
@@ -76,11 +144,22 @@ const comparisons = Object.entries(evidenceFiles)
             budgetMs,
             status,
             ok: status !== 'over_budget',
+            slowestCall: slowest,
+            likelyArea,
+            remediationHint: remediationFor(likelyArea, slowest),
         };
     });
 
 const warnings = comparisons.filter((item) => item.status === 'slower_than_baseline');
 const overBudget = comparisons.filter((item) => item.status === 'over_budget');
+const warningDetails = [...overBudget, ...warnings].map((item) => ({
+    key: item.key,
+    status: item.status,
+    call: item.slowestCall?.name || 'unknown',
+    elapsedMs: item.slowestCall?.elapsedMs || item.currentMaxElapsedMs,
+    likelyArea: item.likelyArea,
+    remediationHint: item.remediationHint,
+}));
 
 const report = {
     schema: 'semantic-code-intelligence.alpha_evidence_history.v1',
@@ -109,9 +188,9 @@ const report = {
                 : warnings.length > 0
                   ? `${warnings.length} evidence class(es) are materially slower than the baseline but remain within Alpha budgets.`
                   : 'Current generated evidence remains within Alpha budgets and historical noise bands.',
+        warningDetails,
         remediationHints: [
-            'If a warning repeats, classify whether the delay is startup, search breadth, graph expansion, structural matching, or external check execution.',
-            'Narrow paths, limits, or selected commands before increasing budgets.',
+            ...warningDetails.map((item) => item.remediationHint),
             'Refresh the baseline only after an intentional performance-affecting change is reviewed and documented.',
         ],
     },
@@ -119,6 +198,7 @@ const report = {
         proves: [
             'Current generated Alpha evidence can be compared against an explicit elapsed-time baseline.',
             'Historical comparison distinguishes warning-level latency drift from existing coarse Alpha budget failure.',
+            'Warning diagnostics identify the slowest observed call and likely latency area for triage.',
         ],
         does_not_prove: [
             'Production p95/p99 latency SLOs.',

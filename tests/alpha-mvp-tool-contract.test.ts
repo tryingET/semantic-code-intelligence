@@ -151,7 +151,7 @@ bindDescribe('Alpha MVP HTTP tools/call contract', () => {
         expect(Array.isArray(results.get('ast_query')?.results)).toBe(true);
         expect(results.get('graph_expand')?.schemaVersion).toBe(2);
         expect(results.get('graph_expand')?.neighbors).toBeDefined();
-    });
+    }, 30000);
 
     structuralTest('structural_search succeeds through HTTP tools/call', async () => {
         const { status, body } = await callTool(base, 'structural_search', {

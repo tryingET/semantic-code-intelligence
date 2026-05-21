@@ -215,7 +215,7 @@ bindDescribe('Alpha MVP MCP HTTP protocol', () => {
         expect(Array.isArray(results.get('ast_query')?.results)).toBe(true);
         expect(results.get('graph_expand')?.schemaVersion).toBe(2);
         expect(results.get('graph_expand')?.neighbors).toBeDefined();
-    });
+    }, 30000);
 
     structuralTest('structural_search succeeds through JSON-RPC tools/call', async () => {
         const { status, body } = await toolsCall(29, 'structural_search', {

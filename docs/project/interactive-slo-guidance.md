@@ -28,7 +28,7 @@ The Alpha evidence gate currently budgets generated dogfood calls as follows:
 | Check recommendation calls | 15s per call |
 | Safe-write calls | 15s per call |
 
-Recent evidence packets generally run representative bounded calls well below those ceilings, often sub-second to a few seconds, but the budgets are intentionally loose. `bun run alpha:evidence:history` now compares generated elapsed-time maxima against `docs/project/alpha-evidence-latency-baseline.json` as a lightweight historical regression signal. These checks prove that the current harness is not obviously stalled; they do **not** prove production latency SLOs.
+Recent evidence packets generally run representative bounded calls well below those ceilings, often sub-second to a few seconds, but the budgets are intentionally loose. `bun run alpha:evidence:history` now compares generated elapsed-time maxima against `docs/project/alpha-evidence-latency-baseline.json` as a lightweight historical regression signal and includes the slowest observed call plus a likely latency area for warning triage. These checks prove that the current harness is not obviously stalled; they do **not** prove production latency SLOs.
 
 ## Operator latency bands
 
@@ -110,11 +110,13 @@ Current evidence does **not** prove:
 - stable cross-machine historical benchmarks;
 - that CLI startup overhead is optimal for long-lived sessions.
 
-## Recommended next hardening
+## Post-closure hardening triggers
 
-Before broad Phase 1 closure, prefer one of:
+Phase 1 is already closed as an Alpha MVP substrate. Do not add performance dogfood for confidence alone. Continue performance hardening only when an Alpha evidence regression, repeated noisy/misleading `alpha:evidence:history` warning, or concrete operator-reported slow workflow identifies a measurable follow-up.
 
-1. collect external target latency evidence across at least one larger or less TypeScript-centric repo;
-2. repeat elapsed-time history comparison across more generated evidence runs before refreshing the baseline;
-3. split evidence budgets by workflow type and repository size;
-4. document transport-specific startup overhead after more MCP HTTP vs CLI dogfood.
+Useful bounded follow-ups include:
+
+1. classify repeated warnings by the reported slowest call and likely latency area;
+2. narrow paths, limits, or selected commands before increasing budgets;
+3. refresh the baseline only after an intentional performance-affecting change is reviewed and documented;
+4. split evidence budgets by workflow type and repository size only if current coarse budgets become misleading.
