@@ -27,9 +27,9 @@ import { StructuralWorkflowService } from '../core/workflows/structural-workflow
 import { GraphExpandWorkflowService } from '../core/workflows/graph-expand-workflow.js';
 import { WorkspaceQueryWorkflowService } from '../core/workflows/workspace-query-workflow.js';
 import { RenameWorkflowService } from '../core/workflows/rename-workflow.js';
+import { NavigationWorkflowService } from '../core/workflows/navigation-workflow.js';
 import { ToolRegistry } from '../core/tools/registry.js';
-import { openWorkspaceFileForRead, resolveWorkspacePath } from '../core/workspace-path.js';
-import { DefinitionKind } from '../core/types.js';
+import { resolveWorkspacePath } from '../core/workspace-path.js';
 import { createValidationError, type ErrorContext, type RecoveryOptions, withMcpErrorHandling } from '../core/utils/error-handler.js';
 import { adapterLogger, mcpLogger } from '../core/utils/file-logger.js';
 import {
@@ -77,6 +77,7 @@ export class MCPAdapter {
     private graphWorkflows: GraphExpandWorkflowService;
     private workspaceQueries: WorkspaceQueryWorkflowService;
     private renameWorkflows: RenameWorkflowService;
+    private navigationWorkflows: NavigationWorkflowService;
 
     constructor(coreAnalyzer: CoreAnalyzer, config: MCPAdapterConfig = {}) {
         this.coreAnalyzer = coreAnalyzer;
@@ -112,6 +113,13 @@ export class MCPAdapter {
                 });
                 return this.safeParseContent(result);
             },
+        });
+        this.navigationWorkflows = new NavigationWorkflowService({
+            workspaceRoot: () => this.getWorkspaceRoot(),
+            coreAnalyzer: this.coreAnalyzer,
+            maxResults: () => this.config.maxResults || 100,
+            resolveWorkspaceFile: (value, inputLabel) => this.resolveMcpWorkspaceFile(value, inputLabel),
+            containedUriOrNull: (value, inputLabel) => this.containedMcpUriOrNull(value, inputLabel),
         });
 
         // Defensive wrapper to ensure MCP-compatible shape for direct calls in tests
@@ -918,503 +926,26 @@ export class MCPAdapter {
         }
     }
 
-    private wordAt(text: string, pos: { line: number; character: number }): string | null {
-        const lines = text.split(/\r?\n/);
-        if (pos.line < 0 || pos.line >= lines.length) return null;
-        const line = lines[pos.line] || '';
-        const idx = Math.min(Math.max(pos.character, 0), line.length);
-        const re = /[A-Za-z0-9_]+/g;
-        let m: RegExpExecArray | null = null;
-        while ((m = re.exec(line))) {
-            const start = m.index;
-            const end = start + m[0].length;
-            if (idx >= start && idx <= end) return m[0];
-        }
-        return null;
-    }
-
     /**
      * Handle find_definition tool call with validation
      */
-    private async handleFindDefinition(args: Record<string, any>, context: ErrorContext) {
-        const position = args.position ? normalizePosition(args.position) : createPosition(0, 0);
-        let symbol: string = typeof args.symbol === 'string' ? args.symbol : '';
-        // Try derive symbol from file+position when not provided. File contexts are
-        // caller-controlled MCP input, so resolve them through workspace containment
-        // before any stat/read or before forwarding a URI to core analyzers.
-        let fileContext: { path: string; uri: string; relativePath: string } | null = null;
+    private async handleFindDefinition(args: Record<string, any>, _context: ErrorContext) {
         try {
-            fileContext = args.file ? await this.resolveMcpWorkspaceFile(args.file, 'find_definition file') : null;
+            return this.formatSnapshotWorkflowResult(await this.navigationWorkflows.findDefinition(args));
         } catch (error) {
-            if (error instanceof CoreError) return handleAdapterError(error, 'mcp');
-            throw error;
+            return handleAdapterError(error, 'mcp');
         }
-        const uri = fileContext?.uri || null;
-        if (!symbol && fileContext) {
-            let opened: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
-            try {
-                opened = await openWorkspaceFileForRead(fileContext.path, { workspaceRoot: this.getWorkspaceRoot(), inputLabel: 'find_definition file' });
-                const text = await opened.handle.readFile('utf8');
-                const derived = this.wordAt(text, position);
-                if (derived) symbol = derived;
-            } catch {
-            } finally {
-                await opened?.handle.close().catch(() => undefined);
-            }
-        }
-        if (!symbol && !uri) {
-            throw new CoreError('InvalidParams', 'Missing required parameter: symbol');
-        }
-
-        // Ensure core is initialized for E2E/local flows
-        try {
-            await (this.coreAnalyzer as any)?.initialize?.();
-        } catch {}
-
-        const maxResults =
-            typeof args.maxResults === 'number' && args.maxResults > 0 ? args.maxResults : this.config.maxResults;
-
-        if (!uri) {
-            // Use workspace-wide search to find the symbol
-            // This will trigger Layer 1's search capabilities
-            const workspaceRequest = buildFindDefinitionRequest({
-                uri: '', // Empty URI triggers workspace search
-                position,
-                identifier: symbol,
-                maxResults,
-                includeDeclaration: true,
-                precise: !!args.precise,
-            });
-
-            try {
-                // Quick explicit declaration scan to prefer true definitions in small workspaces
-                const wsRoot = this.getWorkspaceRoot();
-                const explicit = await this.scanForExplicitDeclaration(wsRoot, symbol);
-                if (explicit) {
-                    return {
-                        content: [
-                            {
-                                type: 'text',
-                                text: JSON.stringify(
-                                    {
-                                        schemaVersion: 2,
-                                        definitions: [definitionToApiResponse(explicit as any)],
-                                        performance: {
-                                            layer1: 0,
-                                            layer2: 0,
-                                            layer3: 0,
-                                            layer4: 0,
-                                            layer5: 0,
-                                            total: 0,
-                                        },
-                                        requestId: undefined,
-                                        count: 1,
-                                    },
-                                    null,
-                                    2
-                                ),
-                            },
-                        ],
-                        isError: false,
-                    };
-                }
-                const result = await (this.coreAnalyzer as any).findDefinitionAsync(workspaceRequest);
-                let prioritized = Array.isArray(result.data)
-                    ? result.data.slice().sort((a: any, b: any) => {
-                          const prioKind = (k: string) =>
-                              k === 'class'
-                                  ? 4
-                                  : k === 'function'
-                                    ? 3
-                                    : k === 'interface'
-                                      ? 2
-                                      : k === 'variable'
-                                        ? 1
-                                        : 0;
-                          const toBase = (u: string) => {
-                              try {
-                                  const p = new URL(u).pathname;
-                                  return p.split('/').pop() || p;
-                              } catch {
-                                  return u.split('/').pop() || u;
-                              }
-                          };
-                          const name = String(symbol || '').toLowerCase();
-                          const aBase = toBase(a.uri).toLowerCase();
-                          const bBase = toBase(b.uri).toLowerCase();
-                          const aNameHit = aBase.includes(name) ? 1 : 0;
-                          const bNameHit = bBase.includes(name) ? 1 : 0;
-                          if (aNameHit !== bNameHit) return bNameHit - aNameHit;
-                          const kindDiff = prioKind(b.kind) - prioKind(a.kind);
-                          if (kindDiff !== 0) return kindDiff;
-                          return (b.confidence || 0) - (a.confidence || 0);
-                      })
-                    : result.data;
-
-                // If top result doesn't look like the defining file, try a quick targeted scan
-                try {
-                    const toBase = (u: string) => {
-                        try {
-                            const p = new URL(u).pathname;
-                            return p.split('/').pop() || p;
-                        } catch {
-                            return u.split('/').pop() || u;
-                        }
-                    };
-                    const top = Array.isArray(prioritized) && prioritized[0] ? prioritized[0] : null;
-                    const name = String(args.symbol || '').toLowerCase();
-                    const likelyTop = top ? toBase(top.uri).toLowerCase().includes(name) : false;
-                    if (!likelyTop) {
-                        const wsRoot = this.getWorkspaceRoot();
-                        const fallbackDefs = await this.fallbackScanForDefinition(wsRoot, args.symbol, 300);
-                        const match = fallbackDefs.find((d) => toBase(d.uri).toLowerCase().includes(name));
-                        if (match) {
-                            prioritized = [match, ...prioritized];
-                        }
-                        // As a final tie-breaker, inspect candidate lines to detect declarations
-                        if (Array.isArray(prioritized) && prioritized.length) {
-                            const declRe = new RegExp(`\\b(class|function|interface|type)\\s+${args.symbol}\\b`);
-                            for (const def of prioritized.slice(0, 200)) {
-                                try {
-                                    const filePath = (() => {
-                                        try {
-                                            return new URL(def.uri).pathname;
-                                        } catch {
-                                            return def.uri.replace(/^file:\/\//, '');
-                                        }
-                                    })();
-                                    const containedUri = await this.containedMcpUriOrNull(filePath, 'find_definition result uri');
-                                    if (!containedUri) continue;
-                                    const containedPath = fileURLToPath(containedUri);
-                                    let opened: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
-                                    try {
-                                        opened = await openWorkspaceFileForRead(containedPath, { workspaceRoot: this.getWorkspaceRoot(), inputLabel: 'find_definition result uri' });
-                                        const text = await opened.handle.readFile('utf8');
-                                        const lines = text.split(/\r?\n/);
-                                        const line = lines[def.range?.start?.line ?? 0] || '';
-                                        if (declRe.test(line)) {
-                                            // Promote this as the top result
-                                            prioritized = [def, ...prioritized.filter((d: any) => d !== def)];
-                                            break;
-                                        }
-                                    } finally {
-                                        await opened?.handle.close().catch(() => undefined);
-                                    }
-                                } catch {}
-                            }
-                        }
-                    }
-                } catch {}
-                const containedPrioritized = await this.filterMcpWorkspaceItemsByUri(Array.isArray(prioritized) ? prioritized : [], 'find_definition result uri');
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: JSON.stringify(
-                                {
-                                    schemaVersion: 2,
-                                    definitions: containedPrioritized.map((def: any) => definitionToApiResponse(def)),
-                                    performance: result.performance,
-                                    requestId: result.requestId,
-                                    count: containedPrioritized.length,
-                                },
-                                null,
-                                2
-                            ),
-                        },
-                    ],
-                    isError: false,
-                };
-            } catch (e) {
-                // Fallback: perform a very small, bounded scan in the configured workspace root
-                const wsRoot = this.getWorkspaceRoot();
-                const fallbackDefs = await this.fallbackScanForDefinition(wsRoot, args.symbol, 200);
-                const containedFallbackDefs = await this.filterMcpWorkspaceItemsByUri(fallbackDefs, 'find_definition fallback result uri');
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: JSON.stringify(
-                                {
-                                    schemaVersion: 2,
-                                    definitions: containedFallbackDefs.map((def: any) => definitionToApiResponse(def)),
-                                    performance: { layer1: 0, layer2: 0, layer3: 0, layer4: 0, layer5: 0, total: 0 },
-                                    requestId: undefined,
-                                    count: containedFallbackDefs.length,
-                                    fallback: true,
-                                },
-                                null,
-                                2
-                            ),
-                        },
-                    ],
-                    isError: false,
-                };
-            }
-        }
-
-        // Normal path when file is provided
-        const request = buildFindDefinitionRequest({
-            uri,
-            position,
-            identifier: symbol,
-            maxResults,
-            includeDeclaration: true,
-        });
-
-        const result = await (this.coreAnalyzer as any).findDefinitionAsync(request);
-        const prioritized = Array.isArray(result.data)
-            ? result.data.slice().sort((a: any, b: any) => {
-                  const prioKind = (k: string) =>
-                      k === 'class' ? 4 : k === 'function' ? 3 : k === 'interface' ? 2 : k === 'variable' ? 1 : 0;
-                  const toBase = (u: string) => {
-                      try {
-                          const p = new URL(u).pathname;
-                          return p.split('/').pop() || p;
-                      } catch {
-                          return u.split('/').pop() || u;
-                      }
-                  };
-                  const name = String(args.symbol || '').toLowerCase();
-                  const aBase = toBase(a.uri).toLowerCase();
-                  const bBase = toBase(b.uri).toLowerCase();
-                  const aNameHit = aBase.includes(name) ? 1 : 0;
-                  const bNameHit = bBase.includes(name) ? 1 : 0;
-                  if (aNameHit !== bNameHit) return bNameHit - aNameHit;
-                  const kindDiff = prioKind(b.kind) - prioKind(a.kind);
-                  if (kindDiff !== 0) return kindDiff;
-                  return (b.confidence || 0) - (a.confidence || 0);
-              })
-            : result.data;
-
-        const containedPrioritized = await this.filterMcpWorkspaceItemsByUri(Array.isArray(prioritized) ? prioritized : [], 'find_definition result uri');
-        return {
-            content: [
-                {
-                    type: 'text',
-                    text: JSON.stringify(
-                        {
-                            schemaVersion: 2,
-                            definitions: containedPrioritized.map((def: any) => definitionToApiResponse(def)),
-                            performance: result.performance,
-                            requestId: result.requestId,
-                            count: containedPrioritized.length,
-                        },
-                        null,
-                        2
-                    ),
-                },
-            ],
-            isError: false,
-        };
-    }
-
-    // Extremely limited fallback used only when async fast-path times out in tests or constrained environments
-    private async fallbackScanForDefinition(root: string, symbol: string, maxFiles: number) {
-        const fs = await import('fs/promises');
-        const path = await import('path');
-        const results: any[] = [];
-        const queue: string[] = [root];
-        const visited: Set<string> = new Set();
-        const re = new RegExp(`\\b${symbol.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}\\b`);
-        let filesScanned = 0;
-
-        while (queue.length && filesScanned < maxFiles && results.length === 0) {
-            const dir = queue.shift()!;
-            if (visited.has(dir)) continue;
-            visited.add(dir);
-            let entries: any[] = [];
-            try {
-                entries = await fs.readdir(dir, { withFileTypes: true } as any);
-            } catch {
-                continue;
-            }
-            for (const ent of entries) {
-                const p = path.join(dir, ent.name);
-                if (ent.isDirectory()) {
-                    if (/node_modules|\.git|dist|coverage|out|build|venv|\.venv/.test(ent.name)) continue;
-                    queue.push(p);
-                } else if (ent.isFile() && /\.(ts|tsx|js|jsx|md)$/.test(ent.name)) {
-                    filesScanned++;
-                    try {
-                        const text = await fs.readFile(p, 'utf8');
-                        const lines = text.split(/\r?\n/);
-                        for (let i = 0; i < lines.length; i++) {
-                            if (re.test(lines[i])) {
-                                results.push({
-                                    identifier: symbol,
-                                    uri: `file://${p}`,
-                                    range: {
-                                        start: { line: i, character: Math.max(0, lines[i].indexOf(symbol)) },
-                                        end: {
-                                            line: i,
-                                            character: Math.max(0, lines[i].indexOf(symbol)) + symbol.length,
-                                        },
-                                    },
-                                    kind: DefinitionKind.Class,
-                                    name: symbol,
-                                    source: 'exact',
-                                    confidence: 0.5,
-                                    layer: 'async-layer1',
-                                });
-                                break;
-                            }
-                        }
-                    } catch {}
-                    if (results.length > 0) break;
-                }
-                if (filesScanned >= maxFiles || results.length > 0) break;
-            }
-        }
-        return results;
-    }
-
-    // Targeted scan to detect explicit declarations like class/function/interface/type <Symbol>
-    private async scanForExplicitDeclaration(root: string, symbol: string, maxFiles = 300) {
-        const fs = await import('fs/promises');
-        const path = await import('path');
-        const queue: string[] = [root];
-        const visited: Set<string> = new Set();
-        const declRe = new RegExp(`\\b(class|function|interface|type)\\s+${symbol}\\b`);
-        let filesScanned = 0;
-
-        while (queue.length && filesScanned < maxFiles) {
-            const dir = queue.shift()!;
-            if (visited.has(dir)) continue;
-            visited.add(dir);
-            let entries: any[] = [];
-            try {
-                entries = await fs.readdir(dir, { withFileTypes: true } as any);
-            } catch {
-                continue;
-            }
-            for (const ent of entries) {
-                const p = path.join(dir, ent.name);
-                if (ent.isDirectory()) {
-                    if (/node_modules|\.git|dist|coverage|out|build|venv|\.venv/.test(ent.name)) continue;
-                    queue.push(p);
-                } else if (ent.isFile() && /\.(ts|tsx|js|jsx|md)$/.test(ent.name)) {
-                    filesScanned++;
-                    try {
-                        const text = await fs.readFile(p, 'utf8');
-                        const lines = text.split(/\r?\n/);
-                        for (let i = 0; i < lines.length; i++) {
-                            const line = lines[i];
-                            if (declRe.test(line)) {
-                                const col = Math.max(0, line.indexOf(symbol));
-                                return {
-                                    identifier: symbol,
-                                    uri: `file://${p}`,
-                                    range: {
-                                        start: { line: i, character: col },
-                                        end: { line: i, character: col + symbol.length },
-                                    },
-                                    kind: /class\s+/.test(line)
-                                        ? DefinitionKind.Class
-                                        : /function\s+/.test(line)
-                                          ? DefinitionKind.Function
-                                          : /interface\s+/.test(line)
-                                            ? DefinitionKind.Interface
-                                            : DefinitionKind.Variable,
-                                    name: symbol,
-                                    source: 'exact',
-                                    confidence: 0.95,
-                                    layer: 'async-layer1',
-                                };
-                            }
-                        }
-                    } catch {}
-                }
-            }
-        }
-        return null;
     }
 
     /**
      * Handle find_references tool call with validation
      */
-    private async handleFindReferences(args: Record<string, any>, context: ErrorContext) {
-        // Parity: tolerate empty symbol by returning empty references (not error)
-        if (typeof args?.symbol === 'string' && args.symbol.trim().length === 0) {
-            return {
-                content: [
-                    {
-                        type: 'text',
-                        text: JSON.stringify(
-                            { schemaVersion: 2, references: [], performance: { total: 0 }, requestId: 'none', count: 0 },
-                            null,
-                            2
-                        ),
-                    },
-                ],
-                isError: false,
-            };
-        }
-        this.validateArgs(args, ['symbol'], context);
+    private async handleFindReferences(args: Record<string, any>, _context: ErrorContext) {
         try {
-            await (this.coreAnalyzer as any)?.initialize?.();
-        } catch {}
-
-        // For MCP, we don't have exact position; require a file context for cross-protocol consistency
-        const maxResults =
-            typeof args.maxResults === 'number' && args.maxResults > 0 ? args.maxResults : this.config.maxResults;
-
-        if (!args.file && !args.uri) {
-            return {
-                content: [
-                    {
-                        type: 'text',
-                        text: JSON.stringify(
-                            { schemaVersion: 2, references: [], performance: { total: 0 }, requestId: 'none', count: 0 },
-                            null,
-                            2
-                        ),
-                    },
-                ],
-                isError: false,
-            };
-        }
-        // Use symbol-based search at provided file context. The context path/URI is
-        // caller-controlled and must be contained before delegating to core analyzers.
-        let fileContext: { path: string; uri: string; relativePath: string };
-        try {
-            fileContext = await this.resolveMcpWorkspaceFile(String(args.file || args.uri), 'find_references file');
+            return this.formatSnapshotWorkflowResult(await this.navigationWorkflows.findReferences(args));
         } catch (error) {
-            if (error instanceof CoreError) return handleAdapterError(error, 'mcp');
-            throw error;
+            return handleAdapterError(error, 'mcp');
         }
-        const request = buildFindReferencesRequest({
-            uri: fileContext.uri,
-            position: createPosition(0, 0),
-            identifier: args.symbol,
-            maxResults,
-            includeDeclaration: args.includeDeclaration ?? false,
-            precise: !!args.precise,
-        });
-
-        const result = await (this.coreAnalyzer as any).findReferencesAsync(request);
-        const containedReferences = await this.filterMcpWorkspaceItemsByUri(Array.isArray(result.data) ? result.data : [], 'find_references result uri');
-
-        return {
-            content: [
-                {
-                    type: 'text',
-                    text: JSON.stringify(
-                        {
-                            schemaVersion: 2,
-                            references: containedReferences.map((ref: any) => referenceToApiResponse(ref)),
-                            performance: result.performance,
-                            requestId: result.requestId,
-                            count: containedReferences.length,
-                            scope: args.scope || 'workspace',
-                        },
-                        null,
-                        2
-                    ),
-                },
-            ],
-            isError: false,
-        };
     }
 
     private async handleGetCompletions(args: Record<string, any>, context: ErrorContext) {
