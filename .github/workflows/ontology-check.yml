@@ -34,10 +34,10 @@ jobs:
       - name: Run tests with coverage
         run: bun test --coverage
       
-      - name: Check ontology consistency
+      - name: Check SCI CLI smoke
         run: |
-          bun run dist/cli/index.js analyze --path .
-          bun run dist/cli/index.js stats
+          bun run dist/cli/cli.js stats --json
+          bun run dist/cli/cli.js get-snapshot --json
       
       - name: Upload test results
         if: always()

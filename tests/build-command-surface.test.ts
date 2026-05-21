@@ -35,6 +35,15 @@ describe('build command surface', () => {
         expect(prTemplate).not.toMatch(/^bun test$/m);
     });
 
+    test('ontology-check workflow uses supported built CLI commands', () => {
+        const workflow = readText('.github/workflows/ontology-check.yml');
+
+        expect(workflow).toContain('bun run dist/cli/cli.js stats --json');
+        expect(workflow).toContain('bun run dist/cli/cli.js get-snapshot --json');
+        expect(workflow).not.toContain('dist/cli/index.js');
+        expect(workflow).not.toContain('analyze --path');
+    });
+
     test('package build delegates to the canonical all-adapter build', () => {
         const packageJson = JSON.parse(readText('package.json')) as { scripts?: Record<string, string> };
         expect(packageJson.scripts?.build).toBe('bun run build:all');
