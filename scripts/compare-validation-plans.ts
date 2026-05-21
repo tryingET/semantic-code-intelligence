@@ -1,14 +1,24 @@
 #!/usr/bin/env bun
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { readEvidenceJsonFile, safeEvidenceError, sanitizeEvidence, writeTextFileNoSymlink } from './evidence-summary-utils';
 import { validateGraphImpactContext } from './validation-plan-graph-impact';
 import { validateValidationPlanSemantics } from './validation-plan-semantics';
+
+process.on('uncaughtException', (error) => {
+  console.error(`validation-plan-compare: ${safeEvidenceError(error)}`);
+  process.exit(1);
+});
 
 const evidenceRoot = process.env.SCI_VALIDATION_PLAN_EVIDENCE_ROOT || '.test-results';
 const outputPath = join(evidenceRoot, 'validation-plan-comparison.json');
 
 function readJson(path: string): any {
-  return JSON.parse(readFileSync(path, 'utf8'));
+  try {
+    return readEvidenceJsonFile(path);
+  } catch (error) {
+    throw new Error(safeEvidenceError(error));
+  }
 }
 
 function selected(plan: any): string[] {
@@ -199,7 +209,8 @@ const evidence = {
   },
 };
 
+const outputEvidence = sanitizeEvidence(evidence);
 mkdirSync(dirname(outputPath), { recursive: true });
-writeFileSync(outputPath, `${JSON.stringify(evidence, null, 2)}\n`);
-console.log(JSON.stringify(evidence, null, process.argv.includes('--pretty') ? 2 : 0));
+writeTextFileNoSymlink(outputPath, `${JSON.stringify(outputEvidence, null, 2)}\n`);
+console.log(JSON.stringify(outputEvidence, null, process.argv.includes('--pretty') ? 2 : 0));
 if (!evidence.ok) process.exitCode = 1;

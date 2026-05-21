@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -192,6 +192,74 @@ describe('validation plan comparison graph context', () => {
 
     expect(report.ok).toBe(false);
     expect(report.drift.some((item: any) => item.failures.includes('graph_impact_context_incomplete'))).toBe(true);
+  });
+
+  test('redacts evidence-controlled strings in stdout and generated comparison output', () => {
+    const root = makeRoot();
+    writeEvidence(root, validationPlan({
+      workflow: `patch_checks_in_snapshot TOKEN_SECRET=workflow-secret ${process.cwd()} /tmp/private-workflow`,
+      commands: {
+        selected: [`true SECRET_KEY=command-secret ${process.cwd()} /tmp/private-command`],
+        recommendedMinimum: [],
+        recommendationsAppliedToSelected: false,
+      },
+      graphImpact: {
+        seed: { kind: 'file', value: `src/example.ts SECRET_KEY=graph-secret ${process.cwd()} /tmp/private-graph` },
+        requestedEdges: ['imports'],
+        evidence: [{ edge: `imports TOKEN_SECRET=edge-secret ${process.cwd()} /tmp/private-edge`, count: 1, status: 'evidence' }],
+        limitations: [],
+      },
+    }));
+
+    const result = runComparison(root);
+    expect(result.status).toBe(1);
+    expect(result.stdout).not.toContain('TOKEN_SECRET=workflow-secret');
+    expect(result.stdout).not.toContain('SECRET_KEY=command-secret');
+    expect(result.stdout).not.toContain('SECRET_KEY=graph-secret');
+    expect(result.stdout).not.toContain('TOKEN_SECRET=edge-secret');
+    expect(result.stdout).not.toContain(process.cwd());
+    expect(result.stdout).not.toContain('/tmp/private-workflow');
+    expect(result.stdout).not.toContain('/tmp/private-command');
+    const reportText = readFileSync(join(root, 'validation-plan-comparison.json'), 'utf8');
+    expect(reportText).toContain('<redacted-secret>');
+    expect(reportText).not.toContain('/tmp/private-graph');
+  });
+
+  test('rejects oversized and symlinked generated evidence inputs without leaking contents', () => {
+    const root = makeRoot();
+    writeEvidence(root, validationPlan());
+    writeFileSync(join(root, 'recommend-checks-dogfood.json'), `{"schema":"semantic-code-intelligence.recommend_checks_dogfood.v1","padding":"${'x'.repeat(10 * 1024 * 1024)}"}`);
+
+    const oversized = runComparison(root);
+    expect(oversized.status).toBe(1);
+    expect(oversized.stderr).toContain('validation-plan-compare: Evidence input too large');
+    expect(oversized.stderr).not.toContain(root);
+
+    const symlinkRoot = makeRoot();
+    writeEvidence(symlinkRoot, validationPlan());
+    const outsideRoot = makeRoot();
+    const outsidePath = join(outsideRoot, 'safe-write-dogfood.json');
+    writeFileSync(outsidePath, JSON.stringify({ ok: true, secret: 'outside-safe-write-secret' }));
+    rmSync(join(symlinkRoot, 'safe-write-dogfood.json'));
+    symlinkSync(outsidePath, join(symlinkRoot, 'safe-write-dogfood.json'));
+
+    const symlinked = runComparison(symlinkRoot);
+    expect(symlinked.status).toBe(1);
+    expect(symlinked.stderr).toContain('validation-plan-compare: Evidence input must be a regular file');
+    expect(symlinked.stdout + symlinked.stderr).not.toContain('outside-safe-write-secret');
+    expect(symlinked.stderr).not.toContain(outsideRoot);
+  });
+
+  test('refuses to write comparison output through a symlink', () => {
+    const root = makeRoot();
+    writeEvidence(root, validationPlan());
+    const outsideRoot = makeRoot();
+    symlinkSync(join(outsideRoot, 'validation-plan-comparison.json'), join(root, 'validation-plan-comparison.json'));
+
+    const result = runComparison(root);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('validation-plan-compare: Evidence output must be a regular file');
+    expect(result.stderr).not.toContain(outsideRoot);
   });
 
   test('fails closed when graph edge count is missing', () => {
