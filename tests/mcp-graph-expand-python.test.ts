@@ -55,7 +55,7 @@ describe('MCP graph_expand Python exports', () => {
             ].join('\n')
         );
 
-        const config = createTestConfig();
+        const config = createTestConfig({ workspaceRoot: process.cwd() });
         const shared = new SharedServices(config);
         await shared.initialize();
         const lm = new LayerManager(config, shared.eventBus);

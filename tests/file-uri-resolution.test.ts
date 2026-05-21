@@ -1,203 +1,152 @@
 /**
- * Red tests for file URI resolution fix
- * These tests should FAIL initially, then pass after implementation
+ * File URI and configured-workspace resolution coverage for MCP navigation.
+ *
+ * These tests guard the embedded-host case where an MCPAdapter is constructed
+ * with an analyzer for a target workspace while the process cwd remains SCI's
+ * own repo. In that posture, find_definition must not search or report
+ * incidental symbols from the adapter process cwd.
  */
 
-import { beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import * as fs from 'node:fs/promises';
+import * as os from 'node:os';
 import * as path from 'node:path';
+import type { CodeAnalyzer } from '../src/core/unified-analyzer';
 import { MCPAdapter } from '../src/adapters/mcp-adapter';
 import { AnalyzerFactory } from '../src/core/analyzer-factory';
-import { AsyncEnhancedGrep } from '../src/layers/enhanced-search-tools-async';
 
-const runRed = process.env.FILE_URI_FIX === '1';
-const redDescribe = runRed ? describe : describe.skip;
-
-redDescribe('File URI Resolution - Red Tests', () => {
+describe('File URI Resolution', () => {
     let analyzer: CodeAnalyzer;
     let mcpAdapter: MCPAdapter;
-    const testDir = '/tmp/test-file-uri-resolution';
+    let testDir: string;
 
     beforeAll(async () => {
-        // Create test files
-        await fs.mkdir(testDir, { recursive: true });
+        testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sci-file-uri-resolution-'));
 
-        // Create a file with AsyncEnhancedGrep class
         await fs.writeFile(
             path.join(testDir, 'async-grep.ts'),
             `export class AsyncEnhancedGrep {
-        constructor() {}
-        async search(pattern: string) {
-          return [];
-        }
-      }`
+  constructor() {}
+  async search(pattern: string) {
+    return [];
+  }
+}
+`
         );
 
-        // Create another file that uses it
         await fs.writeFile(
             path.join(testDir, 'user.ts'),
             `import { AsyncEnhancedGrep } from './async-grep';
-      const grep = new AsyncEnhancedGrep();`
+const grep = new AsyncEnhancedGrep();
+`
         );
 
-        // Initialize analyzer via factory with workspace root
         const created = await AnalyzerFactory.createWorkspaceAnalyzer(testDir, undefined);
         analyzer = created.analyzer;
-
         mcpAdapter = new MCPAdapter(analyzer);
     });
 
-    describe('MCP Adapter File Discovery', () => {
-        test('should discover actual file location when no file context provided', async () => {
-            // Call find_definition without file context
+    afterAll(async () => {
+        await (analyzer as any)?.dispose?.().catch(() => undefined);
+        if (testDir) await fs.rm(testDir, { recursive: true, force: true });
+    });
+
+    async function callToolJson(name: string, args: Record<string, unknown>) {
+        const result = await mcpAdapter.handleToolCall(name, args);
+        expect(result.isError).toBe(false);
+        const text = result.content?.[0]?.text || '{}';
+        return JSON.parse(text);
+    }
+
+    async function callDefinition(args: Record<string, unknown>) {
+        return callToolJson('find_definition', args);
+    }
+
+    test('uses the analyzer configured workspace for direct MCP read and search calls', async () => {
+        const read = await callToolJson('read_file', { path: 'async-grep.ts' });
+        expect(read.path).toBe('async-grep.ts');
+        expect(read.content).toContain('export class AsyncEnhancedGrep');
+
+        const search = await callToolJson('text_search', { query: 'AsyncEnhancedGrep', path: '.', maxResults: 10 });
+        expect(search.count).toBeGreaterThan(0);
+        const files = (search.results || []).map((item: any) => String(item.file || ''));
+        expect(files.some((file: string) => file.includes('async-grep.ts'))).toBe(true);
+        expect(files.every((file: string) => file.includes(testDir))).toBe(true);
+    });
+
+    test('discovers definitions in the analyzer configured workspace when no file context is provided', async () => {
+        const payload = await callDefinition({ symbol: 'AsyncEnhancedGrep' });
+
+        expect(payload.definitions).toBeDefined();
+        expect(payload.definitions.length).toBeGreaterThan(0);
+        expect(payload.definitions[0].uri).toMatch(/^file:\/\//);
+        expect(payload.definitions[0].uri).toContain('async-grep.ts');
+        expect(payload.definitions[0].uri).toContain(testDir);
+        expect(payload.definitions[0].uri).not.toContain('tests/file-uri-resolution.test.ts');
+        expect(payload.definitions[0].uri).not.toBe('file://unknown');
+    });
+
+    test('uses caller-provided workspace-contained file context without falling back to process cwd', async () => {
+        const payload = await callDefinition({
+            symbol: 'AsyncEnhancedGrep',
+            file: path.join(testDir, 'user.ts'),
+        });
+
+        expect(payload.count).toBeGreaterThan(0);
+        expect(payload.definitions[0].uri).toContain('async-grep.ts');
+        expect(payload.definitions[0].uri).toContain(testDir);
+        expect(payload.definitions[0].uri).not.toBe('file://unknown');
+    });
+
+    test('returns a structured empty result when the symbol is absent', async () => {
+        const payload = await callDefinition({
+            symbol: 'NonExistentSymbol',
+            file: path.join(testDir, 'user.ts'),
+            precise: true,
+        });
+
+        expect(payload.definitions || []).toEqual([]);
+        expect(payload.count).toBe(0);
+    });
+
+    test('filters invalid or unknown core definition URIs instead of returning file://unknown', async () => {
+        const result = await analyzer.findDefinition({
+            uri: 'file://unknown',
+            position: { line: 0, character: 0 },
+            identifier: 'SomeSymbol',
+        } as any);
+
+        const definitions = Array.isArray((result as any).data) ? (result as any).data : (result as any).definitions || [];
+        for (const def of definitions) {
+            expect(def.uri).toMatch(/^file:\/\//);
+            expect(def.uri).not.toBe('file://unknown');
+        }
+    });
+
+    test('rejects caller-controlled file contexts outside the configured workspace', async () => {
+        const outsideFile = path.join(os.tmpdir(), `sci-outside-${Date.now()}.ts`);
+        await fs.writeFile(outsideFile, 'export class AsyncEnhancedGrep {}\n');
+        try {
             const result = await mcpAdapter.handleToolCall('find_definition', {
                 symbol: 'AsyncEnhancedGrep',
-                // Note: no 'file' parameter provided
+                file: outsideFile,
             });
-            // Adapter returns text content; parse
-            const payload = JSON.parse(result.content?.[0]?.text || '{}');
-            expect(payload.definitions).toBeDefined();
-            expect(payload.definitions.length).toBeGreaterThan(0);
 
-            // Should have the actual file URI, not 'file://unknown'
-            const definition = payload.definitions[0];
-            expect(definition.uri).not.toBe('file://unknown');
-            expect(definition.uri).toContain('async-grep.ts');
-            expect(definition.uri).toMatch(/^file:\/\//);
-        });
-
-        test('should handle symbol not found gracefully', async () => {
-            // Constrain search to test workspace and request precise matching to avoid broad L1 hits
-            const result = await mcpAdapter.handleToolCall('find_definition', {
-                symbol: 'NonExistentSymbol',
-                file: path.join(testDir, 'user.ts'),
-                precise: true,
-            });
-            const payload = JSON.parse(result.content?.[0]?.text || '{}');
-            expect(payload.definitions || []).toEqual([]);
-            expect(result.isError).toBe(false);
-        });
-
-        test('should use provided file context when available', async () => {
-            const result = await mcpAdapter.handleToolCall('find_definition', {
-                symbol: 'AsyncEnhancedGrep',
-                file: path.join(testDir, 'user.ts'),
-            });
-            const payload = JSON.parse(result.content?.[0]?.text || '{}');
-            expect(payload.definitions).toBeDefined();
-            expect(payload.definitions.length).toBeGreaterThan(0);
-
-            // Should have correct file URI
-            const definition = payload.definitions[0];
-            expect(definition.uri).toContain('async-grep.ts');
-        });
+            expect(result.isError).toBe(true);
+            const text = String(result.content?.[0]?.text || '');
+            expect(text).toContain('workspace');
+            expect(text).not.toContain('export class AsyncEnhancedGrep');
+        } finally {
+            await fs.rm(outsideFile, { force: true });
+        }
     });
 
-    describe('Core Analyzer URI Validation', () => {
-        test('should reject file://unknown URIs', async () => {
-            const request = {
-                uri: 'file://unknown',
-                position: { line: 0, character: 0 },
-                identifier: 'SomeSymbol',
-            };
+    test('exposes stable symbol-locator results inside the configured workspace', async () => {
+        const locator = (analyzer as any).getSymbolLocator?.() || analyzer;
+        const locations = (await locator.locateSymbol?.('AsyncEnhancedGrep')) || [];
 
-            const result = await analyzer.findDefinition(request as any);
-
-            if (result.data && result.data.length > 0) {
-                result.data.forEach((def) => {
-                    expect(def.uri).not.toBe('file://unknown');
-                });
-            }
-        });
-
-        test('should validate URI format', async () => {
-            const invalidUris = ['unknown', '//unknown', 'file:unknown', 'file//unknown', ''];
-
-            for (const uri of invalidUris) {
-                const request = {
-                    uri,
-                    position: { line: 0, character: 0 },
-                    identifier: 'Symbol',
-                };
-
-                const result = await analyzer.findDefinition(request);
-
-                // Should either fix the URI or return no results
-                if (result.definitions && result.definitions.length > 0) {
-                    result.definitions.forEach((def) => {
-                        expect(def.uri).toMatch(/^file:\/\//);
-                        expect(def.uri).not.toBe('file://unknown');
-                    });
-                }
-            }
-        });
-    });
-
-    describe('Symbol Locator Integration', () => {
-        test('should locate symbols across workspace', async () => {
-            // This tests the new SymbolLocator functionality
-            const locator = analyzer.getSymbolLocator?.() || analyzer;
-
-            // Find AsyncEnhancedGrep without file context
-            const locations = (await locator.locateSymbol?.('AsyncEnhancedGrep')) || [];
-
-            expect(locations).toBeDefined();
-            expect(locations.length).toBeGreaterThan(0);
-            expect(locations[0].uri).toContain('async-grep.ts');
-        });
-
-        test('should cache symbol locations for performance', async () => {
-            const locator = analyzer.getSymbolLocator?.() || analyzer;
-
-            // First call - should search
-            const start1 = Date.now();
-            const locations1 = (await locator.locateSymbol?.('AsyncEnhancedGrep')) || [];
-            const time1 = Date.now() - start1;
-
-            // Second call - should use cache
-            const start2 = Date.now();
-            const locations2 = (await locator.locateSymbol?.('AsyncEnhancedGrep')) || [];
-            const time2 = Date.now() - start2;
-
-            expect(locations2).toEqual(locations1);
-            expect(time2).toBeLessThan(time1 / 2); // Cache should be at least 2x faster
-        });
-    });
-
-    describe('Error Handling', () => {
-        test('should distinguish between "not found" and "location unknown"', async () => {
-            // Test conceptual match without file location
-            const result = await mcpAdapter.handleToolCall('find_definition', {
-                symbol: 'ConceptualSymbol', // Symbol that exists conceptually but not in files
-            });
-
-            if (result.definitions && result.definitions.length > 0) {
-                result.definitions.forEach((def) => {
-                    // Should either have a valid URI or indicate it's conceptual
-                    if (def.source === 'conceptual') {
-                        expect(def.confidence).toBeLessThan(1.0);
-                    } else {
-                        expect(def.uri).toMatch(/^file:\/\//);
-                        expect(def.uri).not.toBe('file://unknown');
-                    }
-                });
-            }
-        });
-
-        test('should provide helpful error messages', async () => {
-            const result = await mcpAdapter.handleToolCall('find_definition', {
-                symbol: '', // Empty symbol
-            });
-
-            expect(result.error).toBeDefined();
-            expect(result.error.message).toContain('symbol');
-        });
+        expect(locations.length).toBeGreaterThan(0);
+        expect(locations[0].uri).toContain('async-grep.ts');
+        expect(locations[0].uri).toContain(testDir);
     });
 });
-
-// Export a test runner function for easy execution
-export async function runFileUriTests() {
-    console.log('Running File URI Resolution Tests...');
-    console.log('These should FAIL before implementation (red tests)');
-    console.log('----------------------------------------');
-}

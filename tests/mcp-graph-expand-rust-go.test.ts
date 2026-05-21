@@ -23,7 +23,7 @@ describe('MCP graph_expand Rust and Go support', () => {
     let mcp: MCPAdapter;
 
     beforeAll(async () => {
-        const config = createTestConfig();
+        const config = createTestConfig({ workspaceRoot: process.cwd() });
         const shared = new SharedServices(config);
         await shared.initialize();
         const lm = new LayerManager(config, shared.eventBus);

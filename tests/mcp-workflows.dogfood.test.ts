@@ -22,7 +22,7 @@ describe('Dogfooding MCP workflows (fast)', () => {
     const testFile = toFileUri('tests/fixtures/example.ts');
 
     beforeAll(async () => {
-        const config = createTestConfig();
+        const config = createTestConfig({ workspaceRoot: process.cwd() });
         const shared = new SharedServices(config);
         await shared.initialize();
         const lm = new LayerManager(config, shared.eventBus);

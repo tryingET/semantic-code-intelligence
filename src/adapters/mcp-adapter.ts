@@ -108,9 +108,13 @@ export class MCPAdapter {
     }
 
     private getWorkspaceRoot(): string {
-        // MCP workspace containment follows the process workspace, matching existing
-        // read_file/text_search/symbol_search behavior and CLI/HTTP invocation cwd.
-        return path.resolve(process.cwd());
+        // Prefer the analyzer's configured workspace when present. Direct MCPAdapter
+        // users (tests, embedded hosts, future harness integrations) may construct an
+        // analyzer for a target repository while the adapter process cwd is SCI's own
+        // repo. Falling back to cwd preserves CLI/HTTP behavior for analyzers without
+        // an explicit workspaceRoot.
+        const configuredRoot = (this.coreAnalyzer as any)?.config?.workspaceRoot;
+        return path.resolve(typeof configuredRoot === 'string' && configuredRoot.trim() ? configuredRoot : process.cwd());
     }
 
     private pathInputFromMcpFile(value: string, workspaceRoot: string): string {
@@ -452,7 +456,7 @@ export class MCPAdapter {
 
     private async resolveReadFileRoot(args: Record<string, any>, requestedPath: string): Promise<{ workspaceRoot: string; readPath: string }> {
         const snapshotRoot = await this.materializedSnapshotRoot(args);
-        if (!snapshotRoot) return { workspaceRoot: process.cwd(), readPath: requestedPath };
+        if (!snapshotRoot) return { workspaceRoot: this.getWorkspaceRoot(), readPath: requestedPath };
         return { workspaceRoot: snapshotRoot, readPath: this.snapshotReadPath(requestedPath, snapshotRoot) };
     }
 
@@ -513,7 +517,8 @@ export class MCPAdapter {
         if (!file) return { content: [{ type: 'text', text: 'file required' }], isError: true };
         let opened: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
         try {
-            opened = await openWorkspaceFileForRead(file, { workspaceRoot: process.cwd(), inputLabel: 'list_symbols file' });
+            const workspaceRoot = this.getWorkspaceRoot();
+            opened = await openWorkspaceFileForRead(file, { workspaceRoot, inputLabel: 'list_symbols file' });
             const text = await opened.handle.readFile('utf8');
             const lines = text.split(/\r?\n/);
             const out: Array<{ name: string; kind: string; line: number; character: number }> = [];
@@ -560,7 +565,7 @@ export class MCPAdapter {
                             `;
                         }
 
-                        const res = await runAstQuery({ language, query, paths: [opened.relativePath], limit: 2000, workspaceRoot: process.cwd() });
+                        const res = await runAstQuery({ language, query, paths: [opened.relativePath], limit: 2000, workspaceRoot });
                         if (Array.isArray(res?.results)) {
                             for (const r of res.results) {
                                 if (!r || !r.start || !r.end) continue;
@@ -1380,7 +1385,7 @@ export class MCPAdapter {
         // Step 2: snapshot and generate unified diff from WorkspaceEdit
         const snap = overlayStore.createSnapshot(true);
         const diffParts: string[] = [];
-        const root = (this.coreAnalyzer as any)?.config?.workspaceRoot || process.cwd();
+        const root = this.getWorkspaceRoot();
         const tmpRootBase = runChecksFlag
             ? (await (overlayStore as any).ensureMaterialized?.(snap.id)) || ''
             : path.resolve('.ontology', 'tmp-diffs');
@@ -1809,7 +1814,7 @@ export class MCPAdapter {
             const caseInsensitive = !!args?.caseInsensitive;
             const maxResults = Math.min(Number(args?.maxResults || 200), 1000);
             const snapshotRoot = await this.materializedSnapshotRoot(args);
-            const workspaceRoot = snapshotRoot || process.cwd();
+            const workspaceRoot = snapshotRoot || this.getWorkspaceRoot();
             const requestedPath = typeof args?.path === 'string' && args.path.trim() ? String(args.path) : '.';
             const searchPath = snapshotRoot ? this.snapshotReadPath(requestedPath, snapshotRoot) : requestedPath;
             const searchRoot = await resolveWorkspacePath(searchPath, { workspaceRoot, inputLabel: 'text_search path', allowRoot: true });
@@ -1863,7 +1868,7 @@ export class MCPAdapter {
             const caseInsensitive = !!args?.caseInsensitive;
             const maxResults = Math.min(Number(args?.maxResults || 200), 1000);
             const snapshotRoot = await this.materializedSnapshotRoot(args);
-            const workspaceRoot = snapshotRoot || process.cwd();
+            const workspaceRoot = snapshotRoot || this.getWorkspaceRoot();
             const requestedPath = typeof args?.path === 'string' && args.path.trim() ? String(args.path) : '.';
             const searchPath = snapshotRoot ? this.snapshotReadPath(requestedPath, snapshotRoot) : requestedPath;
             const searchRoot = await resolveWorkspacePath(searchPath, { workspaceRoot, inputLabel: 'text_search path', allowRoot: true });
@@ -1904,7 +1909,8 @@ export class MCPAdapter {
         if (out.length === 0 && fileHint) {
             let opened: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
             try {
-                opened = await openWorkspaceFileForRead(fileHint, { workspaceRoot: process.cwd(), inputLabel: 'symbol_search fileHint' });
+                const workspaceRoot = this.getWorkspaceRoot();
+                opened = await openWorkspaceFileForRead(fileHint, { workspaceRoot, inputLabel: 'symbol_search fileHint' });
                 const text = await opened.handle.readFile('utf8');
                 const lines = text.split(/\r?\n/);
                 out = lines
@@ -1912,7 +1918,7 @@ export class MCPAdapter {
                     .filter((match) => match.column >= 0)
                     .slice(0, maxResults)
                     .map((match) => ({
-                        uri: `file://${path.resolve(process.cwd(), opened?.relativePath || fileHint)}`,
+                        uri: `file://${path.resolve(workspaceRoot, opened?.relativePath || fileHint)}`,
                         range: {
                             start: { line: match.index, character: match.column },
                             end: { line: match.index, character: match.column + query.length },
@@ -1954,7 +1960,7 @@ export class MCPAdapter {
     }
 
     private normalizeStructuralPaths(pathsArg: any): string[] {
-        const workspaceRoot = path.resolve(process.cwd());
+        const workspaceRoot = this.getWorkspaceRoot();
         const rawPaths = Array.isArray(pathsArg) && pathsArg.length > 0 ? pathsArg : ['.'];
         const out: string[] = [];
         for (const raw of rawPaths) {
@@ -1976,7 +1982,7 @@ export class MCPAdapter {
         options: { timeoutMs: number; maxBuffer: number }
     ): Promise<{ status: number | null; stdout: string; stderr: string; timedOut: boolean; outputExceeded: boolean }> {
         return await new Promise((resolve) => {
-            const proc = spawn(command, args, { cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe'] });
+            const proc = spawn(command, args, { cwd: this.getWorkspaceRoot(), stdio: ['ignore', 'pipe', 'pipe'] });
             let stdout = '';
             let stderr = '';
             let settled = false;
@@ -2139,7 +2145,7 @@ export class MCPAdapter {
     }
 
     private async buildStructuralDiff(matches: any[]): Promise<{ diff: string; files: string[]; replacementCount: number }> {
-        const workspaceRoot = path.resolve(process.cwd());
+        const workspaceRoot = this.getWorkspaceRoot();
         const byFile = new Map<string, Array<{ start: number; end: number; replacement: string }>>();
         for (const match of matches) {
             const rel = String(match?.file || '').trim();
@@ -2526,7 +2532,7 @@ export class MCPAdapter {
         const limit = typeof args?.limit === 'number' ? args.limit : undefined;
         try {
             const snapshotRoot = await this.materializedSnapshotRoot(args);
-            const workspaceRoot = snapshotRoot || process.cwd();
+            const workspaceRoot = snapshotRoot || this.getWorkspaceRoot();
             const queryPaths = snapshotRoot && paths ? paths.map((item) => this.snapshotReadPath(String(item), snapshotRoot)) : paths;
             const { runAstQuery } = await import('../core/ast-query.js');
             const out = await runAstQuery({ language: language as any, query, paths: queryPaths, glob, limit, workspaceRoot });
@@ -2600,7 +2606,7 @@ export class MCPAdapter {
             discoveryBackend: out?.provenance?.discoveryBackend !== undefined ? out.provenance.discoveryBackend : !hasFileSeed && hasSymbolSeed ? 'rg' : null,
             indexPath: out?.provenance?.indexPath ?? null,
             generatedAt: out?.provenance?.generatedAt ?? null,
-            workspaceRoot: out?.provenance?.workspaceRoot ?? process.cwd(),
+            workspaceRoot: out?.provenance?.workspaceRoot ?? this.getWorkspaceRoot(),
             metadataSource: out?.provenance?.metadataSource ?? null,
         };
         return {
@@ -2633,7 +2639,7 @@ export class MCPAdapter {
         if (!scipIndexPath) return null;
 
         const { loadScipIndex } = await import('../core/scip-reader.js');
-        const reader = await loadScipIndex(scipIndexPath, { workspaceRoot: process.cwd() });
+        const reader = await loadScipIndex(scipIndexPath, { workspaceRoot: this.getWorkspaceRoot() });
         const summary = reader.summary();
         const limit = Math.max(1, Math.min(Number(args?.limit || 50) || 50, 1000));
         const neighbors: Record<string, any[]> = { imports: [], exports: [], callers: [], callees: [] };
@@ -2687,7 +2693,7 @@ export class MCPAdapter {
             discoveryBackend: null,
             indexPath: summary.indexPath,
             generatedAt: summary.generatedAt,
-            workspaceRoot: summary.workspaceRoot || process.cwd(),
+            workspaceRoot: summary.workspaceRoot || this.getWorkspaceRoot(),
             metadataSource: null,
         };
         return out;
