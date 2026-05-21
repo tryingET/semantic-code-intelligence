@@ -1,5 +1,5 @@
-import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, writeSync, type Stats } from 'node:fs';
-import { relative, isAbsolute } from 'node:path';
+import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync, writeSync, type Stats } from 'node:fs';
+import { dirname as pathDirname, relative, isAbsolute, resolve } from 'node:path';
 
 export const defaultMaxEvidenceJsonBytes = 10 * 1024 * 1024;
 
@@ -80,6 +80,14 @@ export function safeEvidenceError(error: unknown): string {
 }
 
 export function writeTextFileNoSymlink(path: string, text: string): void {
+  const parentDir = pathDirname(path);
+  try {
+    if (realpathSync(parentDir) !== resolve(parentDir)) throw new Error('Evidence output parent must not be a symlink');
+  } catch (error: any) {
+    if (error?.code === 'ENOENT') throw new Error('Evidence output parent is unavailable');
+    throw error;
+  }
+
   try {
     const existing = lstatSync(path);
     if (!existing.isFile()) throw new Error('Evidence output must be a regular file');
@@ -144,5 +152,10 @@ export function summarizeCalls(calls: any[]) {
 }
 
 export function maxElapsed(calls: any[]): number {
-  return Math.max(0, ...calls.map((call) => Number(call?.elapsedMs || 0)).filter((value) => Number.isFinite(value)));
+  let max = 0;
+  for (const call of calls) {
+    const value = Number(call?.elapsedMs || 0);
+    if (Number.isFinite(value) && value > max) max = value;
+  }
+  return max;
 }

@@ -131,6 +131,20 @@ describe('alpha evidence gate', () => {
     expect(alphaCheck.detail.schema).toContain('<redacted-secret>');
   });
 
+  test('huge but under-limit evidence arrays do not crash elapsed-time summarization', () => {
+    const root = makeEvidenceRoot();
+    writeFileSync(join(root, 'alpha-mvp-dogfood.json'), `{"ok":true,"summary":[${Array.from({ length: 1_000_000 }, () => '{}').join(',')}]}`);
+
+    const result = runCheck(root);
+    expect(result.status).toBe(1);
+    expect(result.stderr).not.toContain('RangeError');
+    expect(result.stderr).not.toContain('Maximum call stack size exceeded');
+    const report = JSON.parse(result.stdout);
+    expect(report.ok).toBe(false);
+    expect(report.checks.find((check: any) => check.name === 'alpha_latency_budget')).toMatchObject({ ok: true });
+    expect(report.checks.find((check: any) => check.name === 'alpha_required_tools_present')?.ok).toBe(false);
+  });
+
   test('oversized generated evidence fails closed with sanitized detail', () => {
     const root = makeEvidenceRoot();
     writeFileSync(join(root, 'alpha-mvp-dogfood.json'), `{"ok":true,"padding":"${'x'.repeat(10 * 1024 * 1024)}"}`);

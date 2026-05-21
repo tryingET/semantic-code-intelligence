@@ -63,18 +63,22 @@ function normalize(plan: any) {
   };
 }
 
+function hasPlanObject(item: any): boolean {
+  return !!item?.plan && typeof item.plan === 'object' && !Array.isArray(item.plan);
+}
+
 function fromRecommendChecksEvidence(evidence: any) {
   const calls = Array.isArray(evidence?.calls) ? evidence.calls : [];
   return calls
     .map((call: any) => ({ source: `recommend-checks:${call?.caseName || call?.name || 'unknown'}`, plan: call?.payload?.validationPlan }))
-    .filter((item: any) => item.plan?.schema === 'semantic-code-intelligence.validation_plan.v1');
+    .filter(hasPlanObject);
 }
 
 function fromSafeWriteEvidence(evidence: any) {
   const calls = Array.isArray(evidence?.calls) ? evidence.calls : [];
   return calls
     .map((call: any, index: number) => ({ source: `safe-write:${call?.payload?.mode || index}`, plan: call?.payload?.validationPlan }))
-    .filter((item: any) => item.plan?.schema === 'semantic-code-intelligence.validation_plan.v1');
+    .filter(hasPlanObject);
 }
 
 const recommendChecks = readJson(join(evidenceRoot, 'recommend-checks-dogfood.json'));

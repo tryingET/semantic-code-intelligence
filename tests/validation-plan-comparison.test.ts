@@ -127,6 +127,19 @@ describe('validation plan comparison graph context', () => {
     expect(report.drift.some((item: any) => item.failures.includes('safe_write_verification_incomplete'))).toBe(true);
   });
 
+  test('reports schema drift instead of dropping changed validation plans', () => {
+    const root = makeRoot();
+    writeEvidence(root, validationPlan({ schema: 'semantic-code-intelligence.validation_plan.v2' }));
+
+    const result = runComparison(root);
+    expect(result.status).toBe(1);
+    const report = JSON.parse(readFileSync(join(root, 'validation-plan-comparison.json'), 'utf8'));
+
+    expect(report.comparedPlanCount).toBe(4);
+    expect(report.drift.some((item: any) => item.failures.includes('schema_changed'))).toBe(true);
+    expect(result.stdout + result.stderr).toContain('schema_changed');
+  });
+
   test('fails closed when safe_write bundle lacks clean apply and mismatch verification coverage', () => {
     const root = makeRoot();
     writeEvidence(root, validationPlan(), safeWritePlan());
@@ -248,6 +261,18 @@ describe('validation plan comparison graph context', () => {
     expect(symlinked.stderr).toContain('validation-plan-compare: Evidence input must be a regular file');
     expect(symlinked.stdout + symlinked.stderr).not.toContain('outside-safe-write-secret');
     expect(symlinked.stderr).not.toContain(outsideRoot);
+  });
+
+  test('refuses to write comparison output through a symlinked parent directory', () => {
+    const targetRoot = makeRoot();
+    writeEvidence(targetRoot, validationPlan());
+    const linkParent = join(makeRoot(), 'linked-evidence-root');
+    symlinkSync(targetRoot, linkParent, 'dir');
+
+    const result = runComparison(linkParent);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('validation-plan-compare: Evidence output parent must not be a symlink');
+    expect(result.stderr).not.toContain(targetRoot);
   });
 
   test('refuses to write comparison output through a symlink', () => {

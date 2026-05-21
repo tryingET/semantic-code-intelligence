@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { join } from 'node:path';
-import { readEvidenceJsonFile, safeEvidenceError, sanitizeEvidence } from './evidence-summary-utils';
+import { maxElapsed, readEvidenceJsonFile, safeEvidenceError, sanitizeEvidence } from './evidence-summary-utils';
 
 type Check = {
     name: string;
@@ -34,10 +34,6 @@ function readJson(path: string): any {
     } catch (error) {
         throw new Error(safeEvidenceError(error));
     }
-}
-
-function maxElapsed(calls: any[]): number {
-    return Math.max(0, ...calls.map((call) => Number(call?.elapsedMs || 0)).filter((value) => Number.isFinite(value)));
 }
 
 function names(calls: any[]): string[] {
