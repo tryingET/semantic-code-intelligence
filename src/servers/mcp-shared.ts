@@ -232,10 +232,12 @@ export function registerCommonResources(server: Server): void {
                 }
                 if (tail === 'status') {
                     const { overlayStore } = await import('../core/overlay-store.js');
-                    const snaps = (overlayStore as any).list?.() || [];
-                    const snap = snaps.find((s: any) => s.id === id) || null;
+                    let snap: any = null;
+                    try {
+                        snap = (overlayStore as any).getStatus?.(id) || null;
+                    } catch {}
                     const body = JSON.stringify(
-                        { id, exists: !!snap, diffCount: snap?.diffs?.length || 0, createdAt: snap?.createdAt || null },
+                        { id, exists: !!snap, diffCount: snap?.diffsCount || 0, createdAt: snap?.createdAt || null, touchedFiles: snap?.touchedFiles || [] },
                         null,
                         2
                     );
@@ -244,11 +246,15 @@ export function registerCommonResources(server: Server): void {
                 if (tail === 'progress') {
                     const fs = await import('node:fs/promises');
                     const path = await import('node:path');
-                    const snapsRoot = path.resolve('.ontology', 'snapshots');
-                    const logPath = path.join(snapsRoot, id, 'progress.log');
+                    const { overlayStore } = await import('../core/overlay-store.js');
+                    let snapshotDir = '';
+                    try {
+                        snapshotDir = (overlayStore as any).getSnapshotDirectory?.(id) || '';
+                    } catch {}
+                    const logPath = snapshotDir ? path.join(snapshotDir, 'progress.log') : '';
                     let text = '';
                     try {
-                        text = await fs.readFile(logPath, 'utf8');
+                        text = logPath ? await fs.readFile(logPath, 'utf8') : '# No progress.log found for snapshot';
                     } catch {
                         text = '# No progress.log found for snapshot';
                     }

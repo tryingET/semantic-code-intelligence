@@ -152,12 +152,17 @@ const grep = new AsyncEnhancedGrep();
         const staged = await callToolJson('propose_patch', { snapshot, patch });
         expect(staged.accepted).toBe(true);
 
+        const snapshotOverlayPath = path.join(testDir, '.ontology', 'snapshots', snapshot, 'overlay.diff');
+        const cwdSnapshotOverlayPath = path.join(process.cwd(), '.ontology', 'snapshots', snapshot, 'overlay.diff');
+
         const checks = await callToolJson('run_checks', {
             snapshot,
             commands: [`bash -lc ${JSON.stringify(`grep -q ${marker} async-grep.ts`)}`],
             timeoutSec: 30,
         });
         expect(checks.ok).toBe(true);
+        expect(await fs.stat(snapshotOverlayPath).then((stat) => stat.isFile()).catch(() => false)).toBe(true);
+        expect(await fs.stat(cwdSnapshotOverlayPath).then((stat) => stat.isFile()).catch(() => false)).toBe(false);
         expect(await fs.readFile(path.join(testDir, 'async-grep.ts'), 'utf8')).toBe(original);
 
         const previousAllow = process.env.ALLOW_SNAPSHOT_APPLY;

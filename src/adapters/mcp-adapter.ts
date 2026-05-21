@@ -836,7 +836,7 @@ export class MCPAdapter {
                 touchedFiles: (snap as any).touchedFiles ? Array.from((snap as any).touchedFiles) : [],
                 materialized: false,
             };
-            const snapshotDir = path.resolve('.ontology', 'snapshots', snapshot);
+            const snapshotDir = (overlayStore as any).getSnapshotDirectory?.(snapshot) || path.resolve(this.getWorkspaceRoot(), '.ontology', 'snapshots', snapshot);
             const materializedMarker = path.join(snapshotDir, '.materialized');
             const hasMaterializedMarker = async () => {
                 try {
@@ -1071,7 +1071,7 @@ export class MCPAdapter {
         try {
             const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
             const dir = ensure ? await ensure(snapshot) : null;
-            const diffFile = dir ? path.join(dir, 'overlay.diff') : path.resolve('.ontology', 'snapshots', snapshot, 'overlay.diff');
+            const diffFile = dir ? path.join(dir, 'overlay.diff') : path.resolve(this.getWorkspaceRoot(), '.ontology', 'snapshots', snapshot, 'overlay.diff');
             const diffStat = await fs.stat(diffFile).catch(() => null);
             if (!diffStat?.isFile()) {
                 return {
@@ -1389,7 +1389,7 @@ export class MCPAdapter {
         const root = this.getWorkspaceRoot();
         const tmpRootBase = runChecksFlag
             ? (await (overlayStore as any).ensureMaterialized?.(snap.id)) || ''
-            : path.resolve('.ontology', 'tmp-diffs');
+            : path.resolve(this.getWorkspaceRoot(), '.ontology', 'tmp-diffs');
         if (!tmpRootBase) {
             const out = { ok: false, reason: 'snapshot_failed', message: 'Failed to prepare snapshot' };
             return { content: [{ type: 'text', text: JSON.stringify(out, null, 2) }], isError: true };

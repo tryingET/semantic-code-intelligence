@@ -1029,9 +1029,13 @@ export class HTTPServer {
                                     status: 400,
                                     headers: { 'Content-Type': 'application/json' },
                                 });
-                            const snapsRoot = '.ontology/snapshots';
-                            const file = Bun.file(`${snapsRoot}/${id}/progress.log`);
-                            if (!(await file.exists())) {
+                            const { overlayStore } = await import('../core/overlay-store.js');
+                            let snapshotDir = '';
+                            try {
+                                snapshotDir = (overlayStore as any).getSnapshotDirectory?.(id) || '';
+                            } catch {}
+                            const file = snapshotDir ? Bun.file(`${snapshotDir}/progress.log`) : null;
+                            if (!file || !(await file.exists())) {
                                 return new Response(JSON.stringify({ success: true, data: { id, progress: '' } }), {
                                     status: 200,
                                     headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },

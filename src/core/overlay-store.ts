@@ -46,8 +46,8 @@ export class OverlayStore {
         if (!this.wantProgress()) return;
         try {
             this.assertValidId(id);
-            const snapsRoot = path.resolve('.ontology', 'snapshots');
-            const dir = path.join(snapsRoot, id);
+            const snap = this.snapshots.get(id);
+            const dir = this.snapshotDir(id, snap?.workspaceRoot);
             await fsp.mkdir(dir, { recursive: true }).catch(() => {});
             const line = `[${new Date().toISOString()}] ${msg}\n`;
             await fsp.appendFile(path.join(dir, 'progress.log'), line, 'utf8');
@@ -56,17 +56,17 @@ export class OverlayStore {
         }
     }
 
-    private snapshotsRoot(): string {
-        return path.resolve('.ontology', 'snapshots');
+    private snapshotsRoot(workspaceRoot?: string): string {
+        return path.join(this.resolveWorkspaceBase(workspaceRoot), '.ontology', 'snapshots');
     }
 
-    private snapshotDir(id: string): string {
+    private snapshotDir(id: string, workspaceRoot?: string): string {
         this.assertValidId(id);
-        return path.join(this.snapshotsRoot(), id);
+        return path.join(this.snapshotsRoot(workspaceRoot), id);
     }
 
-    private metadataPath(id: string): string {
-        return path.join(this.snapshotDir(id), 'metadata.json');
+    private metadataPath(id: string, workspaceRoot?: string): string {
+        return path.join(this.snapshotDir(id, workspaceRoot), 'metadata.json');
     }
 
     private snapshotDiffFingerprint(snap: Snapshot | null | undefined): string {
@@ -158,7 +158,7 @@ export class OverlayStore {
         }
     }
 
-    private async withMaterializeLock<T>(snapshotId: string, action: () => Promise<T>): Promise<T> {
+    private async withMaterializeLock<T>(snapshotId: string, workspaceRoot: string | undefined, action: () => Promise<T>): Promise<T> {
         const previous = this.materializeLocks.get(snapshotId) || Promise.resolve();
         let release!: () => void;
         const current = new Promise<void>((resolve) => { release = resolve; });
@@ -167,7 +167,7 @@ export class OverlayStore {
         await previous.catch(() => undefined);
         let fileLockRelease: (() => Promise<void>) | null = null;
         try {
-            fileLockRelease = await this.acquireMaterializeFileLock(snapshotId);
+            fileLockRelease = await this.acquireMaterializeFileLock(snapshotId, workspaceRoot);
             return await action();
         } finally {
             await fileLockRelease?.().catch(() => undefined);
@@ -176,8 +176,8 @@ export class OverlayStore {
         }
     }
 
-    private async acquireMaterializeFileLock(snapshotId: string): Promise<() => Promise<void>> {
-        const lockDir = path.join(this.snapshotsRoot(), `${snapshotId}.lock`);
+    private async acquireMaterializeFileLock(snapshotId: string, workspaceRoot?: string): Promise<() => Promise<void>> {
+        const lockDir = path.join(this.snapshotsRoot(workspaceRoot), `${snapshotId}.lock`);
         const deadline = Date.now() + 30_000;
         while (true) {
             try {
@@ -258,9 +258,9 @@ export class OverlayStore {
 
     private persistSnapshotSync(snap: Snapshot): void {
         try {
-            const dir = this.snapshotDir(snap.id);
+            const dir = this.snapshotDir(snap.id, snap.workspaceRoot);
             fs.mkdirSync(dir, { recursive: true });
-            fs.writeFileSync(this.metadataPath(snap.id), JSON.stringify(this.serializeSnapshot(snap), null, 2), 'utf8');
+            fs.writeFileSync(this.metadataPath(snap.id, snap.workspaceRoot), JSON.stringify(this.serializeSnapshot(snap), null, 2), 'utf8');
         } catch {
             // Snapshot metadata is best-effort; in-memory behavior remains authoritative for current process.
         }
@@ -283,10 +283,10 @@ export class OverlayStore {
         } catch {}
     }
 
-    private loadSnapshotFromDisk(id: string): Snapshot | null {
+    private loadSnapshotFromDisk(id: string, workspaceRoot?: string): Snapshot | null {
         try {
             this.assertValidId(id);
-            const raw = JSON.parse(fs.readFileSync(this.metadataPath(id), 'utf8'));
+            const raw = JSON.parse(fs.readFileSync(this.metadataPath(id, workspaceRoot), 'utf8'));
             const snap = this.hydrateSnapshot(raw);
             if (!snap) return null;
             this.snapshots.set(snap.id, snap);
@@ -296,13 +296,13 @@ export class OverlayStore {
         }
     }
 
-    private loadAllSnapshotsFromDisk(): void {
+    private loadAllSnapshotsFromDisk(workspaceRoot?: string): void {
         try {
-            const root = this.snapshotsRoot();
+            const root = this.snapshotsRoot(workspaceRoot);
             if (!fs.existsSync(root)) return;
             for (const ent of fs.readdirSync(root, { withFileTypes: true })) {
                 if (!ent.isDirectory() || !this.isValidSnapshotId(ent.name) || this.snapshots.has(ent.name)) continue;
-                this.loadSnapshotFromDisk(ent.name);
+                this.loadSnapshotFromDisk(ent.name, workspaceRoot);
             }
         } catch {}
     }
@@ -330,9 +330,9 @@ export class OverlayStore {
         const baseFingerprint = this.workspaceBaseFingerprint(workspaceRoot);
         // Optionally reuse the most recent clean snapshot only when it still matches the current workspace base.
         if (preferExisting) {
-            this.loadAllSnapshotsFromDisk();
+            this.loadAllSnapshotsFromDisk(workspaceRoot);
             const reusable = Array.from(this.snapshots.values())
-                .filter((candidate) => this.isReusableBaseSnapshot(candidate, baseFingerprint))
+                .filter((candidate) => candidate.workspaceRoot === workspaceRoot && this.isReusableBaseSnapshot(candidate, baseFingerprint))
                 .sort((a, b) => b.createdAt - a.createdAt)[0];
             if (reusable) return reusable;
         }
@@ -359,6 +359,11 @@ export class OverlayStore {
     list(): Snapshot[] {
         this.loadAllSnapshotsFromDisk();
         return Array.from(this.snapshots.values()).sort((a, b) => b.createdAt - a.createdAt);
+    }
+
+    getSnapshotDirectory(snapshotId: string): string {
+        const snap = this.ensureSnapshot(snapshotId);
+        return this.snapshotDir(snapshotId, snap.workspaceRoot);
     }
 
     /** Clear all in-memory snapshots. Useful for test isolation. */
@@ -432,15 +437,20 @@ export class OverlayStore {
             const excess = snaps.slice(maxKeep);
             for (const s of excess) if (!toDelete.includes(s)) toDelete.push(s);
         }
-        const snapsRoot = this.snapshotsRoot();
+        const cleanupRoots = new Set<string>();
         for (const s of toDelete) {
             this.snapshots.delete(s.id);
+            const snapsRoot = this.snapshotsRoot(s.workspaceRoot);
+            cleanupRoots.add(snapsRoot);
             try {
                 await fsp.rm(path.join(snapsRoot, s.id), { recursive: true, force: true });
             } catch {}
         }
-        await this.cleanupTransientSnapshotWorkspaces(snapsRoot, now, maxAgeMs);
-        await this.cleanupMaterializeLockWorkspaces(snapsRoot, now, maxAgeMs);
+        cleanupRoots.add(this.snapshotsRoot());
+        for (const snapsRoot of cleanupRoots) {
+            await this.cleanupTransientSnapshotWorkspaces(snapsRoot, now, maxAgeMs);
+            await this.cleanupMaterializeLockWorkspaces(snapsRoot, now, maxAgeMs);
+        }
     }
 
     private parseTouchedFilesFromPatch(diff: string): string[] {
@@ -536,17 +546,18 @@ export class OverlayStore {
 
     private async ensureMaterialized(snapshotId: string): Promise<string | null> {
         this.assertValidId(snapshotId);
-        return this.withMaterializeLock(snapshotId, () => this.ensureMaterializedUnlocked(snapshotId));
+        const snap = this.ensureSnapshot(snapshotId);
+        return this.withMaterializeLock(snapshotId, snap.workspaceRoot, () => this.ensureMaterializedUnlocked(snapshotId));
     }
 
     private async ensureMaterializedUnlocked(snapshotId: string): Promise<string | null> {
-        const snapsRoot = this.snapshotsRoot();
+        const snap = this.ensureSnapshot(snapshotId);
+        const snapsRoot = this.snapshotsRoot(snap.workspaceRoot);
         const dir = path.join(snapsRoot, snapshotId);
         await fsp.mkdir(snapsRoot, { recursive: true }).catch(() => {});
         const materializedMarker = path.join(dir, '.materialized');
         const preferPartial = process.env.SNAPSHOT_PARTIAL === '1';
-        const snap = this.snapshots.get(snapshotId) || this.loadSnapshotFromDisk(snapshotId);
-        const base = this.resolveWorkspaceBase(snap?.workspaceRoot);
+        const base = this.resolveWorkspaceBase(snap.workspaceRoot);
         const desiredFingerprint = this.snapshotDiffFingerprint(snap);
         const currentFingerprint = fs.existsSync(materializedMarker) ? this.readMaterializedFingerprint(materializedMarker) : null;
         const touched = snap?.touchedFiles ? Array.from(snap.touchedFiles) : [];
@@ -653,7 +664,8 @@ export class OverlayStore {
 
     private async createCheckWorkspace(snapshotId: string, materializedDir: string): Promise<{ cwd: string; cleanup: () => Promise<void> }> {
         this.assertValidId(snapshotId);
-        const snapsRoot = this.snapshotsRoot();
+        const snap = this.ensureSnapshot(snapshotId);
+        const snapsRoot = this.snapshotsRoot(snap.workspaceRoot);
         const checkDir = path.join(snapsRoot, `.${snapshotId}.${process.pid}.${Date.now()}.${randomUUID()}.check`);
         await fsp.rm(checkDir, { recursive: true, force: true }).catch(() => {});
         await fsp.mkdir(checkDir, { recursive: true });
@@ -808,7 +820,7 @@ export class OverlayStore {
             const commandStart = Date.now();
             const result = await new Promise<{ ok: boolean; exitCode: number | null; timedOut: boolean }>((resolve) => {
                 const useShell = this.which('bash');
-                const env = { ...process.env, GIT_CEILING_DIRECTORIES: this.snapshotsRoot() };
+                const env = { ...process.env, GIT_CEILING_DIRECTORIES: this.snapshotsRoot(this.ensureSnapshot(snapshotId).workspaceRoot) };
                 const child = useShell
                     ? spawn('bash', ['-lc', cmd], { stdio: ['ignore', 'pipe', 'pipe'], cwd, env, detached: true })
                     : spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd, env, detached: true });
