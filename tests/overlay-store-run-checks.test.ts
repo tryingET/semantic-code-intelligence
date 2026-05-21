@@ -2,6 +2,32 @@ import { describe, expect, test } from 'bun:test';
 import { overlayStore } from '../src/core/overlay-store.js';
 
 describe('OverlayStore runChecks evidence receipts', () => {
+    test('preferExisting reuses only clean base snapshots, not staged preview snapshots', async () => {
+        const clean = overlayStore.createSnapshot(false);
+        await Bun.sleep(5);
+        const dirty = overlayStore.createSnapshot(false);
+        const staged = overlayStore.stagePatch(
+            dirty.id,
+            `diff --git a/docs/project/alpha-mvp-contract.md b/docs/project/alpha-mvp-contract.md
+--- a/docs/project/alpha-mvp-contract.md
++++ b/docs/project/alpha-mvp-contract.md
+@@ -9,1 +9,2 @@
+ # Alpha MVP contract — harnessed LLM coding sessions
++<!-- prefer-existing-regression-marker -->
+`
+        );
+        expect(staged.accepted).toBe(true);
+        expect(dirty.diffs.length).toBe(1);
+
+        overlayStore.clearAll();
+        const reused = overlayStore.createSnapshot(true);
+
+        expect(reused.id).toBe(clean.id);
+        expect(reused.id).not.toBe(dirty.id);
+        expect(reused.diffs.length).toBe(0);
+        expect(reused.baseFingerprint).toBe(clean.baseFingerprint);
+    });
+
     test('runs shell-style quoted commands and records receipts', async () => {
         const snap = overlayStore.createSnapshot(false);
         const result = await overlayStore.runChecks(snap.id, ['bash -lc "exit 0"'], 30);

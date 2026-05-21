@@ -297,13 +297,23 @@ export class OverlayStore {
         }
     }
 
+    private isReusableBaseSnapshot(snap: Snapshot | null | undefined, baseFingerprint: string): snap is Snapshot {
+        if (!snap || snap.baseFingerprint !== baseFingerprint) return false;
+        // PreferExisting is a convenience for reusing an unchanged workspace-base snapshot.
+        // Once diffs are staged, the snapshot represents preview state and must not be
+        // returned as a fresh base for later navigation/read workflows.
+        return !Array.isArray(snap.diffs) || snap.diffs.length === 0;
+    }
+
     createSnapshot(preferExisting = true): Snapshot {
         const baseFingerprint = this.workspaceBaseFingerprint();
-        // Optionally reuse the most recent snapshot only when it still matches the current workspace base.
+        // Optionally reuse the most recent clean snapshot only when it still matches the current workspace base.
         if (preferExisting) {
             this.loadAllSnapshotsFromDisk();
-            const last = Array.from(this.snapshots.values()).sort((a, b) => b.createdAt - a.createdAt)[0];
-            if (last?.baseFingerprint === baseFingerprint) return last;
+            const reusable = Array.from(this.snapshots.values())
+                .filter((candidate) => this.isReusableBaseSnapshot(candidate, baseFingerprint))
+                .sort((a, b) => b.createdAt - a.createdAt)[0];
+            if (reusable) return reusable;
         }
         const id = randomUUID();
         const snap: Snapshot = { id, createdAt: Date.now(), diffs: [], baseFingerprint };
