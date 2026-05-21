@@ -129,14 +129,14 @@ describe('validation plan comparison graph context', () => {
 
   test('reports schema drift instead of dropping changed validation plans', () => {
     const root = makeRoot();
-    writeEvidence(root, validationPlan({ schema: 'semantic-code-intelligence.validation_plan.v2' }));
+    writeEvidence(root, validationPlan({ schema: 'semantic-code-intelligence.validation_plan.v2' }), safeWritePlan({ schema: 'semantic-code-intelligence.validation_plan.v2' }));
 
     const result = runComparison(root);
     expect(result.status).toBe(1);
     const report = JSON.parse(readFileSync(join(root, 'validation-plan-comparison.json'), 'utf8'));
 
-    expect(report.comparedPlanCount).toBe(4);
-    expect(report.drift.some((item: any) => item.failures.includes('schema_changed'))).toBe(true);
+    expect(report.comparedPlanCount).toBe(2);
+    expect(report.drift.filter((item: any) => item.failures.includes('schema_changed')).length).toBe(2);
     expect(result.stdout + result.stderr).toContain('schema_changed');
   });
 
@@ -263,7 +263,7 @@ describe('validation plan comparison graph context', () => {
     expect(symlinked.stderr).not.toContain(outsideRoot);
   });
 
-  test('refuses to write comparison output through a symlinked parent directory', () => {
+  test('refuses to read comparison input through a symlinked parent directory', () => {
     const targetRoot = makeRoot();
     writeEvidence(targetRoot, validationPlan());
     const linkParent = join(makeRoot(), 'linked-evidence-root');
@@ -271,8 +271,17 @@ describe('validation plan comparison graph context', () => {
 
     const result = runComparison(linkParent);
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain('validation-plan-compare: Evidence output parent must not be a symlink');
+    expect(result.stderr).toContain('validation-plan-compare: Evidence input parent must not be a symlink');
     expect(result.stderr).not.toContain(targetRoot);
+  });
+
+  test('write helper refuses output through a symlinked parent directory before truncating', async () => {
+    const { writeTextFileNoSymlink } = await import('../scripts/evidence-summary-utils');
+    const targetRoot = makeRoot();
+    const linkParent = join(makeRoot(), 'linked-output-root');
+    symlinkSync(targetRoot, linkParent, 'dir');
+
+    expect(() => writeTextFileNoSymlink(join(linkParent, 'out.json'), '{}\n')).toThrow('Evidence output parent must not be a symlink');
   });
 
   test('refuses to write comparison output through a symlink', () => {

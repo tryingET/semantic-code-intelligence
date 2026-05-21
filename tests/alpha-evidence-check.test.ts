@@ -131,6 +131,14 @@ describe('alpha evidence gate', () => {
     expect(alphaCheck.detail.schema).toContain('<redacted-secret>');
   });
 
+  test('shared maxElapsed handles huge and mixed evidence-controlled values iteratively', async () => {
+    const { maxElapsed } = await import('../scripts/evidence-summary-utils');
+    const calls = Array.from({ length: 1_000_000 }, (_, index) => ({ elapsedMs: index === 999_999 ? '42' : -1 }));
+    calls.push({ elapsedMs: Number.NaN }, { elapsedMs: 'not-a-number' } as any);
+
+    expect(maxElapsed(calls)).toBe(42);
+  });
+
   test('huge but under-limit evidence arrays do not crash elapsed-time summarization', () => {
     const root = makeEvidenceRoot();
     writeFileSync(join(root, 'alpha-mvp-dogfood.json'), `{"ok":true,"summary":[${Array.from({ length: 1_000_000 }, () => '{}').join(',')}]}`);

@@ -1,4 +1,4 @@
-import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync, writeSync, type Stats } from 'node:fs';
+import { closeSync, constants, fstatSync, ftruncateSync, lstatSync, openSync, readSync, realpathSync, writeSync, type Stats } from 'node:fs';
 import { dirname as pathDirname, relative, isAbsolute, resolve } from 'node:path';
 
 export const defaultMaxEvidenceJsonBytes = 10 * 1024 * 1024;
@@ -24,6 +24,16 @@ function noFollowFlag(): number {
   return typeof constants.O_NOFOLLOW === 'number' ? constants.O_NOFOLLOW : 0;
 }
 
+function assertParentIsNotSymlink(path: string, kind: 'input' | 'output') {
+  const parentDir = pathDirname(path);
+  try {
+    if (realpathSync(parentDir) !== resolve(parentDir)) throw new Error(`Evidence ${kind} parent must not be a symlink`);
+  } catch (error: any) {
+    if (error?.code === 'ENOENT') throw new Error(`Evidence ${kind} parent is unavailable`);
+    throw error;
+  }
+}
+
 function readBoundedUtf8(fd: number, maxBytes = defaultMaxEvidenceJsonBytes): string {
   const chunks: Buffer[] = [];
   let totalBytes = 0;
@@ -41,6 +51,7 @@ function readBoundedUtf8(fd: number, maxBytes = defaultMaxEvidenceJsonBytes): st
 }
 
 export function readEvidenceJsonFile(path: string, maxBytes = defaultMaxEvidenceJsonBytes): any {
+  assertParentIsNotSymlink(path, 'input');
   let initialStat: Stats;
   try {
     initialStat = lstatSync(path);
@@ -80,13 +91,7 @@ export function safeEvidenceError(error: unknown): string {
 }
 
 export function writeTextFileNoSymlink(path: string, text: string): void {
-  const parentDir = pathDirname(path);
-  try {
-    if (realpathSync(parentDir) !== resolve(parentDir)) throw new Error('Evidence output parent must not be a symlink');
-  } catch (error: any) {
-    if (error?.code === 'ENOENT') throw new Error('Evidence output parent is unavailable');
-    throw error;
-  }
+  assertParentIsNotSymlink(path, 'output');
 
   try {
     const existing = lstatSync(path);
@@ -97,12 +102,13 @@ export function writeTextFileNoSymlink(path: string, text: string): void {
 
   let fd: number;
   try {
-    fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | noFollowFlag(), 0o666);
+    fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_NONBLOCK | noFollowFlag(), 0o666);
   } catch {
     throw new Error('Evidence output is unavailable or unsafe to write');
   }
   try {
     if (!fstatSync(fd).isFile()) throw new Error('Evidence output must be a regular file');
+    ftruncateSync(fd, 0);
     writeSync(fd, text);
   } finally {
     closeSync(fd);
