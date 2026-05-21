@@ -831,9 +831,22 @@ export class MCPAdapter {
                 touchedFiles: (snap as any).touchedFiles ? Array.from((snap as any).touchedFiles) : [],
                 materialized: false,
             };
-            const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
-            const dir = ensure ? await ensure(snapshot) : null;
-            status.materialized = !!dir;
+            const snapshotDir = path.resolve('.ontology', 'snapshots', snapshot);
+            const materializedMarker = path.join(snapshotDir, '.materialized');
+            const hasMaterializedMarker = async () => {
+                try {
+                    return (await fs.stat(materializedMarker)).isFile();
+                } catch {
+                    return false;
+                }
+            };
+            status.materialized = await hasMaterializedMarker();
+            let dir: string | null = null;
+            if (includeContent) {
+                const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
+                dir = ensure ? await ensure(snapshot) : status.materialized ? snapshotDir : null;
+                status.materialized = !!dir && (await hasMaterializedMarker());
+            }
             if (includeContent && dir) {
                 const readBounded = async (file: string) => {
                     try {

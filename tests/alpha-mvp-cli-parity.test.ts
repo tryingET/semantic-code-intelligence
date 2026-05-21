@@ -70,6 +70,36 @@ describe('Alpha MVP CLI fallback parity', () => {
         expect(search.payload.results.length).toBeLessThanOrEqual(5);
     }, 60000);
 
+    test('generic workflow command inspects snapshot metadata without materializing content by default', async () => {
+        const workspace = await mkdtemp(path.join(tmpdir(), 'sci-cli-snapshot-metadata-'));
+        try {
+            await writeFile(path.join(workspace, 'alpha.md'), '# Alpha MVP contract — harnessed LLM coding sessions\n', 'utf8');
+
+            const snapshot = await workflow('get_snapshot', { preferExisting: false }, { cwd: workspace });
+            expect(snapshot.payload.snapshot).toMatch(/^[0-9a-f-]{8,}$/i);
+            const materializedMarker = path.join(workspace, '.ontology', 'snapshots', snapshot.payload.snapshot, '.materialized');
+            expect(await Bun.file(materializedMarker).exists()).toBe(false);
+
+            const artifacts = await workflow(
+                'extract_snapshot_artifacts',
+                {
+                    snapshot: snapshot.payload.snapshot,
+                    includeContent: false,
+                },
+                { cwd: workspace }
+            );
+            expect(artifacts.raw.isError).toBe(false);
+            expect(artifacts.payload.status).toMatchObject({ exists: true, diffCount: 0, materialized: false });
+            expect(artifacts.payload.contents).toBeUndefined();
+            expect(artifacts.payload.links?.map((link: any) => link.uri)).toContain(
+                `snapshot://${snapshot.payload.snapshot}/status`
+            );
+            expect(await Bun.file(materializedMarker).exists()).toBe(false);
+        } finally {
+            await rm(workspace, { recursive: true, force: true });
+        }
+    }, 60000);
+
     test('generic workflow command exposes snapshot artifacts across fresh CLI processes without mutating workspace', async () => {
         const workspace = await mkdtemp(path.join(tmpdir(), 'sci-cli-snapshot-'));
         const target = 'alpha.md';
