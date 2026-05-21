@@ -115,6 +115,15 @@ export class CodeAnalyzer {
         return new CoreError(message, code, layer, requestId);
     }
 
+    private monotonicNowMs(): number {
+        return Number(process.hrtime.bigint()) / 1_000_000;
+    }
+
+    private elapsedObservedLayerMs(startMs: number): number {
+        const elapsedMs = this.monotonicNowMs() - startMs;
+        return elapsedMs > 0 ? Math.max(1, Math.ceil(elapsedMs)) : 0;
+    }
+
     async initialize(): Promise<void> {
         if (this.initialized) {
             return;
@@ -337,7 +346,7 @@ export class CodeAnalyzer {
                 ],
             };
 
-            const tL1Start = Date.now();
+            const tL1Start = this.monotonicNowMs();
             let streamingResultsAll = await this.asyncSearchTools.search(asyncOptions);
 
             // Fallback: If no hits for imperfect/short seeds, try a subsequence regex (fuzzy-ish)
@@ -399,7 +408,7 @@ export class CodeAnalyzer {
                 });
             }
 
-            const layer1Time = Date.now() - tL1Start;
+            const layer1Time = this.elapsedObservedLayerMs(tL1Start);
             let layer2Time = 0;
             let finalDefs: Definition[] = definitions;
 
@@ -461,14 +470,14 @@ export class CodeAnalyzer {
                     const maxCand = this.config.performance?.escalation?.layer2?.maxCandidateFiles ?? 10;
                     const limit = shortSeed ? Math.min(maxCand, 8) : maxCand;
                     const candidateFiles = new Set(sorted.slice(0, Math.max(1, limit)));
-                    const escStart = Date.now();
+                    const escStart = this.monotonicNowMs();
                     try {
                         const escalatePromise = this.executeLayer2Analysis(request, finalDefs, candidateFiles);
                         const timeoutPromise = new Promise<Definition[]>((resolve) =>
                             setTimeout(() => resolve([]), Math.max(0, budget))
                         );
                         const layer2Defs = await Promise.race([escalatePromise, timeoutPromise]);
-                        layer2Time = Date.now() - escStart;
+                        layer2Time = this.elapsedObservedLayerMs(escStart);
 
                         if (layer2Defs && layer2Defs.length > 0) {
                             // Mark AST validated and merge by location (prefer AST)
@@ -496,7 +505,7 @@ export class CodeAnalyzer {
                         }
                     } catch {
                         // Ignore escalation errors for stability
-                        layer2Time = Date.now() - escStart;
+                        layer2Time = this.elapsedObservedLayerMs(escStart);
                     }
                 }
             }

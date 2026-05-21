@@ -552,6 +552,9 @@ describe('Unified Core Architecture', () => {
 
             const result = await context.codeAnalyzer.findDefinition(request);
 
+            // This assertion is about an actual layered execution, not a stale/cache-hit response.
+            expect(result.cacheHit).toBe(false);
+
             // Should have executed multiple layers
             const totalLayerTime =
                 result.performance.layer1 +
