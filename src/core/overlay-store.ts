@@ -345,6 +345,27 @@ export class OverlayStore {
         this.snapshots.clear();
     }
 
+    private async cleanupTransientCheckWorkspaces(snapsRoot: string, now: number, maxAgeMs: number): Promise<void> {
+        let entries: fs.Dirent[] = [];
+        try {
+            entries = await fsp.readdir(snapsRoot, { withFileTypes: true });
+        } catch {
+            return;
+        }
+        for (const ent of entries) {
+            if (!ent.isDirectory() || !ent.name.startsWith('.') || !ent.name.endsWith('.check')) continue;
+            const firstPart = ent.name.slice(1).split('.')[0] || '';
+            if (!this.isValidSnapshotId(firstPart)) continue;
+            const transientDir = path.join(snapsRoot, ent.name);
+            try {
+                const stat = await fsp.stat(transientDir);
+                if (now - stat.mtimeMs > maxAgeMs) {
+                    await fsp.rm(transientDir, { recursive: true, force: true });
+                }
+            } catch {}
+        }
+    }
+
     async cleanup(maxKeep = 10, maxAgeMs = 3 * 24 * 60 * 60 * 1000): Promise<void> {
         const snaps = this.list();
         const now = Date.now();
@@ -365,6 +386,7 @@ export class OverlayStore {
                 await fsp.rm(path.join(snapsRoot, s.id), { recursive: true, force: true });
             } catch {}
         }
+        await this.cleanupTransientCheckWorkspaces(snapsRoot, now, maxAgeMs);
     }
 
     private parseTouchedFilesFromPatch(diff: string): string[] {

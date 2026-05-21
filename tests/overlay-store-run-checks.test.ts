@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
+import { mkdir, utimes } from 'node:fs/promises';
 import path from 'node:path';
 import { overlayStore } from '../src/core/overlay-store.js';
 
@@ -41,6 +42,19 @@ describe('OverlayStore runChecks evidence receipts', () => {
         expect(result.ok).toBe(true);
         expect(afterDir).toBe(beforeDir);
         expect(existsSync(path.join(afterDir, '.reuse-leak'))).toBe(false);
+    });
+
+    test('cleanup removes stale disposable check workspaces', async () => {
+        const snap = overlayStore.createSnapshot(false);
+        const checkDir = path.join(process.cwd(), '.ontology', 'snapshots', `.${snap.id}.1.1.00000000-0000-4000-8000-000000000000.check`);
+        await mkdir(checkDir, { recursive: true });
+        await utimes(checkDir, new Date(0), new Date(0));
+
+        const cleanupTransient = (overlayStore as any).cleanupTransientCheckWorkspaces?.bind(overlayStore);
+        expect(typeof cleanupTransient).toBe('function');
+        await cleanupTransient(path.join(process.cwd(), '.ontology', 'snapshots'), Date.now(), 60_000);
+
+        expect(existsSync(checkDir)).toBe(false);
     });
 
     test('runs shell-style quoted commands and records receipts', async () => {
