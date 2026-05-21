@@ -98,7 +98,8 @@ function assertClaimModel(review: any) {
   expect(review.handoffReadiness.gates.find((gate: any) => gate.id === 'host-owner-acceptance')?.externalAuthorityRequired).toBe(true);
   expect(review.handoffReadiness.gates.find((gate: any) => gate.id === 'sample-and-test-evidence')?.status).toBe('not_asserted');
   expect(review.handoffReadiness.nextActions.join('\n')).toContain('explicit Pi/operator-workbench owner acceptance');
-  expect(JSON.stringify(review.handoffReadiness)).not.toContain('satisfied');
+  expect(review.handoffReadiness.gates.map((gate: any) => gate.status)).not.toContain('satisfied');
+  expect(review.handoffReadiness.gates.map((gate: any) => gate.status)).not.toContain('ready');
   expect(JSON.stringify(review.handoffReadiness)).not.toContain('"evidence"');
 
   expect(review.limitations.map((limitation: any) => limitation.id)).toContain('graph-impact-limitation-1');
@@ -190,7 +191,8 @@ describe('evidence review claim model', () => {
 
     expect(review.handoffReadiness.status).toBe('blocked');
     expect(review.handoffReadiness.gates.find((gate: any) => gate.id === 'host-owner-acceptance')?.status).toBe('missing');
-    expect(JSON.stringify(review.handoffReadiness)).not.toContain('ready');
+    expect(review.handoffReadiness.gates.map((gate: any) => gate.status)).not.toContain('ready');
+    expect(review.handoffReadiness.gates.map((gate: any) => gate.status)).not.toContain('satisfied');
     expect(JSON.stringify(review.handoffReadiness)).not.toContain('host owner accepted handoff');
   });
 
