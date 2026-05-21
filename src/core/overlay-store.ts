@@ -213,16 +213,16 @@ export class OverlayStore {
         addGit(['diff', '--cached', '--binary'], 'cached-diff');
         const untracked = addGit(['ls-files', '--others', '--exclude-standard', '-z'], 'untracked-list')
             .split('\0')
-            .filter(Boolean)
-            .slice(0, 1000);
-        for (const rel of untracked) {
+            .filter(Boolean);
+        hash.update(`untracked-count:${untracked.length}\0`);
+        for (let i = 0; i < untracked.length; i++) {
+            const rel = untracked[i];
             try {
                 const { absolutePath, relativePath } = this.containedPath(root, rel, 'untracked file path');
                 const stat = fs.statSync(absolutePath);
                 if (!stat.isFile()) continue;
-                hash.update(`untracked:${relativePath}:${stat.size}:`);
-                if (stat.size <= 1024 * 1024) hash.update(fs.readFileSync(absolutePath));
-                else hash.update(String(stat.mtimeMs));
+                hash.update(`untracked:${relativePath}:${stat.size}:${stat.mtimeMs}:`);
+                if (i < 1000 && stat.size <= 1024 * 1024) hash.update(fs.readFileSync(absolutePath));
                 hash.update('\0');
             } catch {}
         }
@@ -305,7 +305,7 @@ export class OverlayStore {
     }
 
     private isValidSnapshotId(id: string): boolean {
-        return typeof id === 'string' && /^[0-9a-fA-F-]{8,}$/.test(id.trim());
+        return typeof id === 'string' && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(id.trim());
     }
 
     private assertValidId(id: string): void {
@@ -544,7 +544,7 @@ export class OverlayStore {
         const touched = snap?.touchedFiles ? Array.from(snap.touchedFiles) : [];
 
         if (currentFingerprint === desiredFingerprint) return dir;
-        if (snap?.baseFingerprint && !currentFingerprint && this.workspaceBaseFingerprint() !== snap.baseFingerprint) {
+        if (snap?.baseFingerprint && this.workspaceBaseFingerprint() !== snap.baseFingerprint) {
             throw new Error('Workspace changed since snapshot creation before materialization; create a fresh snapshot');
         }
 
@@ -802,8 +802,8 @@ export class OverlayStore {
                 const useShell = this.which('bash');
                 const env = { ...process.env, GIT_CEILING_DIRECTORIES: this.snapshotsRoot() };
                 const child = useShell
-                    ? spawn('bash', ['-lc', cmd], { stdio: ['ignore', 'pipe', 'pipe'], cwd, env })
-                    : spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd, env });
+                    ? spawn('bash', ['-lc', cmd], { stdio: ['ignore', 'pipe', 'pipe'], cwd, env, detached: true })
+                    : spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd, env, detached: true });
                 let settled = false;
                 let timer: ReturnType<typeof setTimeout>;
                 const finish = (value: { ok: boolean; exitCode: number | null; timedOut: boolean }) => {
@@ -814,8 +814,13 @@ export class OverlayStore {
                 };
                 timer = setTimeout(() => {
                     try {
-                        child.kill('SIGKILL');
-                    } catch {}
+                        if (child.pid) process.kill(-child.pid, 'SIGKILL');
+                        else child.kill('SIGKILL');
+                    } catch {
+                        try {
+                            child.kill('SIGKILL');
+                        } catch {}
+                    }
                     void this.logProgress(snapshotId, `run:${cmd}:timeout`);
                     finish({ ok: false, exitCode: null, timedOut: true });
                 }, perCommandTimeoutSec * 1000);
@@ -840,6 +845,24 @@ export class OverlayStore {
         return { ok: true, output: output.join(''), elapsedMs: Date.now() - start, commands: commandResults };
         } finally {
             await checkWorkspace.cleanup().catch(() => undefined);
+        }
+    }
+
+    private async removeEmptyApplyDirs(diffFile: string): Promise<void> {
+        const diffText = await fsp.readFile(diffFile, 'utf8');
+        const dirs = new Set<string>();
+        for (const line of diffText.split(/\r?\n/)) {
+            const match = line.match(/^\+\+\+\s+b\/(.+)$/) || line.match(/^\*\*\*\s+Add File:\s+(.+)$/);
+            if (!match || !match[1]) continue;
+            const normalized = this.normalizePatchRelativePath(match[1], 'apply_snapshot patch path');
+            if (!normalized) continue;
+            const dir = path.posix.dirname(normalized);
+            if (dir && dir !== '.' && dir !== '/') dirs.add(dir);
+        }
+        const ordered = Array.from(dirs).sort((a, b) => b.length - a.length);
+        for (const rel of ordered) {
+            const { absolutePath } = this.containedPath(process.cwd(), rel, 'apply_snapshot directory');
+            await fsp.rmdir(absolutePath).catch(() => undefined);
         }
     }
 
@@ -874,7 +897,7 @@ export class OverlayStore {
                     if (normalized) ensureDirs.add(path.posix.dirname(normalized));
                 }
             }
-            if (!check) {
+            if (!check && !reverse) {
                 for (const rel of ensureDirs) {
                     if (!rel || rel === '.' || rel === '/') continue;
                     const { absolutePath } = this.containedPath(process.cwd(), rel, 'apply_snapshot directory');
@@ -905,6 +928,7 @@ export class OverlayStore {
         output += String(git.stdout || '') + String(git.stderr || '');
         const elapsed = Date.now() - start;
         if (git.status === 0) {
+            if (reverse) await this.removeEmptyApplyDirs(diffFile).catch(() => undefined);
             this.recordLastApply(snapshotId, {
                 ok: true,
                 elapsedMs: elapsed,
@@ -923,6 +947,7 @@ export class OverlayStore {
             const p = spawnSync('bash', patchArgs, { stdio: 'pipe', cwd: process.cwd() });
             output += String(p.stdout || '') + String(p.stderr || '');
             const ok = p.status === 0;
+            if (ok && reverse) await this.removeEmptyApplyDirs(diffFile).catch(() => undefined);
             this.recordLastApply(snapshotId, {
                 ok,
                 elapsedMs: Date.now() - start,

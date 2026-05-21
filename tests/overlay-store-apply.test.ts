@@ -86,6 +86,28 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
         expect(status.lastApply.outputTail).toBe('Invalid apply_snapshot patch paths or missing overlay diff');
     }, 30000);
 
+    test('nested add-file apply reverses file and empty parent directory', async () => {
+        const nestedDir = `.tmp-overlay-apply-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        const nestedRel = `${nestedDir}/new-file.ts`;
+        try {
+            rmSync(nestedDir, { recursive: true, force: true });
+            const snap = overlayStore.createSnapshot(false);
+            const patch = `diff --git a/${nestedRel} b/${nestedRel}\n--- /dev/null\n+++ b/${nestedRel}\n@@ -0,0 +1,1 @@\n+export const nestedApply = true;\n`;
+            expect(overlayStore.stagePatch(snap.id, patch).accepted).toBe(true);
+
+            const applied = await overlayStore.applyToWorkingTree(snap.id, { check: false, reverse: false });
+            expect(applied.ok).toBe(true);
+            expect(await fs.readFile(path.join(process.cwd(), nestedRel), 'utf8')).toContain('nestedApply');
+
+            const reverted = await overlayStore.applyToWorkingTree(snap.id, { check: false, reverse: true });
+            expect(reverted.ok).toBe(true);
+            expect(existsSync(path.join(process.cwd(), nestedRel))).toBe(false);
+            expect(existsSync(nestedDir)).toBe(false);
+        } finally {
+            rmSync(nestedDir, { recursive: true, force: true });
+        }
+    }, 30000);
+
     test('normalizes add-file diffs so git apply does not create dev/null', async () => {
         const targetRel = `tests/fixtures/overlay_new_${Date.now()}_${Math.random().toString(16).slice(2)}.ts`;
         const targetAbs = path.join(process.cwd(), targetRel);
@@ -111,6 +133,27 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
         } finally {
             rmSync(targetAbs, { force: true });
             rmSync(path.join(process.cwd(), 'dev'), { recursive: true, force: true });
+        }
+    }, 30000);
+
+    test('fails closed when refreshing a materialized snapshot after workspace changes', async () => {
+        const rel = `.tmp-overlay-refresh-base-${Date.now()}-${Math.random().toString(16).slice(2)}.txt`;
+        const abs = path.join(process.cwd(), rel);
+        try {
+            await fs.writeFile(abs, 'one\n', 'utf8');
+            const snap = overlayStore.createSnapshot(false);
+            const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
+            expect(ensure).toBeTruthy();
+            const initialDir = await ensure(snap.id);
+            expect(await fs.readFile(path.join(initialDir, rel), 'utf8')).toBe('one\n');
+
+            await fs.writeFile(abs, 'workspace changed\n', 'utf8');
+            const patch = `diff --git a/${rel} b/${rel}\n--- a/${rel}\n+++ b/${rel}\n@@ -1 +1 @@\n-one\n+two\n`;
+            expect(overlayStore.stagePatch(snap.id, patch).accepted).toBe(true);
+            await expect(ensure(snap.id)).rejects.toThrow('Workspace changed since snapshot creation');
+            expect(await fs.readFile(path.join(initialDir, rel), 'utf8')).toBe('one\n');
+        } finally {
+            rmSync(abs, { force: true });
         }
     }, 30000);
 

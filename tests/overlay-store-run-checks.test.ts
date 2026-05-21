@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { chmod, mkdir, rm, utimes, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { overlayStore } from '../src/core/overlay-store.js';
 
@@ -139,6 +140,24 @@ describe('OverlayStore runChecks evidence receipts', () => {
         await rm(validLookingLockFile, { force: true });
     });
 
+    test('workspace fingerprint changes when untracked files beyond content-hash cap change', async () => {
+        const dir = path.join(process.cwd(), `.tmp-untracked-cap-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+        try {
+            await mkdir(dir, { recursive: true });
+            for (let i = 0; i < 1001; i++) {
+                await writeFile(path.join(dir, `${String(i).padStart(4, '0')}.txt`), `initial ${i}\n`, 'utf8');
+            }
+            const before = overlayStore.createSnapshot(false).baseFingerprint;
+            const overflowPath = path.join(dir, '1000.txt');
+            await writeFile(overflowPath, 'changed overflow file\n', 'utf8');
+            await utimes(overflowPath, new Date(Date.now() + 10_000), new Date(Date.now() + 10_000));
+            const after = overlayStore.createSnapshot(false).baseFingerprint;
+            expect(after).not.toBe(before);
+        } finally {
+            await rm(dir, { recursive: true, force: true });
+        }
+    }, 30000);
+
     test('runs shell-style quoted commands and records receipts', async () => {
         const snap = overlayStore.createSnapshot(false);
         const result = await overlayStore.runChecks(snap.id, ['bash -lc "exit 0"'], 30);
@@ -161,4 +180,20 @@ describe('OverlayStore runChecks evidence receipts', () => {
         expect(Buffer.byteLength(result.output, 'utf8')).toBeLessThan(1024 * 1024 + 128);
         expect(result.commands[0]).toMatchObject({ command: 'yes', ok: false, timedOut: true });
     }, 5000);
+
+    test('timeout kills shell descendant processes', async () => {
+        const marker = path.join(tmpdir(), `sci-runchecks-leak-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+        try {
+            await rm(marker, { force: true });
+            const snap = overlayStore.createSnapshot(false);
+            const command = `bash -lc "sh -c 'sleep 2; echo leaked > ${JSON.stringify(marker)}' & wait"`;
+            const result = await overlayStore.runChecks(snap.id, [command], 1);
+            expect(result.ok).toBe(false);
+            expect(result.commands[0].timedOut).toBe(true);
+            await Bun.sleep(2500);
+            expect(existsSync(marker)).toBe(false);
+        } finally {
+            await rm(marker, { force: true });
+        }
+    }, 8000);
 });
