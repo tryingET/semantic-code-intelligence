@@ -1093,8 +1093,9 @@ export class MCPAdapter {
             }
 
             const quotedFiles = touchedFiles.map((file: string) => JSON.stringify(file)).join(' ');
+            const workspaceRoot = this.getWorkspaceRoot();
             const workingDiffProc = spawnSync('bash', ['-lc', `git diff --no-ext-diff -- ${quotedFiles}`], {
-                cwd: process.cwd(),
+                cwd: workspaceRoot,
                 encoding: 'utf8',
                 stdio: 'pipe',
             });
@@ -1115,7 +1116,7 @@ export class MCPAdapter {
 
             const patchId = (diff: string) => {
                 const proc = spawnSync('git', ['patch-id', '--stable'], {
-                    cwd: process.cwd(),
+                    cwd: workspaceRoot,
                     encoding: 'utf8',
                     input: diff,
                     stdio: ['pipe', 'pipe', 'pipe'],
@@ -1132,7 +1133,7 @@ export class MCPAdapter {
             const reverse = spawnSync(
                 'bash',
                 ['-lc', `git apply --check -R --whitespace=nowarn ${JSON.stringify(diffFile)}`],
-                { cwd: process.cwd(), encoding: 'utf8', stdio: 'pipe' }
+                { cwd: workspaceRoot, encoding: 'utf8', stdio: 'pipe' }
             );
             const reverseOutput = `${String(reverse.stdout || '')}${String(reverse.stderr || '')}`.slice(-4000);
             const patchIdsMatch =
@@ -1383,7 +1384,7 @@ export class MCPAdapter {
         }
 
         // Step 2: snapshot and generate unified diff from WorkspaceEdit
-        const snap = overlayStore.createSnapshot(true);
+        const snap = overlayStore.createSnapshot(true, { workspaceRoot: this.getWorkspaceRoot() });
         const diffParts: string[] = [];
         const root = this.getWorkspaceRoot();
         const tmpRootBase = runChecksFlag
@@ -1561,7 +1562,7 @@ export class MCPAdapter {
         }
     }
     private async handleGetSnapshot(args: Record<string, any>) {
-        const snap = overlayStore.createSnapshot(!!args?.preferExisting);
+        const snap = overlayStore.createSnapshot(!!args?.preferExisting, { workspaceRoot: this.getWorkspaceRoot() });
         return { content: [{ type: 'text', text: JSON.stringify({ snapshot: snap.id }, null, 2) }], isError: false };
     }
 
@@ -2262,7 +2263,7 @@ export class MCPAdapter {
             return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: false };
         }
 
-        const snap = overlayStore.createSnapshot(false);
+        const snap = overlayStore.createSnapshot(false, { workspaceRoot: this.getWorkspaceRoot() });
         const stage = overlayStore.stagePatch(snap.id, built.diff);
         if (!stage.accepted) {
             const payload = { ok: false, matches: allMatches.length, snapshot: snap.id, stage, applied: false };

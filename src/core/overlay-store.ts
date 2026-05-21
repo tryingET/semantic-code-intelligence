@@ -24,6 +24,7 @@ type Snapshot = {
     createdAt: number;
     diffs: string[];
     baseFingerprint?: string;
+    workspaceRoot?: string;
     touchedFiles?: Set<string>;
     lastApply?: {
         ok: boolean;
@@ -195,8 +196,8 @@ export class OverlayStore {
         }
     }
 
-    private workspaceBaseFingerprint(): string {
-        const root = this.resolveWorkspaceBase();
+    private workspaceBaseFingerprint(workspaceRoot?: string): string {
+        const root = this.resolveWorkspaceBase(workspaceRoot);
         const hash = createHash('sha256');
         hash.update(`root:${root}\0`);
         const addGit = (args: string[], label: string): string => {
@@ -235,6 +236,7 @@ export class OverlayStore {
             createdAt: snap.createdAt,
             diffs: snap.diffs,
             baseFingerprint: snap.baseFingerprint || null,
+            workspaceRoot: snap.workspaceRoot || null,
             touchedFiles: snap.touchedFiles ? Array.from(snap.touchedFiles) : [],
             lastApply: snap.lastApply || null,
         };
@@ -247,7 +249,8 @@ export class OverlayStore {
         const diffs = Array.isArray(raw?.diffs) ? raw.diffs.filter((d: any) => typeof d === 'string') : [];
         const touched = Array.isArray(raw?.touchedFiles) ? raw.touchedFiles.filter((f: any) => typeof f === 'string') : [];
         const baseFingerprint = typeof raw?.baseFingerprint === 'string' ? raw.baseFingerprint : undefined;
-        const snap: Snapshot = { id, createdAt, diffs, baseFingerprint };
+        const workspaceRoot = typeof raw?.workspaceRoot === 'string' && raw.workspaceRoot ? path.resolve(raw.workspaceRoot) : undefined;
+        const snap: Snapshot = { id, createdAt, diffs, baseFingerprint, workspaceRoot };
         if (touched.length) snap.touchedFiles = new Set(touched);
         if (raw?.lastApply && typeof raw.lastApply === 'object') snap.lastApply = raw.lastApply;
         return snap;
@@ -322,8 +325,9 @@ export class OverlayStore {
         return !Array.isArray(snap.diffs) || snap.diffs.length === 0;
     }
 
-    createSnapshot(preferExisting = true): Snapshot {
-        const baseFingerprint = this.workspaceBaseFingerprint();
+    createSnapshot(preferExisting = true, opts: { workspaceRoot?: string } = {}): Snapshot {
+        const workspaceRoot = opts.workspaceRoot ? this.resolveWorkspaceBase(opts.workspaceRoot) : undefined;
+        const baseFingerprint = this.workspaceBaseFingerprint(workspaceRoot);
         // Optionally reuse the most recent clean snapshot only when it still matches the current workspace base.
         if (preferExisting) {
             this.loadAllSnapshotsFromDisk();
@@ -333,7 +337,7 @@ export class OverlayStore {
             if (reusable) return reusable;
         }
         const id = randomUUID();
-        const snap: Snapshot = { id, createdAt: Date.now(), diffs: [], baseFingerprint };
+        const snap: Snapshot = { id, createdAt: Date.now(), diffs: [], baseFingerprint, workspaceRoot };
         this.snapshots.set(id, snap);
         this.persistSnapshotSync(snap);
         return snap;
@@ -499,7 +503,11 @@ export class OverlayStore {
         return res.status === 0 ? String(res.stdout).trim() : null;
     }
 
-    private resolveWorkspaceBase(): string {
+    private resolveWorkspaceBase(workspaceRoot?: string): string {
+        if (workspaceRoot) {
+            const abs = path.resolve(workspaceRoot);
+            if (fs.existsSync(abs) && fs.statSync(abs).isDirectory()) return abs;
+        }
         const envBase = process.env.WORKSPACE_ROOT || process.env.SEMANTIC_CODE_WORKSPACE || '';
         if (envBase) {
             try {
@@ -532,19 +540,19 @@ export class OverlayStore {
     }
 
     private async ensureMaterializedUnlocked(snapshotId: string): Promise<string | null> {
-        const base = this.resolveWorkspaceBase();
         const snapsRoot = this.snapshotsRoot();
         const dir = path.join(snapsRoot, snapshotId);
         await fsp.mkdir(snapsRoot, { recursive: true }).catch(() => {});
         const materializedMarker = path.join(dir, '.materialized');
         const preferPartial = process.env.SNAPSHOT_PARTIAL === '1';
         const snap = this.snapshots.get(snapshotId) || this.loadSnapshotFromDisk(snapshotId);
+        const base = this.resolveWorkspaceBase(snap?.workspaceRoot);
         const desiredFingerprint = this.snapshotDiffFingerprint(snap);
         const currentFingerprint = fs.existsSync(materializedMarker) ? this.readMaterializedFingerprint(materializedMarker) : null;
         const touched = snap?.touchedFiles ? Array.from(snap.touchedFiles) : [];
 
         if (currentFingerprint === desiredFingerprint) return dir;
-        if (snap?.baseFingerprint && this.workspaceBaseFingerprint() !== snap.baseFingerprint) {
+        if (snap?.baseFingerprint && this.workspaceBaseFingerprint(snap.workspaceRoot) !== snap.baseFingerprint) {
             throw new Error('Workspace changed since snapshot creation before materialization; create a fresh snapshot');
         }
 
@@ -686,7 +694,7 @@ export class OverlayStore {
         // Materialize snapshot into .ontology/snapshots/<id>, then run commands in a disposable copy.
         // Check commands are caller-controlled and may write files; they must not mutate the reusable
         // materialized snapshot cache used by later read/search/navigation calls.
-        const materializedCwd = (await this.ensureMaterialized(snapshotId)) || process.cwd();
+        const materializedCwd = (await this.ensureMaterialized(snapshotId)) || this.resolveWorkspaceBase(this.ensureSnapshot(snapshotId).workspaceRoot);
         const checkWorkspace = await this.createCheckWorkspace(snapshotId, materializedCwd);
         const cwd = checkWorkspace.cwd;
         try {
@@ -719,7 +727,7 @@ export class OverlayStore {
             const needsTest = (commands || []).some((c) => /\b(test(\b|:)|bun\s+test|just\s+test(\b|[-_]))/.test(c));
             const needsScripts = (commands || []).some((c) => /\bbun\s+run\s+|npm\s+run\s+|pnpm\s+run\s+/.test(c));
             if (preferPartial && (needsBuild || needsTest || needsScripts)) {
-                const base = this.resolveWorkspaceBase();
+                const base = this.resolveWorkspaceBase(this.ensureSnapshot(snapshotId).workspaceRoot);
                 const ensureDirs = ['src', 'tests', 'scripts', 'bin'];
                 for (const d of ensureDirs) {
                     const needThis =
@@ -848,7 +856,7 @@ export class OverlayStore {
         }
     }
 
-    private async removeEmptyApplyDirs(diffFile: string): Promise<void> {
+    private async removeEmptyApplyDirs(diffFile: string, workspaceRoot?: string): Promise<void> {
         const diffText = await fsp.readFile(diffFile, 'utf8');
         const dirs = new Set<string>();
         for (const line of diffText.split(/\r?\n/)) {
@@ -861,7 +869,7 @@ export class OverlayStore {
         }
         const ordered = Array.from(dirs).sort((a, b) => b.length - a.length);
         for (const rel of ordered) {
-            const { absolutePath } = this.containedPath(process.cwd(), rel, 'apply_snapshot directory');
+            const { absolutePath } = this.containedPath(this.resolveWorkspaceBase(workspaceRoot), rel, 'apply_snapshot directory');
             await fsp.rmdir(absolutePath).catch(() => undefined);
         }
     }
@@ -876,7 +884,9 @@ export class OverlayStore {
     }> {
         this.assertValidId(snapshotId);
         const start = Date.now();
-        const dir = (await this.ensureMaterialized(snapshotId)) || process.cwd();
+        const snap = this.ensureSnapshot(snapshotId);
+        const workspaceRoot = this.resolveWorkspaceBase(snap.workspaceRoot);
+        const dir = (await this.ensureMaterialized(snapshotId)) || workspaceRoot;
         const diffFile = path.join(dir, 'overlay.diff');
         let output = '';
         // Validate caller-controlled diff paths before invoking apply tools. Non-check apply
@@ -900,7 +910,7 @@ export class OverlayStore {
             if (!check && !reverse) {
                 for (const rel of ensureDirs) {
                     if (!rel || rel === '.' || rel === '/') continue;
-                    const { absolutePath } = this.containedPath(process.cwd(), rel, 'apply_snapshot directory');
+                    const { absolutePath } = this.containedPath(workspaceRoot, rel, 'apply_snapshot directory');
                     await fsp.mkdir(absolutePath, { recursive: true });
                 }
             }
@@ -924,11 +934,11 @@ export class OverlayStore {
             '-lc',
             `git apply ${reverse ? '-R ' : ''}${check ? '--check ' : ''}--whitespace=nowarn ${JSON.stringify(diffFile)}`,
         ];
-        const git = spawnSync('bash', argsGit, { stdio: 'pipe', cwd: process.cwd() });
+        const git = spawnSync('bash', argsGit, { stdio: 'pipe', cwd: workspaceRoot });
         output += String(git.stdout || '') + String(git.stderr || '');
         const elapsed = Date.now() - start;
         if (git.status === 0) {
-            if (reverse) await this.removeEmptyApplyDirs(diffFile).catch(() => undefined);
+            if (reverse) await this.removeEmptyApplyDirs(diffFile, workspaceRoot).catch(() => undefined);
             this.recordLastApply(snapshotId, {
                 ok: true,
                 elapsedMs: elapsed,
@@ -944,10 +954,10 @@ export class OverlayStore {
             const dry = check ? `--dry-run ` : '';
             const rev = reverse ? `-R ` : '';
             const patchArgs = ['-lc', `patch ${dry}${rev}-p${pLevel} < ${JSON.stringify(diffFile)}`];
-            const p = spawnSync('bash', patchArgs, { stdio: 'pipe', cwd: process.cwd() });
+            const p = spawnSync('bash', patchArgs, { stdio: 'pipe', cwd: workspaceRoot });
             output += String(p.stdout || '') + String(p.stderr || '');
             const ok = p.status === 0;
-            if (ok && reverse) await this.removeEmptyApplyDirs(diffFile).catch(() => undefined);
+            if (ok && reverse) await this.removeEmptyApplyDirs(diffFile, workspaceRoot).catch(() => undefined);
             this.recordLastApply(snapshotId, {
                 ok,
                 elapsedMs: Date.now() - start,

@@ -141,12 +141,50 @@ const grep = new AsyncEnhancedGrep();
         }
     });
 
+    test('runs snapshot patch checks and guarded apply against the configured workspace', async () => {
+        const marker = 'configuredWorkspaceApplied';
+        const original = await fs.readFile(path.join(testDir, 'async-grep.ts'), 'utf8');
+        const cwdProbe = path.join(process.cwd(), 'async-grep.ts');
+        const cwdProbeBefore = await fs.readFile(cwdProbe, 'utf8').catch(() => null);
+        const snapshot = (await callToolJson('get_snapshot', { preferExisting: false })).snapshot;
+        const patch = `*** Begin Patch\n*** Update File: async-grep.ts\n@@\n export class AsyncEnhancedGrep {\n-  constructor() {}\n+  constructor() { this.${marker} = true; }\n*** End Patch\n`;
+
+        const staged = await callToolJson('propose_patch', { snapshot, patch });
+        expect(staged.accepted).toBe(true);
+
+        const checks = await callToolJson('run_checks', {
+            snapshot,
+            commands: [`bash -lc ${JSON.stringify(`grep -q ${marker} async-grep.ts`)}`],
+            timeoutSec: 30,
+        });
+        expect(checks.ok).toBe(true);
+        expect(await fs.readFile(path.join(testDir, 'async-grep.ts'), 'utf8')).toBe(original);
+
+        const previousAllow = process.env.ALLOW_SNAPSHOT_APPLY;
+        process.env.ALLOW_SNAPSHOT_APPLY = '1';
+        try {
+            const applied = await callToolJson('apply_snapshot', { snapshot });
+            expect(applied.ok).toBe(true);
+            expect(await fs.readFile(path.join(testDir, 'async-grep.ts'), 'utf8')).toContain(marker);
+
+            const reversed = await callToolJson('apply_snapshot', { snapshot, reverse: true });
+            expect(reversed.ok).toBe(true);
+            expect(await fs.readFile(path.join(testDir, 'async-grep.ts'), 'utf8')).toBe(original);
+        } finally {
+            if (previousAllow === undefined) delete process.env.ALLOW_SNAPSHOT_APPLY;
+            else process.env.ALLOW_SNAPSHOT_APPLY = previousAllow;
+        }
+
+        const cwdProbeAfter = await fs.readFile(cwdProbe, 'utf8').catch(() => null);
+        expect(cwdProbeAfter).toBe(cwdProbeBefore);
+    });
+
     test('exposes stable symbol-locator results inside the configured workspace', async () => {
         const locator = (analyzer as any).getSymbolLocator?.() || analyzer;
         const locations = (await locator.locateSymbol?.('AsyncEnhancedGrep')) || [];
 
         expect(locations.length).toBeGreaterThan(0);
-        expect(locations[0].uri).toContain('async-grep.ts');
-        expect(locations[0].uri).toContain(testDir);
+        expect(locations.some((location: any) => String(location.uri || '').includes('async-grep.ts'))).toBe(true);
+        expect(locations.every((location: any) => String(location.uri || '').includes(testDir))).toBe(true);
     });
 });
