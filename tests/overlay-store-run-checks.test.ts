@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
-import { mkdir, utimes } from 'node:fs/promises';
+import { chmod, mkdir, rm, utimes, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { overlayStore } from '../src/core/overlay-store.js';
 
@@ -55,6 +55,57 @@ describe('OverlayStore runChecks evidence receipts', () => {
         await cleanupTransient(path.join(process.cwd(), '.ontology', 'snapshots'), Date.now(), 60_000);
 
         expect(existsSync(checkDir)).toBe(false);
+    });
+
+    test('cleanup removes stale transient materialization workspaces without deleting fresh or foreign entries', async () => {
+        const snap = overlayStore.createSnapshot(false);
+        const snapsRoot = path.join(process.cwd(), '.ontology', 'snapshots');
+        const staleTmp = path.join(snapsRoot, `.${snap.id}.1.1.tmp`);
+        const staleOld = path.join(snapsRoot, `.${snap.id}.1.2.old`);
+        const freshTmp = path.join(snapsRoot, `.${snap.id}.1.3.tmp`);
+        const foreignDir = path.join(snapsRoot, '.not-a-snapshot.1.tmp');
+        const validLookingFile = path.join(snapsRoot, `.${snap.id}.1.4.tmp`);
+
+        await mkdir(staleTmp, { recursive: true });
+        await mkdir(staleOld, { recursive: true });
+        await mkdir(freshTmp, { recursive: true });
+        await mkdir(foreignDir, { recursive: true });
+        await writeFile(validLookingFile, 'not a directory', 'utf8');
+        await utimes(staleTmp, new Date(0), new Date(0));
+        await utimes(staleOld, new Date(0), new Date(0));
+        await utimes(foreignDir, new Date(0), new Date(0));
+
+        const cleanupTransient = (overlayStore as any).cleanupTransientSnapshotWorkspaces?.bind(overlayStore);
+        expect(typeof cleanupTransient).toBe('function');
+        await cleanupTransient(snapsRoot, Date.now(), 60_000);
+
+        expect(existsSync(staleTmp)).toBe(false);
+        expect(existsSync(staleOld)).toBe(false);
+        expect(existsSync(freshTmp)).toBe(true);
+        expect(existsSync(foreignDir)).toBe(true);
+        expect(existsSync(validLookingFile)).toBe(true);
+
+        await rm(freshTmp, { recursive: true, force: true });
+        await rm(foreignDir, { recursive: true, force: true });
+        await rm(validLookingFile, { force: true });
+    });
+
+    test('cleanup tolerates transient deletion failures without throwing', async () => {
+        const snap = overlayStore.createSnapshot(false);
+        const snapsRoot = path.join(process.cwd(), '.ontology', 'snapshots', `cleanup-permission-${Date.now()}`);
+        const staleTmp = path.join(snapsRoot, `.${snap.id}.1.1.tmp`);
+        await mkdir(staleTmp, { recursive: true });
+        await utimes(staleTmp, new Date(0), new Date(0));
+
+        const cleanupTransient = (overlayStore as any).cleanupTransientSnapshotWorkspaces?.bind(overlayStore);
+        expect(typeof cleanupTransient).toBe('function');
+        try {
+            await chmod(snapsRoot, 0o555);
+            await cleanupTransient(snapsRoot, Date.now(), 60_000);
+        } finally {
+            await chmod(snapsRoot, 0o755).catch(() => undefined);
+            await rm(snapsRoot, { recursive: true, force: true });
+        }
     });
 
     test('runs shell-style quoted commands and records receipts', async () => {

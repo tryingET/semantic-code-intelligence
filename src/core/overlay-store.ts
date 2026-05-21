@@ -345,7 +345,12 @@ export class OverlayStore {
         this.snapshots.clear();
     }
 
-    private async cleanupTransientCheckWorkspaces(snapsRoot: string, now: number, maxAgeMs: number): Promise<void> {
+    private async cleanupTransientSnapshotWorkspaces(
+        snapsRoot: string,
+        now: number,
+        maxAgeMs: number,
+        suffixes = new Set(['check', 'tmp', 'old'])
+    ): Promise<void> {
         let entries: fs.Dirent[] = [];
         try {
             entries = await fsp.readdir(snapsRoot, { withFileTypes: true });
@@ -353,9 +358,11 @@ export class OverlayStore {
             return;
         }
         for (const ent of entries) {
-            if (!ent.isDirectory() || !ent.name.startsWith('.') || !ent.name.endsWith('.check')) continue;
-            const firstPart = ent.name.slice(1).split('.')[0] || '';
-            if (!this.isValidSnapshotId(firstPart)) continue;
+            if (!ent.isDirectory() || !ent.name.startsWith('.')) continue;
+            const match = ent.name.match(/^\.([0-9a-fA-F-]{8,})(?:\.[^.]+)*\.(check|tmp|old)$/);
+            if (!match) continue;
+            const [, snapshotId, suffix] = match;
+            if (!this.isValidSnapshotId(snapshotId) || !suffixes.has(suffix)) continue;
             const transientDir = path.join(snapsRoot, ent.name);
             try {
                 const stat = await fsp.stat(transientDir);
@@ -364,6 +371,10 @@ export class OverlayStore {
                 }
             } catch {}
         }
+    }
+
+    private async cleanupTransientCheckWorkspaces(snapsRoot: string, now: number, maxAgeMs: number): Promise<void> {
+        await this.cleanupTransientSnapshotWorkspaces(snapsRoot, now, maxAgeMs, new Set(['check']));
     }
 
     async cleanup(maxKeep = 10, maxAgeMs = 3 * 24 * 60 * 60 * 1000): Promise<void> {
@@ -386,7 +397,7 @@ export class OverlayStore {
                 await fsp.rm(path.join(snapsRoot, s.id), { recursive: true, force: true });
             } catch {}
         }
-        await this.cleanupTransientCheckWorkspaces(snapsRoot, now, maxAgeMs);
+        await this.cleanupTransientSnapshotWorkspaces(snapsRoot, now, maxAgeMs);
     }
 
     private parseTouchedFilesFromPatch(diff: string): string[] {
