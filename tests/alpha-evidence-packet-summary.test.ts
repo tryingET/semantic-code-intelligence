@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from 'bun:test';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -109,21 +109,53 @@ describe('alpha evidence packet operator summary', () => {
     expect(packet.safeWriteVerification.mismatchFailsClosed).toBe(false);
   });
 
-  test('redacts observation strings and source-file paths in generated packet output', () => {
+  test('redacts observation strings, source-file paths, and verification method fields in generated packet output', () => {
+    const safeWriteWithMaliciousMethods = JSON.parse(JSON.stringify(files['safe-write-dogfood.json']));
+    safeWriteWithMaliciousMethods.calls[1].payload.verification.method = `SECRET_KEY=clean-method ${process.cwd()} /tmp/private-clean`;
+    safeWriteWithMaliciousMethods.calls[2].payload.verification.method = `TOKEN_SECRET=mismatch-method ${process.cwd()} /tmp/private-mismatch`;
     const result = runPacket(makeFixtureRoot({
       'recommend-checks-dogfood.json': {
         ok: true,
         assertions: { recommendationsPresent: true },
         calls: [{ name: 'recommend_checks', success: true, elapsedMs: 1, observation: `SECRET_KEY=abc123 ${process.cwd()} /tmp/private-target` }],
       },
+      'safe-write-dogfood.json': safeWriteWithMaliciousMethods,
     }));
     expect(result.status, result.stderr).toBe(0);
 
     expect(result.stdout).not.toContain('SECRET_KEY=abc123');
     expect(result.stdout).not.toContain(process.cwd());
     expect(result.stdout).not.toContain('/tmp/private-target');
+    expect(result.stdout).not.toContain('/tmp/private-clean');
+    expect(result.stdout).not.toContain('/tmp/private-mismatch');
+    expect(result.stdout).not.toContain('SECRET_KEY=clean-method');
+    expect(result.stdout).not.toContain('TOKEN_SECRET=mismatch-method');
     const packet = JSON.parse(result.stdout);
     expect(packet.checkRecommendations.calls[0].observation).toContain('<redacted-secret>');
+    expect(packet.safeWriteVerification.cleanApplyMethod).toContain('<redacted-secret>');
+    expect(packet.safeWriteVerification.mismatchMethod).toContain('<redacted-secret>');
+  });
+
+  test('packet records sanitized load errors for oversized and symlink evidence inputs', () => {
+    const root = makeFixtureRoot();
+    writeFileSync(join(root, 'alpha-mvp-dogfood.json'), `{"ok":true,"padding":"${'x'.repeat(10 * 1024 * 1024)}"}`);
+    const outsideRoot = mkdtempSync(join(tmpdir(), 'sci-alpha-packet-outside-'));
+    tempRoots.push(outsideRoot);
+    const outsideGraph = join(outsideRoot, 'graph-impact-dogfood.json');
+    writeFileSync(outsideGraph, JSON.stringify({ ok: true, target: 'packet-secret-marker' }));
+    rmSync(join(root, 'graph-impact-dogfood.json'));
+    symlinkSync(outsideGraph, join(root, 'graph-impact-dogfood.json'));
+
+    const result = runPacket(root);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('Evidence input too large');
+    expect(result.stdout).toContain('Evidence input must be a regular file');
+    expect(result.stdout).not.toContain(root);
+    expect(result.stdout).not.toContain(outsideRoot);
+    expect(result.stdout).not.toContain('packet-secret-marker');
+    const packet = JSON.parse(result.stdout);
+    expect(packet.loadErrors.alpha).toContain('Evidence input too large');
+    expect(packet.loadErrors.graph).toContain('Evidence input must be a regular file');
   });
 
   test('alpha default validation does not include target dogfood issue capture', () => {

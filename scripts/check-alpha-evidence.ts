@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
-import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { readEvidenceJsonFile, safeEvidenceError, sanitizeEvidence } from './evidence-summary-utils';
 
 type Check = {
     name: string;
@@ -7,14 +8,15 @@ type Check = {
     detail?: Record<string, unknown>;
 };
 
+const evidenceRoot = process.env.SCI_ALPHA_EVIDENCE_ROOT || '.test-results';
 const evidenceFiles = {
-    alpha: '.test-results/alpha-mvp-dogfood.json',
-    selfHosted: '.test-results/self-hosted-cli-dogfood.json',
-    structural: '.test-results/structural-workflow-dogfood.json',
-    graph: '.test-results/graph-impact-dogfood.json',
-    recommendChecks: '.test-results/recommend-checks-dogfood.json',
-    safeWrite: '.test-results/safe-write-dogfood.json',
-    validationPlanComparison: '.test-results/validation-plan-comparison.json',
+    alpha: join(evidenceRoot, 'alpha-mvp-dogfood.json'),
+    selfHosted: join(evidenceRoot, 'self-hosted-cli-dogfood.json'),
+    structural: join(evidenceRoot, 'structural-workflow-dogfood.json'),
+    graph: join(evidenceRoot, 'graph-impact-dogfood.json'),
+    recommendChecks: join(evidenceRoot, 'recommend-checks-dogfood.json'),
+    safeWrite: join(evidenceRoot, 'safe-write-dogfood.json'),
+    validationPlanComparison: join(evidenceRoot, 'validation-plan-comparison.json'),
 };
 
 const budgetsMs: Record<string, number> = {
@@ -28,9 +30,9 @@ const budgetsMs: Record<string, number> = {
 
 function readJson(path: string): any {
     try {
-        return JSON.parse(readFileSync(path, 'utf8'));
+        return readEvidenceJsonFile(path);
     } catch (error) {
-        throw new Error(`Failed to read ${path}: ${error instanceof Error ? error.message : String(error)}`);
+        throw new Error(safeEvidenceError(error));
     }
 }
 
@@ -60,7 +62,7 @@ try {
     safeWrite = readJson(evidenceFiles.safeWrite);
     validationPlanComparison = readJson(evidenceFiles.validationPlanComparison);
 } catch (error) {
-    checks.push({ name: 'evidence_files_readable', ok: false, detail: { message: error instanceof Error ? error.message : String(error) } });
+    checks.push({ name: 'evidence_files_readable', ok: false, detail: { message: safeEvidenceError(error) } });
 }
 
 if (alpha) {
@@ -210,5 +212,5 @@ const report = {
     },
 };
 
-console.log(JSON.stringify(report, null, 2));
+console.log(JSON.stringify(sanitizeEvidence(report), null, 2));
 if (!ok) process.exitCode = 1;

@@ -1,7 +1,12 @@
 #!/usr/bin/env bun
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { basename, dirname, isAbsolute, relative, join } from 'node:path';
-import { redactString } from './evidence-summary-utils';
+import { readEvidenceJsonFile, redactString, sanitizeEvidence, safeEvidenceError, writeTextFileNoSymlink } from './evidence-summary-utils';
+
+process.on('uncaughtException', (error) => {
+    console.error(`alpha-evidence-history: ${safeEvidenceError(error)}`);
+    process.exit(1);
+});
 
 const evidenceRoot = process.env.SCI_ALPHA_EVIDENCE_ROOT || '.test-results';
 const outputPath = join(evidenceRoot, 'alpha-evidence-history.json');
@@ -33,7 +38,11 @@ type SlowestCall = {
 } | null;
 
 function readJson(path: string): any {
-    return JSON.parse(readFileSync(path, 'utf8'));
+    try {
+        return readEvidenceJsonFile(path);
+    } catch (error) {
+        throw new Error(safeEvidenceError(error));
+    }
 }
 
 function displayPath(path: string): string {
@@ -178,10 +187,10 @@ const report = {
     ok: overBudget.length === 0,
     baseline: {
         path: displayPath(baselinePath),
-        label: baseline.label || null,
-        capturedAt: baseline.capturedAt || null,
-        commit: baseline.commit || null,
-        note: baseline.note || null,
+        label: sanitizeEvidence(baseline.label || null),
+        capturedAt: sanitizeEvidence(baseline.capturedAt || null),
+        commit: sanitizeEvidence(baseline.commit || null),
+        note: sanitizeEvidence(baseline.note || null),
     },
     comparisonPolicy: {
         baselineWarning: 'Warn when current max elapsed time is at least 1.5x baseline and at least 500ms slower.',
@@ -219,7 +228,8 @@ const report = {
     },
 };
 
+const outputReport = sanitizeEvidence(report);
 mkdirSync(dirname(outputPath), { recursive: true });
-writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`);
-console.log(JSON.stringify(report, null, process.argv.includes('--pretty') ? 2 : 0));
+writeTextFileNoSymlink(outputPath, `${JSON.stringify(outputReport, null, 2)}\n`);
+console.log(JSON.stringify(outputReport, null, process.argv.includes('--pretty') ? 2 : 0));
 if (!report.ok) process.exitCode = 1;

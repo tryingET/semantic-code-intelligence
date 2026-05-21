@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -113,6 +113,78 @@ describe('alpha evidence history comparison', () => {
     expect(result.stdout).not.toContain(root);
     expect(result.stdout).not.toContain(baselinePath);
     expect(result.stdout).not.toContain('/tmp/secret-token');
+  });
+
+  test('call names and remediation hints are redacted before reaching operator-facing output', () => {
+    const maliciousCallName = `find_definition SECRET_KEY=call-secret ${process.cwd()} /tmp/private-call`;
+    const { root, baselinePath } = makeEvidenceRoot({
+      [evidenceNames.alpha]: {
+        ok: true,
+        summary: [{ name: maliciousCallName, success: true, elapsedMs: 1800, observation: 'slow malicious name' }],
+      },
+    });
+
+    const result = runHistory(root, baselinePath);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).not.toContain('SECRET_KEY=call-secret');
+    expect(result.stdout).not.toContain(process.cwd());
+    expect(result.stdout).not.toContain('/tmp/private-call');
+    const report = JSON.parse(result.stdout);
+    expect(report.warnings[0].slowestCall.name).toContain('<redacted-secret>');
+    expect(report.warnings[0].remediationHint).toContain('<redacted-secret>');
+  });
+
+  test('baseline metadata is redacted before reaching operator-facing output', () => {
+    const { root, baselinePath } = makeEvidenceRoot();
+    writeJson(baselinePath, {
+      schema: 'semantic-code-intelligence.alpha_evidence_latency_baseline.v1',
+      label: `fixture ${process.cwd()}`,
+      capturedAt: '2026-01-01T00:00:00.000Z',
+      commit: 'SECRET_KEY=history-secret',
+      note: 'stored under /tmp/private-baseline with TOKEN_SECRET=abc123',
+      baselines: {
+        alpha: { maxElapsedMs: 1000 },
+        selfHosted: { maxElapsedMs: 1000 },
+        structural: { maxElapsedMs: 1000 },
+        graph: { maxElapsedMs: 1000 },
+        recommendChecks: { maxElapsedMs: 1000 },
+        safeWrite: { maxElapsedMs: 1000 },
+      },
+    });
+
+    const result = runHistory(root, baselinePath);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).not.toContain(process.cwd());
+    expect(result.stdout).not.toContain('SECRET_KEY=history-secret');
+    expect(result.stdout).not.toContain('/tmp/private-baseline');
+    expect(result.stdout).not.toContain('TOKEN_SECRET=abc123');
+    const report = JSON.parse(result.stdout);
+    expect(report.baseline.label).toMatch(/<workspace>|<home>/);
+    expect(report.baseline.commit).toContain('<redacted-secret>');
+  });
+
+  test('oversized generated evidence fails closed before parsing', () => {
+    const { root, baselinePath } = makeEvidenceRoot({
+      [evidenceNames.alpha]: `{"ok":true,"padding":"${'x'.repeat(10 * 1024 * 1024)}"}`,
+    } as any);
+    writeFileSync(join(root, evidenceNames.alpha), `{"ok":true,"padding":"${'x'.repeat(10 * 1024 * 1024)}"}`);
+
+    const result = runHistory(root, baselinePath);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('alpha-evidence-history: Evidence input too large');
+    expect(result.stderr).not.toContain(root);
+  });
+
+  test('history output refuses symlink clobbering', () => {
+    const { root, baselinePath } = makeEvidenceRoot();
+    const outsideRoot = mkdtempSync(join(tmpdir(), 'sci-alpha-history-outside-'));
+    tempRoots.push(outsideRoot);
+    symlinkSync(join(outsideRoot, 'outside-history.json'), join(root, 'alpha-evidence-history.json'));
+
+    const result = runHistory(root, baselinePath);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('alpha-evidence-history: Evidence output must be a regular file');
+    expect(result.stderr).not.toContain(outsideRoot);
   });
 
   test('workspace-contained absolute evidence paths are reported as repo-relative labels', () => {

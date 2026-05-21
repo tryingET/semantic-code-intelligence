@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
-import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { maxElapsed, sanitizeEvidence, summarizeCalls } from './evidence-summary-utils';
+import { maxElapsed, readEvidenceJsonFile, safeEvidenceError, sanitizeEvidence, summarizeCalls } from './evidence-summary-utils';
 
 const evidenceRoot = process.env.SCI_ALPHA_EVIDENCE_ROOT || '.test-results';
 const files = {
@@ -17,14 +16,14 @@ const files = {
 };
 
 function readJson(path: string): any {
-    return JSON.parse(readFileSync(path, 'utf8'));
+    return readEvidenceJsonFile(path);
 }
 
 function safeRead(path: string): { ok: true; value: any } | { ok: false; error: string } {
     try {
         return { ok: true, value: readJson(path) };
     } catch (error) {
-        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+        return { ok: false, error: safeEvidenceError(error) };
     }
 }
 
@@ -201,5 +200,5 @@ const packet = {
     ),
 };
 
-console.log(JSON.stringify(packet, null, 2));
+console.log(JSON.stringify(sanitizeEvidence(packet), null, 2));
 if (!packet.ok) process.exitCode = 1;
