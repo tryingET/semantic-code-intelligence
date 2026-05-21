@@ -43,6 +43,7 @@ type CommandReceiptSummary = {
 };
 
 type SlowestCall = {
+    index: number;
     name: string;
     elapsedMs: number;
     observation?: string;
@@ -88,10 +89,9 @@ function commandReceiptsFor(call: any): any[] {
 }
 
 function commandReceiptSummary(call: any): CommandReceiptSummary | undefined {
-    const receipts = commandReceiptsFor(call);
+    const receipts = commandReceiptsFor(call).filter((receipt) => receipt && typeof receipt === 'object');
     let slowest: any = null;
     for (const receipt of receipts) {
-        if (!receipt || typeof receipt !== 'object') continue;
         if (!slowest || finiteElapsed(receipt) > finiteElapsed(slowest)) slowest = receipt;
     }
     if (!slowest) return undefined;
@@ -108,22 +108,34 @@ function commandReceiptSummary(call: any): CommandReceiptSummary | undefined {
     };
 }
 
-function matchingRawCall(slowest: any, rawCalls: any[]): any {
+function matchingRawCall(slowest: any, slowestIndex: number, rawCalls: any[]): any {
     const name = String(slowest?.name || '');
+    const indexed = rawCalls[slowestIndex];
+    if (indexed && String(indexed?.name || '') === name) return indexed;
+
+    const sameNameAndElapsed = rawCalls.filter((call) => String(call?.name || '') === name && finiteElapsed(call) === finiteElapsed(slowest));
+    if (sameNameAndElapsed.length === 1) return sameNameAndElapsed[0];
+
     const sameName = rawCalls.filter((call) => String(call?.name || '') === name);
-    if (sameName.length === 0) return slowest;
-    return sameName.reduce((best, call) => (finiteElapsed(call) > finiteElapsed(best) ? call : best), sameName[0]);
+    if (sameName.length === 1) return sameName[0];
+
+    return slowest;
 }
 
 function slowestCall(calls: any[], rawCalls: any[] = calls): SlowestCall {
     let slowest: any = null;
-    for (const call of calls) {
-        if (!slowest || finiteElapsed(call) > finiteElapsed(slowest)) slowest = call;
-    }
+    let slowestIndex = -1;
+    calls.forEach((call, index) => {
+        if (!slowest || finiteElapsed(call) > finiteElapsed(slowest)) {
+            slowest = call;
+            slowestIndex = index;
+        }
+    });
     if (!slowest) return null;
     const observation = typeof slowest?.observation === 'string' ? redactString(slowest.observation) : undefined;
-    const commandSummary = commandReceiptSummary(matchingRawCall(slowest, rawCalls));
+    const commandSummary = commandReceiptSummary(matchingRawCall(slowest, slowestIndex, rawCalls));
     return {
+        index: slowestIndex,
         name: String(slowest?.name || 'unknown'),
         elapsedMs: finiteElapsed(slowest),
         ...(observation ? { observation } : {}),
@@ -236,14 +248,19 @@ const comparisons = Object.entries(evidenceFiles)
 
 const warnings = comparisons.filter((item) => item.status === 'slower_than_baseline');
 const overBudget = comparisons.filter((item) => item.status === 'over_budget');
-const warningDetails = [...overBudget, ...warnings].map((item) => ({
-    key: item.key,
-    status: item.status,
-    call: item.slowestCall?.name || 'unknown',
-    elapsedMs: item.slowestCall?.elapsedMs || item.currentMaxElapsedMs,
-    likelyArea: item.likelyArea,
-    remediationHint: item.remediationHint,
-}));
+function warningDetailFor(item: any) {
+    return {
+        key: item.key,
+        status: item.status,
+        call: item.slowestCall?.name || 'unknown',
+        callIndex: Number.isFinite(item.slowestCall?.index) ? item.slowestCall.index : null,
+        elapsedMs: item.slowestCall?.elapsedMs || item.currentMaxElapsedMs,
+        ...(item.slowestCall?.commandReceiptSummary ? { commandReceiptSummary: item.slowestCall.commandReceiptSummary } : {}),
+        likelyArea: item.likelyArea,
+        remediationHint: item.remediationHint,
+    };
+}
+const warningDetails = [...overBudget, ...warnings].map(warningDetailFor);
 
 const report = {
     schema: 'semantic-code-intelligence.alpha_evidence_history.v1',

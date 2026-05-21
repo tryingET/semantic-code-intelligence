@@ -176,8 +176,50 @@ describe('alpha evidence history comparison', () => {
         timedOut: false,
       },
     });
+    expect(report.operatorSummary.warningDetails[0].commandReceiptSummary).toEqual(report.warnings[0].slowestCall.commandReceiptSummary);
+    expect(report.operatorSummary.warningDetails[0].callIndex).toBe(0);
     expect(report.warnings[0].slowestCall.commandReceiptSummary.slowest.command).toContain('echo <redacted-secret>');
     expect(report.warnings[0].slowestCall.commandReceiptSummary.slowest.command).toContain('<absolute-path>');
+  });
+
+  test('duplicate same-name calls join command receipts by stable index instead of max raw elapsed time', () => {
+    const { root, baselinePath } = makeEvidenceRoot({
+      [evidenceNames.alpha]: {
+        ok: true,
+        summary: [
+          { name: 'run_checks', success: true, elapsedMs: 1500, observation: 'first same-name call' },
+          { name: 'run_checks', success: true, elapsedMs: 1900, observation: 'second same-name call' },
+        ],
+        calls: [
+          {
+            name: 'run_checks',
+            success: true,
+            elapsedMs: 3000,
+            observation: 'first raw call should not be selected for second summary row',
+            sample: { result: { commands: [{ command: 'wrong-command', elapsedMs: 3000, ok: true }] } },
+          },
+          {
+            name: 'run_checks',
+            success: true,
+            elapsedMs: 1900,
+            observation: 'second raw call should be selected by index',
+            sample: { result: { commands: [null, 'bad-shape', { command: 'right-command', elapsedMs: 1700, ok: true }] } },
+          },
+        ],
+      },
+    });
+
+    const result = runHistory(root, baselinePath);
+    expect(result.status, result.stderr).toBe(0);
+    const report = JSON.parse(result.stdout);
+
+    expect(report.warnings[0].slowestCall).toMatchObject({ name: 'run_checks', index: 1, elapsedMs: 1900 });
+    expect(report.warnings[0].slowestCall.commandReceiptSummary).toMatchObject({
+      count: 1,
+      slowest: { command: 'right-command', elapsedMs: 1700, ok: true },
+    });
+    expect(report.operatorSummary.warningDetails[0].commandReceiptSummary).toEqual(report.warnings[0].slowestCall.commandReceiptSummary);
+    expect(JSON.stringify(report)).not.toContain('wrong-command');
   });
 
   test('overlapping structural check workflow names classify as validation rather than structural matching', () => {
