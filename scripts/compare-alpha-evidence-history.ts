@@ -33,6 +33,7 @@ const fallbackBudgetsMs: Record<string, number> = {
 
 type CommandReceiptSummary = {
     count: number;
+    totalElapsedMs: number;
     slowest: {
         command: string;
         elapsedMs: number;
@@ -83,13 +84,15 @@ function commandReceiptsFor(call: any): any[] {
         call?.payload?.validationPlan?.checks?.commands,
     ];
     for (const candidate of candidates) {
-        if (Array.isArray(candidate)) return candidate;
+        if (!Array.isArray(candidate)) continue;
+        const receipts = candidate.filter((receipt) => receipt && typeof receipt === 'object');
+        if (receipts.length > 0) return receipts;
     }
     return [];
 }
 
 function commandReceiptSummary(call: any): CommandReceiptSummary | undefined {
-    const receipts = commandReceiptsFor(call).filter((receipt) => receipt && typeof receipt === 'object');
+    const receipts = commandReceiptsFor(call);
     let slowest: any = null;
     for (const receipt of receipts) {
         if (!slowest || finiteElapsed(receipt) > finiteElapsed(slowest)) slowest = receipt;
@@ -98,6 +101,7 @@ function commandReceiptSummary(call: any): CommandReceiptSummary | undefined {
     const exitCode = Number(slowest?.exitCode);
     return {
         count: receipts.length,
+        totalElapsedMs: receipts.reduce((sum, receipt) => sum + finiteElapsed(receipt), 0),
         slowest: {
             command: redactString(String(slowest?.command || 'unknown')),
             elapsedMs: finiteElapsed(slowest),
@@ -174,7 +178,7 @@ function classify(currentMs: number, baselineMs: number, budgetMs: number): stri
 
 function latencyAttributionFor(call: SlowestCall, baselineMs: number, budgetMs: number): Record<string, unknown> {
     const totalElapsedMs = call?.elapsedMs || 0;
-    const commandElapsedMs = call?.commandReceiptSummary?.slowest?.elapsedMs || 0;
+    const commandElapsedMs = call?.commandReceiptSummary?.totalElapsedMs || 0;
     if (!commandElapsedMs || commandElapsedMs <= 0) {
         return {
             kind: 'tool_or_snapshot_runtime',
@@ -201,6 +205,7 @@ function calibrateStatus(status: string, attribution: Record<string, unknown>): 
     if (status !== 'slower_than_baseline') return status;
     if (attribution.kind !== 'selected_command_runtime') return status;
     if (attribution.overheadStatus === 'slower_than_baseline') return status;
+    if (typeof attribution.commandRuntimeShare !== 'number' || attribution.commandRuntimeShare < 0.5) return status;
     return 'within_noise_band_command_dominated';
 }
 

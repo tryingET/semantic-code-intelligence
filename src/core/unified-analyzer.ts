@@ -877,7 +877,7 @@ export class CodeAnalyzer {
                         setTimeout(() => resolve([]), Math.max(0, budget))
                     );
                     const layer2Refs = await Promise.race([escalatePromise, timeoutPromise]);
-                    layer2Time = this.elapsedObservedLayerMs(escStart);
+                    layer2Time += this.elapsedObservedLayerMs(escStart);
 
                     if (layer2Refs && layer2Refs.length > 0) {
                         const keyOf = (r: Reference) => `${r.uri}:${r.range.start.line}:${r.range.start.character}`;
@@ -898,7 +898,7 @@ export class CodeAnalyzer {
                         finalRefs = Array.from(map.values());
                     }
                 } catch {
-                    layer2Time = this.elapsedObservedLayerMs(escStart);
+                    layer2Time += this.elapsedObservedLayerMs(escStart);
                 }
             }
 

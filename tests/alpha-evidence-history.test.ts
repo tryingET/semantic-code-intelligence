@@ -169,6 +169,7 @@ describe('alpha evidence history comparison', () => {
 
     expect(report.warnings[0].slowestCall.commandReceiptSummary).toMatchObject({
       count: 1,
+      totalElapsedMs: 300,
       slowest: {
         elapsedMs: 300,
         ok: true,
@@ -186,6 +187,120 @@ describe('alpha evidence history comparison', () => {
     expect(report.operatorSummary.warningDetails[0].callIndex).toBe(0);
     expect(report.warnings[0].slowestCall.commandReceiptSummary.slowest.command).toContain('echo <redacted-secret>');
     expect(report.warnings[0].slowestCall.commandReceiptSummary.slowest.command).toContain('<absolute-path>');
+  });
+
+  test('multi-command selected runtime is summed before suppressing command-dominated drift', () => {
+    const { root, baselinePath } = makeEvidenceRoot({
+      [evidenceNames.structural]: {
+        ok: true,
+        calls: [{
+          name: 'structural_patch_checks',
+          success: true,
+          elapsedMs: 2100,
+          observation: 'Run multiple selected checks',
+          sample: {
+            result: {
+              commands: [
+                { command: 'bun run typecheck', ok: true, elapsedMs: 600, exitCode: 0, timedOut: false },
+                { command: 'bun test tests/example.test.ts', ok: true, elapsedMs: 600, exitCode: 0, timedOut: false },
+              ],
+            },
+          },
+        }],
+      },
+    });
+
+    const result = runHistory(root, baselinePath);
+    expect(result.status, result.stderr).toBe(0);
+    const report = JSON.parse(result.stdout);
+    const structural = report.comparisons.find((item: any) => item.key === 'structural');
+
+    expect(structural).toMatchObject({
+      status: 'within_noise_band_command_dominated',
+      rawStatus: 'slower_than_baseline',
+      slowestCall: { commandReceiptSummary: { count: 2, totalElapsedMs: 1200, slowest: { elapsedMs: 600 } } },
+      latencyAttribution: {
+        kind: 'selected_command_runtime',
+        selectedCommandElapsedMs: 1200,
+        toolOverheadElapsedMs: 900,
+        commandRuntimeShare: 0.571,
+        overheadStatus: 'within_noise_band',
+      },
+    });
+    expect(report.warnings.find((item: any) => item.key === 'structural')).toBeUndefined();
+  });
+
+  test('tiny selected-command share does not suppress raw tool-overhead drift', () => {
+    const { root, baselinePath } = makeEvidenceRoot({
+      [evidenceNames.alpha]: {
+        ok: true,
+        summary: [{ name: 'run_checks', success: true, elapsedMs: 1500, observation: 'Mostly tool overhead' }],
+        calls: [{
+          name: 'run_checks',
+          success: true,
+          elapsedMs: 1500,
+          observation: 'Mostly tool overhead',
+          sample: { result: { commands: [{ command: 'true', ok: true, elapsedMs: 10, exitCode: 0, timedOut: false }] } },
+        }],
+      },
+    });
+
+    const result = runHistory(root, baselinePath);
+    expect(result.status, result.stderr).toBe(0);
+    const report = JSON.parse(result.stdout);
+
+    expect(report.warnings[0]).toMatchObject({
+      key: 'alpha',
+      status: 'slower_than_baseline',
+      rawStatus: 'slower_than_baseline',
+      latencyAttribution: {
+        kind: 'selected_command_runtime',
+        selectedCommandElapsedMs: 10,
+        toolOverheadElapsedMs: 1490,
+        commandRuntimeShare: 0.007,
+        overheadStatus: 'within_noise_band',
+      },
+    });
+    expect(report.comparisons.find((item: any) => item.key === 'alpha').status).toBe('slower_than_baseline');
+  });
+
+  test('empty earlier command arrays do not mask later populated receipt paths', () => {
+    const { root, baselinePath } = makeEvidenceRoot({
+      [evidenceNames.structural]: {
+        ok: true,
+        calls: [{
+          name: 'structural_patch_checks',
+          success: true,
+          elapsedMs: 2400,
+          observation: 'Run validation plan checks',
+          sample: {
+            result: { commands: [] },
+            payload: {
+              validationPlan: {
+                checks: {
+                  commands: [{ command: 'bun run typecheck', ok: true, elapsedMs: 1700, exitCode: 0, timedOut: false }],
+                },
+              },
+            },
+          },
+        }],
+      },
+    });
+
+    const result = runHistory(root, baselinePath);
+    expect(result.status, result.stderr).toBe(0);
+    const report = JSON.parse(result.stdout);
+    const structural = report.comparisons.find((item: any) => item.key === 'structural');
+
+    expect(structural).toMatchObject({
+      status: 'within_noise_band_command_dominated',
+      slowestCall: { commandReceiptSummary: { count: 1, totalElapsedMs: 1700 } },
+      latencyAttribution: {
+        kind: 'selected_command_runtime',
+        selectedCommandElapsedMs: 1700,
+        toolOverheadElapsedMs: 700,
+      },
+    });
   });
 
   test('selected-command-dominated baseline drift is attributed without becoming a warning', () => {
@@ -265,6 +380,7 @@ describe('alpha evidence history comparison', () => {
     expect(report.warnings[0].slowestCall).toMatchObject({ name: 'run_checks', index: 1, elapsedMs: 1900 });
     expect(report.warnings[0].slowestCall.commandReceiptSummary).toMatchObject({
       count: 1,
+      totalElapsedMs: 300,
       slowest: { command: 'right-command', elapsedMs: 300, ok: true },
     });
     expect(report.operatorSummary.warningDetails[0].commandReceiptSummary).toEqual(report.warnings[0].slowestCall.commandReceiptSummary);
@@ -433,6 +549,7 @@ describe('alpha evidence history comparison', () => {
         kind: 'selected_command_runtime',
         selectedCommandElapsedMs: 20000,
         toolOverheadElapsedMs: 1000,
+        commandRuntimeShare: 0.952,
       },
     });
   });
