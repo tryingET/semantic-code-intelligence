@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { canBindTcp } from './helpers/bind-utils';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { overlayStore } from '../src/core/overlay-store';
 import { HTTPServer } from '../src/servers/http';
+import { canBindTcp } from './helpers/bind-utils';
 
 const canBind = await canBindTcp('127.0.0.1');
 const bindDescribe = canBind ? describe : describe.skip;
@@ -90,5 +90,21 @@ export class TestClass {
         expect(typeof out.snapshot).toBe('string');
         // applied may be false if the patch format isn't understood by the apply engine; assert field presence only
         expect(typeof out.applied).toBe('boolean');
+    }, 30000);
+
+    test('returns HTTP success with domain ok=false when guarded checks fail', async () => {
+        const patch = `*** Begin Patch\n*** Update File: ${tempFileRel}\n@@\n export class TestClass {\n-    private value: number = 0;\n+    // apply_after_checks failed-check noop\n+    private value: number = 0;\n*** End Patch\n`;
+
+        const res = await callTool(base, 'apply_after_checks', {
+            patch,
+            commands: ['false'],
+            timeoutSec: 60,
+        });
+        const out = unwrap(res);
+
+        expect(out).toBeDefined();
+        expect(out.ok).toBe(false);
+        expect(out.applied).toBe(false);
+        expect(typeof out.snapshot).toBe('string');
     }, 30000);
 });

@@ -70,6 +70,7 @@ Unsupported or unknown file extensions must not be hidden behind a green check.
 - `limited` edge status means the edge was requested but the language/source kind cannot currently produce reliable evidence for it.
 - `empty_or_unavailable` means no evidence was observed and no specific limitation was available; do not infer no impact.
 - File+symbol caller evidence may include best-effort `caller`/`callerKind`; confirm broad edits with `find_references`.
+- File+symbol callee extraction treats the requested symbol as a literal scoped selector. If that symbol is not found in the file, `callees` returns limited empty evidence instead of widening to file-wide callees.
 - For Python, treat imports as useful and exports as unavailable/limited.
 - For Rust/Clojure/Markdown/unknown files, use text search, symbol search, AST/structural tools when available, or target-specific checks instead of graph evidence.
 

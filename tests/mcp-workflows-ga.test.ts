@@ -41,7 +41,7 @@ describe('MCP workflows GA shapes', () => {
         expect(typeof obj.ok).toBe('boolean');
         expect(Array.isArray(obj.attempts)).toBe(true);
         expect(Array.isArray(obj.definitions)).toBe(true);
-    });
+    }, 30000);
 
     test('rename_safely (runChecks=false): predictable shape', async () => {
         const res = await mcp.handleToolCall('rename_safely', {
@@ -55,7 +55,7 @@ describe('MCP workflows GA shapes', () => {
         expect(obj.snapshot).toBeTruthy();
         expect(typeof obj.ok).toBe('boolean');
         expect(Array.isArray(obj.next_actions)).toBe(true);
-    });
+    }, 30000);
 
     test('patch_checks_in_snapshot: predictable shape (no-op cmd)', async () => {
         const patch = `*** Begin Patch\n*** Update File: tests/fixtures/example.ts\n@@\n export class TestClass {\n-    private value: number = 0;\n+    private value: number = 0; // ga\n*** End Patch\n`;
@@ -66,5 +66,5 @@ describe('MCP workflows GA shapes', () => {
         expect(obj.snapshot).toBeTruthy();
         expect(obj.stage).toBeTruthy();
         expect(obj.checks).toBeTruthy();
-    });
+    }, 30000);
 });

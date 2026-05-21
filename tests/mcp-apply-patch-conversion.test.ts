@@ -27,8 +27,8 @@ test('propose_patch accepts apply_patch and produces unified overlay.diff', asyn
     const snapshot = snapOut?.snapshot || snapOut?.id;
     expect(typeof snapshot).toBe('string');
 
-    // Minimal apply_patch that updates tests/fixtures/example.ts
-    const applyPatch = `*** Begin Patch\n*** Update File: tests/fixtures/example.ts\n@@\n export class TestClass {\n-    private value: number = 0;\n+    /* converted */ private value: number = 0;\n*** End Patch\n`;
+    // Minimal apply_patch that updates tests/fixtures/example.ts using current fixture context.
+    const applyPatch = `*** Begin Patch\n*** Update File: tests/fixtures/example.ts\n@@\n export class TestClass {\n // mcp unified apply_after_checks test\n-    private value: number = 0;\n+    /* converted */ private value: number = 0;\n*** End Patch\n`;
 
     const prop = await mcp.handleToolCall('propose_patch', { snapshot, patch: applyPatch });
     const propOut = await parseContent(prop);
@@ -43,6 +43,25 @@ test('propose_patch accepts apply_patch and produces unified overlay.diff', asyn
     expect(diff).toContain('diff --git a/tests/fixtures/example.ts b/tests/fixtures/example.ts');
     expect(diff).toContain('--- a/tests/fixtures/example.ts');
     expect(diff).toContain('+++ b/tests/fixtures/example.ts');
-    expect(diff).toContain('@@');
+    expect(diff).toContain('@@ -5,3 +5,3 @@');
     expect(diff).toContain('/* converted */ private value: number = 0;');
+});
+
+test('propose_patch rejects stale apply_patch hunks before accepting invalid overlay diffs', async () => {
+    const cfg = createDefaultCoreConfig();
+    const analyzer = await createCodeAnalyzer({ ...cfg, workspaceRoot: process.cwd() });
+    await analyzer.initialize();
+    const mcp = new MCPAdapter(analyzer);
+
+    const snapRes = await mcp.handleToolCall('get_snapshot', { preferExisting: false });
+    const snapOut = await parseContent(snapRes);
+    const snapshot = snapOut?.snapshot || snapOut?.id;
+    const stalePatch = `*** Begin Patch\n*** Update File: tests/fixtures/example.ts\n@@\n export class TestClass {\n-    private missingValue: number = 0;\n+    /* stale */ private missingValue: number = 0;\n*** End Patch\n`;
+
+    const prop = await mcp.handleToolCall('propose_patch', { snapshot, patch: stalePatch });
+    const propOut = await parseContent(prop);
+
+    expect(prop.isError).toBe(true);
+    expect(String(propOut?.content?.[0]?.text || propOut)).toContain('apply_patch hunk did not match');
+    await analyzer.dispose?.();
 });

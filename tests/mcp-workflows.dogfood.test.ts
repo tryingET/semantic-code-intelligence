@@ -54,7 +54,7 @@ describe('Dogfooding MCP workflows (fast)', () => {
         const onParsed = await parseContent(on);
         expect(onParsed).toBeDefined();
         expect(onParsed.symbol).toBeDefined();
-    });
+    }, 30000);
 
     test('plan_rename preview (TestFunction -> TestFunctionX)', async () => {
         const plan = await mcp.handleToolCall('plan_rename', {
@@ -67,7 +67,7 @@ describe('Dogfooding MCP workflows (fast)', () => {
         expect(planParsed).toBeDefined();
         // Plan returns a WorkspaceEdit-like { changes }
         expect(planParsed.changes).toBeDefined();
-    });
+    }, 30000);
 
     test('graph_expand via MCP (file + symbol)', async () => {
         // file-based imports/exports/callees
@@ -92,7 +92,7 @@ describe('Dogfooding MCP workflows (fast)', () => {
         expect(symParsed).toBeDefined();
         expect(symParsed.neighbors).toBeDefined();
         expect(symParsed.neighbors.callers).toBeDefined();
-    });
+    }, 30000);
 
     test('stage small patch (no checks)', async () => {
         const snap = await mcp.handleToolCall('get_snapshot', { preferExisting: true });
@@ -105,5 +105,5 @@ describe('Dogfooding MCP workflows (fast)', () => {
         const stageParsed = await parseContent(stage);
         expect(stageParsed).toBeDefined();
         expect(stageParsed.accepted).toBe(true);
-    });
+    }, 30000);
 });

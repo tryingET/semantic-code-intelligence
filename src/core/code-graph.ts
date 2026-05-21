@@ -97,20 +97,28 @@ export async function expandNeighbors(opts: {
 
         const findSymbolBodies = (symbol: string): any[] => {
             if (!symbol) return [];
-            // Best-effort for TS/JS: function and method bodies only (keep bounded and predictable)
+            // Best-effort for TS/JS: function and method bodies only (keep bounded and predictable).
+            // Treat the caller-provided symbol as data, not query syntax: capture names first,
+            // then filter in TypeScript instead of interpolating into tree-sitter predicates.
             if (id !== 'typescript' && id !== 'javascript') return [];
             try {
                 const Q = new Query(
                     lang,
                     `
-                      (function_declaration name: (identifier) @sym.name (#eq? @sym.name "${symbol}") body: (statement_block) @sym.body)
-                      (method_definition name: (property_identifier) @sym.name (#eq? @sym.name "${symbol}") body: (statement_block) @sym.body)
+                      (function_declaration name: (identifier) @sym.name body: (statement_block) @sym.body)
+                      (method_definition name: (property_identifier) @sym.name body: (statement_block) @sym.body)
                     `
                 );
                 const caps = Q.captures(tree.rootNode);
                 const bodies: any[] = [];
+                const seen = new Set<any>();
                 for (const c of caps) {
-                    if (c.name === 'sym.body') bodies.push(c.node);
+                    if (c.name !== 'sym.name' || c.node.text !== symbol) continue;
+                    const body = c.node.parent?.childForFieldName?.('body');
+                    if (body && !seen.has(body)) {
+                        seen.add(body);
+                        bodies.push(body);
+                    }
                 }
                 return bodies;
             } catch {
@@ -152,10 +160,13 @@ export async function expandNeighbors(opts: {
         if (edges.includes('imports')) by('imports', id === 'python' ? PY_IMPORTS : TS_IMPORTS);
         if (edges.includes('exports') && id !== 'python') by('exports', TS_EXPORTS);
         if (edges.includes('callees')) {
-            // Extract callees within file (best-effort)
-            const symbolBodies = typeof opts.symbol === 'string' && opts.symbol ? findSymbolBodies(opts.symbol) : [];
-            if (typeof opts.symbol === 'string' && opts.symbol && symbolBodies.length === 0) {
-                notes.push(`callees: symbol "${opts.symbol}" not found in file; returning file-wide callees`);
+            // Extract callees within file (best-effort). If a symbol is supplied, keep
+            // the evidence scoped to that literal symbol; do not silently widen a missing
+            // or malformed symbol to file-wide callees.
+            const hasSymbolScope = typeof opts.symbol === 'string' && opts.symbol.length > 0;
+            const symbolBodies = hasSymbolScope ? findSymbolBodies(opts.symbol as string) : [];
+            if (hasSymbolScope && symbolBodies.length === 0) {
+                notes.push('callees: requested symbol not found in file; scoped callee extraction unavailable');
             }
             const CALLS = new Query(
                 lang,
@@ -176,7 +187,7 @@ export async function expandNeighbors(opts: {
             for (const c of caps) {
                 const n = c.node;
                 if (c.name === 'call.func' || c.name === 'call.method') {
-                    if (!insideAny(n, symbolBodies)) continue;
+                    if (hasSymbolScope && (symbolBodies.length === 0 || !insideAny(n, symbolBodies))) continue;
                     items.push({ name: n.text, start: { line: n.startPosition.row, column: n.startPosition.column } });
                 }
             }
@@ -188,18 +199,21 @@ export async function expandNeighbors(opts: {
             if (!sym) {
                 notes.push('callers: symbol required (pass symbol for cross-file callers or pass file+symbol for in-file callers)');
             } else {
-                // In-file callers (call sites) for the provided symbol
+                // In-file callers (call sites) for the provided literal symbol. Capture
+                // candidate call names and filter in code rather than interpolating the
+                // caller-controlled symbol into tree-sitter query predicates.
                 try {
                     const Q = new Query(
                         lang,
                         `
-                          (call_expression function: (identifier) @f (#eq? @f "${sym}"))
-                          (call_expression function: (member_expression property: (property_identifier) @m (#eq? @m "${sym}")))
+                          (call_expression function: (identifier) @f)
+                          (call_expression function: (member_expression property: (property_identifier) @m))
                         `
                     );
                     const caps = Q.captures(tree.rootNode);
                     for (const cap of caps) {
                         const n = cap.node;
+                        if (n.text !== sym) continue;
                         const caller = enclosingCallable(n);
                         res.neighbors.callers.push({
                             file: res.file,
@@ -267,8 +281,8 @@ export async function expandNeighbors(opts: {
                 const Q = new Query(
                     lang,
                     `
-          (call_expression function: (identifier) @f (#eq? @f "${symbol}"))
-          (call_expression function: (member_expression property: (property_identifier) @m (#eq? @m "${symbol}")))
+          (call_expression function: (identifier) @f)
+          (call_expression function: (member_expression property: (property_identifier) @m))
         `
                 );
                 const caps = Q.captures(tree.rootNode);
@@ -289,6 +303,7 @@ export async function expandNeighbors(opts: {
                 };
                 for (const cap of caps) {
                     const n = cap.node;
+                    if (n.text !== symbol) continue;
                     const caller = enclosingCallable(n);
                     neighbors.callers.push({
                         file,

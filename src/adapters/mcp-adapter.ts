@@ -1146,10 +1146,10 @@ export class MCPAdapter {
                 applied: !!appOut?.ok,
                 output_tail: chk?.output?.slice?.(-4000) || '',
             };
-            return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: !chk?.ok };
+            return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: false };
         }
         const payload = { ok: !!chk?.ok, snapshot, applied: false, output_tail: chk?.output?.slice?.(-4000) || '' };
-        return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: !chk?.ok };
+        return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: false };
     }
 
     // --- New handlers: snapshots/patches/checks ---
@@ -1478,7 +1478,7 @@ export class MCPAdapter {
         try {
             const snap = overlayStore.ensureSnapshot(snapshot);
             const isApplyPatch = /\*\*\*\s+Begin Patch/.test(patch);
-            const unified = isApplyPatch ? this.convertApplyPatchToUnified(patch) : patch;
+            const unified = isApplyPatch ? await this.convertApplyPatchToUnified(patch) : patch;
             const res = overlayStore.stagePatch(snap.id, unified);
             const payload = { accepted: res.accepted, snapshot: snap.id, message: res.message };
             return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: !res.accepted };
@@ -1488,14 +1488,97 @@ export class MCPAdapter {
         }
     }
 
-    // Convert simple apply_patch format to a minimal unified diff understood by git/patch
-    private convertApplyPatchToUnified(patch: string): string {
+    // Convert simple apply_patch format to a unified diff understood by git/patch.
+    // Caller-controlled file paths are resolved through the workspace trust boundary before
+    // reading context for update hunk ranges.
+    private async convertApplyPatchToUnified(patch: string): Promise<string> {
+        type HunkLine = { op: ' ' | '+' | '-'; text: string };
         const lines = patch.replace(/\r\n/g, '\n').split('\n');
         const out: string[] = [];
         let i = 0;
-        function isFileHeader(s: string) {
-            return /^\*\*\*\s+(Update|Add|Delete) File: /i.test(s);
-        }
+        const isFileHeader = (s: string) => /^\*\*\*\s+(Update|Add|Delete) File: /i.test(s);
+        const splitFileLines = (text: string) => {
+            const fileLines = text.replace(/\r\n/g, '\n').split('\n');
+            if (fileLines.length && fileLines[fileLines.length - 1] === '') fileLines.pop();
+            return fileLines;
+        };
+        const findSequence = (haystack: string[], needle: string[], startAt: number): number => {
+            if (!needle.length) return -1;
+            for (let pos = Math.max(0, startAt); pos <= haystack.length - needle.length; pos++) {
+                let ok = true;
+                for (let offset = 0; offset < needle.length; offset++) {
+                    if (haystack[pos + offset] !== needle[offset]) {
+                        ok = false;
+                        break;
+                    }
+                }
+                if (ok) return pos;
+            }
+            return -1;
+        };
+        const buildHunks = async (kind: string, file: string, rawChunk: string[]) => {
+            const hunks: HunkLine[][] = [];
+            let current: HunkLine[] = [];
+            for (const line of rawChunk) {
+                if (/^@@/.test(line)) {
+                    if (current.length) hunks.push(current);
+                    current = [];
+                    continue;
+                }
+                if (/^[ +-]/.test(line)) current.push({ op: line[0] as HunkLine['op'], text: line.slice(1) });
+            }
+            if (current.length) hunks.push(current);
+            if (!hunks.length) throw new Error(`apply_patch conversion found no hunks for ${file}`);
+
+            if (kind === 'add') {
+                let newLine = 1;
+                return hunks.flatMap((hunk) => {
+                    const newLines = hunk.filter((line) => line.op !== '-');
+                    const header = `@@ -0,0 +${newLine},${newLines.length} @@`;
+                    newLine += newLines.length;
+                    return [header, ...hunk.map((line) => `${line.op}${line.text}`)];
+                });
+            }
+
+            const opened = await openWorkspaceFileForRead(file, {
+                workspaceRoot: this.getWorkspaceRoot(),
+                inputLabel: 'apply_patch file',
+            });
+            let fileText: string;
+            try {
+                fileText = await opened.handle.readFile('utf8');
+            } finally {
+                await opened.handle.close().catch(() => undefined);
+            }
+            const sourceLines = splitFileLines(fileText);
+            let cursor = 0;
+            return hunks.flatMap((hunk) => {
+                const oldLines = hunk.filter((line) => line.op !== '+').map((line) => line.text);
+                const newLines = hunk.filter((line) => line.op !== '-').map((line) => line.text);
+                const match = findSequence(sourceLines, oldLines, cursor);
+                if (match >= 0) {
+                    cursor = match + Math.max(oldLines.length, 1);
+                    return [
+                        `@@ -${match + 1},${oldLines.length} +${match + 1},${newLines.length} @@`,
+                        ...hunk.map((line) => `${line.op}${line.text}`),
+                    ];
+                }
+
+                // apply_patch snippets often include sparse context. If full context no longer
+                // matches, fall back to a unique contiguous removed-line match and emit only the
+                // changed lines so accepted overlays remain valid unified diffs.
+                const changed = hunk.filter((line) => line.op !== ' ');
+                const oldChanged = changed.filter((line) => line.op === '-').map((line) => line.text);
+                const newChanged = changed.filter((line) => line.op !== '-').map((line) => line.text);
+                const changedMatch = findSequence(sourceLines, oldChanged, cursor);
+                if (changedMatch < 0) throw new Error(`apply_patch hunk did not match ${file}`);
+                cursor = changedMatch + Math.max(oldChanged.length, 1);
+                return [
+                    `@@ -${changedMatch + 1},${oldChanged.length} +${changedMatch + 1},${newChanged.length} @@`,
+                    ...changed.map((line) => `${line.op}${line.text}`),
+                ];
+            });
+        };
         while (i < lines.length) {
             const line = lines[i];
             // Find next file op
@@ -1519,23 +1602,15 @@ export class MCPAdapter {
             if (kind === 'delete') {
                 throw new Error(`apply_patch delete not supported for ${file}`);
             }
-            // Minimal unified framing
             out.push(`diff --git a/${file} b/${file}`);
             if (kind === 'add') {
-                out.push(`--- /dev/null`);
+                out.push('--- /dev/null');
                 out.push(`+++ b/${file}`);
             } else {
                 out.push(`--- a/${file}`);
                 out.push(`+++ b/${file}`);
             }
-            // Ensure at least one hunk header exists
-            if (!chunk.some((l) => /^@@/.test(l))) {
-                out.push('@@');
-            }
-            for (const l of chunk) {
-                if (/^\*\*\*\s+End of File/i.test(l)) continue;
-                out.push(l);
-            }
+            out.push(...(await buildHunks(kind, file, chunk)));
         }
         const joined = out.join('\n');
         if (!joined.trim()) {

@@ -362,9 +362,16 @@ export class HTTPServer {
                             };
 
                             const normalized = unwrap(mcpResult);
-                            const success = !(normalized && typeof normalized === 'object' && normalized.ok === false);
-                            recordToolEnd('http', name, Date.now() - t0, success);
-                            const isError = !!(normalized && typeof normalized === 'object' && normalized.ok === false);
+                            const explicitToolError = !!(
+                                mcpResult &&
+                                typeof mcpResult === 'object' &&
+                                ((mcpResult as any).error === true || (mcpResult as any).isError === true)
+                            );
+                            // A parsed tool payload may legitimately contain ok:false as domain state
+                            // (for example guarded apply refused or checks failed). Treat only explicit
+                            // MCP/tool error envelopes as HTTP tool-call failures.
+                            const isError = explicitToolError;
+                            recordToolEnd('http', name, Date.now() - t0, !isError);
                             const errCode = isError ? (normalized as any)?.error?.code : undefined;
                             const status = isError ? statusForCoreErrorCode(errCode, 400) : 200;
                             return new Response(
