@@ -343,13 +343,14 @@ export class OverlayStore {
         return snap;
     }
 
-    ensureSnapshot(id?: string): Snapshot {
+    ensureSnapshot(id?: string, opts: { workspaceRoot?: string } = {}): Snapshot {
         if (id === undefined) {
-            return this.createSnapshot(true);
+            return this.createSnapshot(true, { workspaceRoot: opts.workspaceRoot });
         }
         const trimmed = String(id).trim();
         this.assertValidId(trimmed);
-        const found = this.snapshots.get(trimmed) || this.loadSnapshotFromDisk(trimmed);
+        const workspaceRoot = opts.workspaceRoot ? this.resolveWorkspaceBase(opts.workspaceRoot) : undefined;
+        const found = this.snapshots.get(trimmed) || this.loadSnapshotFromDisk(trimmed, workspaceRoot);
         if (!found) {
             throw new Error('Unknown snapshot id');
         }
@@ -361,8 +362,8 @@ export class OverlayStore {
         return Array.from(this.snapshots.values()).sort((a, b) => b.createdAt - a.createdAt);
     }
 
-    getSnapshotDirectory(snapshotId: string): string {
-        const snap = this.ensureSnapshot(snapshotId);
+    getSnapshotDirectory(snapshotId: string, opts: { workspaceRoot?: string } = {}): string {
+        const snap = this.ensureSnapshot(snapshotId, opts);
         return this.snapshotDir(snapshotId, snap.workspaceRoot);
     }
 
@@ -699,9 +700,10 @@ export class OverlayStore {
         snapshotId: string,
         commands: string[],
         timeoutSec = 120,
-        opts: { onlyTouched?: boolean } = {}
+        opts: { onlyTouched?: boolean; workspaceRoot?: string } = {}
     ): Promise<CheckRunResult> {
         this.assertValidId(snapshotId);
+        this.ensureSnapshot(snapshotId, { workspaceRoot: opts.workspaceRoot });
         const start = Date.now();
         // Materialize snapshot into .ontology/snapshots/<id>, then run commands in a disposable copy.
         // Check commands are caller-controlled and may write files; they must not mutate the reusable
@@ -888,7 +890,7 @@ export class OverlayStore {
 
     async applyToWorkingTree(
         snapshotId: string,
-        { check = false, reverse = false }: { check?: boolean; reverse?: boolean } = {}
+        { check = false, reverse = false, workspaceRoot: requestedWorkspaceRoot }: { check?: boolean; reverse?: boolean; workspaceRoot?: string } = {}
     ): Promise<{
         ok: boolean;
         output: string;
@@ -896,7 +898,7 @@ export class OverlayStore {
     }> {
         this.assertValidId(snapshotId);
         const start = Date.now();
-        const snap = this.ensureSnapshot(snapshotId);
+        const snap = this.ensureSnapshot(snapshotId, { workspaceRoot: requestedWorkspaceRoot });
         const workspaceRoot = this.resolveWorkspaceBase(snap.workspaceRoot);
         const dir = (await this.ensureMaterialized(snapshotId)) || workspaceRoot;
         const diffFile = path.join(dir, 'overlay.diff');
@@ -989,9 +991,9 @@ export class OverlayStore {
         return { ok: false, output, elapsedMs: Date.now() - start };
     }
 
-    getStatus(snapshotId: string): any {
+    getStatus(snapshotId: string, opts: { workspaceRoot?: string } = {}): any {
         this.assertValidId(snapshotId);
-        const s = this.ensureSnapshot(snapshotId);
+        const s = this.ensureSnapshot(snapshotId, opts);
         const touched = Array.from(s.touchedFiles || []);
         return {
             id: s.id,

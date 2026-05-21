@@ -444,7 +444,7 @@ export class MCPAdapter {
         if (!snapshot) return null;
 
         try {
-            overlayStore.ensureSnapshot(snapshot);
+            overlayStore.ensureSnapshot(snapshot, { workspaceRoot: this.getWorkspaceRoot() });
             const ensureMaterialized = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
             const snapshotRoot = ensureMaterialized ? await ensureMaterialized(snapshot) : null;
             if (!snapshotRoot) throw new Error('Snapshot could not be materialized');
@@ -827,7 +827,7 @@ export class MCPAdapter {
         let status: any = { id: snapshot, exists: false, diffCount: 0, createdAt: null };
         let contents: any = undefined;
         try {
-            const snap = overlayStore.ensureSnapshot(snapshot);
+            const snap = overlayStore.ensureSnapshot(snapshot, { workspaceRoot: this.getWorkspaceRoot() });
             status = {
                 id: snapshot,
                 exists: true,
@@ -836,7 +836,7 @@ export class MCPAdapter {
                 touchedFiles: (snap as any).touchedFiles ? Array.from((snap as any).touchedFiles) : [],
                 materialized: false,
             };
-            const snapshotDir = (overlayStore as any).getSnapshotDirectory?.(snapshot) || path.resolve(this.getWorkspaceRoot(), '.ontology', 'snapshots', snapshot);
+            const snapshotDir = (overlayStore as any).getSnapshotDirectory?.(snapshot, { workspaceRoot: this.getWorkspaceRoot() }) || path.resolve(this.getWorkspaceRoot(), '.ontology', 'snapshots', snapshot);
             const materializedMarker = path.join(snapshotDir, '.materialized');
             const hasMaterializedMarker = async () => {
                 try {
@@ -1006,10 +1006,11 @@ export class MCPAdapter {
             !!stageOut?.accepted &&
             !!checksOut?.ok &&
             (apply ? applied && verification.appliedDiffMatchesSnapshot === true : true);
+        const rollbackDiffPath = path.resolve(this.getWorkspaceRoot(), '.ontology', 'snapshots', snapshot, 'overlay.diff');
         const rollback = {
             available: !!snapshot,
             strategy: 'reverse_patch',
-            command: `git apply -R .ontology/snapshots/${snapshot}/overlay.diff`,
+            command: `git -C ${JSON.stringify(this.getWorkspaceRoot())} apply -R ${JSON.stringify(rollbackDiffPath)}`,
             artifact: snapshotArtifacts.overlayDiff,
         };
         const validationPlan = this.buildValidationPlan({
@@ -1082,7 +1083,7 @@ export class MCPAdapter {
             }
 
             const overlayDiff = await fs.readFile(diffFile, 'utf8');
-            const status = overlayStore.getStatus(snapshot);
+            const status = overlayStore.getStatus(snapshot, { workspaceRoot: this.getWorkspaceRoot() });
             const touchedFiles = Array.isArray(status?.touchedFiles) ? status.touchedFiles : [];
             if (touchedFiles.length === 0) {
                 return {
@@ -1453,7 +1454,7 @@ export class MCPAdapter {
         const onlyTouchedEnv = (process.env.FAST_STDIO_CHECKS || '').toLowerCase() === 'touched';
         const onlyTouched =
             typeof (args as any)?.onlyTouched === 'boolean' ? !!(args as any).onlyTouched : onlyTouchedEnv;
-        const checks = await overlayStore.runChecks(snap.id, commands, timeoutSec, { onlyTouched });
+        const checks = await overlayStore.runChecks(snap.id, commands, timeoutSec, { onlyTouched, workspaceRoot: this.getWorkspaceRoot() });
         const ok = !!checks.ok;
         const result = {
             workflow: 'rename_safely',
@@ -1576,7 +1577,7 @@ export class MCPAdapter {
 
         let snap: ReturnType<typeof overlayStore.ensureSnapshot>;
         try {
-            snap = overlayStore.ensureSnapshot(snapshot);
+            snap = overlayStore.ensureSnapshot(snapshot, { workspaceRoot: this.getWorkspaceRoot() });
         } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
             const payload = { accepted: false, snapshot, reason: 'invalid_snapshot', message: msg };
@@ -1743,7 +1744,7 @@ export class MCPAdapter {
         const onlyTouched = typeof args?.onlyTouched === 'boolean' ? !!args.onlyTouched : onlyTouchedEnv;
         let res: any;
         try {
-            res = await overlayStore.runChecks(snapshot, cmds, timeoutSec, { onlyTouched });
+            res = await overlayStore.runChecks(snapshot, cmds, timeoutSec, { onlyTouched, workspaceRoot: this.getWorkspaceRoot() });
         } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
             return { content: [{ type: 'text', text: `Invalid snapshot: ${msg}` }], isError: true };
@@ -1782,7 +1783,7 @@ export class MCPAdapter {
             };
         }
         try {
-            const res = await overlayStore.applyToWorkingTree(snapshot, { check, reverse });
+            const res = await overlayStore.applyToWorkingTree(snapshot, { check, reverse, workspaceRoot: this.getWorkspaceRoot() });
             return {
                 content: [
                     {
@@ -2269,12 +2270,12 @@ export class MCPAdapter {
             const payload = { ok: false, matches: allMatches.length, snapshot: snap.id, stage, applied: false };
             return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: true };
         }
-        const checks = await overlayStore.runChecks(snap.id, commands, timeoutSec);
+        const checks = await overlayStore.runChecks(snap.id, commands, timeoutSec, { workspaceRoot: this.getWorkspaceRoot() });
         let applied = false;
         let applyResult: any = null;
         if (args?.apply === true) {
             if (process.env.ALLOW_SNAPSHOT_APPLY === '1' && checks.ok) {
-                applyResult = await overlayStore.applyToWorkingTree(snap.id, { check: false });
+                applyResult = await overlayStore.applyToWorkingTree(snap.id, { check: false, workspaceRoot: this.getWorkspaceRoot() });
                 applied = !!applyResult?.ok;
             } else {
                 applyResult = {

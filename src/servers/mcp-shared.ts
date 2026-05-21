@@ -211,9 +211,10 @@ export function registerCommonResources(server: Server): void {
                 return { contents: [{ uri: uri.href, mimeType: 'application/json', text: body }] } as any;
             }
             if (uri.protocol === 'snapshot:') {
-                const parts = uri.pathname.split('/').filter(Boolean);
-                const id = parts[0];
-                const tail = parts[1];
+                const parts = uri.pathname.split('/').filter(Boolean).map((part) => decodeURIComponent(part));
+                const hostId = uri.host ? decodeURIComponent(uri.host) : '';
+                const id = hostId || parts[0];
+                const tail = hostId ? parts[0] : parts[1];
                 if (!id) throw new Error('Missing snapshot id');
                 if (tail === 'overlay.diff') {
                     const fs = await import('node:fs/promises');

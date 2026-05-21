@@ -121,6 +121,15 @@ bindDescribe('Alpha MVP MCP HTTP protocol', () => {
         return { status: res.status, body: await parseMcpBody(res, id) };
     }
 
+    async function resourcesRead(id: number, uri: string) {
+        const res = await fetch(base, {
+            method: 'POST',
+            headers: mcpHttpHeaders(sessionId),
+            body: JSON.stringify({ jsonrpc: '2.0', id, method: 'resources/read', params: { uri } }),
+        });
+        return { status: res.status, body: await parseMcpBody(res, id) };
+    }
+
     test('tools/list advertises the Alpha MVP tool surface', async () => {
         const requiredToolNames = [
             'get_snapshot',
@@ -259,6 +268,17 @@ bindDescribe('Alpha MVP MCP HTTP protocol', () => {
         const checked = JSON.parse(checkedCall.body?.result?.content?.[0]?.text || '{}');
         expect(checked.ok).toBe(true);
         expect(checked.snapshot).toBe(snapshotId);
+
+        const diffResource = await resourcesRead(33, `snapshot://${snapshotId}/overlay.diff`);
+        expect(diffResource.status).toBe(200);
+        expect(diffResource.body.error).toBeUndefined();
+        expect(diffResource.body?.result?.contents?.[0]?.text).toContain(patchPlanningMarker);
+
+        const statusResource = await resourcesRead(34, `snapshot://${snapshotId}/status`);
+        expect(statusResource.status).toBe(200);
+        expect(statusResource.body.error).toBeUndefined();
+        const snapshotStatus = JSON.parse(statusResource.body?.result?.contents?.[0]?.text || '{}');
+        expect(snapshotStatus).toMatchObject({ id: snapshotId, exists: true, diffCount: 1 });
 
         const after = await Bun.file(patchPlanningTarget).text();
         expect(after).toBe(before);

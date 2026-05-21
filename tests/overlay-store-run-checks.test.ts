@@ -31,6 +31,26 @@ describe('OverlayStore runChecks evidence receipts', () => {
         expect(reused.baseFingerprint).toBe(clean.baseFingerprint);
     });
 
+    test('configured-workspace snapshots reload by id with explicit workspace root after memory is cleared', async () => {
+        const workspace = path.join(tmpdir(), `sci-snapshot-reload-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+        await mkdir(workspace, { recursive: true });
+        try {
+            const snap = overlayStore.createSnapshot(false, { workspaceRoot: workspace });
+            const expectedDir = path.join(workspace, '.ontology', 'snapshots', snap.id);
+            expect(overlayStore.getSnapshotDirectory(snap.id, { workspaceRoot: workspace })).toBe(expectedDir);
+
+            overlayStore.clearAll();
+
+            const reloaded = overlayStore.ensureSnapshot(snap.id, { workspaceRoot: workspace });
+            expect(reloaded.id).toBe(snap.id);
+            expect(reloaded.workspaceRoot).toBe(path.resolve(workspace));
+            expect(overlayStore.getSnapshotDirectory(snap.id, { workspaceRoot: workspace })).toBe(expectedDir);
+        } finally {
+            overlayStore.clearAll();
+            await rm(workspace, { recursive: true, force: true });
+        }
+    });
+
     test('runChecks command side effects do not mutate reusable materialized snapshots', async () => {
         const snap = overlayStore.createSnapshot(false);
         const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);

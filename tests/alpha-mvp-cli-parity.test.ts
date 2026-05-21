@@ -214,7 +214,8 @@ ${initial.trimEnd()}
         expect(refusedApply.payload.ok).toBe(false);
         expect(refusedApply.payload.applied).toBe(false);
         expect(refusedApply.payload.applyResult?.message).toBe('ALLOW_SNAPSHOT_APPLY=1 required');
-        expect(refusedApply.payload.rollback?.command).toContain('git apply -R');
+        expect(refusedApply.payload.rollback?.command).toContain('apply -R');
+        expect(refusedApply.payload.rollback?.command).toContain('.ontology/snapshots');
 
         const after = await Bun.file(patchPlanningTarget).text();
         expect(after).toBe(before);
