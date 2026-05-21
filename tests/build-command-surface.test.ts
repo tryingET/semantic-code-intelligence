@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 function readText(path: string): string {
     return readFileSync(path, 'utf8');
@@ -29,6 +31,7 @@ describe('build command surface', () => {
     test('package test delegates to the sliced normal-test runner', () => {
         const packageJson = JSON.parse(readText('package.json')) as { scripts?: Record<string, string> };
         const runner = readText('scripts/run-normal-tests.sh');
+        const slicer = readText('bin/test-slicer.sh');
 
         expect(packageJson.scripts?.test).toBe('scripts/run-normal-tests.sh');
         expect(packageJson.scripts?.['test:nonperf']).toBe('scripts/run-normal-tests.sh');
@@ -38,6 +41,60 @@ describe('build command surface', () => {
         expect(runner).toContain('bin/test-slicer.sh');
         expect(runner).toContain('BUN_JOBS=${BUN_JOBS:-1}');
         expect(runner).not.toContain('bun test\n');
+        expect(slicer).toContain('mapfile -t slice_files <<< "$output"');
+        expect(slicer).not.toContain('slice_files=( $output )');
+    });
+
+    test('batch runner preserves JSONL shape and refuses symlink report outputs', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'sci-batch-runner-'));
+        try {
+            const list = join(dir, 'files.lst');
+            const report = join(dir, 'batch-report.jsonl');
+            const weirdPath = 'tests/adversarial"quoted.test.ts';
+            writeFileSync(list, `${weirdPath}\n`);
+
+            const proc = spawnSync('bash', ['bin/test-progress-batch.sh'], {
+                cwd: process.cwd(),
+                encoding: 'utf8',
+                env: {
+                    ...process.env,
+                    FILE_LIST: list,
+                    REPORT_FILE: report,
+                    BATCH_SIZE: '1',
+                    TIMEOUT: '1000',
+                    HEARTBEAT_SEC: '60',
+                    BUN_JOBS: '1',
+                },
+            });
+
+            expect(proc.status).toBe(1);
+            const rows = readFileSync(report, 'utf8').trim().split(/\r?\n/).map((line) => JSON.parse(line));
+            expect(rows).toHaveLength(1);
+            expect(rows[0].files).toEqual([weirdPath]);
+
+            const outside = join(dir, 'outside.jsonl');
+            const link = join(dir, 'link.jsonl');
+            writeFileSync(outside, 'keep');
+            symlinkSync(outside, link);
+            const symlinkProc = spawnSync('bash', ['bin/test-progress-batch.sh'], {
+                cwd: process.cwd(),
+                encoding: 'utf8',
+                env: {
+                    ...process.env,
+                    FILE_LIST: list,
+                    REPORT_FILE: link,
+                    BATCH_SIZE: '1',
+                    TIMEOUT: '1000',
+                    HEARTBEAT_SEC: '60',
+                    BUN_JOBS: '1',
+                },
+            });
+            expect(symlinkProc.status).toBe(1);
+            expect(symlinkProc.stderr).toContain('Refusing to write batch report through symlink');
+            expect(readFileSync(outside, 'utf8')).toBe('keep');
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
     });
 
     test('release and review surfaces use the normal package test command for broad tests', () => {

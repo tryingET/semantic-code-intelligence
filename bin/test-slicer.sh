@@ -93,8 +93,7 @@ if [[ -n "${BALANCE_SLICES}" && "${BALANCE_SLICES}" != "0" ]]; then
   done
   if output=$(bun run scripts/build-slice-order.ts --base-list "${ALL_LIST}" --slices "${SLICES}" --slice "${SLICE}" --hot-top "${HOT_SLICE_TOP}" ${HOT_SLICE:+--hot-slice} "${HARGS[@]}" 2>/dev/null); then
     if [[ -n "$output" ]]; then
-      # shellcheck disable=SC2206
-      slice_files=( $output )
+      mapfile -t slice_files <<< "$output"
     fi
   fi
 fi

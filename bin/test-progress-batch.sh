@@ -45,7 +45,17 @@ REPORT_FILE_DEFAULT=".test-results/batch-report.jsonl"
 REPORT_FILE="${REPORT_FILE:-$REPORT_FILE_DEFAULT}"
 REPORT_DIR=$(dirname "$REPORT_FILE")
 mkdir -p "$REPORT_DIR"
-echo -n > "$REPORT_FILE"
+if [[ -L "$REPORT_FILE" ]]; then
+  echo "Refusing to write batch report through symlink: $REPORT_FILE" >&2
+  exit 1
+fi
+REPORT_DIR_LEXICAL=$(realpath -m "$REPORT_DIR")
+REPORT_DIR_PHYSICAL=$(cd "$REPORT_DIR" && pwd -P)
+if [[ "$REPORT_DIR_LEXICAL" != "$REPORT_DIR_PHYSICAL" ]]; then
+  echo "Refusing to write batch report through symlinked parent: $REPORT_DIR" >&2
+  exit 1
+fi
+: > "$REPORT_FILE"
 
 passes=0
 fails=0
@@ -96,12 +106,9 @@ HEARTBEAT_SEC=${HEARTBEAT_SEC:-15}
   END=$(date +%s%3N)
   DUR=$((END-START))
 
-  # Persist batch metrics (JSONL)
-  FILES_JSON="["
-  for f in "${batch[@]}"; do
-    FILES_JSON="${FILES_JSON}\"${f}\",";
-  done
-  FILES_JSON="${FILES_JSON%,}]"
+  # Persist batch metrics (JSONL). Serialize filenames through JSON rather than
+  # hand-escaping so adversarial paths cannot corrupt reports consumed later.
+  FILES_JSON=$(printf '%s\0' "${batch[@]}" | bun -e 'const chunks=[]; for await (const chunk of Bun.stdin.stream()) chunks.push(Buffer.from(chunk)); const input=Buffer.concat(chunks).toString("utf8"); const files=input ? input.split("\0").slice(0, -1) : []; process.stdout.write(JSON.stringify(files));')
   printf '{"batch":%d,"start":%d,"end":%d,"duration_ms":%d,"exit_code":%d,"files":%s}\n' \
     "$batch_index" "$i" "$end" "$DUR" "$code" "$FILES_JSON" >> "$REPORT_FILE"
 
