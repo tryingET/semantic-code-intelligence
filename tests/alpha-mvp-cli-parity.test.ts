@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import { spawn, spawnSync } from 'node:child_process';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 
 type CliResult = { code: number | null; stdout: string; stderr: string };
 
@@ -15,10 +18,12 @@ const patchPlanningDiff = `diff --git a/${patchPlanningTarget} b/${patchPlanning
 const hasAstGrep = spawnSync('bash', ['-lc', 'command -v ast-grep >/dev/null 2>&1'], { stdio: 'ignore' }).status === 0;
 const structuralTest = hasAstGrep ? test : test.skip;
 
-function runCli(args: string[]): Promise<CliResult> {
+function runCli(args: string[], options: { cwd?: string } = {}): Promise<CliResult> {
     const bun = process.env.BUN_PATH || `${process.env.HOME}/.bun/bin/bun`;
+    const cliEntry = options.cwd ? path.join(process.cwd(), 'src/servers/cli.ts') : 'src/servers/cli.ts';
     return new Promise((resolve) => {
-        const proc = spawn(bun, ['run', 'src/servers/cli.ts', ...args], {
+        const proc = spawn(bun, ['run', cliEntry, ...args], {
+            cwd: options.cwd,
             env: { ...process.env, SILENT_MODE: 'true', STDIO_MODE: 'true', ALLOW_SNAPSHOT_APPLY: '' },
             stdio: ['ignore', 'pipe', 'pipe'],
         });
@@ -43,8 +48,8 @@ function parseWorkflow(stdout: string): { raw: any; payload: any } {
     return { raw, payload };
 }
 
-async function workflow(name: string, args: Record<string, unknown>) {
-    const res = await runCli(['workflow', name, '--args', JSON.stringify(args), '--json']);
+async function workflow(name: string, args: Record<string, unknown>, options: { cwd?: string } = {}) {
+    const res = await runCli(['workflow', name, '--args', JSON.stringify(args), '--json'], options);
     expect(res.code, `${name} stderr: ${res.stderr}`).toBe(0);
     expect(res.stderr).not.toContain('[HTTP Server]');
     expect(res.stderr).not.toContain('Error:');
@@ -63,6 +68,68 @@ describe('Alpha MVP CLI fallback parity', () => {
         const search = await workflow('text_search', { query: 'handleReadFile', path: 'src', maxResults: 5 });
         expect(search.payload.count).toBeGreaterThan(0);
         expect(search.payload.results.length).toBeLessThanOrEqual(5);
+    }, 60000);
+
+    test('generic workflow command exposes snapshot artifacts across fresh CLI processes without mutating workspace', async () => {
+        const workspace = await mkdtemp(path.join(tmpdir(), 'sci-cli-snapshot-'));
+        const target = 'alpha.md';
+        const initial = '# Alpha MVP contract — harnessed LLM coding sessions\n';
+        const marker = '<!-- cross-process snapshot artifact marker -->';
+        const diff = `diff --git a/${target} b/${target}
+--- a/${target}
++++ b/${target}
+@@ -1,1 +1,2 @@
+${initial.trimEnd()}
++${marker}
+`;
+
+        try {
+            await writeFile(path.join(workspace, target), initial, 'utf8');
+
+            const checked = await workflow(
+                'patch_checks_in_snapshot',
+                {
+                    patch: diff,
+                    commands: ['true'],
+                    timeoutSec: 30,
+                },
+                { cwd: workspace }
+            );
+            expect(checked.payload.workflow).toBe('patch_checks_in_snapshot');
+            expect(checked.payload.ok).toBe(true);
+            expect(checked.payload.stage?.accepted).toBe(true);
+            expect(checked.payload.checks?.ok).toBe(true);
+            expect(checked.payload.snapshot).toMatch(/^[0-9a-f-]{8,}$/i);
+
+            const afterStage = await readFile(path.join(workspace, target), 'utf8');
+            expect(afterStage).toBe(initial);
+            expect(afterStage).not.toContain(marker);
+
+            const artifacts = await workflow(
+                'extract_snapshot_artifacts',
+                {
+                    snapshot: checked.payload.snapshot,
+                    includeContent: true,
+                    maxBytes: 4096,
+                },
+                { cwd: workspace }
+            );
+            expect(artifacts.raw.isError).toBe(false);
+            expect(artifacts.payload.snapshot).toBe(checked.payload.snapshot);
+            expect(artifacts.payload.status).toMatchObject({ exists: true, diffCount: 1, materialized: true });
+            expect(artifacts.payload.status?.touchedFiles).toEqual([target]);
+            expect(artifacts.payload.links?.map((link: any) => link.uri)).toContain(
+                `snapshot://${checked.payload.snapshot}/overlay.diff`
+            );
+            expect(artifacts.payload.contents?.overlayDiff).toMatchObject({ truncated: false });
+            expect(artifacts.payload.contents?.overlayDiff?.text).toContain(marker);
+
+            const afterExtract = await readFile(path.join(workspace, target), 'utf8');
+            expect(afterExtract).toBe(initial);
+            expect(afterExtract).not.toContain(marker);
+        } finally {
+            await rm(workspace, { recursive: true, force: true });
+        }
     }, 60000);
 
     test('generic workflow command executes preview-first patch checks and safe_write without mutating workspace', async () => {
