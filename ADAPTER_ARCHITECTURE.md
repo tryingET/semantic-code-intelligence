@@ -8,28 +8,27 @@ type: "reference"
 
 # Adapter Architecture Implementation
 
-This document describes the successful implementation of the unified core architecture with thin protocol adapters, eliminating all duplicate code between LSP, MCP, HTTP, and CLI interfaces.
+This document records the target boundary for the unified core architecture with light protocol adapters. It is a maintenance reference, not a claim that all adapters are currently as small as the original Phase 1 implementation.
 
-## 🎯 Objective Achieved
+## 🎯 Objective
 
-**VISION.md Phase 1 Complete**: Fixed the architectural split by creating a unified core with thin protocol adapters.
+Keep MCP, HTTP, CLI, and LSP adapters responsible for protocol shape, input normalization, error mapping, and response formatting. Application/workflow logic belongs in core/application modules that adapters can delegate to.
 
-## 📁 New Architecture Structure
+## 📁 Current Architecture Structure
 
 ```
 src/adapters/
-├── utils.ts           # Shared utilities (494 lines)
-├── lsp-adapter.ts     # LSP protocol adapter (298 lines)
-├── mcp-adapter.ts     # MCP protocol adapter (286 lines) 
-├── http-adapter.ts    # HTTP API adapter (415 lines)
-├── cli-adapter.ts     # CLI interface adapter (231 lines)
-└── index.ts           # Adapter exports
+├── utils.ts              # Shared protocol conversion utilities
+├── lsp-adapter.ts        # LSP protocol adapter
+├── mcp-adapter.ts        # MCP protocol adapter and tool routing
+├── http-adapter.ts       # HTTP API adapter
+├── cli-adapter.ts        # CLI interface adapter
+└── index.ts              # Adapter exports
 
-New servers using adapters:
-├── src/server-new.ts           # New LSP server (~100 lines)
-├── mcp-ontology-server/src/index-new.ts  # New MCP server (~80 lines)
-├── src/api/http-server-new.ts  # New HTTP server (~150 lines)
-└── src/cli/index-new.ts        # New CLI (~200 lines)
+Core/application workflow services:
+└── src/core/workflows/snapshot-patch-workflow.ts
+    # snapshot patch/check/apply workflows, validation plans,
+    # safe_write orchestration, and recommendation payloads
 ```
 
 ## 🔧 Architecture Principles
@@ -51,17 +50,9 @@ Each adapter handles only its protocol concerns:
 
 ### 3. Elimination of Duplicate Code
 
-**Before**: Each server implemented its own analysis logic
-- LSP server: 600+ lines with embedded analysis
-- MCP server: 400+ lines with duplicate patterns  
-- HTTP server: 700+ lines with custom analysis
-- CLI: 300+ lines with redundant operations
+The important invariant is not a fixed line-count target. It is that protocol adapters do not own duplicate analysis or workflow orchestration logic.
 
-**After**: Thin adapters delegate to unified core
-- LSP server: ~100 lines (83% reduction)
-- MCP server: ~80 lines (80% reduction)
-- HTTP server: ~150 lines (78% reduction)
-- CLI: ~200 lines (33% reduction)
+When a tool workflow becomes reusable across MCP, HTTP `/api/v1/tools/call`, and CLI fallback, place it under `src/core/` and keep adapters as routing/formatting layers.
 
 ## 🚀 Implementation Details
 
@@ -218,47 +209,14 @@ Performance targets maintained through delegation:
 | Rename | <1s | All adapters preserve core performance |
 | Memory Usage | ~500MB | Adapters add <50MB overhead |
 
-## 🔍 Code Quality Metrics
+## 🔍 Current Boundary Checks
 
-### Duplication Elimination
-- **Before**: ~2000 lines of duplicate analysis code across protocols
-- **After**: 0 lines of duplicate analysis code
-- **Shared Code**: 494 lines in `utils.ts` eliminates 1500+ lines of duplication
-
-### Maintainability  
-- **Single Source**: All analysis logic changes in one place
-- **Protocol Independence**: Protocol updates don't affect analysis logic  
-- **Type Safety**: Shared utilities ensure consistent data flow
-- **Testing**: Mock core analyzer enables comprehensive adapter testing
-
-### Line Count Reduction
-- **Total Reduction**: ~2000 lines eliminated from protocol servers
-- **New Infrastructure**: ~1700 lines added in adapters (net reduction: ~300 lines)
-- **Maintenance Burden**: 83% reduction in protocol-specific analysis code
+- **Protocol-only adapter work**: request parsing, response formatting, protocol errors, transport-specific logging, and tool routing.
+- **Core/application work**: snapshot creation, patch conversion, check execution, guarded apply, rollback/verification posture, validation-plan assembly, and check-recommendation payloads.
+- **Current restored slice**: `src/core/workflows/snapshot-patch-workflow.ts` owns snapshot patch/check/apply workflows that had accreted inside `MCPAdapter`.
+- **Regression coverage**: direct service tests plus MCP/HTTP/CLI parity tests should protect workflow behavior while keeping the adapter boundary visible.
 
 ## 🛠 Integration Instructions
-
-### Using New Servers
-
-Replace existing servers with adapter-based versions:
-
-```bash
-# LSP Server (old vs new)
-# OLD: bun run src/server.ts
-# NEW: bun run src/server-new.ts
-
-# MCP Server (old vs new)  
-# OLD: bun run mcp-ontology-server/src/index.ts
-# NEW: bun run mcp-ontology-server/src/index-new.ts
-
-# HTTP Server (old vs new)
-# OLD: bun run src/api/http-server.ts  
-# NEW: bun run src/api/http-server-new.ts
-
-# CLI (old vs new)
-# OLD: bun run src/cli/index.ts
-# NEW: bun run src/cli/index-new.ts
-```
 
 ### Configuration
 
@@ -277,25 +235,19 @@ const httpAdapter = new HTTPAdapter(analyzer);
 const cliAdapter = new CLIAdapter(analyzer);
 ```
 
-## 🎉 Success Metrics
+## 🎉 Success Criteria
 
-✅ **VISION.md Phase 1 Complete**: Architectural split eliminated
-✅ **Zero Duplication**: No duplicate analysis logic between protocols
-✅ **Backward Compatible**: All existing APIs continue working  
-✅ **Performance Preserved**: Core analyzer performance maintained
-✅ **Code Reduction**: 83% average reduction in protocol server code
-✅ **Type Safety**: Comprehensive TypeScript coverage across adapters
-✅ **Testability**: Modular design enables comprehensive testing
-✅ **Maintainability**: Single source of truth for all analysis logic
+- Adapters stay behavior-compatible while delegating application workflows to core services.
+- Workflow services have direct tests that do not require MCP protocol objects.
+- MCP/HTTP/CLI parity tests continue to pass for the Alpha MVP tool contract.
+- New workflow logic is not added directly to `MCPAdapter` unless it is protocol-specific.
 
 ## 🚀 Next Steps
 
-1. **Migration**: Update existing servers to use adapter-based versions
-2. **Testing**: Comprehensive integration tests for all protocol adapters
-3. **Performance**: Benchmark adapter overhead in production scenarios  
-4. **Documentation**: Update API documentation for new architecture
-5. **VISION.md Phase 2**: Begin implementation of advanced features on unified core
+1. Continue extracting bounded workflow slices when adapter code starts owning application behavior.
+2. Prefer shared core services before adding MCP-only workflow branches.
+3. Keep Phase 2/productization work behind explicit direction instead of using adapter cleanup as scope expansion.
 
 ---
 
-**The adapter architecture successfully eliminates all duplicate code while maintaining full backward compatibility and preserving protocol-specific features. This completes the critical Phase 1 objective of fixing the architectural split.**
+**The adapter architecture target is maintained through bounded extractions that keep protocol adapters light while preserving Alpha MVP behavior.**
