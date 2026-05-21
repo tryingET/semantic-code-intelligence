@@ -206,6 +206,9 @@ type ReviewClaim = {
 
 type AuthorityBoundary = { id: string; boundary: string; affectedScope: string };
 type OperatorDecisionPoint = { id: string; options: string[]; supportingClaims: string[]; limitingClaims: string[]; residualUncertainty: string };
+type HandoffGateStatus = 'satisfied' | 'missing' | 'not_asserted';
+type HandoffReadinessGate = { id: string; status: HandoffGateStatus; evidence: string[]; limitation: string; nextAction: string };
+type HandoffReadiness = { status: 'blocked'; decision: 'cli_only'; summary: string; gates: HandoffReadinessGate[]; nextActions: string[]; authorityBoundary: string };
 
 function evidenceState(kind: string, observed: boolean, failed: boolean, applicable = true): EvidenceObservedState {
   if (!applicable) return 'inapplicable';
@@ -374,6 +377,75 @@ function validateReferenceIntegrity(review: any) {
     requireKnownReferences('operatorDecisionPoint.supportingClaims', decisionPoint.id, decisionPoint.supportingClaims, claimIds);
     requireKnownReferences('operatorDecisionPoint.limitingClaims', decisionPoint.id, decisionPoint.limitingClaims, claimIds);
   }
+}
+
+function handoffGate(id: string, status: HandoffGateStatus, evidence: string[], limitation: string, nextAction: string): HandoffReadinessGate {
+  return { id, status, evidence, limitation, nextAction };
+}
+
+function buildHandoffReadiness(review: any): HandoffReadiness {
+  const hasClaimModel = arr(review?.evidenceArtifacts).length > 0 && arr(review?.claims).length > 0 && arr(review?.limitations).length > 0 && arr(review?.authorityBoundaries).length > 0 && arr(review?.operatorDecisionPoints).length > 0;
+  const observedStatesValid = arr(review?.evidenceArtifacts).every((artifact: EvidenceArtifact) => ['observed', 'failed', 'unavailable', 'unknown', 'inapplicable'].includes(artifact.observedStatus));
+  const commandDistinction = Array.isArray(review?.commands?.selected) && Array.isArray(review?.commands?.recommendedMinimum) && Array.isArray(review?.commands?.recommendedBroader) && typeof review?.commands?.recommendationsAppliedToSelected === 'boolean';
+  const readOnlyBoundary = arr(review?.authorityBoundaries).some((boundary: AuthorityBoundary) => boundary.id === 'no-implicit-mutation');
+
+  const gates = [
+    handoffGate(
+      'claim-model-fields',
+      hasClaimModel ? 'satisfied' : 'missing',
+      ['evidenceArtifacts', 'claims', 'limitations', 'authorityBoundaries', 'operatorDecisionPoints'].filter((field) => arr(review?.[field]).length > 0),
+      hasClaimModel ? 'The normalized review carries the first-class claim model fields required before reconsidering handoff.' : 'The normalized review is missing one or more first-class claim model fields.',
+      'Keep evidence review CLI/markdown/JSON-only unless all ADR-0002 reconsideration gates and owner acceptance are satisfied.',
+    ),
+    handoffGate(
+      'absence-states',
+      observedStatesValid ? 'satisfied' : 'missing',
+      ['observed', 'failed', 'unavailable', 'unknown', 'inapplicable'],
+      observedStatesValid ? 'Evidence artifact observedStatus values are constrained to the supported absence-state vocabulary.' : 'One or more evidence artifact states are outside the supported absence-state vocabulary.',
+      'Treat unsupported evidence states as schema drift and block handoff.',
+    ),
+    handoffGate(
+      'selected-vs-recommended-commands',
+      commandDistinction ? 'satisfied' : 'missing',
+      ['commands.selected', 'commands.recommendedMinimum', 'commands.recommendedBroader', 'commands.recommendationsAppliedToSelected'],
+      commandDistinction ? 'Selected validation commands remain structurally distinct from advisory recommendations.' : 'Selected and recommended command fields are not structurally distinct.',
+      'Do not render recommendations as executed commands or silently add them to selected validation.',
+    ),
+    handoffGate(
+      'read-only-boundary',
+      readOnlyBoundary ? 'satisfied' : 'missing',
+      readOnlyBoundary ? ['authorityBoundaries.no-implicit-mutation'] : [],
+      readOnlyBoundary ? 'The review preserves a no-implicit-mutation boundary for source, snapshots, target repos, AK, and databases.' : 'The review does not expose the no-implicit-mutation authority boundary.',
+      'Do not attach host handoff or UI behavior that can mutate owner surfaces through this summary.',
+    ),
+    handoffGate(
+      'sample-and-test-evidence',
+      'not_asserted',
+      [],
+      'This runtime summary does not certify committed fixture freshness or test execution.',
+      'Run bun test tests/evidence-review-claim-model.test.ts and cite the result before claiming schema-readiness evidence.',
+    ),
+    handoffGate(
+      'host-owner-acceptance',
+      'missing',
+      [],
+      'SCI cannot self-accept Pi/operator-workbench scope or create host integration authority.',
+      'Request explicit host-owner acceptance/review before any Pi/operator-workbench handoff or UI work.',
+    ),
+  ];
+
+  return {
+    status: 'blocked',
+    decision: 'cli_only',
+    summary: 'ADR-0002 keeps evidence review CLI/markdown/JSON-only; this summary may inform an operator but does not authorize host handoff, UI rendering, AK decision advancement, or production readiness.',
+    gates,
+    nextActions: [
+      'Use this summary for local operator review only.',
+      'Run and cite the evidence-review tests before claiming schema-readiness evidence.',
+      'Seek explicit Pi/operator-workbench owner acceptance before any host handoff or rendered UI work.',
+    ],
+    authorityBoundary: 'Generated readiness is a local review projection, not AK evidence, governance acceptance, host-owner approval, or production-readiness proof.',
+  };
 }
 
 function firstValidationPlan(packet: any): any | null {
@@ -795,7 +867,7 @@ function withConceptualModel(review: any) {
 
   const reviewWithConcepts = { ...reviewWithLimitations, evidenceArtifacts, limitations: reviewLimitations, claims, authorityBoundaries, operatorDecisionPoints };
   validateReferenceIntegrity(reviewWithConcepts);
-  return reviewWithConcepts;
+  return { ...reviewWithConcepts, handoffReadiness: buildHandoffReadiness(reviewWithConcepts) };
 }
 
 function normalize(raw: any) {
@@ -860,6 +932,13 @@ function renderMarkdown(review: any): string {
     `${arr(review.evidenceArtifacts).map((a: any) => `- ${mdInline(a.id)}: ${mdInline(a.observedStatus)}; durability=${mdInline(a.durability)}; ref=${mdInline(a.uriOrPath || 'not recorded')}; cite=${mdInline(a.citationRequirement)}`).join('\n') || '- none'}\n\n` +
     `### First-class limitations\n\n` +
     `${arr(review.limitations).map((l: any) => `- ${mdInline(l.id)}: ${mdInline(l.severity || 'warning')} — ${mdInline(l.limitation)}; source=${mdInline(l.sourceArtifact || 'unknown')}`).join('\n') || '- none'}\n\n` +
+    `### Handoff readiness (ADR-0002)\n\n` +
+    `- Status: ${mdInline(review.handoffReadiness?.status || 'blocked')}\n` +
+    `- Decision: ${mdInline(review.handoffReadiness?.decision || 'cli_only')}\n` +
+    `- Summary: ${mdInline(review.handoffReadiness?.summary || 'Host handoff is not authorized by this summary.')}\n` +
+    `- Authority boundary: ${mdInline(review.handoffReadiness?.authorityBoundary || 'Generated readiness is not host-owner acceptance.')}\n` +
+    `- Gates:\n${arr(review.handoffReadiness?.gates).map((gate: any) => `  - ${mdInline(gate.id)}: ${mdInline(gate.status)} — ${mdInline(gate.limitation)} Next: ${mdInline(gate.nextAction)}`).join('\n') || '  - none'}\n` +
+    `- Next actions:\n${arr(review.handoffReadiness?.nextActions).map((action: any) => `  - ${mdInline(action)}`).join('\n') || '  - none'}\n\n` +
     `## 2. Changed or affected scope\n\n` +
     `- Touched files:\n${bullet(strings(review.scope.touchedFiles))}\n` +
     `- Risk: ${mdInline(review.scope.risk ? JSON.stringify(review.scope.risk) : 'not recorded')}\n` +

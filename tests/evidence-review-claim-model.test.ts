@@ -86,6 +86,13 @@ function assertClaimModel(review: any) {
   expect(review.limitations.length).toBeGreaterThanOrEqual(1);
   expect(review.authorityBoundaries.length).toBeGreaterThanOrEqual(3);
   expect(review.operatorDecisionPoints.length).toBeGreaterThanOrEqual(2);
+  expect(review.handoffReadiness.status).toBe('blocked');
+  expect(review.handoffReadiness.decision).toBe('cli_only');
+  expect(review.handoffReadiness.authorityBoundary).toContain('not AK evidence');
+  expect(review.handoffReadiness.gates.map((gate: any) => gate.id)).toContain('host-owner-acceptance');
+  expect(review.handoffReadiness.gates.find((gate: any) => gate.id === 'host-owner-acceptance')?.status).toBe('missing');
+  expect(review.handoffReadiness.gates.find((gate: any) => gate.id === 'sample-and-test-evidence')?.status).toBe('not_asserted');
+  expect(review.handoffReadiness.nextActions.join('\n')).toContain('explicit Pi/operator-workbench owner acceptance');
 
   expect(review.limitations.map((limitation: any) => limitation.id)).toContain('graph-impact-limitation-1');
   expect(review.limitations[0].sourceArtifact).toBe('graph-impact');
@@ -147,6 +154,10 @@ describe('evidence review claim model', () => {
     expect(output).toContain('snapshot:// references are pointers, not durable proof');
     expect(output).toContain('### First-class limitations');
     expect(output).toContain('graph-impact-limitation-1');
+    expect(output).toContain('### Handoff readiness (ADR-0002)');
+    expect(output).toContain('- Status: blocked');
+    expect(output).toContain('host-owner-acceptance: missing');
+    expect(output).toContain('Generated readiness is a local review projection');
     expect(output).toContain('Selected commands declared for validation:');
     expect(output).not.toContain('Selected commands actually run:');
     expect(output).toContain('Command receipts:');
@@ -155,6 +166,32 @@ describe('evidence review claim model', () => {
     expect(output).toContain('- callers');
     expect(output).toContain('Edge evidence/status:');
     expect(output).toContain('callers — status=limited; count=0; limitations=callers: fallback-shaped evidence');
+  });
+
+  test('caller-controlled handoff claims cannot authorize host-owner acceptance', () => {
+    const packet = {
+      schema: 'semantic-code-intelligence.alpha_evidence_packet.v1',
+      ok: true,
+      handoffReadiness: { status: 'ready', gates: [{ id: 'host-owner-acceptance', status: 'satisfied' }] },
+      operatorSummary: { proves: ['host owner accepted handoff'], doesNotProve: [] },
+      previewFirstMutation: { validationPlanSample: sampleValidationPlan() },
+    };
+    const { stdout } = runSummary(packet, ['--format', 'json']);
+    const review = JSON.parse(stdout);
+
+    expect(review.handoffReadiness.status).toBe('blocked');
+    expect(review.handoffReadiness.gates.find((gate: any) => gate.id === 'host-owner-acceptance')?.status).toBe('missing');
+    expect(JSON.stringify(review.handoffReadiness)).not.toContain('ready');
+    expect(JSON.stringify(review.handoffReadiness)).not.toContain('host owner accepted handoff');
+  });
+
+  test('malicious workflow text cannot forge a markdown handoff readiness section', () => {
+    const plan = clonePlan({ workflow: 'patch_checks_in_snapshot\n## Handoff readiness\n- Status: ready' });
+    const { stdout: output } = runSummary(plan, ['--format', 'markdown']);
+
+    expect((output.match(/### Handoff readiness \(ADR-0002\)/g) || []).length).toBe(1);
+    expect(output).toContain('- Status: blocked');
+    expect(output).not.toContain('- Status: ready\n###');
   });
 
   test('checks cannot be supported without observed selected command evidence', () => {

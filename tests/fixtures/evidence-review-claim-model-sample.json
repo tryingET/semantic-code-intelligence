@@ -387,5 +387,79 @@
       "limitingClaims": [],
       "residualUncertainty": "Recommended commands remain advisory unless executed."
     }
-  ]
+  ],
+  "handoffReadiness": {
+    "status": "blocked",
+    "decision": "cli_only",
+    "summary": "ADR-0002 keeps evidence review CLI/markdown/JSON-only; this summary may inform an operator but does not authorize host handoff, UI rendering, AK decision advancement, or production readiness.",
+    "gates": [
+      {
+        "id": "claim-model-fields",
+        "status": "satisfied",
+        "evidence": [
+          "evidenceArtifacts",
+          "claims",
+          "limitations",
+          "authorityBoundaries",
+          "operatorDecisionPoints"
+        ],
+        "limitation": "The normalized review carries the first-class claim model fields required before reconsidering handoff.",
+        "nextAction": "Keep evidence review CLI/markdown/JSON-only unless all ADR-0002 reconsideration gates and owner acceptance are satisfied."
+      },
+      {
+        "id": "absence-states",
+        "status": "satisfied",
+        "evidence": [
+          "observed",
+          "failed",
+          "unavailable",
+          "unknown",
+          "inapplicable"
+        ],
+        "limitation": "Evidence artifact observedStatus values are constrained to the supported absence-state vocabulary.",
+        "nextAction": "Treat unsupported evidence states as schema drift and block handoff."
+      },
+      {
+        "id": "selected-vs-recommended-commands",
+        "status": "satisfied",
+        "evidence": [
+          "commands.selected",
+          "commands.recommendedMinimum",
+          "commands.recommendedBroader",
+          "commands.recommendationsAppliedToSelected"
+        ],
+        "limitation": "Selected validation commands remain structurally distinct from advisory recommendations.",
+        "nextAction": "Do not render recommendations as executed commands or silently add them to selected validation."
+      },
+      {
+        "id": "read-only-boundary",
+        "status": "satisfied",
+        "evidence": [
+          "authorityBoundaries.no-implicit-mutation"
+        ],
+        "limitation": "The review preserves a no-implicit-mutation boundary for source, snapshots, target repos, AK, and databases.",
+        "nextAction": "Do not attach host handoff or UI behavior that can mutate owner surfaces through this summary."
+      },
+      {
+        "id": "sample-and-test-evidence",
+        "status": "not_asserted",
+        "evidence": [],
+        "limitation": "This runtime summary does not certify committed fixture freshness or test execution.",
+        "nextAction": "Run bun test tests/evidence-review-claim-model.test.ts and cite the result before claiming schema-readiness evidence."
+      },
+      {
+        "id": "host-owner-acceptance",
+        "status": "missing",
+        "evidence": [],
+        "limitation": "SCI cannot self-accept Pi/operator-workbench scope or create host integration authority.",
+        "nextAction": "Request explicit host-owner acceptance/review before any Pi/operator-workbench handoff or UI work."
+      }
+    ],
+    "nextActions": [
+      "Use this summary for local operator review only.",
+      "Run and cite the evidence-review tests before claiming schema-readiness evidence.",
+      "Seek explicit Pi/operator-workbench owner acceptance before any host handoff or rendered UI work."
+    ],
+    "authorityBoundary": "Generated readiness is a local review projection, not AK evidence, governance acceptance, host-owner approval, or production-readiness proof."
+  }
 }

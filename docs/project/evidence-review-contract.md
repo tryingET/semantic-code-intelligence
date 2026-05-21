@@ -195,6 +195,22 @@ Implementations may normalize input into this shape before rendering:
       "residualUncertainty": "Recommended commands remain advisory unless executed."
     }
   ],
+  "handoffReadiness": {
+    "status": "blocked",
+    "decision": "cli_only",
+    "summary": "ADR-0002 keeps evidence review CLI/markdown/JSON-only; this summary may inform an operator but does not authorize host handoff, UI rendering, AK decision advancement, or production readiness.",
+    "gates": [
+      {
+        "id": "host-owner-acceptance",
+        "status": "missing",
+        "evidence": [],
+        "limitation": "SCI cannot self-accept Pi/operator-workbench scope or create host integration authority.",
+        "nextAction": "Request explicit host-owner acceptance/review before any Pi/operator-workbench handoff or UI work."
+      }
+    ],
+    "nextActions": ["Use this summary for local operator review only."],
+    "authorityBoundary": "Generated readiness is a local review projection, not AK evidence, governance acceptance, host-owner approval, or production-readiness proof."
+  },
   "outcome": {
     "ok": true,
     "status": "checks_passed",
@@ -264,7 +280,7 @@ Implementations may normalize input into this shape before rendering:
 }
 ```
 
-The first-class `evidenceArtifacts`, `limitations`, `claims`, `authorityBoundaries`, and `operatorDecisionPoints` fields are required to prevent the review from collapsing artifacts into claims, claims into authority, limitations into green status, bundle gates into selected-command execution, or recommendations into executed commands. `ReviewClaim.limitedBy` must reference `limitations[].id` values, not artifact IDs. Evidence artifacts also carry durability and citation requirements so `snapshot://` pointers are not mistaken for durable proof: workspace-contained materialized artifact paths may be classified as `materialized_local`, while `snapshot://`, missing, absolute, escaped, or unsupported URI references must not be promoted. Rollback posture must distinguish plausible workspace-local `git apply -R` command-backed rollback with a materialized patch path, materialized inverse patches, preview-only no-op rollback, untrusted rollback commands, and unavailable rollback after applied mutation. Applied safe-write verification, when present, must remain visible and lifecycle-consistent (`verification.applied` matches `apply.applied`; preview/refused states keep `appliedDiffMatchesSnapshot: null`) so an applied-diff/snapshot mismatch or forged preview verification becomes a blocking limitation rather than a green apply claim. Graph-impact fields preserve review context such as seed, requested edges, backend/freshness, per-edge evidence/status, limitations, and caller context count when present; they do not claim whole-program graph completeness. Markdown renderers must neutralize caller-controlled evidence text so graph seeds, edge names/statuses, limitation strings, commands, and other evidence text cannot forge headings, status banners, inline markdown emphasis/links, or completion claims. CLI error paths must use sanitized messages rather than runtime stack traces or reflected caller-controlled values.
+The first-class `evidenceArtifacts`, `limitations`, `claims`, `authorityBoundaries`, and `operatorDecisionPoints` fields are required to prevent the review from collapsing artifacts into claims, claims into authority, limitations into green status, bundle gates into selected-command execution, or recommendations into executed commands. `ReviewClaim.limitedBy` must reference `limitations[].id` values, not artifact IDs. `handoffReadiness` is a conservative read-only ADR-0002 gate report: it may show schema indicators that are present in the normalized review, but it must keep host handoff blocked unless explicit Pi/operator-workbench owner acceptance exists outside SCI. Evidence artifacts also carry durability and citation requirements so `snapshot://` pointers are not mistaken for durable proof: workspace-contained materialized artifact paths may be classified as `materialized_local`, while `snapshot://`, missing, absolute, escaped, or unsupported URI references must not be promoted. Rollback posture must distinguish plausible workspace-local `git apply -R` command-backed rollback with a materialized patch path, materialized inverse patches, preview-only no-op rollback, untrusted rollback commands, and unavailable rollback after applied mutation. Applied safe-write verification, when present, must remain visible and lifecycle-consistent (`verification.applied` matches `apply.applied`; preview/refused states keep `appliedDiffMatchesSnapshot: null`) so an applied-diff/snapshot mismatch or forged preview verification becomes a blocking limitation rather than a green apply claim. Graph-impact fields preserve review context such as seed, requested edges, backend/freshness, per-edge evidence/status, limitations, and caller context count when present; they do not claim whole-program graph completeness. Markdown renderers must neutralize caller-controlled evidence text so graph seeds, edge names/statuses, limitation strings, commands, readiness fields, and other evidence text cannot forge headings, status banners, inline markdown emphasis/links, or completion claims. CLI error paths must use sanitized messages rather than runtime stack traces or reflected caller-controlled values.
 
 ## Validation checks for an implementation wave
 
@@ -291,8 +307,10 @@ Any implementation of this contract must validate:
 19. validationPlan extraction works consistently for every supported evidence input kind that embeds a validation plan;
 20. generated validation-plan comparison fails closed when graph-impact review context disappears from generated preview/check evidence;
 21. the committed normalized sample fixture matches current summary output;
-22. docs strict and direction check pass;
-23. if runtime contracts change, `bun run alpha:mvp:check` still passes.
+22. handoff readiness remains visible, blocked, and explicit that generated readiness is not host-owner acceptance;
+23. caller-controlled evidence cannot mark host-owner acceptance satisfied or forge a markdown readiness status;
+24. docs strict and direction check pass;
+25. if runtime contracts change, `bun run alpha:mvp:check` still passes.
 
 ## Non-goals
 
