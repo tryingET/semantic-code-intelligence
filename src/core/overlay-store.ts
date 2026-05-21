@@ -856,8 +856,9 @@ export class OverlayStore {
         const dir = (await this.ensureMaterialized(snapshotId)) || process.cwd();
         const diffFile = path.join(dir, 'overlay.diff');
         let output = '';
-        // Best-effort: ensure parent directories exist for contained files referenced in diff.
-        // Diff-derived paths are caller-controlled, so validate containment before mkdir.
+        // Validate caller-controlled diff paths before invoking apply tools. Non-check apply
+        // may need parent directories for newly added nested files; check/dry-run must not
+        // create workspace directories before proving preview-only behavior.
         try {
             const diffText = await fsp.readFile(diffFile, 'utf8');
             const ensureDirs = new Set<string>();
@@ -873,16 +874,27 @@ export class OverlayStore {
                     if (normalized) ensureDirs.add(path.posix.dirname(normalized));
                 }
             }
-            for (const rel of ensureDirs) {
-                if (!rel || rel === '.' || rel === '/') continue;
-                const { absolutePath } = this.containedPath(process.cwd(), rel, 'apply_snapshot directory');
-                await fsp.mkdir(absolutePath, { recursive: true });
+            if (!check) {
+                for (const rel of ensureDirs) {
+                    if (!rel || rel === '.' || rel === '/') continue;
+                    const { absolutePath } = this.containedPath(process.cwd(), rel, 'apply_snapshot directory');
+                    await fsp.mkdir(absolutePath, { recursive: true });
+                }
             }
-        } catch (error) {
+        } catch {
+            const elapsedMs = Date.now() - start;
+            const message = 'Invalid apply_snapshot patch paths or missing overlay diff';
+            this.recordLastApply(snapshotId, {
+                ok: false,
+                elapsedMs,
+                outputTail: message,
+                args: { check, reverse },
+                at: Date.now(),
+            });
             return {
                 ok: false,
-                output: `Invalid apply_snapshot patch paths: ${error instanceof Error ? error.message : String(error)}`,
-                elapsedMs: Date.now() - start,
+                output: message,
+                elapsedMs,
             };
         }
         const argsGit = [

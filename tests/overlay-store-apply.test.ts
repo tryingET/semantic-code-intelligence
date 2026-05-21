@@ -55,6 +55,37 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
         expect(typeof status.lastApply.at).toBe('number');
     }, 30000);
 
+    test('dry-run apply for nested new files does not create workspace directories', async () => {
+        const nestedDir = `.tmp-overlay-check-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        const nestedRel = `${nestedDir}/new-file.ts`;
+        try {
+            rmSync(nestedDir, { recursive: true, force: true });
+            const snap = overlayStore.createSnapshot(false);
+            const patch = `diff --git a/${nestedRel} b/${nestedRel}\n--- /dev/null\n+++ b/${nestedRel}\n@@ -0,0 +1,1 @@\n+export const nestedDryRun = true;\n`;
+            const staged = overlayStore.stagePatch(snap.id, patch);
+            expect(staged.accepted).toBe(true);
+
+            const checked = await overlayStore.applyToWorkingTree(snap.id, { check: true, reverse: false });
+            expect(checked.ok).toBe(true);
+            expect(existsSync(nestedDir)).toBe(false);
+        } finally {
+            rmSync(nestedDir, { recursive: true, force: true });
+        }
+    }, 30000);
+
+    test('preflight apply failures are persisted without leaking workspace paths', async () => {
+        const snap = overlayStore.createSnapshot(false);
+        const failed = await overlayStore.applyToWorkingTree(snap.id, { check: true, reverse: false });
+        expect(failed.ok).toBe(false);
+        expect(failed.output).toBe('Invalid apply_snapshot patch paths or missing overlay diff');
+        expect(failed.output).not.toContain(process.cwd());
+
+        overlayStore.clearAll();
+        const status = overlayStore.getStatus(snap.id);
+        expect(status.lastApply).toMatchObject({ ok: false, args: { check: true, reverse: false } });
+        expect(status.lastApply.outputTail).toBe('Invalid apply_snapshot patch paths or missing overlay diff');
+    }, 30000);
+
     test('normalizes add-file diffs so git apply does not create dev/null', async () => {
         const targetRel = `tests/fixtures/overlay_new_${Date.now()}_${Math.random().toString(16).slice(2)}.ts`;
         const targetAbs = path.join(process.cwd(), targetRel);
