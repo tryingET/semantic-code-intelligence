@@ -134,6 +134,56 @@ describe('alpha evidence history comparison', () => {
     expect(report.warnings[0].remediationHint).toContain('<redacted-secret>');
   });
 
+  test('overlapping structural check workflow names classify as validation rather than structural matching', () => {
+    const { root, baselinePath } = makeEvidenceRoot({
+      [evidenceNames.structural]: {
+        ok: true,
+        calls: [
+          { name: 'structural_search', success: true, elapsedMs: 1200, observation: 'pure ast-grep query' },
+          { name: 'structural_patch_checks', success: true, elapsedMs: 1900, observation: 'Verify omitted commands default to the tsgo-primary bun run typecheck lane.' },
+        ],
+      },
+    });
+
+    const result = runHistory(root, baselinePath);
+    expect(result.status, result.stderr).toBe(0);
+    const report = JSON.parse(result.stdout);
+
+    expect(report.warnings[0]).toMatchObject({
+      key: 'structural',
+      status: 'slower_than_baseline',
+      likelyArea: 'validation_or_snapshot_checks',
+    });
+    expect(report.warnings[0].slowestCall).toMatchObject({ name: 'structural_patch_checks', elapsedMs: 1900 });
+    expect(report.warnings[0].remediationHint).toContain('selected commands');
+    expect(report.warnings[0].remediationHint).not.toContain('pattern complexity');
+  });
+
+  test('pure structural and advisory recommendation calls keep distinct latency areas', () => {
+    const { root, baselinePath } = makeEvidenceRoot({
+      [evidenceNames.structural]: {
+        ok: true,
+        calls: [{ name: 'structural_search', success: true, elapsedMs: 1800, observation: 'pure ast-grep query' }],
+      },
+      [evidenceNames.recommendChecks]: {
+        ok: true,
+        calls: [{ name: 'recommend_checks', success: true, elapsedMs: 1700, observation: 'large caller-provided patch summary' }],
+      },
+    });
+
+    const result = runHistory(root, baselinePath);
+    expect(result.status, result.stderr).toBe(0);
+    const report = JSON.parse(result.stdout);
+    const structural = report.warnings.find((item: any) => item.key === 'structural');
+    const recommendChecks = report.warnings.find((item: any) => item.key === 'recommendChecks');
+
+    expect(structural).toMatchObject({ likelyArea: 'structural_analysis' });
+    expect(structural.remediationHint).toContain('AST/ast-grep path scope');
+    expect(recommendChecks).toMatchObject({ likelyArea: 'check_recommendation' });
+    expect(recommendChecks.remediationHint).toContain('patch size');
+    expect(recommendChecks.remediationHint).not.toContain('selected commands');
+  });
+
   test('baseline metadata is redacted before reaching operator-facing output', () => {
     const { root, baselinePath } = makeEvidenceRoot();
     writeJson(baselinePath, {

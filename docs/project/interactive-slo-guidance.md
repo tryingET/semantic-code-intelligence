@@ -55,7 +55,7 @@ For `read_file`, `text_search`, `symbol_search`, `find_definition`, `find_refere
 
 ### Check recommendation
 
-`recommend_checks` should be fast because it is heuristic and does not run checks.
+`recommend_checks` should be fast because it is heuristic and does not run checks. Evidence-history warnings classify this separately from external check execution so advisory recommendation latency is not mistaken for `run_checks` or snapshot validation cost.
 
 If it is slow:
 
@@ -68,6 +68,7 @@ If it is slow:
 For `patch_checks_in_snapshot`, `structural_patch_checks`, and `safe_write` preview:
 
 - distinguish SCI overhead from the command being run;
+- treat structural patch/check latency as preview/check workflow latency unless the evidence isolates pure structural matching;
 - use cheap checks such as `true` for shape/protocol dogfood;
 - use real validation commands when the change is meaningful;
 - inspect `validationPlan.commands.selected` to explain what actually ran.

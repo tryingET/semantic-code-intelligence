@@ -104,12 +104,13 @@ function likelyLatencyArea(call: SlowestCall): string {
     const name = call?.name || '';
     if (!name) return 'unknown';
     if (name.startsWith('cli:')) return 'cli_startup_or_workflow';
+    if (/recommend_checks/i.test(name)) return 'check_recommendation';
+    if (/run_checks|safe_write|patch_checks|structural_patch_checks/i.test(name)) return 'validation_or_snapshot_checks';
+    if (/snapshot|propose_patch|patch/i.test(name)) return 'snapshot_or_patch_planning';
+    if (/structural|ast_query/i.test(name)) return 'structural_analysis';
     if (/text_search|symbol_search|search/i.test(name)) return 'search';
     if (/find_definition|find_references|definition|reference/i.test(name)) return 'navigation_resolution';
     if (/graph/i.test(name)) return 'graph_expansion';
-    if (/structural|ast_query/i.test(name)) return 'structural_analysis';
-    if (/run_checks|check|safe_write|patch_checks/i.test(name)) return 'validation_or_snapshot_checks';
-    if (/snapshot|propose_patch|patch/i.test(name)) return 'snapshot_or_patch_planning';
     if (/read_file/i.test(name)) return 'bounded_file_read';
     return 'unknown';
 }
@@ -127,6 +128,8 @@ function remediationFor(area: string, call: SlowestCall): string {
             return `Slowest call is ${name}; inspect graph edge request breadth, fallback provenance, and caller-context expansion.`;
         case 'structural_analysis':
             return `Slowest call is ${name}; inspect AST/ast-grep path scope, pattern complexity, and timeout caps.`;
+        case 'check_recommendation':
+            return `Slowest call is ${name}; inspect touched-file scope, patch size, and graph-impact summary size before treating external checks as slow.`;
         case 'validation_or_snapshot_checks':
             return `Slowest call is ${name}; inspect selected commands, snapshot materialization, and external check execution.`;
         case 'snapshot_or_patch_planning':
