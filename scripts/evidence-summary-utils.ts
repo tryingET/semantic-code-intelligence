@@ -3,6 +3,8 @@ import { dirname as pathDirname, relative, isAbsolute, resolve } from 'node:path
 
 export const defaultMaxEvidenceJsonBytes = 10 * 1024 * 1024;
 
+// Lexical containment only; callers that need filesystem trust boundaries must pass
+// already-normalized realpaths or use a helper that performs realpath checks first.
 export function isContainedPath(root: string, candidate: string): boolean {
   const rel = relative(root, candidate);
   return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
