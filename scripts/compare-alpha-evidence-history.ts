@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { basename, dirname, isAbsolute, relative, join } from 'node:path';
 import { redactString } from './evidence-summary-utils';
 
 const evidenceRoot = process.env.SCI_ALPHA_EVIDENCE_ROOT || '.test-results';
@@ -34,6 +34,17 @@ type SlowestCall = {
 
 function readJson(path: string): any {
     return JSON.parse(readFileSync(path, 'utf8'));
+}
+
+function displayPath(path: string): string {
+    const raw = String(path || '');
+    if (!raw) return '';
+    if (!isAbsolute(raw)) return redactString(raw);
+    const workspaceRelative = relative(process.cwd(), raw);
+    if (workspaceRelative && !workspaceRelative.startsWith('..') && !isAbsolute(workspaceRelative)) {
+        return redactString(workspaceRelative);
+    }
+    return `<external-path>/${basename(raw)}`;
 }
 
 function finiteElapsed(call: any): number {
@@ -136,7 +147,7 @@ const comparisons = Object.entries(evidenceFiles)
         const likelyArea = likelyLatencyArea(slowest);
         return {
             key,
-            sourceFile: path,
+            sourceFile: displayPath(path),
             currentMaxElapsedMs,
             baselineMaxElapsedMs,
             deltaMs,
@@ -166,7 +177,7 @@ const report = {
     generatedAt: new Date().toISOString(),
     ok: overBudget.length === 0,
     baseline: {
-        path: baselinePath,
+        path: displayPath(baselinePath),
         label: baseline.label || null,
         capturedAt: baseline.capturedAt || null,
         commit: baseline.commit || null,

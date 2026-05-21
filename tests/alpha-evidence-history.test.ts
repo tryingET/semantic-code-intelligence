@@ -104,6 +104,11 @@ describe('alpha evidence history comparison', () => {
     expect(report.warnings[0].slowestCall).toMatchObject({ name: 'find_definition', elapsedMs: 1800 });
     expect(report.warnings[0].slowestCall.observation).toContain('<redacted-secret>');
     expect(report.operatorSummary.warningDetails[0]).toMatchObject({ key: 'alpha', call: 'find_definition', likelyArea: 'navigation_resolution' });
+    expect(report.baseline.path).toBe('<external-path>/baseline.json');
+    expect(report.warnings[0].sourceFile).toBe('<external-path>/alpha-mvp-dogfood.json');
+    expect(result.stdout).not.toContain(root);
+    expect(result.stdout).not.toContain(baselinePath);
+    expect(result.stdout).not.toContain('/tmp/secret-token');
   });
 
   test('over-budget evidence remains the fail-closed condition', () => {
