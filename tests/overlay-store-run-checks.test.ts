@@ -108,6 +108,37 @@ describe('OverlayStore runChecks evidence receipts', () => {
         }
     });
 
+    test('cleanup removes stale materialization locks without deleting fresh or foreign entries', async () => {
+        const staleSnap = overlayStore.createSnapshot(false);
+        const freshSnap = overlayStore.createSnapshot(false);
+        const fileSnap = overlayStore.createSnapshot(false);
+        const snapsRoot = path.join(process.cwd(), '.ontology', 'snapshots');
+        const staleLock = path.join(snapsRoot, `${staleSnap.id}.lock`);
+        const freshLock = path.join(snapsRoot, `${freshSnap.id}.lock`);
+        const foreignLock = path.join(snapsRoot, 'not-a-snapshot.lock');
+        const validLookingLockFile = path.join(snapsRoot, `${fileSnap.id}.lock`);
+
+        await mkdir(staleLock, { recursive: true });
+        await mkdir(freshLock, { recursive: true });
+        await mkdir(foreignLock, { recursive: true });
+        await writeFile(validLookingLockFile, 'not a directory', 'utf8');
+        await utimes(staleLock, new Date(0), new Date(0));
+        await utimes(foreignLock, new Date(0), new Date(0));
+
+        const cleanupLocks = (overlayStore as any).cleanupMaterializeLockWorkspaces?.bind(overlayStore);
+        expect(typeof cleanupLocks).toBe('function');
+        await cleanupLocks(snapsRoot, Date.now(), 60_000);
+
+        expect(existsSync(staleLock)).toBe(false);
+        expect(existsSync(freshLock)).toBe(true);
+        expect(existsSync(foreignLock)).toBe(true);
+        expect(existsSync(validLookingLockFile)).toBe(true);
+
+        await rm(freshLock, { recursive: true, force: true });
+        await rm(foreignLock, { recursive: true, force: true });
+        await rm(validLookingLockFile, { force: true });
+    });
+
     test('runs shell-style quoted commands and records receipts', async () => {
         const snap = overlayStore.createSnapshot(false);
         const result = await overlayStore.runChecks(snap.id, ['bash -lc "exit 0"'], 30);

@@ -377,6 +377,27 @@ export class OverlayStore {
         await this.cleanupTransientSnapshotWorkspaces(snapsRoot, now, maxAgeMs, new Set(['check']));
     }
 
+    private async cleanupMaterializeLockWorkspaces(snapsRoot: string, now: number, maxAgeMs: number): Promise<void> {
+        let entries: fs.Dirent[] = [];
+        try {
+            entries = await fsp.readdir(snapsRoot, { withFileTypes: true });
+        } catch {
+            return;
+        }
+        for (const ent of entries) {
+            if (!ent.isDirectory()) continue;
+            const match = ent.name.match(/^([0-9a-fA-F-]{8,})\.lock$/);
+            if (!match || !this.isValidSnapshotId(match[1])) continue;
+            const lockDir = path.join(snapsRoot, ent.name);
+            try {
+                const stat = await fsp.stat(lockDir);
+                if (now - stat.mtimeMs > maxAgeMs) {
+                    await fsp.rm(lockDir, { recursive: true, force: true });
+                }
+            } catch {}
+        }
+    }
+
     async cleanup(maxKeep = 10, maxAgeMs = 3 * 24 * 60 * 60 * 1000): Promise<void> {
         const snaps = this.list();
         const now = Date.now();
@@ -398,6 +419,7 @@ export class OverlayStore {
             } catch {}
         }
         await this.cleanupTransientSnapshotWorkspaces(snapsRoot, now, maxAgeMs);
+        await this.cleanupMaterializeLockWorkspaces(snapsRoot, now, maxAgeMs);
     }
 
     private parseTouchedFilesFromPatch(diff: string): string[] {
