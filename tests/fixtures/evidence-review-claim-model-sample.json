@@ -396,61 +396,74 @@
       {
         "id": "claim-model-fields",
         "status": "present",
-        "evidence": [
+        "schemaIndicatorsPresent": [
           "evidenceArtifacts",
           "claims",
           "limitations",
           "authorityBoundaries",
           "operatorDecisionPoints"
         ],
+        "observedStatuses": [],
+        "externalAuthorityRequired": false,
         "limitation": "The normalized review carries the first-class claim model fields required before reconsidering handoff.",
         "nextAction": "Keep evidence review CLI/markdown/JSON-only unless all ADR-0002 reconsideration gates are present and owner acceptance is recorded outside SCI."
       },
       {
         "id": "absence-states",
         "status": "present",
-        "evidence": [
+        "schemaIndicatorsPresent": [],
+        "observedStatuses": [
           "observed",
-          "failed",
-          "unavailable",
+          "observed",
           "unknown",
+          "observed",
+          "inapplicable",
           "inapplicable"
         ],
+        "externalAuthorityRequired": false,
         "limitation": "Evidence artifact observedStatus values are constrained to the supported absence-state vocabulary.",
-        "nextAction": "Treat unsupported evidence states as schema drift and block handoff."
+        "nextAction": "Treat missing or unsupported evidence states as schema drift and block handoff."
       },
       {
         "id": "selected-vs-recommended-commands",
         "status": "present",
-        "evidence": [
+        "schemaIndicatorsPresent": [
           "commands.selected",
           "commands.recommendedMinimum",
           "commands.recommendedBroader",
           "commands.recommendationsAppliedToSelected"
         ],
+        "observedStatuses": [],
+        "externalAuthorityRequired": false,
         "limitation": "Selected validation commands remain structurally distinct from advisory recommendations.",
         "nextAction": "Do not render recommendations as executed commands or silently add them to selected validation."
       },
       {
         "id": "read-only-boundary",
         "status": "present",
-        "evidence": [
+        "schemaIndicatorsPresent": [
           "authorityBoundaries.no-implicit-mutation"
         ],
+        "observedStatuses": [],
+        "externalAuthorityRequired": false,
         "limitation": "The review preserves a no-implicit-mutation boundary for source, snapshots, target repos, AK, and databases.",
         "nextAction": "Do not attach host handoff or UI behavior that can mutate owner surfaces through this summary."
       },
       {
         "id": "sample-and-test-evidence",
         "status": "not_asserted",
-        "evidence": [],
+        "schemaIndicatorsPresent": [],
+        "observedStatuses": [],
+        "externalAuthorityRequired": false,
         "limitation": "This runtime summary does not certify committed fixture freshness or test execution.",
         "nextAction": "Run bun test tests/evidence-review-claim-model.test.ts and cite the result before claiming schema-readiness evidence."
       },
       {
         "id": "host-owner-acceptance",
         "status": "missing",
-        "evidence": [],
+        "schemaIndicatorsPresent": [],
+        "observedStatuses": [],
+        "externalAuthorityRequired": true,
         "limitation": "SCI cannot self-accept Pi/operator-workbench scope or create host integration authority.",
         "nextAction": "Request explicit host-owner acceptance/review before any Pi/operator-workbench handoff or UI work."
       }

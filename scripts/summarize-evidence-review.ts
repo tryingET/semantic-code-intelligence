@@ -207,7 +207,15 @@ type ReviewClaim = {
 type AuthorityBoundary = { id: string; boundary: string; affectedScope: string };
 type OperatorDecisionPoint = { id: string; options: string[]; supportingClaims: string[]; limitingClaims: string[]; residualUncertainty: string };
 type HandoffGateStatus = 'present' | 'missing' | 'not_asserted';
-type HandoffReadinessGate = { id: string; status: HandoffGateStatus; evidence: string[]; limitation: string; nextAction: string };
+type HandoffReadinessGate = {
+  id: string;
+  status: HandoffGateStatus;
+  schemaIndicatorsPresent: string[];
+  observedStatuses: string[];
+  externalAuthorityRequired: boolean;
+  limitation: string;
+  nextAction: string;
+};
 type HandoffReadiness = { status: 'blocked'; decision: 'cli_only'; summary: string; gates: HandoffReadinessGate[]; nextActions: string[]; authorityBoundary: string };
 
 function evidenceState(kind: string, observed: boolean, failed: boolean, applicable = true): EvidenceObservedState {
@@ -379,56 +387,78 @@ function validateReferenceIntegrity(review: any) {
   }
 }
 
-function handoffGate(id: string, status: HandoffGateStatus, evidence: string[], limitation: string, nextAction: string): HandoffReadinessGate {
-  return { id, status, evidence, limitation, nextAction };
+function handoffGate(
+  id: string,
+  status: HandoffGateStatus,
+  fields: Pick<HandoffReadinessGate, 'schemaIndicatorsPresent' | 'observedStatuses' | 'externalAuthorityRequired'>,
+  limitation: string,
+  nextAction: string,
+): HandoffReadinessGate {
+  return { id, status, ...fields, limitation, nextAction };
 }
 
 function buildHandoffReadiness(review: any): HandoffReadiness {
-  const hasClaimModel = arr(review?.evidenceArtifacts).length > 0 && arr(review?.claims).length > 0 && arr(review?.limitations).length > 0 && arr(review?.authorityBoundaries).length > 0 && arr(review?.operatorDecisionPoints).length > 0;
-  const observedStatesValid = arr(review?.evidenceArtifacts).every((artifact: EvidenceArtifact) => ['observed', 'failed', 'unavailable', 'unknown', 'inapplicable'].includes(artifact.observedStatus));
-  const commandDistinction = Array.isArray(review?.commands?.selected) && Array.isArray(review?.commands?.recommendedMinimum) && Array.isArray(review?.commands?.recommendedBroader) && typeof review?.commands?.recommendationsAppliedToSelected === 'boolean';
-  const readOnlyBoundary = arr(review?.authorityBoundaries).some((boundary: AuthorityBoundary) => boundary.id === 'no-implicit-mutation');
+  const claimModelIndicators = ['evidenceArtifacts', 'claims', 'limitations', 'authorityBoundaries', 'operatorDecisionPoints'].filter((field) => arr(review?.[field]).length > 0);
+  const hasClaimModel = claimModelIndicators.length === 5;
+  const allowedEvidenceStates = ['observed', 'failed', 'unavailable', 'unknown', 'inapplicable'];
+  const observedArtifactStatuses = arr(review?.evidenceArtifacts).map((artifact: EvidenceArtifact) => String(artifact?.observedStatus || ''));
+  const observedStatesValid = observedArtifactStatuses.length > 0 && observedArtifactStatuses.every((status) => allowedEvidenceStates.includes(status));
+  const commandIndicators = ['commands.selected', 'commands.recommendedMinimum', 'commands.recommendedBroader', 'commands.recommendationsAppliedToSelected'].filter((field) => {
+    if (field === 'commands.recommendationsAppliedToSelected') return typeof review?.commands?.recommendationsAppliedToSelected === 'boolean';
+    const key = field.replace('commands.', '');
+    return Array.isArray(review?.commands?.[key]);
+  });
+  const commandDistinction = commandIndicators.length === 4;
+  const readOnlyIndicators = arr(review?.authorityBoundaries).some((boundary: AuthorityBoundary) => boundary.id === 'no-implicit-mutation')
+    ? ['authorityBoundaries.no-implicit-mutation']
+    : [];
+  const readOnlyBoundary = readOnlyIndicators.length > 0;
+  const localGateFields = (schemaIndicatorsPresent: string[] = [], observedStatuses: string[] = []) => ({
+    schemaIndicatorsPresent,
+    observedStatuses,
+    externalAuthorityRequired: false,
+  });
 
   const gates = [
     handoffGate(
       'claim-model-fields',
       hasClaimModel ? 'present' : 'missing',
-      ['evidenceArtifacts', 'claims', 'limitations', 'authorityBoundaries', 'operatorDecisionPoints'].filter((field) => arr(review?.[field]).length > 0),
+      localGateFields(claimModelIndicators),
       hasClaimModel ? 'The normalized review carries the first-class claim model fields required before reconsidering handoff.' : 'The normalized review is missing one or more first-class claim model fields.',
       'Keep evidence review CLI/markdown/JSON-only unless all ADR-0002 reconsideration gates are present and owner acceptance is recorded outside SCI.',
     ),
     handoffGate(
       'absence-states',
       observedStatesValid ? 'present' : 'missing',
-      ['observed', 'failed', 'unavailable', 'unknown', 'inapplicable'],
-      observedStatesValid ? 'Evidence artifact observedStatus values are constrained to the supported absence-state vocabulary.' : 'One or more evidence artifact states are outside the supported absence-state vocabulary.',
-      'Treat unsupported evidence states as schema drift and block handoff.',
+      localGateFields([], observedArtifactStatuses),
+      observedStatesValid ? 'Evidence artifact observedStatus values are constrained to the supported absence-state vocabulary.' : 'One or more evidence artifact states are missing or outside the supported absence-state vocabulary.',
+      'Treat missing or unsupported evidence states as schema drift and block handoff.',
     ),
     handoffGate(
       'selected-vs-recommended-commands',
       commandDistinction ? 'present' : 'missing',
-      ['commands.selected', 'commands.recommendedMinimum', 'commands.recommendedBroader', 'commands.recommendationsAppliedToSelected'],
+      localGateFields(commandIndicators),
       commandDistinction ? 'Selected validation commands remain structurally distinct from advisory recommendations.' : 'Selected and recommended command fields are not structurally distinct.',
       'Do not render recommendations as executed commands or silently add them to selected validation.',
     ),
     handoffGate(
       'read-only-boundary',
       readOnlyBoundary ? 'present' : 'missing',
-      readOnlyBoundary ? ['authorityBoundaries.no-implicit-mutation'] : [],
+      localGateFields(readOnlyIndicators),
       readOnlyBoundary ? 'The review preserves a no-implicit-mutation boundary for source, snapshots, target repos, AK, and databases.' : 'The review does not expose the no-implicit-mutation authority boundary.',
       'Do not attach host handoff or UI behavior that can mutate owner surfaces through this summary.',
     ),
     handoffGate(
       'sample-and-test-evidence',
       'not_asserted',
-      [],
+      localGateFields(),
       'This runtime summary does not certify committed fixture freshness or test execution.',
       'Run bun test tests/evidence-review-claim-model.test.ts and cite the result before claiming schema-readiness evidence.',
     ),
     handoffGate(
       'host-owner-acceptance',
       'missing',
-      [],
+      { schemaIndicatorsPresent: [], observedStatuses: [], externalAuthorityRequired: true },
       'SCI cannot self-accept Pi/operator-workbench scope or create host integration authority.',
       'Request explicit host-owner acceptance/review before any Pi/operator-workbench handoff or UI work.',
     ),
@@ -937,7 +967,7 @@ function renderMarkdown(review: any): string {
     `- Decision: ${mdInline(review.handoffReadiness?.decision || 'cli_only')}\n` +
     `- Summary: ${mdInline(review.handoffReadiness?.summary || 'Host handoff is not authorized by this summary.')}\n` +
     `- Authority boundary: ${mdInline(review.handoffReadiness?.authorityBoundary || 'Generated readiness is not host-owner acceptance.')}\n` +
-    `- Gates:\n${arr(review.handoffReadiness?.gates).map((gate: any) => `  - ${mdInline(gate.id)}: ${mdInline(gate.status)} — ${mdInline(gate.limitation)} Next: ${mdInline(gate.nextAction)}`).join('\n') || '  - none'}\n` +
+    `- Gates:\n${arr(review.handoffReadiness?.gates).map((gate: any) => `  - ${mdInline(gate.id)}: ${mdInline(gate.status)} — indicators=${mdInline(strings(gate.schemaIndicatorsPresent).join(', ') || 'none')}; observedStatuses=${mdInline(strings(gate.observedStatuses).join(', ') || 'none')}; externalAuthorityRequired=${mdInline(gate.externalAuthorityRequired === true)} — ${mdInline(gate.limitation)} Next: ${mdInline(gate.nextAction)}`).join('\n') || '  - none'}\n` +
     `- Next actions:\n${arr(review.handoffReadiness?.nextActions).map((action: any) => `  - ${mdInline(action)}`).join('\n') || '  - none'}\n\n` +
     `## 2. Changed or affected scope\n\n` +
     `- Touched files:\n${bullet(strings(review.scope.touchedFiles))}\n` +

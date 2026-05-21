@@ -91,10 +91,15 @@ function assertClaimModel(review: any) {
   expect(review.handoffReadiness.authorityBoundary).toContain('not AK evidence');
   expect(review.handoffReadiness.gates.map((gate: any) => gate.id)).toContain('host-owner-acceptance');
   expect(review.handoffReadiness.gates.find((gate: any) => gate.id === 'claim-model-fields')?.status).toBe('present');
+  expect(review.handoffReadiness.gates.find((gate: any) => gate.id === 'claim-model-fields')?.schemaIndicatorsPresent).toContain('claims');
+  expect(review.handoffReadiness.gates.find((gate: any) => gate.id === 'absence-states')?.observedStatuses).toContain('observed');
+  expect(review.handoffReadiness.gates.find((gate: any) => gate.id === 'absence-states')?.schemaIndicatorsPresent).toEqual([]);
   expect(review.handoffReadiness.gates.find((gate: any) => gate.id === 'host-owner-acceptance')?.status).toBe('missing');
+  expect(review.handoffReadiness.gates.find((gate: any) => gate.id === 'host-owner-acceptance')?.externalAuthorityRequired).toBe(true);
   expect(review.handoffReadiness.gates.find((gate: any) => gate.id === 'sample-and-test-evidence')?.status).toBe('not_asserted');
   expect(review.handoffReadiness.nextActions.join('\n')).toContain('explicit Pi/operator-workbench owner acceptance');
   expect(JSON.stringify(review.handoffReadiness)).not.toContain('satisfied');
+  expect(JSON.stringify(review.handoffReadiness)).not.toContain('"evidence"');
 
   expect(review.limitations.map((limitation: any) => limitation.id)).toContain('graph-impact-limitation-1');
   expect(review.limitations[0].sourceArtifact).toBe('graph-impact');
@@ -159,6 +164,8 @@ describe('evidence review claim model', () => {
     expect(output).toContain('### Handoff readiness (ADR-0002)');
     expect(output).toContain('- Status: blocked');
     expect(output).toContain('host-owner-acceptance: missing');
+    expect(output).toContain('externalAuthorityRequired=true');
+    expect(output).toContain('observedStatuses=observed');
     expect(output).toContain('Generated readiness is a local review projection');
     expect(output).toContain('Selected commands declared for validation:');
     expect(output).not.toContain('Selected commands actually run:');
@@ -832,6 +839,14 @@ describe('evidence review claim model', () => {
 
     expect(afterDir).toEqual(beforeDir.concat('input.json').sort());
     expect(afterGit).toBe(beforeGit);
+  });
+
+  test('handoff readiness implementation avoids vacuous absence-state success', () => {
+    const source = readFileSync(script, 'utf8');
+    expect(source).toContain('observedArtifactStatuses.length > 0');
+    expect(source).toContain('observedStatuses');
+    expect(source).toContain('schemaIndicatorsPresent');
+    expect(source).not.toContain("['observed', 'failed', 'unavailable', 'unknown', 'inapplicable'],");
   });
 
   test('summary implementation does not import mutation-capable runtime surfaces', () => {
