@@ -40,6 +40,21 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
         expect(afterRevert).toEqual(before);
     }, 30000);
 
+    test('persists dry-run apply status across snapshot reloads', async () => {
+        const snap = overlayStore.createSnapshot(false);
+        const patch = `diff --git a/${targetRel} b/${targetRel}\n--- a/${targetRel}\n+++ b/${targetRel}\n@@ -5,2 +5,3 @@\n export class TestClass {\n+${marker}\n     private value: number = 0;\n`;
+        const staged = overlayStore.stagePatch(snap.id, patch);
+        expect(staged.accepted).toBe(true);
+
+        const checked = await overlayStore.applyToWorkingTree(snap.id, { check: true, reverse: false });
+        expect(checked.ok).toBe(true);
+
+        overlayStore.clearAll();
+        const status = overlayStore.getStatus(snap.id);
+        expect(status.lastApply).toMatchObject({ ok: true, args: { check: true, reverse: false } });
+        expect(typeof status.lastApply.at).toBe('number');
+    }, 30000);
+
     test('normalizes add-file diffs so git apply does not create dev/null', async () => {
         const targetRel = `tests/fixtures/overlay_new_${Date.now()}_${Math.random().toString(16).slice(2)}.ts`;
         const targetAbs = path.join(process.cwd(), targetRel);

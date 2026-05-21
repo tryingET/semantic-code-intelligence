@@ -263,6 +263,23 @@ export class OverlayStore {
         }
     }
 
+    private recordLastApply(
+        snapshotId: string,
+        receipt: {
+            ok: boolean;
+            elapsedMs: number;
+            outputTail: string;
+            args: { check: boolean; reverse: boolean };
+            at: number;
+        }
+    ): void {
+        try {
+            const snap = this.ensureSnapshot(snapshotId);
+            snap.lastApply = receipt;
+            this.persistSnapshotSync(snap);
+        } catch {}
+    }
+
     private loadSnapshotFromDisk(id: string): Snapshot | null {
         try {
             this.assertValidId(id);
@@ -876,17 +893,13 @@ export class OverlayStore {
         output += String(git.stdout || '') + String(git.stderr || '');
         const elapsed = Date.now() - start;
         if (git.status === 0) {
-            // record status
-            try {
-                const snap = this.ensureSnapshot(snapshotId);
-                snap.lastApply = {
-                    ok: true,
-                    elapsedMs: elapsed,
-                    outputTail: output.slice(-4000),
-                    args: { check, reverse },
-                    at: Date.now(),
-                };
-            } catch {}
+            this.recordLastApply(snapshotId, {
+                ok: true,
+                elapsedMs: elapsed,
+                outputTail: output.slice(-4000),
+                args: { check, reverse },
+                at: Date.now(),
+            });
             return { ok: true, output, elapsedMs: elapsed };
         }
         if (this.which('patch')) {
@@ -898,28 +911,22 @@ export class OverlayStore {
             const p = spawnSync('bash', patchArgs, { stdio: 'pipe', cwd: process.cwd() });
             output += String(p.stdout || '') + String(p.stderr || '');
             const ok = p.status === 0;
-            try {
-                const snap = this.ensureSnapshot(snapshotId);
-                snap.lastApply = {
-                    ok,
-                    elapsedMs: Date.now() - start,
-                    outputTail: output.slice(-4000),
-                    args: { check, reverse },
-                    at: Date.now(),
-                };
-            } catch {}
-            return { ok, output, elapsedMs: Date.now() - start };
-        }
-        try {
-            const snap = this.ensureSnapshot(snapshotId);
-            snap.lastApply = {
-                ok: false,
+            this.recordLastApply(snapshotId, {
+                ok,
                 elapsedMs: Date.now() - start,
                 outputTail: output.slice(-4000),
                 args: { check, reverse },
                 at: Date.now(),
-            };
-        } catch {}
+            });
+            return { ok, output, elapsedMs: Date.now() - start };
+        }
+        this.recordLastApply(snapshotId, {
+            ok: false,
+            elapsedMs: Date.now() - start,
+            outputTail: output.slice(-4000),
+            args: { check, reverse },
+            at: Date.now(),
+        });
         return { ok: false, output, elapsedMs: Date.now() - start };
     }
 
