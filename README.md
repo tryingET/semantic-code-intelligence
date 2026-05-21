@@ -588,13 +588,14 @@ just test-coverage
 
 #### Local Testing (Sliced + Batched)
 
-Use the Justfile runners for fast, predictable local feedback. By default, `just test` runs the test suite in slices and batches, mirroring our CI approach.
+Use the sliced/batched runners for fast, predictable local feedback. By default, `just test` and `bun run test` run the test suite in slices and batches, mirroring our CI approach. Use `bun run test:raw` only when you intentionally want one monolithic `bun test` process for debugging.
 
 Examples:
 
 ```bash
 # Fast default (auto-sliced + batched)
 just test
+bun run test
 
 # Single slice (K of N)
 just test-sliced 6 2

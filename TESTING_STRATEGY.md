@@ -185,13 +185,14 @@ describe("MCPTranslator", () => {
 
 ### Local Workflow (Sliced + Batched)
 
-For fast local feedback, prefer the Justfile runners which mirror CI behavior with slices and batches.
+For fast local feedback, prefer the sliced/batched runners which mirror CI behavior. `bun run test` and `bun run test:nonperf` delegate to the same normal-test runner as `just test`; use `bun run test:raw` only when you intentionally want one monolithic `bun test` process for debugging.
 
 Examples:
 
 ```bash
 # Fast default (auto-sliced + batched)
 just test
+bun run test
 
 # Single slice (K of N)
 just test-sliced 6 2

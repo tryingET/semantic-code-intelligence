@@ -13,6 +13,18 @@ function recipeBody(justfile: string, recipeName: string): string {
 }
 
 describe('build command surface', () => {
+    test('package test delegates to the sliced normal-test runner', () => {
+        const packageJson = JSON.parse(readText('package.json')) as { scripts?: Record<string, string> };
+        const runner = readText('scripts/run-normal-tests.sh');
+
+        expect(packageJson.scripts?.test).toBe('scripts/run-normal-tests.sh');
+        expect(packageJson.scripts?.['test:nonperf']).toBe('scripts/run-normal-tests.sh');
+        expect(packageJson.scripts?.['test:raw']).toBe('bun test');
+        expect(runner).toContain('bin/test-slicer.sh');
+        expect(runner).toContain('BUN_JOBS=${BUN_JOBS:-1}');
+        expect(runner).not.toContain('bun test\n');
+    });
+
     test('package build delegates to the canonical all-adapter build', () => {
         const packageJson = JSON.parse(readText('package.json')) as { scripts?: Record<string, string> };
         expect(packageJson.scripts?.build).toBe('bun run build:all');

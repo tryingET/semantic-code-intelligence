@@ -39,11 +39,20 @@ HISTORY_DIRS=${HISTORY_DIRS:-.test-results:slices}
 
 # Collect test files (default excludes perf/benchmarks unless WITH_PERF=1)
 SUITE_DIR=${SUITE_DIR:-}
+DISCOVERY_DIRS=()
+if [[ -z "${SUITE_DIR}" ]]; then
+  [[ -d tests ]] && DISCOVERY_DIRS+=(tests)
+  [[ -d test ]] && DISCOVERY_DIRS+=(test)
+  if [[ ${#DISCOVERY_DIRS[@]} -eq 0 ]]; then
+    echo "No test directories found."
+    exit 0
+  fi
+fi
 if [[ -n "${WITH_PERF}" && "${WITH_PERF}" != "0" ]]; then
   if [[ -n "${SUITE_DIR}" ]]; then
     mapfile -t ALL < <(find "${SUITE_DIR}" -type f \( -name "*.test.ts" -o -name "*.test.js" \) | sort)
   else
-    mapfile -t ALL < <(find tests test -type f \( -name "*.test.ts" -o -name "*.test.js" \) | sort)
+    mapfile -t ALL < <(find "${DISCOVERY_DIRS[@]}" -type f \( -name "*.test.ts" -o -name "*.test.js" \) | sort)
   fi
 else
   if [[ -n "${SUITE_DIR}" ]]; then
@@ -56,10 +65,10 @@ else
     fi
   else
     if [[ -n "${WITH_E2E}" && "${WITH_E2E}" != "0" ]]; then
-      mapfile -t ALL < <(find tests test -type f \( -name "*.test.ts" -o -name "*.test.js" \) \
+      mapfile -t ALL < <(find "${DISCOVERY_DIRS[@]}" -type f \( -name "*.test.ts" -o -name "*.test.js" \) \
         ! -path "*/performance/*" ! -path "*/benchmarks/*" | sort)
     else
-      mapfile -t ALL < <(find tests test -type f \( -name "*.test.ts" -o -name "*.test.js" \) \
+      mapfile -t ALL < <(find "${DISCOVERY_DIRS[@]}" -type f \( -name "*.test.ts" -o -name "*.test.js" \) \
         ! -path "*/performance/*" ! -path "*/benchmarks/*" ! -path "*/e2e/*" | sort)
     fi
   fi

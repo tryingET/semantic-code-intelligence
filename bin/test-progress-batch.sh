@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 echo "[test-progress-batch] starting" 1>&2
-set -ueo pipefail
+set -euo pipefail
 
 # Batch progressive test runner
 # Runs test files in batches and prints per-batch timing and status.
@@ -86,9 +86,12 @@ HEARTBEAT_SEC=${HEARTBEAT_SEC:-15}
 ) &
   KA_PID=$!
 
-  # Execute
+  # Execute. Capture failures so the runner can stop the heartbeat, write the
+  # JSONL receipt, and continue/aggregate instead of exiting mid-batch.
+  set +e
   BUN_JOBS=${BUN_JOBS:-1} "${PREFIX[@]}" "${CMD[@]}"
   code=$?
+  set -e
   kill "$KA_PID" >/dev/null 2>&1 || true
   END=$(date +%s%3N)
   DUR=$((END-START))
