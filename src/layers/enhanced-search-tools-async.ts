@@ -464,6 +464,7 @@ export class AsyncEnhancedGrep {
         let child: ChildProcess | null = null;
         let readline: any = null;
         let hardKill: NodeJS.Timeout | null = null;
+        let ended = false;
         const armHardKill = () => {
             if (!child) return;
             if (hardKill) return;
@@ -476,6 +477,11 @@ export class AsyncEnhancedGrep {
         const clearHardKill = () => {
             if (hardKill) clearTimeout(hardKill);
             hardKill = null;
+        };
+        const emitEndOnce = () => {
+            if (ended) return;
+            ended = true;
+            emitter.emit('end');
         };
 
         // Implement cancel method
@@ -493,10 +499,7 @@ export class AsyncEnhancedGrep {
                 } catch {}
             }
             // Emit end event when cancelled to resolve promises waiting for completion
-            setImmediate(() => {
-                if (!emitter.listenerCount('end')) return;
-                emitter.emit('end');
-            });
+            setImmediate(emitEndOnce);
         };
 
         // Start async search
@@ -529,7 +532,7 @@ export class AsyncEnhancedGrep {
 
                                 // Emit end after last result
                                 if (i === cached.length - 1) {
-                                    emitter.emit('end');
+                                    emitEndOnce();
                                 }
                             }
                         }, delay);
@@ -550,7 +553,7 @@ export class AsyncEnhancedGrep {
 
                     // If no results, emit end immediately
                     if (cached.length === 0) {
-                        emitter.emit('end');
+                        emitEndOnce();
                     }
                     return;
                 }
@@ -580,7 +583,7 @@ export class AsyncEnhancedGrep {
                         child.kill('SIGTERM');
                     } catch {}
                     armHardKill();
-                    emitter.emit('end');
+                    emitEndOnce();
                     return;
                 }
 
@@ -597,7 +600,7 @@ export class AsyncEnhancedGrep {
                             try {
                                 readline?.close?.();
                             } catch {}
-                            emitter.emit('end');
+                            emitEndOnce();
                         }
                     }, options.timeout);
                 }
@@ -665,7 +668,7 @@ export class AsyncEnhancedGrep {
                         elapsedMs: Date.now() - startTime,
                     });
 
-                    emitter.emit('end');
+                    emitEndOnce();
                 });
 
                 // Handle errors
@@ -702,24 +705,24 @@ export class AsyncEnhancedGrep {
                         errorMessage.includes('(os error 2)')
                     ) {
                         // Path doesn't exist or ripgrep not found - return empty results gracefully
-                        emitter.emit('end');
+                        emitEndOnce();
                         return;
                     }
 
                     // Otherwise, it's a real error
                     emitter.emit('error', err);
-                    emitter.emit('end');
+                    emitEndOnce();
                 });
 
                 // Ensure end event is emitted even when rg produces no stdout
                 child.on('close', () => {
                     if (timeout) clearTimeout(timeout);
                     clearHardKill();
-                    emitter.emit('end');
+                    emitEndOnce();
                 });
             } catch (error) {
                 emitter.emit('error', error as Error);
-                emitter.emit('end');
+                emitEndOnce();
             }
         })();
 

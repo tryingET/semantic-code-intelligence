@@ -250,6 +250,7 @@ Notes
 - HTTP/MCP tool: `apply_after_checks` with arguments `{ patch, commands?: string[], timeoutSec?: number }`.
 - Guard: Requires `ALLOW_SNAPSHOT_APPLY=1` to write to working tree.
 - Domain outcomes such as failed checks or refused/non-applied patches are returned as structured tool results (for example `ok:false`, `applied:false`), not as HTTP transport failures unless the tool invocation itself is invalid.
+- Patch workflows fail closed before checks when staging fails; do not treat a clean check receipt as meaningful unless the workflow reports `stage.accepted:true` / staged verification.
 - Typical flow:
   1) `get_snapshot` (optional convenience)
   2) `propose_patch` (stage)

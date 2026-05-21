@@ -920,6 +920,56 @@ export class MCPAdapter {
 
         const stage = await this.handleProposePatch({ snapshot, patch });
         const stageOut = this.safeParseContent(stage) || {};
+        if (stage?.isError || stageOut?.accepted !== true) {
+            const snapshotArtifacts = this.structuralSnapshotLinks(snapshot);
+            const verification = {
+                staged: false,
+                checksPassed: false,
+                applyGuardSatisfied: !apply || process.env.ALLOW_SNAPSHOT_APPLY === '1',
+                applied: false,
+                appliedDiffMatchesSnapshot: null,
+                method: null,
+                diagnostics: { reason: 'patch_stage_failed' },
+            };
+            const validationPlan = this.buildValidationPlan({
+                workflow: 'safe_write',
+                mode: apply ? 'apply_after_checks' : 'preview_validate',
+                snapshot,
+                snapshotArtifacts,
+                risk,
+                commands,
+                checksOk: false,
+                checksElapsedMs: null,
+                checkCommands: [],
+                checkRecommendations,
+                impactSummary,
+                applied: false,
+                applyGuardSatisfied: verification.applyGuardSatisfied,
+                rollback: null,
+                verification,
+            });
+            const payload = {
+                ok: false,
+                workflow: 'safe_write',
+                mode: apply ? 'apply_after_checks' : 'preview_validate',
+                reason: 'patch_stage_failed',
+                risk,
+                snapshot,
+                stage: stageOut,
+                checkRecommendations,
+                validationPlan,
+                checks: null,
+                verification,
+                applied: false,
+                snapshotArtifacts,
+                next: 'fix patch staging errors before running checks',
+                next_actions: ['Fix patch staging errors', `Open snapshot status: ${snapshotArtifacts.status}`],
+            };
+            const response = brief
+                ? { ok: false, workflow: 'safe_write', reason: 'patch_stage_failed', snapshot, validationPlan, verification, applied: false }
+                : payload;
+            return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }], isError: false };
+        }
         const checks = await this.handleRunChecks({ snapshot, commands, timeoutSec });
         const checksOut = this.safeParseContent(checks) || {};
         let applied = false;
@@ -1134,6 +1184,17 @@ export class MCPAdapter {
         // Stage
         const stage = await this.handleProposePatch({ snapshot, patch });
         const stageOut = this.safeParseContent(stage) || {};
+        if (stage?.isError || stageOut?.accepted !== true) {
+            const payload = {
+                ok: false,
+                reason: 'patch_stage_failed',
+                snapshot,
+                applied: false,
+                stage: stageOut,
+                output_tail: '',
+            };
+            return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: false };
+        }
         // Checks
         const checks = await this.handleRunChecks({ snapshot, commands, timeoutSec });
         const chk = this.safeParseContent(checks) || {};
@@ -1227,6 +1288,36 @@ export class MCPAdapter {
 
         const stage = await this.handleProposePatch({ snapshot: snapId, patch });
         const staged = this.safeParseContent(stage);
+        if (stage?.isError || staged?.accepted !== true) {
+            const snapshotArtifacts = this.structuralSnapshotLinks(snapId);
+            const validationPlan = this.buildValidationPlan({
+                workflow: 'patch_checks_in_snapshot',
+                mode: 'preview_validate',
+                snapshot: snapId,
+                snapshotArtifacts,
+                risk: this.classifyPatchRisk(patch),
+                commands,
+                checksOk: false,
+                checksElapsedMs: null,
+                checkCommands: [],
+                checkRecommendations,
+                impactSummary,
+                applied: false,
+                applyGuardSatisfied: false,
+            });
+            const out = {
+                workflow: 'patch_checks_in_snapshot',
+                ok: false,
+                reason: 'patch_stage_failed',
+                snapshot: snapId,
+                stage: staged,
+                checkRecommendations,
+                validationPlan,
+                checks: null,
+                next_actions: ['Fix patch staging errors; checks were not run'],
+            };
+            return { content: [{ type: 'text', text: JSON.stringify(out, null, 2) }], isError: false };
+        }
         const checks = await this.handleRunChecks({ snapshot: snapId, commands, timeoutSec });
         const checksOut = this.safeParseContent(checks);
         const ok = !!checksOut?.ok;
@@ -1557,7 +1648,9 @@ export class MCPAdapter {
             return hunks.flatMap((hunk) => {
                 const oldLines = hunk.filter((line) => line.op !== '+').map((line) => line.text);
                 const newLines = hunk.filter((line) => line.op !== '-').map((line) => line.text);
-                const match = findSequence(sourceLines, oldLines, cursor);
+                const matches = findSequences(sourceLines, oldLines, cursor);
+                if (matches.length > 1) throw new Error(`apply_patch hunk is ambiguous for ${file}`);
+                const match = matches[0] ?? -1;
                 if (match >= 0) {
                     cursor = match + Math.max(oldLines.length, 1);
                     return [
@@ -1650,7 +1743,7 @@ export class MCPAdapter {
                     ),
                 },
             ],
-            isError: !res.ok,
+            isError: false,
         };
     }
 

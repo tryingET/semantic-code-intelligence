@@ -39,4 +39,22 @@ describe('AsyncEnhancedGrep cancellable operations', () => {
         expect(elapsed).toBeLessThan(1000);
         expect(Array.isArray(files)).toBe(true);
     });
+
+    test('searchStream emits a single end event when cancelled', async () => {
+        const grep = new AsyncEnhancedGrep();
+        const stream = grep.searchStream({
+            pattern: 'CodeAnalyzer',
+            path: path.join(process.cwd(), 'tests/fixtures'),
+            timeout: 5000,
+            maxResults: 1000,
+            caseInsensitive: true,
+        });
+        let ends = 0;
+        stream.on('end', () => {
+            ends += 1;
+        });
+        stream.cancel();
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        expect(ends).toBe(1);
+    });
 });

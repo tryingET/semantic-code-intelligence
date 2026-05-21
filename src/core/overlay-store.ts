@@ -374,6 +374,9 @@ export class OverlayStore {
         } catch (error) {
             return { accepted: false, message: error instanceof Error ? error.message : String(error) };
         }
+        if (!touched.length) {
+            return { accepted: false, message: 'invalid_patch: no workspace files found in diff' };
+        }
         const snap = this.ensureSnapshot(snapshotId);
         snap.diffs.push(diff);
         if (touched.length) {

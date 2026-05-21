@@ -107,4 +107,19 @@ export class TestClass {
         expect(out.applied).toBe(false);
         expect(typeof out.snapshot).toBe('string');
     }, 30000);
+
+    test('returns HTTP success with domain ok=false for standalone failed run_checks', async () => {
+        const snapRes = await callTool(base, 'get_snapshot', { preferExisting: false });
+        const snapshot = unwrap(snapRes).snapshot;
+        const res = await callTool(base, 'run_checks', {
+            snapshot,
+            commands: ['false'],
+            timeoutSec: 60,
+        });
+        const out = unwrap(res);
+
+        expect(out).toBeDefined();
+        expect(out.ok).toBe(false);
+        expect(out.commands?.[0]?.ok).toBe(false);
+    }, 30000);
 });
