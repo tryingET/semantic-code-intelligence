@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -26,6 +26,47 @@ describe('build command surface', () => {
         const report = JSON.parse(proc.stdout) as { ok: boolean; violations: unknown[] };
         expect(report.ok).toBe(true);
         expect(report.violations).toEqual([]);
+    });
+
+    test('local harness artifacts are ignored and rejected if force-tracked', () => {
+        const gitignore = readText('.gitignore');
+        expect(gitignore).toContain('.pi-subagent-sessions/');
+        expect(gitignore).toContain('.pi-subagent-sessions.self-memory.json');
+
+        for (const artifactPath of ['.pi-subagent-sessions/self-memory.jsonl', '.pi-subagent-sessions.self-memory.json']) {
+            const ignored = spawnSync('git', ['check-ignore', '--quiet', artifactPath], {
+                cwd: process.cwd(),
+                encoding: 'utf8',
+            });
+            expect(ignored.status, `${artifactPath} should be ignored by git`).toBe(0);
+        }
+
+        const dir = mkdtempSync(join(tmpdir(), 'sci-harness-artifact-hygiene-'));
+        try {
+            const init = spawnSync('git', ['init'], { cwd: dir, encoding: 'utf8' });
+            expect(init.status, init.stderr || init.stdout).toBe(0);
+
+            mkdirSync(join(dir, '.pi-subagent-sessions'), { recursive: true });
+            writeFileSync(join(dir, '.pi-subagent-sessions.self-memory.json'), '{"local":"session"}\n');
+            writeFileSync(join(dir, '.pi-subagent-sessions', 'session.jsonl'), '{"local":"trace"}\n');
+
+            const add = spawnSync('git', ['add', '-f', '.pi-subagent-sessions.self-memory.json', '.pi-subagent-sessions/session.jsonl'], {
+                cwd: dir,
+                encoding: 'utf8',
+            });
+            expect(add.status, add.stderr || add.stdout).toBe(0);
+
+            const proc = spawnSync('bash', [join(process.cwd(), 'scripts/migration-hygiene.sh')], {
+                cwd: dir,
+                encoding: 'utf8',
+            });
+            expect(proc.status).toBe(1);
+            expect(proc.stderr).toContain('tracked generated/local artifacts');
+            expect(proc.stderr).toContain('.pi-subagent-sessions.self-memory.json');
+            expect(proc.stderr).toContain('.pi-subagent-sessions/session.jsonl');
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
     });
 
     test('package test delegates to the sliced normal-test runner', () => {

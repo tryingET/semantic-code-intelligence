@@ -73,6 +73,10 @@ vscode-client/out/
 # Local temp dirs
 tmp/
 
+# Harness-local artifacts (non-canonical; may contain session/provenance data)
+.pi-subagent-sessions/
+.pi-subagent-sessions.self-memory.json
+
 # Test artifacts and logs
 test-results.txt
 test-output*.txt

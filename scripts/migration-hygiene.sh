@@ -24,7 +24,7 @@ else
 fi
 
 # 2. Tracked local/generated artifacts that should not be canonical.
-tracked_artifacts="$(git ls-files | grep -E '(^|/)(node_modules|dist|logs|temp|tmp|\.ontology|\.semantic-graph|\.test-results)(/|$)|(^|/).*\.(db|db-wal|db-shm|sqlite|sqlite3|pid|log|orig|bak)$|(^|/)package\.json\.orig$|(^|/)semantic-code-intelligence\.orig$' || true)"
+tracked_artifacts="$(git ls-files | grep -E '(^|/)(node_modules|dist|logs|temp|tmp|\.ontology|\.semantic-graph|\.test-results|\.pi-subagent-sessions)(/|$)|(^|/)\.pi-subagent-sessions\.self-memory\.json$|(^|/).*\.(db|db-wal|db-shm|sqlite|sqlite3|pid|log|orig|bak)$|(^|/)package\.json\.orig$|(^|/)semantic-code-intelligence\.orig$' || true)"
 if [[ -n "$tracked_artifacts" ]]; then
   fail "tracked generated/local artifacts found:\n$tracked_artifacts"
 else
