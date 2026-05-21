@@ -10,7 +10,6 @@
  * All actual analysis work is delegated to the unified core analyzer.
  */
 
-import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,6 +26,7 @@ import {
 import { StructuralWorkflowService } from '../core/workflows/structural-workflow.js';
 import { GraphExpandWorkflowService } from '../core/workflows/graph-expand-workflow.js';
 import { WorkspaceQueryWorkflowService } from '../core/workflows/workspace-query-workflow.js';
+import { RenameWorkflowService } from '../core/workflows/rename-workflow.js';
 import { ToolRegistry } from '../core/tools/registry.js';
 import { openWorkspaceFileForRead, resolveWorkspacePath } from '../core/workspace-path.js';
 import { DefinitionKind } from '../core/types.js';
@@ -76,6 +76,7 @@ export class MCPAdapter {
     private structuralWorkflows: StructuralWorkflowService;
     private graphWorkflows: GraphExpandWorkflowService;
     private workspaceQueries: WorkspaceQueryWorkflowService;
+    private renameWorkflows: RenameWorkflowService;
 
     constructor(coreAnalyzer: CoreAnalyzer, config: MCPAdapterConfig = {}) {
         this.coreAnalyzer = coreAnalyzer;
@@ -99,6 +100,18 @@ export class MCPAdapter {
             workspaceRoot: () => this.getWorkspaceRoot(),
             coreAnalyzer: this.coreAnalyzer,
             pathInputFromMcpFile: (value, workspaceRoot) => this.pathInputFromMcpFile(value, workspaceRoot),
+        });
+        this.renameWorkflows = new RenameWorkflowService({
+            workspaceRoot: () => this.getWorkspaceRoot(),
+            pickOntologySeedFile: (symbol) => this.pickOntologySeedFile(symbol),
+            planRename: async (renameArgs) => {
+                const result = await this.handlePlanRename(renameArgs, {
+                    component: 'MCPAdapter',
+                    operation: 'workflow_safe_rename',
+                    timestamp: Date.now(),
+                });
+                return this.safeParseContent(result);
+            },
         });
 
         // Defensive wrapper to ensure MCP-compatible shape for direct calls in tests
@@ -763,153 +776,7 @@ export class MCPAdapter {
     }
 
     private async handleWorkflowSafeRename(args: Record<string, any>) {
-        const oldName = String(args?.oldName || '').trim();
-        const newName = String(args?.newName || '').trim();
-        if (!oldName || !newName) {
-            return { content: [{ type: 'text', text: 'oldName and newName required' }], isError: true };
-        }
-        let file = typeof args?.file === 'string' ? args.file : undefined;
-        if (!file) {
-            file = (await this.pickOntologySeedFile(oldName)) || undefined;
-        }
-        const commands = Array.isArray(args?.commands) ? (args.commands as string[]) : ['bun run typecheck'];
-        const timeoutSec = typeof args?.timeoutSec === 'number' ? args.timeoutSec : 240;
-        const runChecksFlag: boolean = args?.runChecks !== false;
-
-        // Step 1: plan rename (WorkspaceEdit preview)
-        const planRes = await this.handlePlanRename(
-            { oldName, newName, file },
-            { component: 'MCPAdapter', operation: 'workflow_safe_rename', timestamp: Date.now() }
-        );
-        const plan = this.safeParseContent(planRes);
-        const changes = plan?.changes || {};
-        const files = Object.keys(changes);
-        if (!files.length) {
-            const out = { ok: false, reason: 'no_changes', message: 'Rename produced no changes' };
-            return { content: [{ type: 'text', text: JSON.stringify(out, null, 2) }], isError: false };
-        }
-
-        // Step 2: snapshot and generate unified diff from WorkspaceEdit
-        const snap = overlayStore.createSnapshot(true, { workspaceRoot: this.getWorkspaceRoot() });
-        const diffParts: string[] = [];
-        const root = this.getWorkspaceRoot();
-        const tmpRootBase = runChecksFlag
-            ? (await (overlayStore as any).ensureMaterialized?.(snap.id, { workspaceRoot: this.getWorkspaceRoot() })) || ''
-            : path.resolve(this.getWorkspaceRoot(), '.ontology', 'tmp-diffs');
-        if (!tmpRootBase) {
-            const out = { ok: false, reason: 'snapshot_failed', message: 'Failed to prepare snapshot' };
-            return { content: [{ type: 'text', text: JSON.stringify(out, null, 2) }], isError: true };
-        }
-        const tmpRoot = path.join(tmpRootBase, '.mcp-work');
-        await fs.mkdir(tmpRoot, { recursive: true }).catch(() => {});
-
-        for (const uri of files) {
-            const fileEdits = changes[uri] as any[];
-            if (!Array.isArray(fileEdits) || !fileEdits.length) continue;
-            const absPath = (() => {
-                try {
-                    return new URL(uri).pathname;
-                } catch {
-                    return uri.replace(/^file:\/\//, '');
-                }
-            })();
-            const rel = path.relative(root, absPath);
-            const srcPath = path.join(root, rel);
-            let orig = '';
-            try {
-                orig = await fs.readFile(srcPath, 'utf8');
-            } catch {
-                continue;
-            }
-            const mod = this.applyTextEdits(orig, fileEdits);
-            const tmpPath = path.join(tmpRoot, rel);
-            await fs.mkdir(path.dirname(tmpPath), { recursive: true }).catch(() => {});
-            await fs.writeFile(tmpPath, mod, 'utf8');
-
-            const left = srcPath.replace(/"/g, '\\"');
-            const right = tmpPath.replace(/"/g, '\\"');
-            const cmd = `git diff --no-index --src-prefix=a/ --dst-prefix=b/ -- "${left}" "${right}"`;
-            const proc = spawnSync('bash', ['-lc', cmd], { stdio: 'pipe' });
-            const out = String(proc.stdout || '');
-            if (out && out.trim().length > 0) {
-                diffParts.push(out);
-            }
-        }
-        const unifiedDiff = diffParts.join('\n');
-        const stage = overlayStore.stagePatch(snap.id, unifiedDiff);
-        if (!stage.accepted) {
-            const out = { ok: false, reason: 'stage_failed', message: stage.message || 'Failed to stage diff' };
-            return { content: [{ type: 'text', text: JSON.stringify(out, null, 2) }], isError: true };
-        }
-
-        // Step 3: optionally run checks inside snapshot
-        if (!runChecksFlag) {
-            const quick = {
-                workflow: 'rename_safely',
-                ok: true,
-                snapshot: snap.id,
-                filesAffected: files.length,
-                totalEdits: files.reduce((acc, f) => acc + (Array.isArray(changes[f]) ? changes[f].length : 0), 0),
-                next_actions: ['Run checks when ready', 'Open snapshot diff: snapshot://' + snap.id + '/overlay.diff'],
-            };
-            return { content: [{ type: 'text', text: JSON.stringify(quick, null, 2) }], isError: false };
-        }
-
-        // Step 3: run checks inside snapshot
-        const onlyTouchedEnv = (process.env.FAST_STDIO_CHECKS || '').toLowerCase() === 'touched';
-        const onlyTouched =
-            typeof (args as any)?.onlyTouched === 'boolean' ? !!(args as any).onlyTouched : onlyTouchedEnv;
-        const checks = await overlayStore.runChecks(snap.id, commands, timeoutSec, { onlyTouched, workspaceRoot: this.getWorkspaceRoot() });
-        const ok = !!checks.ok;
-        const result = {
-            workflow: 'rename_safely',
-            ok,
-            snapshot: snap.id,
-            filesAffected: files.length,
-            totalEdits: files.reduce((acc, f) => acc + (Array.isArray(changes[f]) ? changes[f].length : 0), 0),
-            elapsedMs: checks.elapsedMs,
-            checks: { ok, commands: Array.isArray(checks.commands) ? checks.commands : [], elapsedMs: checks.elapsedMs },
-            outputTail: (checks.output || '').slice(-4000),
-            next_actions: ok
-                ? [
-                      'Optionally apply this patch to working tree',
-                      'Open snapshot diff: snapshot://' + snap.id + '/overlay.diff',
-                  ]
-                : ['Review failing checks in outputTail', 'Adjust plan and retry'],
-        };
-        return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }], isError: !ok };
-    }
-
-    private applyTextEdits(
-        text: string,
-        edits: Array<{
-            range: { start: { line: number; character: number }; end: { line: number; character: number } };
-            newText: string;
-        }>
-    ): string {
-        if (!Array.isArray(edits) || edits.length === 0) return text;
-        // Convert positions to offsets
-        const lineStarts: number[] = [0];
-        for (let i = 0; i < text.length; i++) {
-            if (text[i] === '\n') lineStarts.push(i + 1);
-        }
-        const toOffset = (pos: { line: number; character: number }) => {
-            const l = Math.max(0, Math.min(pos.line, lineStarts.length - 1));
-            const lineStart = lineStarts[l] ?? 0;
-            return lineStart + Math.max(0, pos.character);
-        };
-        const items = edits.map((e) => ({
-            start: toOffset(e.range.start),
-            end: toOffset(e.range.end),
-            newText: e.newText ?? '',
-        }));
-        // Apply from end to start to avoid shifting
-        items.sort((a, b) => b.start - a.start);
-        let out = text;
-        for (const e of items) {
-            out = out.slice(0, e.start) + e.newText + out.slice(e.end);
-        }
-        return out;
+        return this.formatSnapshotWorkflowResult(await this.renameWorkflows.safeRename(args));
     }
     private async handleWorkflowLocateConfirmDefinition(args: Record<string, any>) {
         const symbol = String(args?.symbol || '').trim();
