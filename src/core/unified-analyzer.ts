@@ -735,6 +735,7 @@ export class CodeAnalyzer {
 
         const requestId = uuidv4();
         const startTime = Date.now();
+        const layer1Start = this.monotonicNowMs();
 
         try {
             const l1Base =
@@ -830,7 +831,7 @@ export class CodeAnalyzer {
                 });
             }
 
-            const layer1Time = Date.now() - startTime;
+            const layer1Time = this.elapsedObservedLayerMs(layer1Start);
             let layer2Time = 0;
             let finalRefs: Reference[] = references;
 
@@ -852,9 +853,9 @@ export class CodeAnalyzer {
             if (ambiguous) {
                 const topName = [...distinctNames.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
                 if (topName) {
-                    const t0 = Date.now();
+                    const t0 = this.monotonicNowMs();
                     finalRefs = finalRefs.filter((r) => r.name === topName);
-                    layer2Time += Date.now() - t0; // account as precision step time
+                    layer2Time += this.elapsedObservedLayerMs(t0); // account as precision step time
                 }
             }
 
@@ -869,14 +870,14 @@ export class CodeAnalyzer {
             if (policy2 !== 'never' && shouldEscalateRefs) {
                 const base = this.config.performance?.escalation?.layer2?.budgetMs ?? 75;
                 const budget = astOnly2 || preciseRequested2 ? Math.max(100, base) : base;
-                const escStart = Date.now();
+                const escStart = this.monotonicNowMs();
                 try {
                     const escalatePromise = this.executeLayer2ReferenceAnalysis(request, finalRefs);
                     const timeoutPromise = new Promise<Reference[]>((resolve) =>
                         setTimeout(() => resolve([]), Math.max(0, budget))
                     );
                     const layer2Refs = await Promise.race([escalatePromise, timeoutPromise]);
-                    layer2Time = Date.now() - escStart;
+                    layer2Time = this.elapsedObservedLayerMs(escStart);
 
                     if (layer2Refs && layer2Refs.length > 0) {
                         const keyOf = (r: Reference) => `${r.uri}:${r.range.start.line}:${r.range.start.character}`;
@@ -897,7 +898,7 @@ export class CodeAnalyzer {
                         finalRefs = Array.from(map.values());
                     }
                 } catch {
-                    layer2Time = Date.now() - escStart;
+                    layer2Time = this.elapsedObservedLayerMs(escStart);
                 }
             }
 

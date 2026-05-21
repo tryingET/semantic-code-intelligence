@@ -205,10 +205,13 @@ describe('Unified Core Architecture', () => {
             enforceBudget('findReferences duration', duration, 500, 'UNIFIED_CORE_FIND_REFERENCES_BUDGET_MS');
             enforceBudget('findReferences reported total', result.performance.total, 500, 'UNIFIED_CORE_FIND_REFERENCES_REPORTED_BUDGET_MS');
 
-            // Verify result structure
+            // Verify result structure and non-cache layered timing evidence.
             expect(result.requestId).toBeDefined();
             expect(Array.isArray(result.data)).toBe(true);
             expect(typeof result.cacheHit).toBe('boolean');
+            expect(result.cacheHit).toBe(false);
+            expect(result.performance.layer1).toBeGreaterThan(0);
+            expect(result.performance.total).toBeGreaterThan(0);
         });
 
         test('should deduplicate references from multiple layers', async () => {
