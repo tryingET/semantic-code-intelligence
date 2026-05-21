@@ -1,10 +1,11 @@
 import { afterAll, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const tempRoots: string[] = [];
+let workspaceFixtureCounter = 0;
 
 const evidenceNames = {
   alpha: 'alpha-mvp-dogfood.json',
@@ -20,8 +21,11 @@ function writeJson(path: string, value: unknown) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-function makeEvidenceRoot(overrides: Record<string, unknown> = {}, baselineOverrides: Record<string, unknown> = {}) {
-  const root = mkdtempSync(join(tmpdir(), 'sci-alpha-history-'));
+function makeEvidenceRoot(overrides: Record<string, unknown> = {}, baselineOverrides: Record<string, unknown> = {}, options: { insideWorkspace?: boolean } = {}) {
+  const root = options.insideWorkspace
+    ? resolve(process.cwd(), '.test-results', `alpha-history-fixture-${Date.now()}-${workspaceFixtureCounter++}`)
+    : mkdtempSync(join(tmpdir(), 'sci-alpha-history-'));
+  if (options.insideWorkspace) mkdirSync(root, { recursive: true });
   tempRoots.push(root);
   const baselinePath = join(root, 'baseline.json');
   const baseline = {
@@ -109,6 +113,19 @@ describe('alpha evidence history comparison', () => {
     expect(result.stdout).not.toContain(root);
     expect(result.stdout).not.toContain(baselinePath);
     expect(result.stdout).not.toContain('/tmp/secret-token');
+  });
+
+  test('workspace-contained absolute evidence paths are reported as repo-relative labels', () => {
+    const { root, baselinePath } = makeEvidenceRoot({}, {}, { insideWorkspace: true });
+
+    const result = runHistory(root, baselinePath);
+    expect(result.status, result.stderr).toBe(0);
+    const report = JSON.parse(result.stdout);
+
+    expect(report.baseline.path).toMatch(/^\.test-results\/alpha-history-fixture-.+\/baseline\.json$/);
+    expect(report.comparisons[0].sourceFile).toMatch(/^\.test-results\/alpha-history-fixture-.+\/alpha-mvp-dogfood\.json$/);
+    expect(report.baseline.path).not.toContain(process.cwd());
+    expect(result.stdout).not.toContain(process.cwd());
   });
 
   test('over-budget evidence remains the fail-closed condition', () => {
