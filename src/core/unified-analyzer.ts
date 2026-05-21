@@ -2703,9 +2703,41 @@ export class CodeAnalyzer {
         return parts[0] || '';
     }
 
+    private async directTextSearch(
+        query: string,
+        options?: {
+            path?: string;
+            maxResults?: number;
+            caseInsensitive?: boolean;
+            fileTypes?: string[];
+        }
+    ): Promise<{ count: number; results: Array<{ file: string; line: number; column: number; text: string }> }> {
+        const isRegexLike = /[\\[*+?(){}|]|\\b/.test(query);
+        const timeoutEnv = Number.parseInt(process.env.TEXT_SEARCH_DIRECT_TIMEOUT_MS || '0', 10);
+        const timeout = Number.isFinite(timeoutEnv) && timeoutEnv > 0 ? Math.min(timeoutEnv, 5000) : 700;
+        const results = await this.asyncSearchTools.search({
+            pattern: query,
+            path: options?.path || this.config.workspaceRoot,
+            maxResults: options?.maxResults || 200,
+            timeout,
+            caseInsensitive: options?.caseInsensitive,
+            fileType: options?.fileTypes?.[0],
+            useRegex: isRegexLike,
+        });
+        const normalized = results.map((r) => ({
+            file: r.file,
+            line: r.line || 0,
+            column: r.column || 0,
+            text: r.text,
+        }));
+        return { count: normalized.length, results: normalized };
+    }
+
     /**
-     * Public text search method using Layer 1 Fast Search
-     * Provides general content search with proper layer integration
+     * Public text search method using the Layer 1 fast-search substrate.
+     * General content search takes the direct bounded grep path first; the
+     * identifier-oriented Layer 1 semantic race remains a fallback for sparse
+     * identifier queries rather than the default path for every text search.
      */
     async textSearch(
         query: string,
@@ -2720,63 +2752,23 @@ export class CodeAnalyzer {
             await this.initialize();
         }
 
-        // Get Layer 1 for fast search
+        const isRegexLike = /[\\[*+?(){}|]|\\b/.test(query);
         const layer1 = this.layerManager.getLayer('layer1');
         if (process.env.DEBUG_TEXT_SEARCH === '1') {
-            console.log('[textSearch] Layer 1 available:', !!layer1);
+            console.log('[textSearch] direct bounded grep first; Layer 1 fallback available:', !!layer1);
         }
-        if (!layer1) {
-            // Fallback to direct async search if layer not available
+
+        let directResult: { count: number; results: Array<{ file: string; line: number; column: number; text: string }> } | null = null;
+        try {
+            directResult = await this.directTextSearch(query, options);
+            if (directResult.count > 0 || !layer1 || isRegexLike) return directResult;
+        } catch (error) {
             if (process.env.DEBUG_TEXT_SEARCH === '1') {
-                console.log('[textSearch] Falling back to AsyncEnhancedGrep (no Layer 1)');
+                console.error('[textSearch] direct grep failed; trying Layer 1 fallback:', error);
             }
-            // Fallback: the caller already prepared `query` according to kind (literal|regex|word)
-            // so pass it through without additional escaping to avoid double-boundary patterns.
-            const asyncOptions: AsyncSearchOptions = {
-                pattern: query,
-                path: options?.path || this.config.workspaceRoot,
-                maxResults: options?.maxResults || 200,
-                timeout: 200,
-                caseInsensitive: options?.caseInsensitive,
-                useRegex: /[\\[*+?(){}|]|\\b/.test(query),
-            };
-            const results = await this.asyncSearchTools.search(asyncOptions);
-            return {
-                count: results.length,
-                results: results.map((r) => ({
-                    file: r.file,
-                    line: r.line || 0,
-                    column: r.column || 0,
-                    text: r.text,
-                })),
-            };
+            if (!layer1 || isRegexLike) throw error;
         }
 
-        // If the query string contains regex metacharacters (e.g., \b, [, ], (, ), *, +, ?)
-        // prefer the async grep path since Layer 1 identifier search is token-based.
-        const isRegexLike = /[\\[*+?(){}|]|\\b/.test(query);
-        if (isRegexLike) {
-            const asyncOptions: AsyncSearchOptions = {
-                pattern: query,
-                path: options?.path || this.config.workspaceRoot,
-                maxResults: options?.maxResults || 200,
-                timeout: 200,
-                caseInsensitive: options?.caseInsensitive,
-                useRegex: /[\\[*+?(){}|]|\\b/.test(query),
-            };
-            const results = await this.asyncSearchTools.search(asyncOptions);
-            return {
-                count: results.length,
-                results: results.map((r) => ({
-                    file: r.file,
-                    line: r.line || 0,
-                    column: r.column || 0,
-                    text: r.text,
-                })),
-            };
-        }
-
-        // Use Layer 1 Fast Search for identifier-like queries
         const searchQuery: SearchQuery = {
             identifier: query,
             searchPath: options?.path || this.config.workspaceRoot || process.cwd(),
@@ -2786,58 +2778,30 @@ export class CodeAnalyzer {
         };
 
         try {
-            if (process.env.DEBUG_TEXT_SEARCH === '1') {
-                console.log('[textSearch] Calling Layer 1 with query:', searchQuery);
-            }
             const matches = await (layer1.process as any)(searchQuery);
-            if (process.env.DEBUG_TEXT_SEARCH === '1') {
-                console.log('[textSearch] Layer 1 returned:', {
-                    exact: matches.exact.length,
-                    fuzzy: matches.fuzzy.length,
-                    searchTime: matches.searchTime,
-                });
-            }
-
-            // Combine all match types
             const allMatches = [
                 ...matches.exact.map((m: any) => ({ ...m, confidence: 1.0 })),
                 ...matches.fuzzy.map((m: any) => ({ ...m, confidence: 0.8 })),
             ];
-
-            // Sort by confidence and limit results
             allMatches.sort((a, b) => b.confidence - a.confidence);
             const limited = allMatches.slice(0, options?.maxResults || 200);
-
-            return {
-                count: limited.length,
-                results: limited.map((m) => ({
-                    file: m.file,
-                    line: m.line,
-                    column: m.column || 0,
-                    text: m.text || '',
-                })),
-            };
+            if (limited.length > 0) {
+                return {
+                    count: limited.length,
+                    results: limited.map((m) => ({
+                        file: m.file,
+                        line: m.line,
+                        column: m.column || 0,
+                        text: m.text || '',
+                    })),
+                };
+            }
         } catch (error) {
-            // Fallback to async search on error
-            // Fallback: preserve caller-provided pattern semantics (already escaped as needed)
-            const asyncOptions: AsyncSearchOptions = {
-                pattern: query,
-                path: options?.path || this.config.workspaceRoot,
-                maxResults: options?.maxResults || 200,
-                timeout: 200,
-                caseInsensitive: options?.caseInsensitive,
-            };
-            const results = await this.asyncSearchTools.search(asyncOptions);
-            return {
-                count: results.length,
-                results: results.map((r) => ({
-                    file: r.file,
-                    line: r.line || 0,
-                    column: r.column || 0,
-                    text: r.text,
-                })),
-            };
+            if (directResult) return directResult;
+            throw error;
         }
+
+        return directResult || { count: 0, results: [] };
     }
 
     /**

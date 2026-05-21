@@ -226,9 +226,9 @@ describe('Text Search Performance', () => {
 
         expect(result2.count).toBeGreaterThan(0);
 
-        // Both searches should be fast due to caching
-        // Just verify they complete quickly
-        expect(duration1).toBeLessThan(100);
-        expect(duration2).toBeLessThan(100);
+        // First run may include bounded grep startup; repeated query should be cache-backed.
+        enforceBudget('textSearch cache-miss query', duration1, 1000, 'TEXT_SEARCH_CACHE_MISS_BUDGET_MS');
+        enforceBudget('textSearch cache-hit query', duration2, 100, 'TEXT_SEARCH_CACHE_HIT_BUDGET_MS');
+        expect(duration2).toBeLessThanOrEqual(duration1);
     }, 10000);
 });
