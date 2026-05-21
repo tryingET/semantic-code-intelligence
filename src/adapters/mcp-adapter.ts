@@ -1564,10 +1564,20 @@ export class MCPAdapter {
         const patch = String(args?.patch || '');
         const snapshot = String(args?.snapshot || '');
         if (!patch) {
-            return { content: [{ type: 'text', text: 'Missing patch' }], isError: true };
+            const payload = { accepted: false, snapshot, reason: 'missing_patch', message: 'Missing patch' };
+            return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: true };
         }
+
+        let snap: ReturnType<typeof overlayStore.ensureSnapshot>;
         try {
-            const snap = overlayStore.ensureSnapshot(snapshot);
+            snap = overlayStore.ensureSnapshot(snapshot);
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            const payload = { accepted: false, snapshot, reason: 'invalid_snapshot', message: msg };
+            return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: true };
+        }
+
+        try {
             const isApplyPatch = /\*\*\*\s+Begin Patch/.test(patch);
             const unified = isApplyPatch ? await this.convertApplyPatchToUnified(patch) : patch;
             const res = overlayStore.stagePatch(snap.id, unified);
@@ -1575,7 +1585,8 @@ export class MCPAdapter {
             return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: !res.accepted };
         } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
-            return { content: [{ type: 'text', text: `Invalid snapshot: ${msg}` }], isError: true };
+            const payload = { accepted: false, snapshot: snap.id, reason: 'invalid_patch', message: msg };
+            return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: true };
         }
     }
 
@@ -1608,7 +1619,6 @@ export class MCPAdapter {
             }
             return matches;
         };
-        const findSequence = (haystack: string[], needle: string[], startAt: number): number => findSequences(haystack, needle, startAt)[0] ?? -1;
         const buildHunks = async (kind: string, file: string, rawChunk: string[]) => {
             const hunks: HunkLine[][] = [];
             let current: HunkLine[] = [];

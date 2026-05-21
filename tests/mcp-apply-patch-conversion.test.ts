@@ -62,7 +62,9 @@ test('propose_patch rejects stale apply_patch hunks before accepting invalid ove
     const propOut = await parseContent(prop);
 
     expect(prop.isError).toBe(true);
-    expect(String(propOut?.content?.[0]?.text || propOut)).toContain('apply_patch hunk did not match');
+    expect(propOut.accepted).toBe(false);
+    expect(propOut.reason).toBe('invalid_patch');
+    expect(String(propOut.message || '')).toContain('apply_patch hunk did not match');
     await analyzer.dispose?.();
 });
 
@@ -83,7 +85,9 @@ test('propose_patch rejects sparse apply_patch hunks when changed lines are ambi
         const propOut = await parseContent(prop);
 
         expect(prop.isError).toBe(true);
-        expect(String(propOut?.content?.[0]?.text || propOut)).toContain('apply_patch hunk is ambiguous');
+        expect(propOut.accepted).toBe(false);
+        expect(propOut.reason).toBe('invalid_patch');
+        expect(String(propOut.message || '')).toContain('apply_patch hunk is ambiguous');
     } finally {
         await analyzer.dispose?.();
         await fs.rm(fixture, { force: true });
@@ -111,7 +115,9 @@ test('propose_patch rejects full-context apply_patch hunks when old context is a
         const propOut = await parseContent(prop);
 
         expect(prop.isError).toBe(true);
-        expect(String(propOut?.content?.[0]?.text || propOut)).toContain('apply_patch hunk is ambiguous');
+        expect(propOut.accepted).toBe(false);
+        expect(propOut.reason).toBe('invalid_patch');
+        expect(String(propOut.message || '')).toContain('apply_patch hunk is ambiguous');
     } finally {
         await analyzer.dispose?.();
         await fs.rm(fixture, { force: true });
