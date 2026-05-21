@@ -25,6 +25,16 @@ describe('build command surface', () => {
         expect(runner).not.toContain('bun test\n');
     });
 
+    test('release and review surfaces use the normal package test command for broad tests', () => {
+        const npmPublish = readText('.github/workflows/npm-publish.yml');
+        const prTemplate = readText('.github/pull_request_template.md');
+
+        expect(npmPublish).toContain('run: bun run test');
+        expect(npmPublish).not.toMatch(/^\s*run:\s*bun test\s*$/m);
+        expect(prTemplate).toContain('bun run test');
+        expect(prTemplate).not.toMatch(/^bun test$/m);
+    });
+
     test('package build delegates to the canonical all-adapter build', () => {
         const packageJson = JSON.parse(readText('package.json')) as { scripts?: Record<string, string> };
         expect(packageJson.scripts?.build).toBe('bun run build:all');

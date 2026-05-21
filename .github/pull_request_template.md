@@ -46,7 +46,7 @@
 ### Test Commands Run
 ```bash
 # List the test commands you ran
-bun test
+bun run test
 bun test tests/unified-core.test.ts
 just build-prod
 # etc.
@@ -137,7 +137,7 @@ just build-prod
 **Testing Instructions:**
 1. Pull the branch: `git checkout [branch-name]`
 2. Install dependencies: `bun install`
-3. Run tests: `bun test`
+3. Run tests: `bun run test`
 4. Test specific functionality: [add specific steps]
 
 <!-- 
