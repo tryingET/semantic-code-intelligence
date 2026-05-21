@@ -74,7 +74,7 @@ For `patch_checks_in_snapshot`, `structural_patch_checks`, and `safe_write` prev
 - inspect `validationPlan.commands.selected` to explain what actually ran;
 - when evidence-history warnings include a selected-command receipt summary, use it to separate command runtime from snapshot/workflow overhead without treating the local receipt as authority-durable evidence.
 
-If checks exceed the interactive band, reduce check scope when truthful (for example narrow test files) or tell the operator the workflow is now validation-heavy rather than navigation-heavy.
+If checks exceed the interactive band, reduce check scope when truthful (for example narrow test files) or tell the operator the workflow is now validation-heavy rather than navigation-heavy. Alpha evidence history attributes selected-command receipt time separately from residual SCI/tool overhead when receipts are available; this prevents command-dominated validation drift from being mistaken for SCI tool latency while preserving total elapsed-time budget failures.
 
 ### CLI vs MCP latency
 

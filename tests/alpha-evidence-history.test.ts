@@ -134,7 +134,7 @@ describe('alpha evidence history comparison', () => {
     expect(report.warnings[0].remediationHint).toContain('<redacted-secret>');
   });
 
-  test('validation warnings include sanitized selected-command receipt summaries when available', () => {
+  test('validation warnings include sanitized selected-command receipt summaries when residual tool overhead still drifts', () => {
     const { root, baselinePath } = makeEvidenceRoot({
       [evidenceNames.alpha]: {
         ok: true,
@@ -149,7 +149,7 @@ describe('alpha evidence history comparison', () => {
               ok: true,
               elapsedMs: 1800,
               commands: [
-                { command: `echo SECRET_KEY=command-secret ${process.cwd()} /tmp/private-check`, ok: true, elapsedMs: 1700, exitCode: 0, timedOut: false, stdout: 'do not copy stdout' },
+                { command: `echo SECRET_KEY=command-secret ${process.cwd()} /tmp/private-check`, ok: true, elapsedMs: 300, exitCode: 0, timedOut: false, stdout: 'do not copy stdout' },
               ],
               output: 'do not copy aggregate output',
             },
@@ -170,16 +170,65 @@ describe('alpha evidence history comparison', () => {
     expect(report.warnings[0].slowestCall.commandReceiptSummary).toMatchObject({
       count: 1,
       slowest: {
-        elapsedMs: 1700,
+        elapsedMs: 300,
         ok: true,
         exitCode: 0,
         timedOut: false,
       },
     });
+    expect(report.warnings[0].latencyAttribution).toMatchObject({
+      kind: 'selected_command_runtime',
+      selectedCommandElapsedMs: 300,
+      toolOverheadElapsedMs: 1600,
+      overheadStatus: 'slower_than_baseline',
+    });
     expect(report.operatorSummary.warningDetails[0].commandReceiptSummary).toEqual(report.warnings[0].slowestCall.commandReceiptSummary);
     expect(report.operatorSummary.warningDetails[0].callIndex).toBe(0);
     expect(report.warnings[0].slowestCall.commandReceiptSummary.slowest.command).toContain('echo <redacted-secret>');
     expect(report.warnings[0].slowestCall.commandReceiptSummary.slowest.command).toContain('<absolute-path>');
+  });
+
+  test('selected-command-dominated baseline drift is attributed without becoming a warning', () => {
+    const { root, baselinePath } = makeEvidenceRoot({
+      [evidenceNames.structural]: {
+        ok: true,
+        calls: [{
+          name: 'structural_patch_checks',
+          success: true,
+          elapsedMs: 2400,
+          observation: 'Run default typecheck validation',
+          sample: {
+            payload: {
+              validationPlan: {
+                checks: {
+                  commands: [{ command: 'bun run typecheck', ok: true, elapsedMs: 1700, exitCode: 0, timedOut: false }],
+                },
+              },
+            },
+          },
+        }],
+      },
+    });
+
+    const result = runHistory(root, baselinePath);
+    expect(result.status, result.stderr).toBe(0);
+    const report = JSON.parse(result.stdout);
+    const structural = report.comparisons.find((item: any) => item.key === 'structural');
+
+    expect(structural).toMatchObject({
+      status: 'within_noise_band_command_dominated',
+      rawStatus: 'slower_than_baseline',
+      latencyAttribution: {
+        kind: 'selected_command_runtime',
+        totalElapsedMs: 2400,
+        selectedCommandElapsedMs: 1700,
+        toolOverheadElapsedMs: 700,
+        overheadStatus: 'within_noise_band',
+      },
+    });
+    expect(report.warnings.find((item: any) => item.key === 'structural')).toBeUndefined();
+    expect(report.operatorSummary.status).toBe('historical_latency_within_alpha_bounds');
+    expect(report.operatorSummary.warningDetails).toEqual([]);
   });
 
   test('duplicate same-name calls join command receipts by stable index instead of max raw elapsed time', () => {
@@ -203,7 +252,7 @@ describe('alpha evidence history comparison', () => {
             success: true,
             elapsedMs: 1900,
             observation: 'second raw call should be selected by index',
-            sample: { result: { commands: [null, 'bad-shape', { command: 'right-command', elapsedMs: 1700, ok: true }] } },
+            sample: { result: { commands: [null, 'bad-shape', { command: 'right-command', elapsedMs: 300, ok: true }] } },
           },
         ],
       },
@@ -216,7 +265,7 @@ describe('alpha evidence history comparison', () => {
     expect(report.warnings[0].slowestCall).toMatchObject({ name: 'run_checks', index: 1, elapsedMs: 1900 });
     expect(report.warnings[0].slowestCall.commandReceiptSummary).toMatchObject({
       count: 1,
-      slowest: { command: 'right-command', elapsedMs: 1700, ok: true },
+      slowest: { command: 'right-command', elapsedMs: 300, ok: true },
     });
     expect(report.operatorSummary.warningDetails[0].commandReceiptSummary).toEqual(report.warnings[0].slowestCall.commandReceiptSummary);
     expect(JSON.stringify(report)).not.toContain('wrong-command');
@@ -354,5 +403,37 @@ describe('alpha evidence history comparison', () => {
     expect(report.operatorSummary.status).toBe('elapsed_time_over_budget');
     expect(report.overBudget[0]).toMatchObject({ key: 'alpha', status: 'over_budget', likelyArea: 'search' });
     expect(report.overBudget[0].slowestCall).toMatchObject({ name: 'text_search', elapsedMs: 16000 });
+  });
+
+  test('selected-command attribution never suppresses over-budget failure', () => {
+    const { root, baselinePath } = makeEvidenceRoot({
+      [evidenceNames.structural]: {
+        ok: true,
+        calls: [{
+          name: 'structural_patch_checks',
+          success: true,
+          elapsedMs: 21000,
+          observation: 'Run very slow selected command',
+          sample: { payload: { checks: { commands: [{ command: 'bun run typecheck', ok: true, elapsedMs: 20000 }] } } },
+        }],
+      },
+    });
+
+    const result = runHistory(root, baselinePath);
+    expect(result.status).toBe(1);
+    const report = JSON.parse(result.stdout);
+
+    expect(report.ok).toBe(false);
+    expect(report.operatorSummary.status).toBe('elapsed_time_over_budget');
+    expect(report.overBudget[0]).toMatchObject({
+      key: 'structural',
+      status: 'over_budget',
+      rawStatus: 'over_budget',
+      latencyAttribution: {
+        kind: 'selected_command_runtime',
+        selectedCommandElapsedMs: 20000,
+        toolOverheadElapsedMs: 1000,
+      },
+    });
   });
 });

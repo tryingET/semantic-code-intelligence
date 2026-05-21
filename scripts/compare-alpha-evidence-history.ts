@@ -172,6 +172,38 @@ function classify(currentMs: number, baselineMs: number, budgetMs: number): stri
     return 'within_noise_band';
 }
 
+function latencyAttributionFor(call: SlowestCall, baselineMs: number, budgetMs: number): Record<string, unknown> {
+    const totalElapsedMs = call?.elapsedMs || 0;
+    const commandElapsedMs = call?.commandReceiptSummary?.slowest?.elapsedMs || 0;
+    if (!commandElapsedMs || commandElapsedMs <= 0) {
+        return {
+            kind: 'tool_or_snapshot_runtime',
+            totalElapsedMs,
+            selectedCommandElapsedMs: 0,
+            toolOverheadElapsedMs: totalElapsedMs,
+            commandRuntimeShare: 0,
+            overheadStatus: classify(totalElapsedMs, baselineMs, budgetMs),
+        };
+    }
+    const toolOverheadElapsedMs = Math.max(0, totalElapsedMs - commandElapsedMs);
+    const commandRuntimeShare = totalElapsedMs > 0 ? Number((commandElapsedMs / totalElapsedMs).toFixed(3)) : 0;
+    return {
+        kind: 'selected_command_runtime',
+        totalElapsedMs,
+        selectedCommandElapsedMs: commandElapsedMs,
+        toolOverheadElapsedMs,
+        commandRuntimeShare,
+        overheadStatus: classify(toolOverheadElapsedMs, baselineMs, budgetMs),
+    };
+}
+
+function calibrateStatus(status: string, attribution: Record<string, unknown>): string {
+    if (status !== 'slower_than_baseline') return status;
+    if (attribution.kind !== 'selected_command_runtime') return status;
+    if (attribution.overheadStatus === 'slower_than_baseline') return status;
+    return 'within_noise_band_command_dominated';
+}
+
 function likelyLatencyArea(call: SlowestCall): string {
     const name = call?.name || '';
     if (!name) return 'unknown';
@@ -228,7 +260,9 @@ const comparisons = Object.entries(evidenceFiles)
         const budgetMs = budgetFor(key, gate);
         const deltaMs = currentMaxElapsedMs - baselineMaxElapsedMs;
         const ratio = baselineMaxElapsedMs > 0 ? Number((currentMaxElapsedMs / baselineMaxElapsedMs).toFixed(3)) : null;
-        const status = classify(currentMaxElapsedMs, baselineMaxElapsedMs, budgetMs);
+        const rawStatus = classify(currentMaxElapsedMs, baselineMaxElapsedMs, budgetMs);
+        const latencyAttribution = latencyAttributionFor(slowest, baselineMaxElapsedMs, budgetMs);
+        const status = calibrateStatus(rawStatus, latencyAttribution);
         const likelyArea = likelyLatencyArea(slowest);
         return {
             key,
@@ -239,8 +273,10 @@ const comparisons = Object.entries(evidenceFiles)
             ratio,
             budgetMs,
             status,
+            rawStatus,
             ok: status !== 'over_budget',
             slowestCall: slowest,
+            latencyAttribution,
             likelyArea,
             remediationHint: remediationFor(likelyArea, slowest),
         };
@@ -274,9 +310,9 @@ const report = {
         note: sanitizeEvidence(baseline.note || null),
     },
     comparisonPolicy: {
-        baselineWarning: 'Warn when current max elapsed time is at least 1.5x baseline and at least 500ms slower.',
-        failureCondition: 'Fail only when current generated evidence exceeds the existing Alpha evidence budget.',
-        rationale: 'Historical elapsed-time comparison is a lightweight regression signal; coarse budgets remain the fail-closed gate to avoid noisy production-SLO claims.',
+        baselineWarning: 'Warn when current max elapsed time is at least 1.5x baseline and at least 500ms slower, except selected-command-dominated drift is reported as attribution when residual SCI/tool overhead remains within the noise band.',
+        failureCondition: 'Fail only when current generated evidence exceeds the existing Alpha evidence budget; selected-command attribution never suppresses over-budget failure.',
+        rationale: 'Historical elapsed-time comparison is a lightweight regression signal; coarse budgets remain the fail-closed gate to avoid noisy production-SLO claims, and selected command runtime must not be mistaken for SCI tool overhead.',
     },
     comparisons,
     warnings,
@@ -299,6 +335,7 @@ const report = {
         proves: [
             'Current generated Alpha evidence can be compared against an explicit elapsed-time baseline.',
             'Historical comparison distinguishes warning-level latency drift from existing coarse Alpha budget failure.',
+            'Selected-command runtime is attributed separately from residual SCI/tool overhead when command receipts are available.',
             'Warning diagnostics identify the slowest observed call and likely latency area for triage.',
         ],
         does_not_prove: [
