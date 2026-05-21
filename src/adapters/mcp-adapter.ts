@@ -1247,8 +1247,8 @@ export class MCPAdapter {
         );
         const neighbors = await this.handleGraphExpand(
             file
-                ? { file, edges: ['imports', 'exports', 'callers', 'callees'], depth, limit }
-                : { symbol, edges: ['imports', 'exports', 'callers', 'callees'], depth, limit }
+                ? { file, symbol, edges: ['imports', 'exports', 'callers', 'callees'], depth, limit }
+                : { symbol, edges: ['callers', 'callees'], depth, limit }
         );
 
         const out = {

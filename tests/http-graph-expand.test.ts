@@ -54,7 +54,7 @@ bindDescribe('HTTP /api/v1/graph-expand fallback', () => {
         const res = await fetch(`${base}/api/v1/graph-expand`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ symbol: 'HTTPServer', edges: ['imports', 'exports'], depth: 1, limit: 20 }),
+            body: JSON.stringify({ symbol: 'HTTPServer', edges: ['callers', 'callees'], depth: 1, limit: 20 }),
         });
         expect(res.status).toBe(200);
         const body = await res.json();
@@ -82,13 +82,13 @@ bindDescribe('HTTP /api/v1/graph-expand fallback', () => {
         expect(JSON.stringify(body)).not.toContain('impactSummary');
     });
 
-    test('invalid symbol returns success with neighbors object (non-fatal)', async () => {
+    test('invalid symbol returns success with caller/callee neighbors object (non-fatal)', async () => {
         const res = await fetch(`${base}/api/v1/graph-expand`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({
                 symbol: 'DefinitelyNotASymbol',
-                edges: ['imports', 'exports', 'callers', 'callees'],
+                edges: ['callers', 'callees'],
                 depth: 1,
                 limit: 5,
             }),
@@ -98,10 +98,8 @@ bindDescribe('HTTP /api/v1/graph-expand fallback', () => {
         expect(body.success).toBe(true);
         expect(body.data).toBeDefined();
         expect(body.data.neighbors).toBeDefined();
-        // Edges arrays should exist; may be empty depending on fallback path
-        expect(body.data.neighbors).toHaveProperty('imports');
-        expect(body.data.neighbors).toHaveProperty('exports');
         expect(body.data.neighbors).toHaveProperty('callers');
         expect(body.data.neighbors).toHaveProperty('callees');
+        expect(body.data.impactSummary?.requestedEdges).toEqual(['callers', 'callees']);
     });
 });

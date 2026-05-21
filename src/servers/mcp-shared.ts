@@ -76,14 +76,14 @@ export function registerCommonPrompts(server: Server): void {
                     role: 'system',
                     content: {
                         type: 'text',
-                        text: 'Start broad with explore_codebase (optionally conceptual), then build_symbol_map (astOnly), then graph_expand imports/exports.',
+                        text: 'Start broad with explore_codebase (optionally conceptual), then build_symbol_map (astOnly), then graph_expand symbol callers/callees or file imports/exports as appropriate.',
                     },
                 },
                 {
                     role: 'user',
                     content: {
                         type: 'text',
-                        text: `Target: ${symbol} at ${file}\nSuggested tools:\n- tools/call explore_codebase { symbol: "${symbol}", file: "${file}", conceptual: ${conceptual} }\n- tools/call build_symbol_map { symbol: "${symbol}", file: "${file}", maxFiles: 10, astOnly: true }\n- tools/call graph_expand { symbol: "${symbol}", edges: ["imports","exports"], depth: 1, limit: 50 }\n- Optional: tools/call explore_symbol_impact { symbol: "${symbol}", file: "${file}", limit: 50 }`,
+                        text: `Target: ${symbol} at ${file}\nSuggested tools:\n- tools/call explore_codebase { symbol: "${symbol}", file: "${file}", conceptual: ${conceptual} }\n- tools/call build_symbol_map { symbol: "${symbol}", file: "${file}", maxFiles: 10, astOnly: true }\n- tools/call graph_expand { symbol: "${symbol}", edges: ["callers","callees"], depth: 1, limit: 50 }\n- Optional: tools/call explore_symbol_impact { symbol: "${symbol}", file: "${file}", limit: 50 }`,
                     },
                 },
             ],
