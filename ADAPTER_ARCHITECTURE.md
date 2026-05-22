@@ -27,8 +27,8 @@ src/adapters/
 
 Core/application workflow services:
 ├── src/core/workflows/snapshot-patch-workflow.ts
-│   # snapshot patch/check/apply workflows, validation plans,
-│   # safe_write orchestration, and recommendation payloads
+│   # snapshot patch/check/apply workflows, artifact extraction,
+│   # validation plans, safe_write orchestration, and recommendation payloads
 ├── src/core/workflows/structural-workflow.ts
 │   # ast-grep structural search/patch orchestration and
 │   # preview-first structural patch checks

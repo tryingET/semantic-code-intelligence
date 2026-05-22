@@ -416,6 +416,85 @@ export class SnapshotPatchWorkflowService {
     return { payload: { snapshot: snap.id }, isError: false };
   }
 
+  async extractSnapshotArtifacts(
+    args: Record<string, any>,
+  ): Promise<SnapshotWorkflowResult> {
+    const snapshot = String(args?.snapshot || "").trim();
+    if (!snapshot) return { text: "snapshot required", isError: true };
+
+    const includeContent = args?.includeContent === true;
+    const maxBytes = Math.max(1, Math.min(262_144, Number(args?.maxBytes || 65_536)));
+    const links = [
+      { uri: `snapshot://${snapshot}/overlay.diff`, name: "overlay.diff", mimeType: "text/plain" },
+      { uri: `snapshot://${snapshot}/status`, name: "status", mimeType: "application/json" },
+      { uri: `snapshot://${snapshot}/progress`, name: "progress", mimeType: "text/plain" },
+    ];
+    let status: any = { id: snapshot, exists: false, diffCount: 0, createdAt: null };
+    let contents: any = undefined;
+
+    try {
+      const snap = overlayStore.ensureSnapshot(snapshot, {
+        workspaceRoot: this.workspaceRoot,
+      });
+      status = {
+        id: snapshot,
+        exists: true,
+        diffCount: Array.isArray((snap as any).diffs) ? (snap as any).diffs.length : 0,
+        createdAt: (snap as any).createdAt || null,
+        touchedFiles: (snap as any).touchedFiles ? Array.from((snap as any).touchedFiles) : [],
+        materialized: false,
+      };
+
+      const snapshotDir =
+        (overlayStore as any).getSnapshotDirectory?.(snapshot, {
+          workspaceRoot: this.workspaceRoot,
+        }) || path.resolve(this.workspaceRoot, ".ontology", "snapshots", snapshot);
+      const materializedMarker = path.join(snapshotDir, ".materialized");
+      const hasMaterializedMarker = async () => {
+        try {
+          return (await fs.stat(materializedMarker)).isFile();
+        } catch {
+          return false;
+        }
+      };
+
+      status.materialized = await hasMaterializedMarker();
+      let dir: string | null = null;
+      if (includeContent) {
+        const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
+        dir = ensure
+          ? await ensure(snapshot, { workspaceRoot: this.workspaceRoot })
+          : status.materialized
+            ? snapshotDir
+            : null;
+        status.materialized = !!dir && (await hasMaterializedMarker());
+      }
+
+      if (includeContent && dir) {
+        const readBounded = async (file: string) => {
+          try {
+            const text = await fs.readFile(path.join(dir, file), "utf8");
+            const truncated = Buffer.byteLength(text, "utf8") > maxBytes;
+            return { text: truncated ? text.slice(0, maxBytes) : text, truncated };
+          } catch {
+            return { text: "", truncated: false };
+          }
+        };
+        contents = {
+          overlayDiff: await readBounded("overlay.diff"),
+          progress: await readBounded("progress.log"),
+        };
+      }
+    } catch (error) {
+      status.error = error instanceof Error ? error.message : String(error);
+    }
+
+    return {
+      payload: { snapshot, links, status, contents },
+      isError: !status.exists,
+    };
+  }
+
   async proposePatch(
     args: Record<string, any>,
   ): Promise<SnapshotWorkflowResult> {

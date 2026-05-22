@@ -38,6 +38,21 @@ describe('SnapshotPatchWorkflowService', () => {
         const checked = payload(await service.runChecks({ snapshot: snap.snapshot, commands: ['true'], timeoutSec: 30 }));
         expect(checked).toMatchObject({ snapshot: snap.snapshot, ok: true });
         expect(checked.commands?.[0]).toMatchObject({ command: 'true', ok: true });
+
+        const artifacts = payload(await service.extractSnapshotArtifacts({ snapshot: snap.snapshot, includeContent: true, maxBytes: 20 }));
+        expect(artifacts).toMatchObject({
+            snapshot: snap.snapshot,
+            status: { exists: true, diffCount: 1, materialized: true },
+        });
+        expect(artifacts.links.map((link: any) => link.uri)).toContain(`snapshot://${snap.snapshot}/overlay.diff`);
+        expect(artifacts.contents.overlayDiff.text.length).toBeLessThanOrEqual(20);
+        expect(artifacts.contents.overlayDiff.truncated).toBe(true);
+    });
+
+    test('reports missing snapshot artifact arguments without MCP protocol objects', async () => {
+        const service = new SnapshotPatchWorkflowService({ workspaceRoot: () => tempWorkspace() });
+
+        expect(await service.extractSnapshotArtifacts({})).toEqual({ text: 'snapshot required', isError: true });
     });
 
     test('keeps recommendation and patch file parsing protocol-neutral', () => {
