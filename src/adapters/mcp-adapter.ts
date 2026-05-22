@@ -18,10 +18,7 @@ import { overlayStore } from '../core/overlay-store.js';
 import {
     SnapshotPatchWorkflowService,
     type SnapshotWorkflowResult,
-    buildValidationPlan as buildSnapshotValidationPlan,
-    extractFilesFromPatch as extractPatchFiles,
     recommendChecksPayload,
-    snapshotArtifactLinks as createSnapshotArtifactLinks,
 } from '../core/workflows/snapshot-patch-workflow.js';
 import { StructuralWorkflowService } from '../core/workflows/structural-workflow.js';
 import { GraphExpandWorkflowService } from '../core/workflows/graph-expand-workflow.js';
@@ -30,9 +27,10 @@ import { RenameWorkflowService } from '../core/workflows/rename-workflow.js';
 import { NavigationWorkflowService } from '../core/workflows/navigation-workflow.js';
 import { SymbolWorkflowService } from '../core/workflows/symbol-workflow.js';
 import { CodeAnalysisWorkflowService } from '../core/workflows/code-analysis-workflow.js';
+import { LearningWorkflowService } from '../core/workflows/learning-workflow.js';
 import { ToolRegistry } from '../core/tools/registry.js';
 import { resolveWorkspacePath } from '../core/workspace-path.js';
-import { createValidationError, type ErrorContext, type RecoveryOptions, withMcpErrorHandling } from '../core/utils/error-handler.js';
+import { type ErrorContext, type RecoveryOptions, withMcpErrorHandling } from '../core/utils/error-handler.js';
 import { adapterLogger, mcpLogger } from '../core/utils/file-logger.js';
 import { handleAdapterError, normalizeUri } from './utils.js';
 
@@ -69,6 +67,7 @@ export class MCPAdapter {
     private navigationWorkflows: NavigationWorkflowService;
     private symbolWorkflows: SymbolWorkflowService;
     private codeAnalysisWorkflows: CodeAnalysisWorkflowService;
+    private learningWorkflows: LearningWorkflowService;
 
     constructor(coreAnalyzer: CoreAnalyzer, config: MCPAdapterConfig = {}) {
         this.coreAnalyzer = coreAnalyzer;
@@ -111,6 +110,7 @@ export class MCPAdapter {
             resolveWorkspaceFile: (value, inputLabel) => this.resolveMcpWorkspaceFile(value, inputLabel),
             filterWorkspaceItemsByUri: (items, inputLabel) => this.filterMcpWorkspaceItemsByUri(items, inputLabel),
         });
+        this.learningWorkflows = new LearningWorkflowService({ coreAnalyzer: this.coreAnalyzer });
         this.symbolWorkflows = new SymbolWorkflowService({
             pickOntologySeedFile: (symbol) => this.pickOntologySeedFile(symbol),
             findDefinition: (args) => this.navigationWorkflows.findDefinition(args),
@@ -485,119 +485,20 @@ export class MCPAdapter {
     }
 
     // --- Pipelines (L5) ---
-    private getLearningOrchestrator(): any | null {
-        try {
-            const lo = (this.coreAnalyzer as any)?.learningOrchestrator;
-            return lo || null;
-        } catch {
-            return null;
-        }
-    }
-
     private async handleListPipelines() {
-        const lo = this.getLearningOrchestrator();
-        if (!lo) return { content: [{ type: 'text', text: 'learning orchestrator unavailable' }], isError: true };
-        try {
-            const pipelines = Array.from((lo as any).pipelines?.values?.() || []);
-            const items = await Promise.all(
-                pipelines.map(async (p: any) => {
-                    const id = String(p?.id || '');
-                    const lastRunAt =
-                        typeof (lo as any).getPipelineLastRunAt === 'function'
-                            ? await (lo as any).getPipelineLastRunAt(id)
-                            : null;
-                    const nextRunAt =
-                        typeof (lo as any).getPipelineNextRunAt === 'function' ? (lo as any).getPipelineNextRunAt(id) : null;
-                    const scheduleNote =
-                        typeof (lo as any).getPipelineScheduleNote === 'function'
-                            ? (lo as any).getPipelineScheduleNote(id)
-                            : null;
-                    return {
-                        id,
-                        name: p.name,
-                        trigger: p.trigger,
-                        schedule: p.schedule || null,
-                        enabled: !!p.enabled,
-                        lastRunAt: typeof lastRunAt === 'number' ? lastRunAt : null,
-                        nextRunAt: typeof nextRunAt === 'number' ? nextRunAt : null,
-                        scheduleNote: typeof scheduleNote === 'string' ? scheduleNote : null,
-                    };
-                })
-            );
-            return { content: [{ type: 'text', text: JSON.stringify({ pipelines: items }, null, 2) }], isError: false };
-        } catch (e) {
-            return { content: [{ type: 'text', text: 'failed to list pipelines' }], isError: true };
-        }
+        return this.formatSnapshotWorkflowResult(await this.learningWorkflows.listPipelines());
     }
 
     private async handlePipelineStatus(args: Record<string, any>) {
-        const id = String(args?.id || '').trim();
-        if (!id) return { content: [{ type: 'text', text: 'id required' }], isError: true };
-        const lo = this.getLearningOrchestrator();
-        if (!lo) return { content: [{ type: 'text', text: 'learning orchestrator unavailable' }], isError: true };
-        try {
-            const p = (lo as any).pipelines?.get?.(id);
-            if (!p)
-                return {
-                    content: [{ type: 'text', text: JSON.stringify({ ok: false, reason: 'not_found' }) }],
-                    isError: false,
-                };
-            const lastRunAt =
-                typeof (lo as any).getPipelineLastRunAt === 'function' ? await (lo as any).getPipelineLastRunAt(id) : null;
-            const nextRunAt =
-                typeof (lo as any).getPipelineNextRunAt === 'function' ? (lo as any).getPipelineNextRunAt(id) : null;
-            const scheduleNote =
-                typeof (lo as any).getPipelineScheduleNote === 'function' ? (lo as any).getPipelineScheduleNote(id) : null;
-            const status = {
-                id: p.id,
-                name: p.name,
-                trigger: p.trigger,
-                schedule: p.schedule || null,
-                enabled: !!p.enabled,
-                stats: p.stats || { runsCompleted: 0, runsSuccessful: 0, averageRuntimeMs: 0 },
-                lastRunAt: typeof lastRunAt === 'number' ? lastRunAt : null,
-                nextRunAt: typeof nextRunAt === 'number' ? nextRunAt : null,
-                scheduleNote: typeof scheduleNote === 'string' ? scheduleNote : null,
-            };
-            return { content: [{ type: 'text', text: JSON.stringify(status, null, 2) }], isError: false };
-        } catch {
-            return { content: [{ type: 'text', text: 'failed to get pipeline status' }], isError: true };
-        }
+        return this.formatSnapshotWorkflowResult(await this.learningWorkflows.pipelineStatus(args));
     }
 
     private async handleRunPipeline(args: Record<string, any>) {
-        const id = String(args?.id || '').trim();
-        if (!id) return { content: [{ type: 'text', text: 'id required' }], isError: true };
-        const lo = this.getLearningOrchestrator();
-        if (!lo) return { content: [{ type: 'text', text: 'learning orchestrator unavailable' }], isError: true };
-        try {
-            const context = {
-                requestId: String(Date.now()),
-                operation: 'pipeline_run',
-                timestamp: new Date(),
-                metadata: {},
-            };
-            const res = await (lo as any).runPipeline(id, context);
-            return { content: [{ type: 'text', text: JSON.stringify(res, null, 2) }], isError: !res?.ok };
-        } catch (e) {
-            const msg = e instanceof Error ? e.message : String(e);
-            return { content: [{ type: 'text', text: `run_pipeline failed: ${msg}` }], isError: true };
-        }
+        return this.formatSnapshotWorkflowResult(await this.learningWorkflows.runPipeline(args));
     }
 
     private async handleListPipelineRuns(args: Record<string, any>) {
-        const id = String(args?.id || '').trim();
-        const limit = Math.max(1, Math.min(100, Number(args?.limit || 10)));
-        if (!id) return { content: [{ type: 'text', text: 'id required' }], isError: true };
-        const lo = this.getLearningOrchestrator();
-        if (!lo) return { content: [{ type: 'text', text: 'learning orchestrator unavailable' }], isError: true };
-        try {
-            const rows = await (lo as any).listPipelineRuns(id, limit);
-            return { content: [{ type: 'text', text: JSON.stringify({ runs: rows }, null, 2) }], isError: false };
-        } catch (e) {
-            const msg = e instanceof Error ? e.message : String(e);
-            return { content: [{ type: 'text', text: `list_pipeline_runs failed: ${msg}` }], isError: true };
-        }
+        return this.formatSnapshotWorkflowResult(await this.learningWorkflows.listPipelineRuns(args));
     }
 
     private async handleExecuteIntent(args: Record<string, any>) {
@@ -674,14 +575,7 @@ export class MCPAdapter {
 
     // --- New handlers: snapshots/patches/checks ---
     private async handlePatternStats() {
-        try {
-            const lm: any = (this.coreAnalyzer as any).layerManager;
-            const l5 = lm?.getLayer?.('layer5');
-            const stats = l5 && typeof l5.getPatternStatistics === 'function' ? await l5.getPatternStatistics() : {};
-            return { content: [{ type: 'text', text: JSON.stringify(stats, null, 2) }], isError: false };
-        } catch (e) {
-            return { content: [{ type: 'text', text: String(e) }], isError: true };
-        }
+        return this.formatSnapshotWorkflowResult(await this.learningWorkflows.patternStats());
     }
 
     private async handleWorkflowExploreSymbol(args: Record<string, any>) {
@@ -699,15 +593,6 @@ export class MCPAdapter {
         return this.formatSnapshotWorkflowResult(await this.symbolWorkflows.locateConfirmDefinition(args));
     }
 
-    private safeParseContent(result: any): any {
-        try {
-            const txt = result?.content?.[0]?.text;
-            if (!txt) return result;
-            return JSON.parse(txt);
-        } catch {
-            return result;
-        }
-    }
     private formatSnapshotWorkflowResult(result: SnapshotWorkflowResult) {
         if ('text' in result) {
             return { content: [{ type: 'text', text: result.text }], isError: result.isError === true };
@@ -762,14 +647,6 @@ export class MCPAdapter {
         } catch (error) {
             return handleAdapterError(error, 'mcp');
         }
-    }
-
-    private extractFilesFromPatch(patch: string): string[] {
-        return extractPatchFiles(patch);
-    }
-
-    private buildValidationPlan(args: Parameters<typeof buildSnapshotValidationPlan>[0]) {
-        return buildSnapshotValidationPlan(args);
     }
 
     private async handleRecommendChecks(args: Record<string, any>) {
@@ -908,35 +785,6 @@ export class MCPAdapter {
      */
     async executeTool(request: { name: string; arguments: Record<string, any> }): Promise<any> {
         return await this.handleToolCall(request.name, request.arguments);
-    }
-
-    /**
-     * Validate tool arguments with enhanced error messages
-     */
-    private validateArgs(args: Record<string, any>, requiredFields: string[], context: ErrorContext): void {
-        if (!args || typeof args !== 'object') {
-            throw createValidationError('Arguments must be an object', context);
-        }
-
-        for (const field of requiredFields) {
-            if (args[field] === undefined || args[field] === null) {
-                throw createValidationError(`Missing required parameter: ${field}`, context);
-            }
-
-            if (typeof args[field] === 'string' && args[field].trim() === '') {
-                throw createValidationError(`Parameter '${field}' cannot be empty`, context);
-            }
-        }
-
-        // Additional validation for specific fields
-        if (args.position && typeof args.position === 'object') {
-            if (typeof args.position.line !== 'number' || args.position.line < 0) {
-                throw createValidationError('position.line must be a non-negative number', context);
-            }
-            if (typeof args.position.character !== 'number' || args.position.character < 0) {
-                throw createValidationError('position.character must be a non-negative number', context);
-            }
-        }
     }
 
     /**

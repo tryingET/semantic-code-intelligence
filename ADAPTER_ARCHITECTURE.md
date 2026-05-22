@@ -47,9 +47,12 @@ Core/application workflow services:
 ├── src/core/workflows/symbol-workflow.ts
 │   # workflow_explore_symbol, locate_confirm_definition, and
 │   # execute_intent orchestration across workflow services
-└── src/core/workflows/code-analysis-workflow.ts
-    # completions, build-symbol-map, generate-tests stub, and
-    # explore-codebase payload shaping and containment filtering
+├── src/core/workflows/code-analysis-workflow.ts
+│   # completions, build-symbol-map, generate-tests stub, and
+│   # explore-codebase payload shaping and containment filtering
+└── src/core/workflows/learning-workflow.ts
+    # Layer 5 pipeline listing/status/run/history and pattern-stats
+    # payload shaping
 ```
 
 ## 🔧 Architecture Principles
