@@ -29,23 +29,12 @@ import { WorkspaceQueryWorkflowService } from '../core/workflows/workspace-query
 import { RenameWorkflowService } from '../core/workflows/rename-workflow.js';
 import { NavigationWorkflowService } from '../core/workflows/navigation-workflow.js';
 import { SymbolWorkflowService } from '../core/workflows/symbol-workflow.js';
+import { CodeAnalysisWorkflowService } from '../core/workflows/code-analysis-workflow.js';
 import { ToolRegistry } from '../core/tools/registry.js';
 import { resolveWorkspacePath } from '../core/workspace-path.js';
 import { createValidationError, type ErrorContext, type RecoveryOptions, withMcpErrorHandling } from '../core/utils/error-handler.js';
 import { adapterLogger, mcpLogger } from '../core/utils/file-logger.js';
-import {
-    buildCompletionRequest,
-    buildFindDefinitionRequest,
-    buildFindReferencesRequest,
-    completionToWireCompletion,
-    createPosition,
-    definitionToApiResponse,
-    handleAdapterError,
-    normalizePosition,
-    normalizeUri,
-    referenceToApiResponse,
-    validateRequired,
-} from './utils.js';
+import { handleAdapterError, normalizeUri } from './utils.js';
 
 // Minimal core analyzer surface required by MCP adapter
 type CoreAnalyzer = {
@@ -79,6 +68,7 @@ export class MCPAdapter {
     private renameWorkflows: RenameWorkflowService;
     private navigationWorkflows: NavigationWorkflowService;
     private symbolWorkflows: SymbolWorkflowService;
+    private codeAnalysisWorkflows: CodeAnalysisWorkflowService;
 
     constructor(coreAnalyzer: CoreAnalyzer, config: MCPAdapterConfig = {}) {
         this.coreAnalyzer = coreAnalyzer;
@@ -115,17 +105,16 @@ export class MCPAdapter {
             resolveWorkspaceFile: (value, inputLabel) => this.resolveMcpWorkspaceFile(value, inputLabel),
             containedUriOrNull: (value, inputLabel) => this.containedMcpUriOrNull(value, inputLabel),
         });
+        this.codeAnalysisWorkflows = new CodeAnalysisWorkflowService({
+            coreAnalyzer: this.coreAnalyzer,
+            maxResults: () => this.config.maxResults || 100,
+            resolveWorkspaceFile: (value, inputLabel) => this.resolveMcpWorkspaceFile(value, inputLabel),
+            filterWorkspaceItemsByUri: (items, inputLabel) => this.filterMcpWorkspaceItemsByUri(items, inputLabel),
+        });
         this.symbolWorkflows = new SymbolWorkflowService({
             pickOntologySeedFile: (symbol) => this.pickOntologySeedFile(symbol),
             findDefinition: (args) => this.navigationWorkflows.findDefinition(args),
-            buildSymbolMap: async (args) => {
-                const result = await this.handleBuildSymbolMap(args, {
-                    component: 'MCPAdapter',
-                    operation: 'symbol_workflow',
-                    timestamp: Date.now(),
-                });
-                return { payload: this.safeParseContent(result), isError: result?.isError === true };
-            },
+            buildSymbolMap: (args) => this.codeAnalysisWorkflows.buildSymbolMap(args),
             graphExpand: (args) => this.graphWorkflows.graphExpand(args),
             safeRename: (args) => this.renameWorkflows.safeRename(args),
             patchChecksInSnapshot: (args) => this.snapshotWorkflows.patchChecksInSnapshot(args),
@@ -825,46 +814,12 @@ export class MCPAdapter {
         }
     }
 
-    private async handleGetCompletions(args: Record<string, any>, context: ErrorContext) {
-        this.validateArgs(args, ['position'], context);
+    private async handleGetCompletions(args: Record<string, any>, _context: ErrorContext) {
         try {
-            await (this.coreAnalyzer as any)?.initialize?.();
-        } catch {}
-
-        const core: any = this.coreAnalyzer as any;
-        if (typeof core.getCompletions !== 'function') {
-            throw new CoreError('Internal', 'Core analyzer does not support getCompletions');
+            return this.formatSnapshotWorkflowResult(await this.codeAnalysisWorkflows.getCompletions(args));
+        } catch (error) {
+            return handleAdapterError(error, 'mcp');
         }
-
-        const uri = normalizeUri(String(args.file || args.uri || 'file://workspace'));
-        const request = buildCompletionRequest({
-            uri,
-            position: normalizePosition(args.position),
-            maxResults: Math.min(Number(args.maxResults || 20), 200),
-        });
-
-        const result = await core.getCompletions(request);
-        const items = Array.isArray(result.data) ? result.data.map((c: any) => completionToWireCompletion(c)) : [];
-
-        return {
-            content: [
-                {
-                    type: 'text',
-                    text: JSON.stringify(
-                        {
-                            schemaVersion: 2,
-                            completions: items,
-                            performance: result.performance,
-                            requestId: result.requestId,
-                            count: items.length,
-                        },
-                        null,
-                        2
-                    ),
-                },
-            ],
-            isError: false,
-        };
     }
 
     /**
@@ -903,123 +858,34 @@ export class MCPAdapter {
     /**
      * Handle build_symbol_map tool call
      */
-    private async handleBuildSymbolMap(args: Record<string, any>, context: ErrorContext) {
-        this.validateArgs(args, ['symbol'], context);
-        const res = await (this.coreAnalyzer as any).buildSymbolMap({
-            identifier: args.symbol,
-            uri: normalizeUri(args.file || 'file://workspace'),
-            maxFiles: Math.min(Number(args.maxFiles || 20), 100),
-            astOnly: !!args.astOnly,
-        });
-        const payload = { schemaVersion: 2, ...res };
-        return {
-            content: [
-                {
-                    type: 'text',
-                    text: JSON.stringify(payload, null, 2),
-                },
-            ],
-            isError: false,
-        };
+    private async handleBuildSymbolMap(args: Record<string, any>, _context: ErrorContext) {
+        try {
+            return this.formatSnapshotWorkflowResult(await this.codeAnalysisWorkflows.buildSymbolMap(args));
+        } catch (error) {
+            return handleAdapterError(error, 'mcp');
+        }
     }
 
     /**
      * Handle generate_tests tool call with validation (stub - not implemented in core yet)
      */
-    private async handleGenerateTests(args: Record<string, any>, context: ErrorContext) {
-        this.validateArgs(args, ['target'], context);
-
-        // This is a stub implementation - core analyzer doesn't have test generation yet
-        return {
-            content: [
-                {
-                    type: 'text',
-                    text: JSON.stringify(
-                        {
-                            message: 'Test generation not yet implemented in core analyzer',
-                            target: args.target,
-                            framework: args.framework || 'auto',
-                            coverage: args.coverage || 'comprehensive',
-                            status: 'not_implemented',
-                        },
-                        null,
-                        2
-                    ),
-                },
-            ],
-            isError: false,
-        };
+    private async handleGenerateTests(args: Record<string, any>, _context: ErrorContext) {
+        try {
+            return this.formatSnapshotWorkflowResult(await this.codeAnalysisWorkflows.generateTests(args));
+        } catch (error) {
+            return handleAdapterError(error, 'mcp');
+        }
     }
 
     /**
-     * Handle explore_codebase tool call by fanning out multiple analyses in parallel
+     * Handle explore_codebase tool call
      */
-    private async handleExploreCodebase(args: Record<string, any>, context: ErrorContext) {
-        this.validateArgs(args, ['symbol'], context);
-
-        const maxResults = typeof args.maxResults === 'number' ? args.maxResults : this.config.maxResults;
-        const includeDeclaration = args.includeDeclaration ?? true;
-
-        let uri: string;
+    private async handleExploreCodebase(args: Record<string, any>, _context: ErrorContext) {
         try {
-            uri = args.file ? (await this.resolveMcpWorkspaceFile(args.file, 'explore_codebase file')).uri : normalizeUri('file://workspace');
+            return this.formatSnapshotWorkflowResult(await this.codeAnalysisWorkflows.exploreCodebase(args));
         } catch (error) {
-            if (error instanceof CoreError) return handleAdapterError(error, 'mcp');
-            throw error;
+            return handleAdapterError(error, 'mcp');
         }
-        const position = createPosition(0, 0);
-
-        const defReq = buildFindDefinitionRequest({
-            uri,
-            position,
-            identifier: args.symbol,
-            maxResults,
-            includeDeclaration,
-        });
-
-        const refReq = buildFindReferencesRequest({
-            uri,
-            position,
-            identifier: args.symbol,
-            maxResults: Math.min(maxResults ?? 100, 500),
-            includeDeclaration: includeDeclaration ?? false,
-        });
-
-        // Execute in parallel
-        // Delegate to core analyzer per VISION.md (thin adapter)
-        const coreResult = await (this.coreAnalyzer as any).exploreCodebase({
-            uri,
-            identifier: args.symbol,
-            includeDeclaration,
-            maxResults,
-            precise: !!args.precise,
-            conceptual: !!args.conceptual,
-        });
-
-        const containedDefinitions = await this.filterMcpWorkspaceItemsByUri(Array.isArray(coreResult.definitions) ? coreResult.definitions : [], 'explore_codebase definition uri');
-        const containedReferences = await this.filterMcpWorkspaceItemsByUri(Array.isArray(coreResult.references) ? coreResult.references : [], 'explore_codebase reference uri');
-
-        // Map definitions/references for MCP output while preserving performance/diagnostics
-        const mapped = {
-            schemaVersion: 2,
-            symbol: coreResult.symbol,
-            contextUri: coreResult.contextUri,
-            definitions: containedDefinitions.map((def: any) => definitionToApiResponse(def)),
-            references: containedReferences.map((ref: any) => referenceToApiResponse(ref)),
-            performance: coreResult.performance,
-            diagnostics: coreResult.diagnostics,
-            timestamp: coreResult.timestamp,
-        };
-
-        return {
-            content: [
-                {
-                    type: 'text',
-                    text: JSON.stringify(mapped, null, 2),
-                },
-            ],
-            isError: false,
-        };
     }
 
     /**
