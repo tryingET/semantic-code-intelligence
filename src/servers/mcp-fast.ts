@@ -14,6 +14,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ErrorCode, ListToolsRequestSchema, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { toMcpError } from '../adapters/error-mapper.js';
 import { isCoreError } from '../core/errors.js';
+import { resolveToolExecutionPolicy } from '../core/tools/execution-policy.js';
 import { ToolExecutor } from '../core/tools/executor.js';
 // IMPORTANT: Avoid importing heavy core modules at top-level.
 // Use type-only import to prevent runtime side effects.
@@ -104,10 +105,12 @@ export class FastMCPServer {
                     throw new McpError(ErrorCode.InternalError, 'Server initialization failed');
                 }
 
-                // Execute tool call with timeout
+                // Execute tool call with registry-declared timeout policy
+                const toolArgs = (args || {}) as Record<string, any>;
+                const toolPolicy = resolveToolExecutionPolicy(this.executor.getSpec(name), toolArgs);
                 const result = await Promise.race([
-                    this.executor.execute(this.mcpAdapter, name, (args || {}) as Record<string, any>),
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('Tool call timeout')), 30000)),
+                    this.executor.execute(this.mcpAdapter, name, toolArgs),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Tool call timeout')), toolPolicy.timeoutMs)),
                 ]);
 
                 // Force stdout flush after each response

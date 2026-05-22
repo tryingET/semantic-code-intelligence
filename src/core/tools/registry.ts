@@ -258,6 +258,7 @@ export class ToolRegistry {
         {
             name: 'run_checks',
             description: 'Run format/lint/typecheck/tests for a snapshot (guarded)',
+            execution: { longRunning: true, disableRetries: true },
             inputSchema: {
                 type: 'object',
                 properties: {

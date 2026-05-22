@@ -11,6 +11,7 @@
  */
 
 import { CoreError } from '../core/errors.js';
+import { resolveToolExecutionPolicy } from '../core/tools/execution-policy.js';
 import { ToolExecutor } from '../core/tools/executor.js';
 import { ToolRegistry } from '../core/tools/registry.js';
 import { type RecoveryOptions, withMcpErrorHandling } from '../mcp/error-handler.js';
@@ -158,17 +159,12 @@ export class MCPAdapter {
     }
 
     private errorHandlingOptionsForTool(name: string, arguments_: Record<string, any>): Partial<RecoveryOptions> | undefined {
-        const execution = this.toolExecutor.getSpec(name)?.execution;
-        if (!execution?.longRunning) return undefined;
-
-        const timeoutSec = Number(arguments_?.timeoutSec || 0);
-        const cmdCount = Array.isArray(arguments_?.commands) ? Math.max(1, arguments_.commands.length) : 1;
-        const derivedMs = timeoutSec > 0 ? (timeoutSec * cmdCount + 30) * 1000 : 10 * 60 * 1000;
-        const timeoutMs = Math.max(60_000, Math.min(30 * 60 * 1000, derivedMs));
+        const policy = resolveToolExecutionPolicy(this.toolExecutor.getSpec(name), arguments_);
+        if (!policy.longRunning) return undefined;
 
         return {
-            timeoutMs,
-            ...(execution.disableRetries ? { maxRetries: 0 } : {}),
+            timeoutMs: policy.timeoutMs,
+            ...(policy.disableRetries ? { maxRetries: 0 } : {}),
         } satisfies Partial<RecoveryOptions>;
     }
 
