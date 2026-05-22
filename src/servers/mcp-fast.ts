@@ -52,16 +52,13 @@ export class FastMCPServer {
     private setupHandlers(): void {
         // List available tools - return immediately without initialization; allow filtering for stdio
         this.server.setRequestHandler(ListToolsRequestSchema, async () => {
-            const { ToolRegistry } = await import('../core/tools/registry.js');
-            const all = ToolRegistry.list();
-            const mode = process.env.FAST_STDIO_LIST_MODE || 'workflows';
-            const preferRenamed = process.env.FAST_STDIO_PREFER_RENAMED === '1';
-            let tools = all;
-            if (mode === 'workflows') {
-                tools = all.filter((t: any) => t.category === 'workflow');
-                if (preferRenamed) tools = tools.filter((t: any) => !String(t.name).startsWith('workflow_'));
-            }
-            return { tools } as any;
+            const { listMcpTools } = await import('../mcp/tool-list.js');
+            return {
+                tools: listMcpTools({
+                    mode: process.env.FAST_STDIO_LIST_MODE || 'workflows',
+                    preferRenamed: process.env.FAST_STDIO_PREFER_RENAMED === '1',
+                }),
+            } as any;
         });
 
         // Optionally register prompts/resources for stdio (opt-in via env to preserve fast startup defaults)

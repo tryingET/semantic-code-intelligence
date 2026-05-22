@@ -13,8 +13,8 @@
 import { CoreError } from '../core/errors.js';
 import { resolveToolExecutionPolicy } from '../core/tools/execution-policy.js';
 import { ToolExecutor } from '../core/tools/executor.js';
-import { ToolRegistry } from '../core/tools/registry.js';
 import { type RecoveryOptions, withMcpErrorHandling } from '../mcp/error-handler.js';
+import { listMcpTools } from '../mcp/tool-list.js';
 import { adapterLogger } from '../mcp/file-logger.js';
 import type { SnapshotWorkflowResult } from '../core/workflows/snapshot-patch-workflow.js';
 import { ToolWorkflowRouter } from '../core/workflows/tool-workflow-router.js';
@@ -56,16 +56,7 @@ export class MCPAdapter {
      * Get available MCP tools
      */
     getTools() {
-        // Map registry tools with title and lightweight annotations for better UX
-        return ToolRegistry.list().map((t: any) => ({
-            name: t.name,
-            title: t.title || undefined,
-            description: t.description,
-            inputSchema: t.inputSchema,
-            annotations: t.category
-                ? { category: t.category, recommended: t.category === 'workflow' }
-                : { recommended: false },
-        }));
+        return listMcpTools();
     }
 
     /**
