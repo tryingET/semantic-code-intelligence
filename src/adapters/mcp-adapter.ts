@@ -14,8 +14,7 @@ import { CoreError } from '../core/errors.js';
 import { ToolRegistry } from '../core/tools/registry.js';
 import { type RecoveryOptions, withMcpErrorHandling } from '../core/utils/error-handler.js';
 import { adapterLogger } from '../core/utils/file-logger.js';
-import { type SnapshotWorkflowResult } from '../core/workflows/snapshot-patch-workflow.js';
-import { ToolWorkflowRouter } from '../core/workflows/tool-workflow-router.js';
+import { ToolWorkflowRouter, formatToolWorkflowResult } from '../core/workflows/tool-workflow-router.js';
 import { handleAdapterError } from './utils.js';
 
 // Minimal core analyzer surface required by MCP adapter and the shared tool router.
@@ -137,7 +136,7 @@ export class MCPAdapter {
                 const startTime = Date.now();
                 let result: any;
                 try {
-                    result = this.formatSnapshotWorkflowResult(await this.toolRouter.execute(name, arguments_));
+                    result = formatToolWorkflowResult(await this.toolRouter.execute(name, arguments_));
                 } catch (error) {
                     return handleAdapterError(error, 'mcp');
                 }
@@ -197,13 +196,6 @@ export class MCPAdapter {
         const timeoutMs = Math.max(60_000, Math.min(30 * 60 * 1000, derivedMs));
 
         return { timeoutMs, maxRetries: 0 } satisfies Partial<RecoveryOptions>;
-    }
-
-    private formatSnapshotWorkflowResult(result: SnapshotWorkflowResult) {
-        if ('text' in result) {
-            return { content: [{ type: 'text', text: result.text }], isError: result.isError === true };
-        }
-        return { content: [{ type: 'text', text: JSON.stringify(result.payload, null, 2) }], isError: result.isError === true };
     }
 
     /**

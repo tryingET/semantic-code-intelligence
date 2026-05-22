@@ -545,8 +545,8 @@ class CLI {
                 this.startCommandMetrics(`workflow_${String(name).replace(/[^a-zA-Z0-9_]/g, '_')}`);
                 try {
                     await this.ensureInitialized(options);
-                    const [{ MCPAdapter }, { ToolExecutor }] = await Promise.all([
-                        import('../adapters/mcp-adapter.js'),
+                    const [{ ToolWorkflowRouter }, { ToolExecutor }] = await Promise.all([
+                        import('../core/workflows/tool-workflow-router.js'),
                         import('../core/tools/executor.js'),
                     ]);
                     let args: Record<string, any> = {};
@@ -560,9 +560,9 @@ class CLI {
                     if (!args || typeof args !== 'object' || Array.isArray(args)) {
                         throw new CoreError('InvalidParams', 'Arguments must be a JSON object');
                     }
-                    const mcp = new MCPAdapter(this.coreAnalyzer);
+                    const router = new ToolWorkflowRouter(this.coreAnalyzer);
                     const exec = new ToolExecutor();
-                    const result = await exec.execute(mcp as any, String(name), args);
+                    const result = await exec.execute(router as any, String(name), args);
                     const printed = this.printToolResult(result, !!options.json);
                     console.log(printed);
                     await this.shutdown();
@@ -591,8 +591,8 @@ class CLI {
             .option('-j, --json', 'Print raw JSON response')
             .action(async (oldName, newName, options) => {
                 await this.ensureInitialized(options);
-                const [{ MCPAdapter }, { ToolExecutor }] = await Promise.all([
-                    import('../adapters/mcp-adapter.js'),
+                const [{ ToolWorkflowRouter }, { ToolExecutor }] = await Promise.all([
+                    import('../core/workflows/tool-workflow-router.js'),
                     import('../core/tools/executor.js'),
                 ]);
                 const args: Record<string, any> = {
@@ -607,9 +607,9 @@ class CLI {
                           : ['bun run typecheck'],
                     timeoutSec: parseInt(String(options.timeout) || '240', 10),
                 };
-                const mcp = new MCPAdapter(this.coreAnalyzer);
+                const router = new ToolWorkflowRouter(this.coreAnalyzer);
                 const exec = new ToolExecutor();
-                const result = await exec.execute(mcp as any, 'rename_safely', args);
+                const result = await exec.execute(router as any, 'rename_safely', args);
                 const printed = this.printToolResult(result, !!options.json);
                 console.log(printed);
                 await this.shutdown();
@@ -628,8 +628,8 @@ class CLI {
             .option('-j, --json', 'Print raw JSON response')
             .action(async (options) => {
                 await this.ensureInitialized(options);
-                const [{ MCPAdapter }, { ToolExecutor }] = await Promise.all([
-                    import('../adapters/mcp-adapter.js'),
+                const [{ ToolWorkflowRouter }, { ToolExecutor }] = await Promise.all([
+                    import('../core/workflows/tool-workflow-router.js'),
                     import('../core/tools/executor.js'),
                 ]);
                 let patch = '';
@@ -649,9 +649,9 @@ class CLI {
                     timeoutSec: parseInt(String(options.timeout) || '240', 10),
                     onlyTouched: !!options.onlyTouched,
                 };
-                const mcp = new MCPAdapter(this.coreAnalyzer);
+                const router = new ToolWorkflowRouter(this.coreAnalyzer);
                 const exec = new ToolExecutor();
-                const result = await exec.execute(mcp as any, 'patch_checks_in_snapshot', args);
+                const result = await exec.execute(router as any, 'patch_checks_in_snapshot', args);
                 const printed = this.printToolResult(result, !!options.json);
                 console.log(printed);
                 await this.shutdown();
@@ -667,8 +667,8 @@ class CLI {
             .option('-j, --json', 'Print raw JSON response')
             .action(async (language, pattern, options) => {
                 await this.ensureInitialized(options);
-                const [{ MCPAdapter }, { ToolExecutor }] = await Promise.all([
-                    import('../adapters/mcp-adapter.js'),
+                const [{ ToolWorkflowRouter }, { ToolExecutor }] = await Promise.all([
+                    import('../core/workflows/tool-workflow-router.js'),
                     import('../core/tools/executor.js'),
                 ]);
                 const args = {
@@ -677,9 +677,9 @@ class CLI {
                     paths: options.paths,
                     maxResults: parseInt(String(options.maxResults) || '50', 10),
                 };
-                const mcp = new MCPAdapter(this.coreAnalyzer);
+                const router = new ToolWorkflowRouter(this.coreAnalyzer);
                 const exec = new ToolExecutor();
-                const result = await exec.execute(mcp as any, 'structural_search', args);
+                const result = await exec.execute(router as any, 'structural_search', args);
                 const printed = this.printToolResult(result, !!options.json);
                 console.log(printed);
                 await this.shutdown();
@@ -697,8 +697,8 @@ class CLI {
             .option('-j, --json', 'Print raw JSON response')
             .action(async (language, pattern, rewrite, options) => {
                 await this.ensureInitialized(options);
-                const [{ MCPAdapter }, { ToolExecutor }] = await Promise.all([
-                    import('../adapters/mcp-adapter.js'),
+                const [{ ToolWorkflowRouter }, { ToolExecutor }] = await Promise.all([
+                    import('../core/workflows/tool-workflow-router.js'),
                     import('../core/tools/executor.js'),
                 ]);
                 const args = {
@@ -714,9 +714,9 @@ class CLI {
                     timeoutSec: parseInt(String(options.timeout) || '240', 10),
                     apply: !!options.apply,
                 };
-                const mcp = new MCPAdapter(this.coreAnalyzer);
+                const router = new ToolWorkflowRouter(this.coreAnalyzer);
                 const exec = new ToolExecutor();
-                const result = await exec.execute(mcp as any, 'structural_patch_checks', args);
+                const result = await exec.execute(router as any, 'structural_patch_checks', args);
                 const printed = this.printToolResult(result, !!options.json);
                 console.log(printed);
                 await this.shutdown();
@@ -733,13 +733,13 @@ class CLI {
             .option('-j, --json', 'Print raw JSON response')
             .action(async (options) => {
                 await this.ensureInitialized(options);
-                const [{ MCPAdapter }, { ToolExecutor }] = await Promise.all([
-                    import('../adapters/mcp-adapter.js'),
+                const [{ ToolWorkflowRouter }, { ToolExecutor }] = await Promise.all([
+                    import('../core/workflows/tool-workflow-router.js'),
                     import('../core/tools/executor.js'),
                 ]);
-                const mcp = new MCPAdapter(this.coreAnalyzer);
+                const router = new ToolWorkflowRouter(this.coreAnalyzer);
                 const exec = new ToolExecutor();
-                const result = await exec.execute(mcp as any, 'list_pipelines', {});
+                const result = await exec.execute(router as any, 'list_pipelines', {});
                 const printed = this.printToolResult(result, !!options.json);
                 console.log(printed);
                 await this.shutdown();
@@ -753,13 +753,13 @@ class CLI {
             .option('-j, --json', 'Print raw JSON response')
             .action(async (id, options) => {
                 await this.ensureInitialized(options);
-                const [{ MCPAdapter }, { ToolExecutor }] = await Promise.all([
-                    import('../adapters/mcp-adapter.js'),
+                const [{ ToolWorkflowRouter }, { ToolExecutor }] = await Promise.all([
+                    import('../core/workflows/tool-workflow-router.js'),
                     import('../core/tools/executor.js'),
                 ]);
-                const mcp = new MCPAdapter(this.coreAnalyzer);
+                const router = new ToolWorkflowRouter(this.coreAnalyzer);
                 const exec = new ToolExecutor();
-                const result = await exec.execute(mcp as any, 'run_pipeline', { id: String(id) });
+                const result = await exec.execute(router as any, 'run_pipeline', { id: String(id) });
                 const printed = this.printToolResult(result, !!options.json);
                 console.log(printed);
                 await this.shutdown();
@@ -774,13 +774,13 @@ class CLI {
             .option('-j, --json', 'Print raw JSON response')
             .action(async (id, options) => {
                 await this.ensureInitialized(options);
-                const [{ MCPAdapter }, { ToolExecutor }] = await Promise.all([
-                    import('../adapters/mcp-adapter.js'),
+                const [{ ToolWorkflowRouter }, { ToolExecutor }] = await Promise.all([
+                    import('../core/workflows/tool-workflow-router.js'),
                     import('../core/tools/executor.js'),
                 ]);
-                const mcp = new MCPAdapter(this.coreAnalyzer);
+                const router = new ToolWorkflowRouter(this.coreAnalyzer);
                 const exec = new ToolExecutor();
-                const result = await exec.execute(mcp as any, 'list_pipeline_runs', {
+                const result = await exec.execute(router as any, 'list_pipeline_runs', {
                     id: String(id),
                     limit: parseInt(String(options.limit) || '10', 10),
                 });
@@ -793,12 +793,13 @@ class CLI {
 
     private printToolResult(res: any, rawJson: boolean): string {
         try {
+            const printable = this.formatWorkflowResultForCli(res);
             if (rawJson) {
-                return JSON.stringify(res, null, 2);
+                return JSON.stringify(printable, null, 2);
             }
-            const text = res?.content?.[0]?.text;
+            const text = printable?.content?.[0]?.text;
             if (typeof text === 'string') return text;
-            return JSON.stringify(res, null, 2);
+            return JSON.stringify(printable, null, 2);
         } catch {
             try {
                 return String(res);
@@ -806,6 +807,17 @@ class CLI {
                 return '';
             }
         }
+    }
+
+    private formatWorkflowResultForCli(res: any): any {
+        if (res && typeof res === 'object' && 'content' in res) return res;
+        if (res && typeof res === 'object' && 'text' in res) {
+            return { content: [{ type: 'text', text: String(res.text) }], isError: res.isError === true };
+        }
+        if (res && typeof res === 'object' && 'payload' in res) {
+            return { content: [{ type: 'text', text: JSON.stringify(res.payload, null, 2) }], isError: res.isError === true };
+        }
+        return res;
     }
 
 

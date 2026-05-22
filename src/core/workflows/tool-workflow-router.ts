@@ -34,6 +34,13 @@ export interface ToolWorkflowRouterConfig {
     workspaceRoot?: () => string;
 }
 
+export function formatToolWorkflowResult(result: SnapshotWorkflowResult) {
+    if ('text' in result) {
+        return { content: [{ type: 'text', text: result.text }], isError: result.isError === true };
+    }
+    return { content: [{ type: 'text', text: JSON.stringify(result.payload, null, 2) }], isError: result.isError === true };
+}
+
 export class ToolWorkflowRouter {
     private snapshotWorkflows: SnapshotPatchWorkflowService;
     private structuralWorkflows: StructuralWorkflowService;

@@ -11,13 +11,13 @@
 
 import { serve } from 'bun';
 import { HTTPAdapter, type HTTPRequest } from '../adapters/http-adapter.js';
-import { MCPAdapter } from '../adapters/mcp-adapter.js';
 import { createDefaultCoreConfig, definitionToApiResponse, strictJsonParse } from '../adapters/utils.js';
 import { getEnvironmentConfig, type ServerConfig } from '../core/config/server-config.js';
 import { CoreError, isCoreError } from '../core/errors.js';
 import { createCodeAnalyzer } from '../core/index';
 import { ToolExecutor } from '../core/tools/executor.js';
 import type { CodeAnalyzer } from '../core/unified-analyzer';
+import { ToolWorkflowRouter, formatToolWorkflowResult } from '../core/workflows/tool-workflow-router.js';
 import { metricsRegistry, recordLayerLatency, recordToolEnd, recordToolStart } from '../instrumentation/metrics.js';
 import type { FastSearchLayer } from '../layers/layer1-fast-search.js';
 import type { SearchQuery } from '../types/core.js';
@@ -315,11 +315,11 @@ export class HTTPServer {
                                 throw new CoreError('InvalidParams', 'Missing tool name');
                             }
 
-                            const mcpAdapter = new MCPAdapter(this.coreAnalyzer);
+                            const toolAdapter = this.createToolWorkflowAdapter();
                             const executor = new ToolExecutor();
                             const t0 = Date.now();
                             recordToolStart('http');
-                            const mcpResult: any = await executor.execute(mcpAdapter as any, name, args);
+                            const mcpResult: any = await executor.execute(toolAdapter as any, name, args);
                             // Record tool call in monitoring (if enabled)
                             try {
                                 const mon = (this.coreAnalyzer as any)?.sharedServices?.monitoring;
@@ -415,10 +415,10 @@ export class HTTPServer {
                                 });
                             }
 
-                            const mcpAdapter = new MCPAdapter(this.coreAnalyzer);
+                            const toolAdapter = this.createToolWorkflowAdapter();
                             const executor = new ToolExecutor();
                             // Kick off the pipeline run
-                            const runRes = await executor.execute(mcpAdapter as any, 'run_pipeline', {
+                            const runRes = await executor.execute(toolAdapter as any, 'run_pipeline', {
                                 id: pipelineId,
                             });
                             const txt = (() => {
@@ -455,7 +455,7 @@ export class HTTPServer {
                                     while (true) {
                                         try {
                                             const listRes = await executor.execute(
-                                                mcpAdapter as any,
+                                                toolAdapter as any,
                                                 'list_pipeline_runs',
                                                 {
                                                     id: pipelineId,
@@ -550,9 +550,9 @@ export class HTTPServer {
                                     headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
                                 });
                             }
-                            const mcpAdapter = new MCPAdapter(this.coreAnalyzer);
+                            const toolAdapter = this.createToolWorkflowAdapter();
                             const executor = new ToolExecutor();
-                            const runRes = await executor.execute(mcpAdapter as any, 'run_pipeline', {
+                            const runRes = await executor.execute(toolAdapter as any, 'run_pipeline', {
                                 id: pipelineId,
                             });
                             const txt = (() => {
@@ -599,9 +599,9 @@ export class HTTPServer {
                                 );
                             }
 
-                            const mcpAdapter = new MCPAdapter(this.coreAnalyzer);
+                            const toolAdapter = this.createToolWorkflowAdapter();
                             const executor = new ToolExecutor();
-                            const listRes = await executor.execute(mcpAdapter as any, 'list_pipeline_runs', {
+                            const listRes = await executor.execute(toolAdapter as any, 'list_pipeline_runs', {
                                 id: pipelineId,
                                 limit: 25,
                             });
@@ -647,9 +647,9 @@ export class HTTPServer {
                                     headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
                                 });
                             }
-                            const mcpAdapter = new MCPAdapter(this.coreAnalyzer);
+                            const toolAdapter = this.createToolWorkflowAdapter();
                             const executor = new ToolExecutor();
-                            const res = await executor.execute(mcpAdapter as any, 'pipeline_status', {
+                            const res = await executor.execute(toolAdapter as any, 'pipeline_status', {
                                 id: pipelineId,
                             });
                             const txt = (() => {
@@ -689,9 +689,9 @@ export class HTTPServer {
                                     headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
                                 });
                             }
-                            const mcpAdapter = new MCPAdapter(this.coreAnalyzer);
+                            const toolAdapter = this.createToolWorkflowAdapter();
                             const executor = new ToolExecutor();
-                            const res = await executor.execute(mcpAdapter as any, 'list_pipeline_runs', {
+                            const res = await executor.execute(toolAdapter as any, 'list_pipeline_runs', {
                                 id: pipelineId,
                                 limit,
                             });
@@ -724,9 +724,9 @@ export class HTTPServer {
                     // Pipelines: list
                     if (url.pathname === '/api/v1/pipelines' && request.method === 'GET') {
                         try {
-                            const mcpAdapter = new MCPAdapter(this.coreAnalyzer);
+                            const toolAdapter = this.createToolWorkflowAdapter();
                             const executor = new ToolExecutor();
-                            const res = await executor.execute(mcpAdapter as any, 'list_pipelines', {});
+                            const res = await executor.execute(toolAdapter as any, 'list_pipelines', {});
                             const txt = (() => {
                                 try {
                                     return (res as any)?.content?.[0]?.text ?? '';
@@ -825,9 +825,9 @@ export class HTTPServer {
                                     headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
                                 });
                             }
-                            const mcpAdapter = new MCPAdapter(this.coreAnalyzer);
+                            const toolAdapter = this.createToolWorkflowAdapter();
                             const executor = new ToolExecutor();
-                            const res = await executor.execute(mcpAdapter as any, 'pipeline_status', {
+                            const res = await executor.execute(toolAdapter as any, 'pipeline_status', {
                                 id: pipelineId,
                             });
                             const txt = (() => {
@@ -862,9 +862,9 @@ export class HTTPServer {
                         try {
                             const raw = await this.getRequestBody(request);
                             const body: any = strictJsonParse(raw || '{}');
-                            const mcpAdapter = new MCPAdapter(this.coreAnalyzer);
+                            const toolAdapter = this.createToolWorkflowAdapter();
                             const executor = new ToolExecutor();
-                            const res: any = await executor.execute(mcpAdapter as any, 'graph_expand', body);
+                            const res: any = await executor.execute(toolAdapter as any, 'graph_expand', body);
                             const txt = res?.content?.[0]?.text;
 
                             if (res?.isError) {
@@ -1420,6 +1420,14 @@ export class HTTPServer {
     }
 
     // ===== PRIVATE HELPERS =====
+
+    private createToolWorkflowAdapter() {
+        const router = new ToolWorkflowRouter(this.coreAnalyzer);
+        return {
+            handleToolCall: async (name: string, args: Record<string, any>) =>
+                formatToolWorkflowResult(await router.execute(name, args)),
+        };
+    }
 
     private async getRequestBody(request: Request): Promise<string | undefined> {
         if (request.method === 'GET' || request.method === 'HEAD') {
