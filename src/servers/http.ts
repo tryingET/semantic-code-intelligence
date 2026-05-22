@@ -17,7 +17,8 @@ import { CoreError, isCoreError } from '../core/errors.js';
 import { createCodeAnalyzer } from '../core/index';
 import { ToolExecutor } from '../core/tools/executor.js';
 import type { CodeAnalyzer } from '../core/unified-analyzer';
-import { ToolWorkflowRouter, formatToolWorkflowResult } from '../core/workflows/tool-workflow-router.js';
+import type { SnapshotWorkflowResult } from '../core/workflows/snapshot-patch-workflow.js';
+import { ToolWorkflowRouter } from '../core/workflows/tool-workflow-router.js';
 import { metricsRegistry, recordLayerLatency, recordToolEnd, recordToolStart } from '../instrumentation/metrics.js';
 import type { FastSearchLayer } from '../layers/layer1-fast-search.js';
 import type { SearchQuery } from '../types/core.js';
@@ -315,61 +316,20 @@ export class HTTPServer {
                                 throw new CoreError('InvalidParams', 'Missing tool name');
                             }
 
-                            const toolAdapter = this.createToolWorkflowAdapter();
-                            const executor = new ToolExecutor();
                             const t0 = Date.now();
                             recordToolStart('http');
-                            const mcpResult: any = await executor.execute(toolAdapter as any, name, args);
+                            const toolResult = await this.executeToolWorkflow(name, args);
                             // Record tool call in monitoring (if enabled)
                             try {
                                 const mon = (this.coreAnalyzer as any)?.sharedServices?.monitoring;
                                 if (mon && typeof mon.recordToolCall === 'function') mon.recordToolCall(name);
                             } catch {}
 
-                            // Normalize/unwrap MCP result to a stable JSON shape for HTTP clients
-                            const unwrap = (res: any) => {
-                                try {
-                                    // If MCP returned an explicit error shape, surface it via success:false
-                                    if (res && typeof res === 'object' && (res.error === true || res.isError)) {
-                                        const code = (res as any)?.error?.code;
-                                        const data = (res as any)?.error?.data;
-                                        const msg = (() => {
-                                            if (typeof res.message === 'string') return res.message;
-                                            const txt = res?.content?.[0]?.text;
-                                            if (typeof txt === 'string') return txt.slice(0, 2000);
-                                            return 'Tool execution failed';
-                                        })();
-                                        return { ok: false, error: { code, message: msg, data } };
-                                    }
-
-                                    // Try to parse content[0].text as JSON when present
-                                    const txt = res?.content?.[0]?.text;
-                                    if (typeof txt === 'string') {
-                                        try {
-                                            return JSON.parse(txt);
-                                        } catch {
-                                            // Fallback to passthrough text
-                                            return { ok: true, content: txt };
-                                        }
-                                    }
-                                    // If adapter already returned a plain object result, pass it through
-                                    if (res && typeof res === 'object') return res;
-                                    // Primitive fallback
-                                    return { ok: true, value: res };
-                                } catch {
-                                    return { ok: false, error: { message: 'Failed to normalize tool result' } };
-                                }
-                            };
-
-                            const normalized = unwrap(mcpResult);
-                            const explicitToolError = !!(
-                                mcpResult &&
-                                typeof mcpResult === 'object' &&
-                                ((mcpResult as any).error === true || (mcpResult as any).isError === true)
-                            );
+                            const normalized = this.normalizeToolWorkflowResultForHttp(toolResult);
+                            const explicitToolError = !!toolResult?.isError;
                             // A parsed tool payload may legitimately contain ok:false as domain state
                             // (for example guarded apply refused or checks failed). Treat only explicit
-                            // MCP/tool error envelopes as HTTP tool-call failures.
+                            // core workflow error flags as HTTP tool-call failures.
                             const isError = explicitToolError;
                             recordToolEnd('http', name, Date.now() - t0, !isError);
                             const errCode = isError ? (normalized as any)?.error?.code : undefined;
@@ -415,26 +375,11 @@ export class HTTPServer {
                                 });
                             }
 
-                            const toolAdapter = this.createToolWorkflowAdapter();
-                            const executor = new ToolExecutor();
                             // Kick off the pipeline run
-                            const runRes = await executor.execute(toolAdapter as any, 'run_pipeline', {
+                            const runRes = await this.executeToolWorkflow('run_pipeline', {
                                 id: pipelineId,
                             });
-                            const txt = (() => {
-                                try {
-                                    return runRes?.content?.[0]?.text ?? '';
-                                } catch {
-                                    return '';
-                                }
-                            })();
-                            const runJson = (() => {
-                                try {
-                                    return JSON.parse(txt);
-                                } catch {
-                                    return {};
-                                }
-                            })();
+                            const runJson = this.toolWorkflowPayload(runRes, {});
                             const runId = String(runJson?.runId || '').trim();
                             if (!runId) {
                                 return new Response(JSON.stringify({ error: 'failed to start pipeline' }), {
@@ -454,28 +399,11 @@ export class HTTPServer {
                                     // Poll for status using list_pipeline_runs (filter by runId)
                                     while (true) {
                                         try {
-                                            const listRes = await executor.execute(
-                                                toolAdapter as any,
-                                                'list_pipeline_runs',
-                                                {
-                                                    id: pipelineId,
-                                                    limit: 10,
-                                                }
-                                            );
-                                            const ltxt = (() => {
-                                                try {
-                                                    return listRes?.content?.[0]?.text ?? '';
-                                                } catch {
-                                                    return '';
-                                                }
-                                            })();
-                                            const ljson = (() => {
-                                                try {
-                                                    return JSON.parse(ltxt);
-                                                } catch {
-                                                    return { runs: [] };
-                                                }
-                                            })();
+                                            const listRes = await this.executeToolWorkflow('list_pipeline_runs', {
+                                                id: pipelineId,
+                                                limit: 10,
+                                            });
+                                            const ljson = this.toolWorkflowPayload(listRes, { runs: [] });
                                             const runs = Array.isArray(ljson?.runs) ? ljson.runs : [];
                                             const row = runs.find((r: any) => String(r?.id) === runId);
                                             if (row) {
@@ -550,25 +478,10 @@ export class HTTPServer {
                                     headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
                                 });
                             }
-                            const toolAdapter = this.createToolWorkflowAdapter();
-                            const executor = new ToolExecutor();
-                            const runRes = await executor.execute(toolAdapter as any, 'run_pipeline', {
+                            const runRes = await this.executeToolWorkflow('run_pipeline', {
                                 id: pipelineId,
                             });
-                            const txt = (() => {
-                                try {
-                                    return (runRes as any)?.content?.[0]?.text ?? '';
-                                } catch {
-                                    return '';
-                                }
-                            })();
-                            const json = (() => {
-                                try {
-                                    return JSON.parse(txt);
-                                } catch {
-                                    return { ok: false, runId: '', reason: 'parse_error' };
-                                }
-                            })();
+                            const json = this.toolWorkflowPayload(runRes, { ok: false, runId: '', reason: 'parse_error' });
                             return new Response(JSON.stringify({ success: true, data: json }), {
                                 status: 200,
                                 headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
@@ -599,26 +512,11 @@ export class HTTPServer {
                                 );
                             }
 
-                            const toolAdapter = this.createToolWorkflowAdapter();
-                            const executor = new ToolExecutor();
-                            const listRes = await executor.execute(toolAdapter as any, 'list_pipeline_runs', {
+                            const listRes = await this.executeToolWorkflow('list_pipeline_runs', {
                                 id: pipelineId,
                                 limit: 25,
                             });
-                            const ltxt = (() => {
-                                try {
-                                    return (listRes as any)?.content?.[0]?.text ?? '';
-                                } catch {
-                                    return '';
-                                }
-                            })();
-                            const ljson = (() => {
-                                try {
-                                    return JSON.parse(ltxt);
-                                } catch {
-                                    return { runs: [] as any[] };
-                                }
-                            })();
+                            const ljson = this.toolWorkflowPayload(listRes, { runs: [] as any[] });
                             const runs = Array.isArray((ljson as any)?.runs) ? (ljson as any).runs : [];
                             const row = runs.find((r: any) => String(r?.id) === runId) || null;
 
@@ -647,25 +545,10 @@ export class HTTPServer {
                                     headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
                                 });
                             }
-                            const toolAdapter = this.createToolWorkflowAdapter();
-                            const executor = new ToolExecutor();
-                            const res = await executor.execute(toolAdapter as any, 'pipeline_status', {
+                            const res = await this.executeToolWorkflow('pipeline_status', {
                                 id: pipelineId,
                             });
-                            const txt = (() => {
-                                try {
-                                    return (res as any)?.content?.[0]?.text ?? '';
-                                } catch {
-                                    return '';
-                                }
-                            })();
-                            const json = (() => {
-                                try {
-                                    return JSON.parse(txt);
-                                } catch {
-                                    return { ok: false, reason: 'parse_error' };
-                                }
-                            })();
+                            const json = this.toolWorkflowPayload(res, { ok: false, reason: 'parse_error' });
                             return new Response(JSON.stringify({ success: true, data: json }), {
                                 status: 200,
                                 headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
@@ -689,26 +572,11 @@ export class HTTPServer {
                                     headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
                                 });
                             }
-                            const toolAdapter = this.createToolWorkflowAdapter();
-                            const executor = new ToolExecutor();
-                            const res = await executor.execute(toolAdapter as any, 'list_pipeline_runs', {
+                            const res = await this.executeToolWorkflow('list_pipeline_runs', {
                                 id: pipelineId,
                                 limit,
                             });
-                            const txt = (() => {
-                                try {
-                                    return (res as any)?.content?.[0]?.text ?? '';
-                                } catch {
-                                    return '';
-                                }
-                            })();
-                            const json = (() => {
-                                try {
-                                    return JSON.parse(txt);
-                                } catch {
-                                    return { runs: [] };
-                                }
-                            })();
+                            const json = this.toolWorkflowPayload(res, { runs: [] });
                             return new Response(JSON.stringify({ success: true, data: json }), {
                                 status: 200,
                                 headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
@@ -724,23 +592,8 @@ export class HTTPServer {
                     // Pipelines: list
                     if (url.pathname === '/api/v1/pipelines' && request.method === 'GET') {
                         try {
-                            const toolAdapter = this.createToolWorkflowAdapter();
-                            const executor = new ToolExecutor();
-                            const res = await executor.execute(toolAdapter as any, 'list_pipelines', {});
-                            const txt = (() => {
-                                try {
-                                    return (res as any)?.content?.[0]?.text ?? '';
-                                } catch {
-                                    return '';
-                                }
-                            })();
-                            const json = (() => {
-                                try {
-                                    return JSON.parse(txt);
-                                } catch {
-                                    return { pipelines: [] };
-                                }
-                            })();
+                            const res = await this.executeToolWorkflow('list_pipelines', {});
+                            const json = this.toolWorkflowPayload(res, { pipelines: [] });
                             return new Response(JSON.stringify({ success: true, data: json }), {
                                 status: 200,
                                 headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
@@ -825,25 +678,10 @@ export class HTTPServer {
                                     headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
                                 });
                             }
-                            const toolAdapter = this.createToolWorkflowAdapter();
-                            const executor = new ToolExecutor();
-                            const res = await executor.execute(toolAdapter as any, 'pipeline_status', {
+                            const res = await this.executeToolWorkflow('pipeline_status', {
                                 id: pipelineId,
                             });
-                            const txt = (() => {
-                                try {
-                                    return (res as any)?.content?.[0]?.text ?? '';
-                                } catch {
-                                    return '';
-                                }
-                            })();
-                            const json = (() => {
-                                try {
-                                    return JSON.parse(txt);
-                                } catch {
-                                    return { ok: false, reason: 'parse_error' };
-                                }
-                            })();
+                            const json = this.toolWorkflowPayload(res, { ok: false, reason: 'parse_error' });
                             return new Response(JSON.stringify({ success: true, data: json }), {
                                 status: 200,
                                 headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
@@ -862,30 +700,21 @@ export class HTTPServer {
                         try {
                             const raw = await this.getRequestBody(request);
                             const body: any = strictJsonParse(raw || '{}');
-                            const toolAdapter = this.createToolWorkflowAdapter();
-                            const executor = new ToolExecutor();
-                            const res: any = await executor.execute(toolAdapter as any, 'graph_expand', body);
-                            const txt = res?.content?.[0]?.text;
+                            const res = await this.executeToolWorkflow('graph_expand', body);
 
                             if (res?.isError) {
                                 try {
                                     recordToolEnd('http', 'graph_expand_fallback', Date.now() - t0, false);
                                 } catch {}
-                                const code = res?.error?.code;
-                                const status = statusForCoreErrorCode(code);
-                                return new Response(
-                                    JSON.stringify({
-                                        success: false,
-                                        error: res?.error || { code: 'Internal', message: typeof txt === 'string' ? txt : 'graph_expand failed' },
-                                    }),
-                                    {
-                                        status,
-                                        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-                                    }
-                                );
+                                const error = this.toolWorkflowErrorPayload(res, 'graph_expand failed');
+                                const status = statusForCoreErrorCode(error.code);
+                                return new Response(JSON.stringify({ success: false, error }), {
+                                    status,
+                                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                                });
                             }
 
-                            const payload = typeof txt === 'string' ? JSON.parse(txt) : res;
+                            const payload = this.toolWorkflowPayload(res, res);
 
                             if (typeof payload?.note === 'string' && payload.note.length) {
                                 try {
@@ -1421,12 +1250,60 @@ export class HTTPServer {
 
     // ===== PRIVATE HELPERS =====
 
-    private createToolWorkflowAdapter() {
+    private async executeToolWorkflow(name: string, args: Record<string, any>): Promise<SnapshotWorkflowResult> {
         const router = new ToolWorkflowRouter(this.coreAnalyzer);
-        return {
-            handleToolCall: async (name: string, args: Record<string, any>) =>
-                formatToolWorkflowResult(await router.execute(name, args)),
-        };
+        const executor = new ToolExecutor();
+        return executor.execute(router, name, args);
+    }
+
+    private toolWorkflowPayload(result: SnapshotWorkflowResult, fallback: any = {}): any {
+        try {
+            if (result && 'payload' in result) return result.payload;
+            if (result && 'text' in result) {
+                try {
+                    return JSON.parse(result.text);
+                } catch {
+                    return fallback;
+                }
+            }
+        } catch {}
+        return fallback;
+    }
+
+    private toolWorkflowErrorPayload(result: SnapshotWorkflowResult, fallbackMessage: string) {
+        const payload = this.toolWorkflowPayload(result, undefined);
+        if (payload && typeof payload === 'object' && 'error' in payload && payload.error) {
+            return payload.error;
+        }
+        if (payload && typeof payload === 'object') {
+            return {
+                code: (payload as any).code || 'Internal',
+                message: (payload as any).message || fallbackMessage,
+                data: payload,
+            };
+        }
+        const message = result && 'text' in result && result.text ? result.text.slice(0, 2000) : fallbackMessage;
+        return { code: 'Internal', message };
+    }
+
+    private normalizeToolWorkflowResultForHttp(result: SnapshotWorkflowResult): any {
+        try {
+            if (result?.isError) {
+                const error = this.toolWorkflowErrorPayload(result, 'Tool execution failed');
+                return { ok: false, error };
+            }
+            if (result && 'payload' in result) return result.payload;
+            if (result && 'text' in result) {
+                try {
+                    return JSON.parse(result.text);
+                } catch {
+                    return { ok: true, content: result.text };
+                }
+            }
+            return { ok: true, value: result };
+        } catch {
+            return { ok: false, error: { message: 'Failed to normalize tool result' } };
+        }
     }
 
     private async getRequestBody(request: Request): Promise<string | undefined> {

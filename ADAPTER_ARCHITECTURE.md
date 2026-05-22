@@ -20,7 +20,7 @@ Keep MCP, HTTP, CLI, and LSP adapters responsible for protocol shape, input norm
 src/adapters/
 ├── utils.ts              # Shared protocol conversion utilities
 ├── lsp-adapter.ts        # LSP protocol adapter
-├── mcp-adapter.ts        # MCP protocol adapter and tool routing
+├── mcp-adapter.ts        # MCP protocol adapter and MCP response formatting
 ├── http-adapter.ts       # HTTP API adapter
 ├── cli-adapter.ts        # CLI interface adapter
 └── index.ts              # Adapter exports
@@ -238,9 +238,9 @@ Performance targets maintained through delegation:
 
 ## 🔍 Current Boundary Checks
 
-- **Protocol-only adapter work**: request parsing, response formatting, protocol errors, transport-specific logging, and tool routing.
-- **Core/application work**: snapshot creation, patch conversion, check execution, guarded apply, rollback/verification posture, validation-plan assembly, and check-recommendation payloads.
-- **Current restored slices**: `src/core/workflows/snapshot-patch-workflow.ts` owns snapshot patch/check/apply workflows, `src/core/workflows/structural-workflow.ts` owns ast-grep structural workflow orchestration, `src/core/workflows/graph-expand-workflow.ts` owns graph expansion/impact-summary orchestration, `src/core/workflows/workspace-query-workflow.ts` owns read/search/symbol/AST-query workspace operations, `src/core/workflows/rename-workflow.ts` owns rename/plan/apply payload shaping and safe rename planning-to-snapshot orchestration, and `src/core/workflows/navigation-workflow.ts` owns find-definition/find-references resolution logic, `src/core/workflows/symbol-workflow.ts` owns symbol exploration/location and execute-intent orchestration, and `src/core/workflows/code-analysis-workflow.ts` owns completion/build-symbol-map/generate-tests/explore-codebase payload shaping that had accreted inside `MCPAdapter`.
+- **Protocol-only adapter work**: request parsing, response formatting, protocol errors, and transport-specific logging.
+- **Core/application work**: tool-name dispatch, snapshot creation, patch conversion, check execution, guarded apply, rollback/verification posture, validation-plan assembly, and check-recommendation payloads.
+- **Current restored slices**: `src/core/workflows/snapshot-patch-workflow.ts` owns snapshot patch/check/apply workflows, artifact extraction, and safe-write/recommendation payloads; `src/core/workflows/structural-workflow.ts` owns ast-grep structural workflow orchestration; `src/core/workflows/graph-expand-workflow.ts` owns graph expansion/impact-summary orchestration; `src/core/workflows/workspace-query-workflow.ts` owns read/search/symbol/AST-query workspace operations; `src/core/workflows/rename-workflow.ts` owns rename/plan/apply payload shaping and safe rename planning-to-snapshot orchestration; `src/core/workflows/navigation-workflow.ts` owns find-definition/find-references resolution logic; `src/core/workflows/symbol-workflow.ts` owns symbol exploration/location and execute-intent orchestration; `src/core/workflows/code-analysis-workflow.ts` owns completion/build-symbol-map/generate-tests/explore-codebase payload shaping; `src/core/workflows/learning-workflow.ts` owns pipeline and pattern-stat payloads; and `src/core/workflows/tool-workflow-router.ts` owns protocol-neutral tool dispatch used by MCP, HTTP, and CLI.
 - **Regression coverage**: direct service tests plus MCP/HTTP/CLI parity tests should protect workflow behavior while keeping the adapter boundary visible.
 
 ## 🛠 Integration Instructions
