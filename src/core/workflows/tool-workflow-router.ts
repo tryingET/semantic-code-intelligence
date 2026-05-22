@@ -14,20 +14,10 @@ import {
 } from './snapshot-patch-workflow.js';
 import { StructuralWorkflowService } from './structural-workflow.js';
 import { SymbolWorkflowService } from './symbol-workflow.js';
+import type { WorkflowCoreAnalyzer } from './types.js';
 import { WorkspaceQueryWorkflowService } from './workspace-query-workflow.js';
 
 type WorkspaceFileContext = { path: string; uri: string; relativePath: string };
-
-type CoreAnalyzer = {
-    rename: (req: any) => Promise<{ data: any; performance: any; requestId?: string }>;
-    getCompletions?: (req: any) => Promise<{ data: any }>;
-    findDefinitionAsync?: (req: any) => Promise<{ data: any[]; performance: any; requestId?: string }>;
-    findReferencesAsync?: (req: any) => Promise<{ data: any[]; performance: any; requestId?: string }>;
-    buildSymbolMap?: (req: any) => Promise<any>;
-    exploreCodebase?: (req: any) => Promise<any>;
-    getDiagnostics?: () => any;
-    config?: any;
-};
 
 export interface ToolWorkflowRouterConfig {
     maxResults?: number | (() => number);
@@ -53,7 +43,7 @@ export class ToolWorkflowRouter {
     private learningWorkflows: LearningWorkflowService;
 
     constructor(
-        private readonly coreAnalyzer: CoreAnalyzer,
+        private readonly coreAnalyzer: WorkflowCoreAnalyzer,
         private readonly config: ToolWorkflowRouterConfig = {}
     ) {
         this.snapshotWorkflows = new SnapshotPatchWorkflowService({ workspaceRoot: () => this.getWorkspaceRoot() });

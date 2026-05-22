@@ -15,19 +15,8 @@ import { ToolRegistry } from '../core/tools/registry.js';
 import { type RecoveryOptions, withMcpErrorHandling } from '../core/utils/error-handler.js';
 import { adapterLogger } from '../core/utils/file-logger.js';
 import { ToolWorkflowRouter, formatToolWorkflowResult } from '../core/workflows/tool-workflow-router.js';
+import type { WorkflowCoreAnalyzer } from '../core/workflows/types.js';
 import { handleAdapterError } from './utils.js';
-
-// Minimal core analyzer surface required by MCP adapter and the shared tool router.
-type CoreAnalyzer = {
-    rename: (req: any) => Promise<{ data: any; performance: any; requestId?: string }>;
-    getCompletions?: (req: any) => Promise<{ data: any }>;
-    findDefinitionAsync?: (req: any) => Promise<{ data: any[]; performance: any; requestId?: string }>;
-    findReferencesAsync?: (req: any) => Promise<{ data: any[]; performance: any; requestId?: string }>;
-    buildSymbolMap?: (req: any) => Promise<any>;
-    exploreCodebase?: (req: any) => Promise<any>;
-    getDiagnostics?: () => any;
-    config?: any;
-};
 
 export interface MCPAdapterConfig {
     maxResults?: number;
@@ -40,11 +29,11 @@ export interface MCPAdapterConfig {
  * MCP Protocol Adapter - converts MCP tool calls to protocol-shaped responses.
  */
 export class MCPAdapter {
-    private coreAnalyzer: CoreAnalyzer;
+    private coreAnalyzer: WorkflowCoreAnalyzer;
     private config: MCPAdapterConfig;
     private toolRouter: ToolWorkflowRouter;
 
-    constructor(coreAnalyzer: CoreAnalyzer, config: MCPAdapterConfig = {}) {
+    constructor(coreAnalyzer: WorkflowCoreAnalyzer, config: MCPAdapterConfig = {}) {
         this.coreAnalyzer = coreAnalyzer;
         this.config = {
             maxResults: 100,
@@ -56,39 +45,6 @@ export class MCPAdapter {
         this.toolRouter = new ToolWorkflowRouter(this.coreAnalyzer, {
             maxResults: () => this.config.maxResults || 100,
         });
-
-        // Defensive wrapper to ensure MCP-compatible shape for direct calls in tests
-        const original = this.handleToolCall.bind(this);
-        (this as any)._originalHandleToolCall = original;
-        this.handleToolCall = (async (...args: any[]) => {
-            let name: string;
-            let arguments_: Record<string, any> = {};
-            if (typeof args[0] === 'string') {
-                name = args[0];
-                arguments_ = (args[1] || {}) as Record<string, any>;
-            } else if (args[0] && typeof args[0] === 'object' && 'name' in args[0]) {
-                name = String(args[0].name);
-                arguments_ = (args[0].arguments || {}) as Record<string, any>;
-            } else {
-                name = String(args[0]);
-                arguments_ = (args[1] || {}) as Record<string, any>;
-            }
-            const out = await original(name, arguments_);
-            if (out && typeof out === 'object' && ('error' in out || (out as any).isError)) {
-                return out;
-            }
-            if (!out || typeof out !== 'object' || !('content' in out)) {
-                const txt = (() => {
-                    try {
-                        return JSON.stringify(out, null, 2);
-                    } catch {
-                        return String(out);
-                    }
-                })();
-                return { content: [{ type: 'text', text: txt }], isError: false } as any;
-            }
-            return out;
-        }) as any;
     }
 
     /**
@@ -110,13 +66,17 @@ export class MCPAdapter {
     /**
      * Handle MCP tool call with enhanced error handling
      */
-    async handleToolCall(name: string, arguments_: Record<string, any>): Promise<any> {
+    async handleToolCall(
+        nameOrRequest: string | { name: string; arguments?: Record<string, any> },
+        arguments_: Record<string, any> = {}
+    ): Promise<any> {
+        const { name, args } = this.normalizeToolCall(nameOrRequest, arguments_);
         try {
-            const errorHandlingOptions = this.errorHandlingOptionsForTool(name, arguments_);
+            const errorHandlingOptions = this.errorHandlingOptionsForTool(name, args);
 
             return await withMcpErrorHandling('MCPAdapter', `tool_${name}`, async () => {
                 adapterLogger.debug(`Handling tool call: ${name}`, {
-                    args: this.sanitizeForLogging(arguments_),
+                    args: this.sanitizeForLogging(args),
                 });
 
                 // Validate tool name early and return structured error (do not throw)
@@ -136,7 +96,7 @@ export class MCPAdapter {
                 const startTime = Date.now();
                 let result: any;
                 try {
-                    result = formatToolWorkflowResult(await this.toolRouter.execute(name, arguments_));
+                    result = formatToolWorkflowResult(await this.toolRouter.execute(name, args));
                 } catch (error) {
                     return handleAdapterError(error, 'mcp');
                 }
@@ -176,6 +136,19 @@ export class MCPAdapter {
             // Fallback: return adapter-shaped message for non-core errors
             return handleAdapterError(error, 'mcp');
         }
+    }
+
+    private normalizeToolCall(
+        nameOrRequest: string | { name: string; arguments?: Record<string, any> },
+        arguments_: Record<string, any>
+    ): { name: string; args: Record<string, any> } {
+        if (typeof nameOrRequest === 'string') {
+            return { name: nameOrRequest, args: arguments_ || {} };
+        }
+        if (nameOrRequest && typeof nameOrRequest === 'object' && 'name' in nameOrRequest) {
+            return { name: String(nameOrRequest.name), args: nameOrRequest.arguments || {} };
+        }
+        return { name: String(nameOrRequest), args: arguments_ || {} };
     }
 
     private errorHandlingOptionsForTool(name: string, arguments_: Record<string, any>): Partial<RecoveryOptions> | undefined {
