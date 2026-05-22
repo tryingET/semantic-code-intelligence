@@ -11,21 +11,17 @@
  */
 
 import { CoreError } from '../core/errors.js';
-import { resolveToolExecutionPolicy } from '../core/tools/execution-policy.js';
-import { ToolExecutor } from '../core/tools/executor.js';
-import { type RecoveryOptions, withMcpErrorHandling } from '../mcp/error-handler.js';
+import { withMcpErrorHandling } from '../mcp/error-handler.js';
 import { listMcpTools } from '../mcp/tool-list.js';
 import {
     ensureMcpToolResponse,
-    formatMcpWorkflowResult,
     normalizeMcpToolCall,
     safeMcpStringify,
     sanitizeMcpLogArgs,
     type McpToolCallInput,
 } from '../mcp/tool-result.js';
+import { McpToolWorkflowRunner } from '../mcp/tool-workflow-runner.js';
 import { adapterLogger } from '../mcp/file-logger.js';
-import type { SnapshotWorkflowResult } from '../core/workflows/snapshot-patch-workflow.js';
-import { ToolWorkflowRouter } from '../core/workflows/tool-workflow-router.js';
 import type { WorkflowCoreAnalyzer } from '../core/workflows/types.js';
 import { handleAdapterError } from './utils.js';
 
@@ -42,8 +38,7 @@ export interface MCPAdapterConfig {
 export class MCPAdapter {
     private coreAnalyzer: WorkflowCoreAnalyzer;
     private config: MCPAdapterConfig;
-    private toolRouter: ToolWorkflowRouter;
-    private toolExecutor: ToolExecutor;
+    private toolRunner: McpToolWorkflowRunner;
 
     constructor(coreAnalyzer: WorkflowCoreAnalyzer, config: MCPAdapterConfig = {}) {
         this.coreAnalyzer = coreAnalyzer;
@@ -54,10 +49,9 @@ export class MCPAdapter {
             ssePort: 7001,
             ...config,
         };
-        this.toolRouter = new ToolWorkflowRouter(this.coreAnalyzer, {
+        this.toolRunner = new McpToolWorkflowRunner(this.coreAnalyzer, {
             maxResults: () => this.config.maxResults || 100,
         });
-        this.toolExecutor = new ToolExecutor();
     }
 
     /**
@@ -73,7 +67,7 @@ export class MCPAdapter {
     async handleToolCall(nameOrRequest: McpToolCallInput, arguments_: Record<string, any> = {}): Promise<any> {
         const { name, args } = normalizeMcpToolCall(nameOrRequest, arguments_);
         try {
-            const errorHandlingOptions = this.errorHandlingOptionsForTool(name, args);
+            const errorHandlingOptions = this.toolRunner.errorHandlingOptionsForTool(name, args);
 
             return await withMcpErrorHandling('MCPAdapter', `tool_${name}`, async () => {
                 adapterLogger.debug(`Handling tool call: ${name}`, {
@@ -88,7 +82,7 @@ export class MCPAdapter {
                 const startTime = Date.now();
                 let result: any;
                 try {
-                    result = formatMcpWorkflowResult(await this.executeCoreToolWorkflow(name, args));
+                    result = await this.toolRunner.execute(name, args);
                 } catch (error) {
                     return handleAdapterError(error, 'mcp');
                 }
@@ -118,19 +112,6 @@ export class MCPAdapter {
         }
     }
 
-    private async executeCoreToolWorkflow(name: string, args: Record<string, any>): Promise<SnapshotWorkflowResult> {
-        return this.toolExecutor.execute(this.toolRouter, name, args);
-    }
-
-    private errorHandlingOptionsForTool(name: string, arguments_: Record<string, any>): Partial<RecoveryOptions> | undefined {
-        const policy = resolveToolExecutionPolicy(this.toolExecutor.getSpec(name), arguments_);
-        if (!policy.longRunning) return undefined;
-
-        return {
-            timeoutMs: policy.timeoutMs,
-            ...(policy.disableRetries ? { maxRetries: 0 } : {}),
-        } satisfies Partial<RecoveryOptions>;
-    }
 
     /**
      * Initialize the MCP adapter
