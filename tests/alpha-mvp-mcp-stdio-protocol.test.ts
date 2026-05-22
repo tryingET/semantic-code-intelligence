@@ -152,7 +152,7 @@ describe('Alpha MVP MCP stdio protocol', () => {
 
         const searchResponse = await send('tools/call', {
             name: 'text_search',
-            arguments: { query: 'handleReadFile', path: 'src', maxResults: 5 },
+            arguments: { query: 'handleToolCall', path: 'src', maxResults: 5 },
         });
         expect(searchResponse.error).toBeUndefined();
         const search = parseToolContent(searchResponse);

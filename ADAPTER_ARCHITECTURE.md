@@ -50,9 +50,12 @@ Core/application workflow services:
 ├── src/core/workflows/code-analysis-workflow.ts
 │   # completions, build-symbol-map, generate-tests stub, and
 │   # explore-codebase payload shaping and containment filtering
-└── src/core/workflows/learning-workflow.ts
-    # Layer 5 pipeline listing/status/run/history and pattern-stats
-    # payload shaping
+├── src/core/workflows/learning-workflow.ts
+│   # Layer 5 pipeline listing/status/run/history and pattern-stats
+│   # payload shaping
+└── src/core/workflows/tool-workflow-router.ts
+    # protocol-neutral tool-name dispatch across workflow services;
+    # MCP/HTTP/CLI adapters should route through this core facade
 ```
 
 ## 🔧 Architecture Principles
@@ -76,7 +79,7 @@ Each adapter handles only its protocol concerns:
 
 The important invariant is not a fixed line-count target. It is that protocol adapters do not own duplicate analysis or workflow orchestration logic.
 
-When a tool workflow becomes reusable across MCP, HTTP `/api/v1/tools/call`, and CLI fallback, place it under `src/core/` and keep adapters as routing/formatting layers.
+When a tool workflow becomes reusable across MCP, HTTP `/api/v1/tools/call`, and CLI fallback, place it under `src/core/` and keep adapters as routing/formatting layers. Shared tool-name dispatch belongs in `ToolWorkflowRouter`; protocol adapters should not instantiate one another just to reach core workflows.
 
 ## 🚀 Implementation Details
 

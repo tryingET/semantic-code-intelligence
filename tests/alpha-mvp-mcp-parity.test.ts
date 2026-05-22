@@ -84,18 +84,18 @@ describe('Alpha MVP direct MCP parity', () => {
 
     test('navigation cluster works through direct MCPAdapter calls', async () => {
         const textSearch = await parseContent(
-            await callWithAlphaBudget(mcp, 'text_search', { query: 'handleReadFile', path: `${process.cwd()}/src`, maxResults: 5 })
+            await callWithAlphaBudget(mcp, 'text_search', { query: 'handleToolCall', path: `${process.cwd()}/src`, maxResults: 5 })
         );
         const symbolSearch = await parseContent(
             await callWithAlphaBudget(mcp, 'symbol_search', {
-                query: 'handleReadFile',
+                query: 'handleToolCall',
                 maxResults: 5,
                 fileHint: 'src/adapters/mcp-adapter.ts',
             })
         );
         const definition = await parseContent(
             await callWithAlphaBudget(mcp, 'find_definition', {
-                symbol: 'handleReadFile',
+                symbol: 'handleToolCall',
                 file: 'src/adapters/mcp-adapter.ts',
                 precise: true,
                 maxResults: 5,
@@ -103,7 +103,7 @@ describe('Alpha MVP direct MCP parity', () => {
         );
         const references = await parseContent(
             await callWithAlphaBudget(mcp, 'find_references', {
-                symbol: 'handleReadFile',
+                symbol: 'handleToolCall',
                 file: 'src/adapters/mcp-adapter.ts',
                 includeDeclaration: true,
                 maxResults: 5,
@@ -128,7 +128,7 @@ describe('Alpha MVP direct MCP parity', () => {
 
         expect(textSearch.count).toBeGreaterThan(0);
         expect(textSearch.results.length).toBeLessThanOrEqual(5);
-        expect(symbolSearch.symbols?.[0]?.name).toBe('handleReadFile');
+        expect(symbolSearch.symbols?.[0]?.name).toBe('handleToolCall');
         expect(definition.count).toBeGreaterThan(0);
         expect(references.count).toBeGreaterThan(0);
         expect(Array.isArray(ast.results)).toBe(true);

@@ -65,7 +65,7 @@ describe('Alpha MVP CLI fallback parity', () => {
         expect(read.payload.path).toBe('docs/project/alpha-mvp-contract.md');
         expect(read.payload.content).toContain('Alpha MVP contract');
 
-        const search = await workflow('text_search', { query: 'handleReadFile', path: 'src', maxResults: 5 });
+        const search = await workflow('text_search', { query: 'handleToolCall', path: 'src', maxResults: 5 });
         expect(search.payload.count).toBeGreaterThan(0);
         expect(search.payload.results.length).toBeLessThanOrEqual(5);
     }, 60000);

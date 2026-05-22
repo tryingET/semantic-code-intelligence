@@ -191,12 +191,12 @@ bindDescribe('Alpha MVP MCP HTTP protocol', () => {
 
     test('navigation cluster succeeds through JSON-RPC tools/call', async () => {
         const calls = [
-            ['text_search', { query: 'handleReadFile', path: 'src', maxResults: 5 }],
-            ['symbol_search', { query: 'handleReadFile', maxResults: 5, fileHint: 'src/adapters/mcp-adapter.ts' }],
-            ['find_definition', { symbol: 'handleReadFile', file: 'src/adapters/mcp-adapter.ts', precise: true, maxResults: 5 }],
+            ['text_search', { query: 'handleToolCall', path: 'src', maxResults: 5 }],
+            ['symbol_search', { query: 'handleToolCall', maxResults: 5, fileHint: 'src/adapters/mcp-adapter.ts' }],
+            ['find_definition', { symbol: 'handleToolCall', file: 'src/adapters/mcp-adapter.ts', precise: true, maxResults: 5 }],
             [
                 'find_references',
-                { symbol: 'handleReadFile', file: 'src/adapters/mcp-adapter.ts', includeDeclaration: true, maxResults: 5 },
+                { symbol: 'handleToolCall', file: 'src/adapters/mcp-adapter.ts', includeDeclaration: true, maxResults: 5 },
             ],
             [
                 'ast_query',
@@ -218,7 +218,7 @@ bindDescribe('Alpha MVP MCP HTTP protocol', () => {
 
         expect(results.get('text_search')?.count).toBeGreaterThan(0);
         expect(results.get('text_search')?.results?.length).toBeLessThanOrEqual(5);
-        expect(results.get('symbol_search')?.symbols?.[0]?.name).toBe('handleReadFile');
+        expect(results.get('symbol_search')?.symbols?.[0]?.name).toBe('handleToolCall');
         expect(results.get('find_definition')?.count).toBeGreaterThan(0);
         expect(results.get('find_references')?.count).toBeGreaterThan(0);
         expect(Array.isArray(results.get('ast_query')?.results)).toBe(true);
