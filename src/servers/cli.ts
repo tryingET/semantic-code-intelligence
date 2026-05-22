@@ -37,6 +37,8 @@ class CLI {
     private workspaceRoot: string = process.cwd();
     private fmtDef?: (d: any) => string;
     private fmtRef?: (r: any) => string;
+    private toolRouter!: any;
+    private toolExecutor!: any;
 
     // Metrics tracking for CLI commands
     private currentCommand: string | null = null;
@@ -744,13 +746,10 @@ class CLI {
     }
 
     private async executeToolWorkflow(name: string, args: Record<string, any>): Promise<any> {
-        const [{ ToolWorkflowRouter }, { ToolExecutor }] = await Promise.all([
-            import('../core/workflows/tool-workflow-router.js'),
-            import('../core/tools/executor.js'),
-        ]);
-        const router = new ToolWorkflowRouter(this.coreAnalyzer);
-        const exec = new ToolExecutor();
-        return exec.execute(router, name, args);
+        if (!this.toolRouter || !this.toolExecutor) {
+            throw new CoreError('Internal', 'CLI workflow executor not initialized');
+        }
+        return this.toolExecutor.execute(this.toolRouter, name, args);
     }
 
     private printToolResult(res: any, rawJson: boolean): string {
@@ -811,10 +810,14 @@ class CLI {
                 { createDefaultCoreConfig, formatDefinitionForCli, formatReferenceForCli },
                 { createCodeAnalyzer },
                 { CLIAdapter },
+                { ToolWorkflowRouter },
+                { ToolExecutor },
             ] = await Promise.all([
                 import('../adapters/utils.js'),
                 import('../core/index.js'),
                 import('../adapters/cli-adapter.js'),
+                import('../core/workflows/tool-workflow-router.js'),
+                import('../core/tools/executor.js'),
             ]);
 
             const config = createDefaultCoreConfig();
@@ -827,13 +830,15 @@ class CLI {
 
             await this.coreAnalyzer.initialize();
 
-            // Create CLI adapter
+            // Create CLI adapter and reusable core workflow executor
             this.cliAdapter = new CLIAdapter(this.coreAnalyzer, {
                 colorOutput: options.color !== false,
                 verboseMode: options.verbose || false,
                 maxResults: 50,
                 timeout: 30000,
             });
+            this.toolRouter = new ToolWorkflowRouter(this.coreAnalyzer);
+            this.toolExecutor = new ToolExecutor();
 
             this.coreConfig = config;
             this.workspaceRoot = workspaceRoot;
