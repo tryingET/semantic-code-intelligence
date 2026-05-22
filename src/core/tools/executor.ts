@@ -63,7 +63,7 @@ export class ToolExecutor {
     }
 
     private requiresPatchValidation(name: string): boolean {
-        return name === 'patch_checks_in_snapshot' || name === 'propose_patch' || name === 'apply_after_checks' || name === 'safe_write';
+        return name === 'patch_checks_in_snapshot' || name === 'apply_after_checks' || name === 'safe_write';
     }
 
     private isLikelyDiffOrApplyPatch(patch: string): boolean {

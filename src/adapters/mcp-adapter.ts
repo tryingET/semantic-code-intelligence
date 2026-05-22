@@ -11,6 +11,7 @@
  */
 
 import { CoreError } from '../core/errors.js';
+import { ToolExecutor } from '../core/tools/executor.js';
 import { ToolRegistry } from '../core/tools/registry.js';
 import { type RecoveryOptions, withMcpErrorHandling } from '../core/utils/error-handler.js';
 import { adapterLogger } from '../core/utils/file-logger.js';
@@ -33,6 +34,7 @@ export class MCPAdapter {
     private coreAnalyzer: WorkflowCoreAnalyzer;
     private config: MCPAdapterConfig;
     private toolRouter: ToolWorkflowRouter;
+    private toolExecutor: ToolExecutor;
 
     constructor(coreAnalyzer: WorkflowCoreAnalyzer, config: MCPAdapterConfig = {}) {
         this.coreAnalyzer = coreAnalyzer;
@@ -46,6 +48,7 @@ export class MCPAdapter {
         this.toolRouter = new ToolWorkflowRouter(this.coreAnalyzer, {
             maxResults: () => this.config.maxResults || 100,
         });
+        this.toolExecutor = new ToolExecutor();
     }
 
     /**
@@ -80,15 +83,6 @@ export class MCPAdapter {
                     args: this.sanitizeForLogging(args),
                 });
 
-                // Validate tool name early and return structured error (do not throw)
-                const validTools = ToolRegistry.list()
-                    .map((t) => t.name)
-                    .concat(['suggest_refactoring']);
-                if (!validTools.includes(name)) {
-                    const msg = `Unknown tool: ${name}. Valid tools: ${validTools.join(', ')}`;
-                    return handleAdapterError(new CoreError('UnknownTool', msg, { tool: name, validTools }), 'mcp');
-                }
-
                 // Ensure analyzer is ready before routing any core requests
                 try {
                     await (this.coreAnalyzer as any)?.initialize?.();
@@ -97,7 +91,7 @@ export class MCPAdapter {
                 const startTime = Date.now();
                 let result: any;
                 try {
-                    result = this.formatMcpToolWorkflowResult(await this.toolRouter.execute(name, args));
+                    result = this.formatMcpToolWorkflowResult(await this.executeCoreToolWorkflow(name, args));
                 } catch (error) {
                     return handleAdapterError(error, 'mcp');
                 }
@@ -137,6 +131,11 @@ export class MCPAdapter {
             // Fallback: return adapter-shaped message for non-core errors
             return handleAdapterError(error, 'mcp');
         }
+    }
+
+    private async executeCoreToolWorkflow(name: string, args: Record<string, any>): Promise<SnapshotWorkflowResult> {
+        if (name === 'suggest_refactoring') return this.toolRouter.execute(name, args);
+        return this.toolExecutor.execute(this.toolRouter, name, args);
     }
 
     private formatMcpToolWorkflowResult(result: SnapshotWorkflowResult) {
