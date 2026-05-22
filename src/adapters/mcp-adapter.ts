@@ -134,7 +134,6 @@ export class MCPAdapter {
     }
 
     private async executeCoreToolWorkflow(name: string, args: Record<string, any>): Promise<SnapshotWorkflowResult> {
-        if (name === 'suggest_refactoring') return this.toolRouter.execute(name, args);
         return this.toolExecutor.execute(this.toolRouter, name, args);
     }
 
@@ -159,23 +158,18 @@ export class MCPAdapter {
     }
 
     private errorHandlingOptionsForTool(name: string, arguments_: Record<string, any>): Partial<RecoveryOptions> | undefined {
-        const longRunning =
-            name === 'patch_checks_in_snapshot' ||
-            name === 'structural_patch_checks' ||
-            name === 'apply_after_checks' ||
-            name === 'safe_write' ||
-            name === 'apply_snapshot' ||
-            name === 'rename_safely' ||
-            name === 'workflow_safe_rename' ||
-            name === 'rename_symbol';
-        if (!longRunning) return undefined;
+        const execution = this.toolExecutor.getSpec(name)?.execution;
+        if (!execution?.longRunning) return undefined;
 
         const timeoutSec = Number(arguments_?.timeoutSec || 0);
         const cmdCount = Array.isArray(arguments_?.commands) ? Math.max(1, arguments_.commands.length) : 1;
         const derivedMs = timeoutSec > 0 ? (timeoutSec * cmdCount + 30) * 1000 : 10 * 60 * 1000;
         const timeoutMs = Math.max(60_000, Math.min(30 * 60 * 1000, derivedMs));
 
-        return { timeoutMs, maxRetries: 0 } satisfies Partial<RecoveryOptions>;
+        return {
+            timeoutMs,
+            ...(execution.disableRetries ? { maxRetries: 0 } : {}),
+        } satisfies Partial<RecoveryOptions>;
     }
 
     /**

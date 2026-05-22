@@ -73,13 +73,13 @@ Each adapter handles only its protocol concerns:
 | LSP message format | MCP tool calls | REST endpoints | Command parsing |
 | Text sync | Streamable HTTP transport | JSON responses | Pretty output |
 | Capabilities | Tool registration | CORS handling | Terminal colors |
-| Error codes | Parameter validation | OpenAPI spec | Progress indicators |
+| Error codes | Tool call/response envelope | OpenAPI spec | Progress indicators |
 
 ### 3. Elimination of Duplicate Code
 
 The important invariant is not a fixed line-count target. It is that protocol adapters do not own duplicate analysis or workflow orchestration logic.
 
-When a tool workflow becomes reusable across MCP, HTTP `/api/v1/tools/call`, and CLI fallback, place it under `src/core/` and keep adapters as routing/formatting layers. Shared tool-name dispatch belongs in `ToolWorkflowRouter`; protocol adapters should not instantiate one another just to reach core workflows.
+When a tool workflow becomes reusable across MCP, HTTP `/api/v1/tools/call`, and CLI fallback, place it under `src/core/` and keep adapters as routing/formatting layers. Shared tool-name dispatch belongs in `ToolWorkflowRouter`; shared tool validation and execution policy belong in `ToolRegistry`/`ToolExecutor`; protocol adapters should not instantiate one another just to reach core workflows.
 
 ## 🚀 Implementation Details
 
@@ -239,7 +239,7 @@ Performance targets maintained through delegation:
 ## 🔍 Current Boundary Checks
 
 - **Protocol-only adapter work**: request parsing, response formatting, protocol errors, and transport-specific logging.
-- **Core/application work**: tool-name dispatch, snapshot creation, patch conversion, check execution, guarded apply, rollback/verification posture, validation-plan assembly, and check-recommendation payloads.
+- **Core/application work**: tool-name dispatch, shared tool validation/execution policy, snapshot creation, patch conversion, check execution, guarded apply, rollback/verification posture, validation-plan assembly, and check-recommendation payloads.
 - **Current restored slices**: `src/core/workflows/snapshot-patch-workflow.ts` owns snapshot patch/check/apply workflows, artifact extraction, and safe-write/recommendation payloads; `src/core/workflows/structural-workflow.ts` owns ast-grep structural workflow orchestration; `src/core/workflows/graph-expand-workflow.ts` owns graph expansion/impact-summary orchestration; `src/core/workflows/workspace-query-workflow.ts` owns read/search/symbol/AST-query workspace operations; `src/core/workflows/rename-workflow.ts` owns rename/plan/apply payload shaping and safe rename planning-to-snapshot orchestration; `src/core/workflows/navigation-workflow.ts` owns find-definition/find-references resolution logic; `src/core/workflows/symbol-workflow.ts` owns symbol exploration/location and execute-intent orchestration; `src/core/workflows/code-analysis-workflow.ts` owns completion/build-symbol-map/generate-tests/explore-codebase payload shaping; `src/core/workflows/learning-workflow.ts` owns pipeline and pattern-stat payloads; and `src/core/workflows/tool-workflow-router.ts` owns protocol-neutral tool dispatch used by MCP, HTTP, and CLI.
 - **Regression coverage**: direct service tests plus MCP/HTTP/CLI parity tests should protect workflow behavior while keeping the adapter boundary visible.
 

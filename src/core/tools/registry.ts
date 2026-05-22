@@ -16,6 +16,10 @@ export interface ToolSpec {
         languages?: string[];
     };
     category?: 'workflow' | 'operation' | 'system';
+    execution?: {
+        longRunning?: boolean;
+        disableRetries?: boolean;
+    };
 }
 
 export class ToolRegistry {
@@ -52,6 +56,7 @@ export class ToolRegistry {
             description:
                 'Plan a rename, stage a unified diff into a snapshot, run checks, and return status with next actions.',
             category: 'workflow',
+            execution: { longRunning: true, disableRetries: true },
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -93,6 +98,7 @@ export class ToolRegistry {
             description:
                 'Stages a unified diff into a snapshot and runs checks (typecheck/build/tests). Returns ok, snapshot id, and tail of logs. Safe: never writes to working tree.',
             category: 'workflow',
+            execution: { longRunning: true, disableRetries: true },
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -161,6 +167,7 @@ export class ToolRegistry {
             description:
                 'Generate an ast-grep structural rewrite diff, stage it in a snapshot, run checks, and optionally apply only when ALLOW_SNAPSHOT_APPLY=1.',
             category: 'workflow',
+            execution: { longRunning: true, disableRetries: true },
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -272,6 +279,7 @@ export class ToolRegistry {
         {
             name: 'apply_snapshot',
             description: 'Apply a staged snapshot overlay.diff to the working tree (guarded by env)',
+            execution: { longRunning: true, disableRetries: true },
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -301,6 +309,7 @@ export class ToolRegistry {
         {
             name: 'rename_symbol',
             description: 'Rename symbol with intelligent propagation (preview/apply via preview flag)',
+            execution: { longRunning: true, disableRetries: true },
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -510,6 +519,16 @@ export class ToolRegistry {
             },
         },
         {
+            name: 'suggest_refactoring',
+            description: 'Suggest refactoring opportunities (legacy compatibility stub)',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    file: { type: 'string' },
+                },
+            },
+        },
+        {
             name: 'knowledge_insights',
             description: 'Knowledge propagation / learning insights snapshot',
             inputSchema: { type: 'object', properties: {} },
@@ -530,6 +549,7 @@ export class ToolRegistry {
             description:
                 'Use for: safe symbol rename across files. Avoid: ad-hoc search/replace. Returns: { ok, changes, snapshot, next_actions }',
             category: 'workflow',
+            execution: { longRunning: true, disableRetries: true },
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -571,6 +591,7 @@ export class ToolRegistry {
             description:
                 'Use for: validate a unified diff safely. Avoid: editing working tree. Returns: { ok, elapsedMs, output_tail }',
             category: 'workflow',
+            execution: { longRunning: true, disableRetries: true },
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -631,6 +652,7 @@ export class ToolRegistry {
             description:
                 'Use for: autonomous-safe write path. Stages a patch, runs checks, optionally applies only with apply:true and ALLOW_SNAPSHOT_APPLY=1, and returns risk/rollback/artifact evidence.',
             category: 'workflow',
+            execution: { longRunning: true, disableRetries: true },
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -656,6 +678,7 @@ export class ToolRegistry {
             description:
                 'Use for: patch → checks → apply (dev only). Guarded by ALLOW_SNAPSHOT_APPLY=1. Returns: { ok, snapshot, applied, output_tail }',
             category: 'workflow',
+            execution: { longRunning: true, disableRetries: true },
             inputSchema: {
                 type: 'object',
                 properties: {
