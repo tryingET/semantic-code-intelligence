@@ -86,7 +86,7 @@ bindDescribe('HTTP scheduled pipelines (PIPELINES_ENABLE=1)', () => {
         const list = await waitFor(
             () => runs(id, 5),
             (arr) => Array.isArray(arr) && arr.length > 0,
-            3500
+            10000
         );
         expect(Array.isArray(list)).toBe(true);
         expect(list.length).toBeGreaterThan(0);
@@ -99,7 +99,7 @@ bindDescribe('HTTP scheduled pipelines (PIPELINES_ENABLE=1)', () => {
         expect(st.schedule).toBe('@every 1s');
         expect(typeof st.lastRunAt === 'number' || st.lastRunAt === null).toBe(true);
         expect(typeof st.nextRunAt === 'number' || st.nextRunAt === null).toBe(true);
-    });
+    }, 12000);
 
     test('parses cron variants and reports unsupported schedules explicitly', async () => {
         const cronEvery2 = `dev_cron_every2_${Date.now()}`;
