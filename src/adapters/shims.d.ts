@@ -12,13 +12,13 @@ declare module '../core/tools/registry.js' {
     export const ToolRegistry: any;
 }
 
-declare module '../core/utils/error-handler.js' {
+declare module '../mcp/error-handler.js' {
     export type ErrorContext = any;
     export function createValidationError(...args: any[]): Error;
     export function withMcpErrorHandling(component: string, operation: string, fn: () => Promise<any>, requestId?: string, options?: any): Promise<any>;
 }
 
-declare module '../core/utils/file-logger.js' {
+declare module '../mcp/file-logger.js' {
     export const adapterLogger: any;
     export const mcpLogger: any;
 }

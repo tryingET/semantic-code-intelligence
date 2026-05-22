@@ -17,16 +17,16 @@ import type { MCPAdapter } from '../adapters/mcp-adapter.js';
 import { createDefaultCoreConfig } from '../adapters/utils.js';
 import { createCodeAnalyzer } from '../core/index';
 import type { CodeAnalyzer } from '../core/unified-analyzer';
-import { ConnectionManager, defaultConnectionManager } from '../core/utils/connection-manager.js';
+import { ConnectionManager, defaultConnectionManager } from '../mcp/connection-manager.js';
 import {
     createInternalError,
     createValidationError,
     type ErrorContext,
     globalErrorHandler,
     withMcpErrorHandling,
-} from '../core/utils/error-handler.js';
+} from '../mcp/error-handler.js';
 // Import enhanced error handling and logging
-import { fileLogger, mcpLogger } from '../core/utils/file-logger.js';
+import { fileLogger, mcpLogger } from '../mcp/file-logger.js';
 
 export class EnhancedMCPServer {
     private server: Server;

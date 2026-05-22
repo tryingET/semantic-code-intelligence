@@ -13,8 +13,8 @@
 import { CoreError } from '../core/errors.js';
 import { ToolExecutor } from '../core/tools/executor.js';
 import { ToolRegistry } from '../core/tools/registry.js';
-import { type RecoveryOptions, withMcpErrorHandling } from '../core/utils/error-handler.js';
-import { adapterLogger } from '../core/utils/file-logger.js';
+import { type RecoveryOptions, withMcpErrorHandling } from '../mcp/error-handler.js';
+import { adapterLogger } from '../mcp/file-logger.js';
 import type { SnapshotWorkflowResult } from '../core/workflows/snapshot-patch-workflow.js';
 import { ToolWorkflowRouter } from '../core/workflows/tool-workflow-router.js';
 import type { WorkflowCoreAnalyzer } from '../core/workflows/types.js';

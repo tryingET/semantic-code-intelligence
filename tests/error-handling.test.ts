@@ -12,10 +12,10 @@ import {
     withMcpErrorHandling,
     createValidationError,
     createInternalError,
-} from '../src/core/utils/error-handler';
+} from '../src/mcp/error-handler';
 
-import { FileLogger, fileLogger } from '../src/core/utils/file-logger';
-import { ConnectionManager, defaultConnectionManager } from '../src/core/utils/connection-manager';
+import { FileLogger, fileLogger } from '../src/mcp/file-logger';
+import { ConnectionManager, defaultConnectionManager } from '../src/mcp/connection-manager';
 
 describe('Error Handler', () => {
     let errorHandler: ErrorHandler;
