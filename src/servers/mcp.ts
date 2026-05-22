@@ -22,6 +22,7 @@ import { createDefaultCoreConfig } from '../adapters/utils.js';
 import { createCodeAnalyzer } from '../core/index';
 import type { CodeAnalyzer } from '../core/unified-analyzer';
 import { metricsRegistry, recordToolEnd, recordToolStart } from '../instrumentation/metrics.js';
+import { isMcpToolResultSuccess } from '../mcp/tool-call-executor.js';
 
 export class MCPServer {
     private server: Server;
@@ -71,11 +72,7 @@ export class MCPServer {
                 recordToolStart('mcp_stdio');
                 const result = await this.mcpAdapter.handleToolCall(name, args || {});
                 try {
-                    const success = !(
-                        (result && typeof result === 'object' && 'isError' in result && (result as any).isError) ||
-                        false
-                    );
-                    recordToolEnd('mcp_stdio', String(name || 'unknown'), Date.now() - t0, success);
+                    recordToolEnd('mcp_stdio', String(name || 'unknown'), Date.now() - t0, isMcpToolResultSuccess(result));
                 } catch {}
                 return result;
             } catch (error) {

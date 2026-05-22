@@ -14,8 +14,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ErrorCode, ListToolsRequestSchema, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { toMcpError } from '../adapters/error-mapper.js';
 import { isCoreError } from '../core/errors.js';
-import { resolveToolExecutionPolicy } from '../core/tools/execution-policy.js';
-import { ToolExecutor } from '../core/tools/executor.js';
+import { McpServerToolCallExecutor } from '../mcp/tool-call-executor.js';
 // IMPORTANT: Avoid importing heavy core modules at top-level.
 // Use type-only import to prevent runtime side effects.
 import type { CodeAnalyzer } from '../core/unified-analyzer';
@@ -27,7 +26,7 @@ export class FastMCPServer {
     private mcpAdapter?: any;
     private initPromise?: Promise<void>;
     private initialized = false;
-    private executor: ToolExecutor;
+    private executor: McpServerToolCallExecutor;
 
     constructor() {
         this.server = new Server(
@@ -45,7 +44,7 @@ export class FastMCPServer {
             }
         );
 
-        this.executor = new ToolExecutor();
+        this.executor = new McpServerToolCallExecutor();
         this.setupHandlers();
         this.setupStdioCleanup();
     }
@@ -106,12 +105,9 @@ export class FastMCPServer {
                 }
 
                 // Execute tool call with registry-declared timeout policy
-                const toolArgs = (args || {}) as Record<string, any>;
-                const toolPolicy = resolveToolExecutionPolicy(this.executor.getSpec(name), toolArgs);
-                const result = await Promise.race([
-                    this.executor.execute(this.mcpAdapter, name, toolArgs),
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('Tool call timeout')), toolPolicy.timeoutMs)),
-                ]);
+                const result = await this.executor.execute(this.mcpAdapter, name, (args || {}) as Record<string, any>, {
+                    timeout: true,
+                });
 
                 // Force stdout flush after each response
                 if (process.stdout && typeof process.stdout.flush === 'function') {

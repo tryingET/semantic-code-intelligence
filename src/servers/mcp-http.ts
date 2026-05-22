@@ -34,8 +34,8 @@ import { getEnvironmentConfig } from '../core/config/server-config.js';
 import { CoreError, isCoreError } from '../core/errors.js';
 import { createCodeAnalyzer } from '../core/index';
 import { overlayStore } from '../core/overlay-store.js';
-import { ToolExecutor } from '../core/tools/executor.js';
 import type { CodeAnalyzer } from '../core/unified-analyzer';
+import { isMcpToolResultSuccess, McpServerToolCallExecutor } from '../mcp/tool-call-executor.js';
 import { metricsRegistry, recordToolEnd, recordToolStart } from '../instrumentation/metrics.js';
 import { registerCommonPrompts, registerCommonResources } from './mcp-shared.js';
 
@@ -180,7 +180,7 @@ async function createMcpServer(desiredSid?: string): Promise<SessionRecord> {
 
     // Create adapter and low-level server with handlers
     const adapter = new MCPAdapter(analyzer);
-    const executor = new ToolExecutor();
+    const executor = new McpServerToolCallExecutor();
     const server = new Server(
         { name: 'semantic-code-intelligence', version: '1.0.0' },
         { capabilities: { tools: {}, resources: {}, prompts: {} } }
@@ -198,12 +198,7 @@ async function createMcpServer(desiredSid?: string): Promise<SessionRecord> {
             recordToolStart('mcp_http');
             const out = await executor.execute(adapter, name, (args || {}) as Record<string, any>);
             try {
-                // success if adapter didn't set isError=true
-                const success = !(
-                    (out && typeof out === 'object' && 'isError' in out && (out as any).isError) ||
-                    false
-                );
-                recordToolEnd('mcp_http', String(name || 'unknown'), Date.now() - t0, success);
+                recordToolEnd('mcp_http', String(name || 'unknown'), Date.now() - t0, isMcpToolResultSuccess(out));
             } catch {}
             return out;
         } catch (error) {
