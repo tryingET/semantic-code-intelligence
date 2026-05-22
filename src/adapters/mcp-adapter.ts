@@ -28,6 +28,7 @@ import { GraphExpandWorkflowService } from '../core/workflows/graph-expand-workf
 import { WorkspaceQueryWorkflowService } from '../core/workflows/workspace-query-workflow.js';
 import { RenameWorkflowService } from '../core/workflows/rename-workflow.js';
 import { NavigationWorkflowService } from '../core/workflows/navigation-workflow.js';
+import { SymbolWorkflowService } from '../core/workflows/symbol-workflow.js';
 import { ToolRegistry } from '../core/tools/registry.js';
 import { resolveWorkspacePath } from '../core/workspace-path.js';
 import { createValidationError, type ErrorContext, type RecoveryOptions, withMcpErrorHandling } from '../core/utils/error-handler.js';
@@ -77,6 +78,7 @@ export class MCPAdapter {
     private workspaceQueries: WorkspaceQueryWorkflowService;
     private renameWorkflows: RenameWorkflowService;
     private navigationWorkflows: NavigationWorkflowService;
+    private symbolWorkflows: SymbolWorkflowService;
 
     constructor(coreAnalyzer: CoreAnalyzer, config: MCPAdapterConfig = {}) {
         this.coreAnalyzer = coreAnalyzer;
@@ -112,6 +114,22 @@ export class MCPAdapter {
             maxResults: () => this.config.maxResults || 100,
             resolveWorkspaceFile: (value, inputLabel) => this.resolveMcpWorkspaceFile(value, inputLabel),
             containedUriOrNull: (value, inputLabel) => this.containedMcpUriOrNull(value, inputLabel),
+        });
+        this.symbolWorkflows = new SymbolWorkflowService({
+            pickOntologySeedFile: (symbol) => this.pickOntologySeedFile(symbol),
+            findDefinition: (args) => this.navigationWorkflows.findDefinition(args),
+            buildSymbolMap: async (args) => {
+                const result = await this.handleBuildSymbolMap(args, {
+                    component: 'MCPAdapter',
+                    operation: 'symbol_workflow',
+                    timestamp: Date.now(),
+                });
+                return { payload: this.safeParseContent(result), isError: result?.isError === true };
+            },
+            graphExpand: (args) => this.graphWorkflows.graphExpand(args),
+            safeRename: (args) => this.renameWorkflows.safeRename(args),
+            patchChecksInSnapshot: (args) => this.snapshotWorkflows.patchChecksInSnapshot(args),
+            applySnapshot: (args) => this.snapshotWorkflows.applySnapshot(args),
         });
 
         // Defensive wrapper to ensure MCP-compatible shape for direct calls in tests
@@ -594,61 +612,7 @@ export class MCPAdapter {
     }
 
     private async handleExecuteIntent(args: Record<string, any>) {
-        const intentRaw = String(args?.intent || '')
-            .trim()
-            .toLowerCase();
-        const hasPatch = typeof args?.patch === 'string' && args.patch.trim().length > 0;
-        const hasRename =
-            typeof args?.oldName === 'string' && typeof args?.newName === 'string' && args.oldName && args.newName;
-        const hasSymbol = typeof args?.symbol === 'string' && args.symbol.trim().length > 0;
-
-        const prefer = intentRaw as 'rename' | 'patch' | 'explore' | 'locate' | 'apply' | '';
-        let invoked = '';
-        let result: any = null;
-
-        // Choose intent
-        if (prefer === 'rename' || hasRename) {
-            invoked = 'rename_safely';
-            result = await this.handleWorkflowSafeRename(args);
-        } else if (prefer === 'patch' || hasPatch) {
-            invoked = 'patch_checks_in_snapshot';
-            const checks = await this.handleWorkflowQuickPatchChecks(args);
-            const out = this.safeParseContent(checks) || {};
-            // Optionally apply if ok and allowed
-            const doApply = !!args?.applyIfOk && out?.ok && process.env.ALLOW_SNAPSHOT_APPLY === '1';
-            if (doApply && out?.snapshot) {
-                const applied = await this.handleApplySnapshot({ snapshot: out.snapshot, check: false });
-                const appTxt = this.safeParseContent(applied) || {};
-                const payload = { invoked, ...out, applied: !!appTxt?.ok };
-                return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: !out?.ok };
-            }
-            return checks;
-        } else if (prefer === 'locate' || (hasSymbol && args?.precise !== false)) {
-            invoked = 'locate_confirm_definition';
-            result = await this.handleWorkflowLocateConfirmDefinition(args);
-        } else if (prefer === 'explore' || hasSymbol) {
-            invoked = 'explore_symbol_impact';
-            result = await this.handleWorkflowExploreSymbol(args);
-        } else if (prefer === 'apply') {
-            invoked = 'apply_snapshot';
-            result = await this.handleApplySnapshot(args);
-        } else {
-            const payload = {
-                invoked: 'none',
-                ok: false,
-                message: 'Insufficient arguments; provide patch, oldName+newName, or symbol',
-            };
-            return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: true };
-        }
-
-        // Attach invoked to response content (when possible)
-        try {
-            const txt = this.safeParseContent(result) || {};
-            const payload = { invoked, ...txt };
-            return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: false };
-        } catch {
-            return result;
-        }
+        return this.formatSnapshotWorkflowResult(await this.symbolWorkflows.executeIntent(args));
     }
 
     private async handleExtractSnapshotArtifacts(args: Record<string, any>) {
@@ -732,43 +696,7 @@ export class MCPAdapter {
     }
 
     private async handleWorkflowExploreSymbol(args: Record<string, any>) {
-        const symbol = String(args?.symbol || '').trim();
-        if (!symbol) return { content: [{ type: 'text', text: 'symbol required' }], isError: true };
-        let file = typeof args?.file === 'string' ? args.file : undefined;
-        if (!file) {
-            // Ontology-first: use a known anchor (Thing location) to scope downstream steps
-            file = (await this.pickOntologySeedFile(symbol)) || undefined;
-        }
-        const precise = (args?.precise ?? true) as boolean;
-        const depth = typeof args?.depth === 'number' ? args.depth : 1;
-        const limit = typeof args?.limit === 'number' ? args.limit : 50;
-
-        const defs = await this.handleFindDefinition(
-            { symbol, file, precise, maxResults: limit },
-            { component: 'MCPAdapter', operation: 'workflow_explore_symbol', timestamp: Date.now() }
-        );
-        const map = await this.handleBuildSymbolMap(
-            { symbol, file, maxFiles: Math.min(20, limit), astOnly: true },
-            { component: 'MCPAdapter', operation: 'workflow_explore_symbol', timestamp: Date.now() }
-        );
-        const neighbors = await this.handleGraphExpand(
-            file
-                ? { file, symbol, edges: ['imports', 'exports', 'callers', 'callees'], depth, limit }
-                : { symbol, edges: ['callers', 'callees'], depth, limit }
-        );
-
-        const out = {
-            ok: true,
-            definitions: this.safeParseContent(defs),
-            symbolMap: this.safeParseContent(map),
-            neighbors: this.safeParseContent(neighbors),
-            tips: [
-                'Prefer files whose basename includes the symbol for quick AST validation.',
-                'Escalate to precise mode when candidates ≥ 3 or confidence is low.',
-            ],
-            next_actions: ['Open top definition', 'Inspect low-confidence callers'],
-        };
-        return { content: [{ type: 'text', text: JSON.stringify(out, null, 2) }], isError: false };
+        return this.formatSnapshotWorkflowResult(await this.symbolWorkflows.exploreSymbol(args));
     }
 
     private async handleWorkflowQuickPatchChecks(args: Record<string, any>) {
@@ -779,50 +707,7 @@ export class MCPAdapter {
         return this.formatSnapshotWorkflowResult(await this.renameWorkflows.safeRename(args));
     }
     private async handleWorkflowLocateConfirmDefinition(args: Record<string, any>) {
-        const symbol = String(args?.symbol || '').trim();
-        if (!symbol) return { content: [{ type: 'text', text: 'symbol required' }], isError: true };
-        let file = typeof args?.file === 'string' ? args.file : undefined;
-        if (!file) {
-            file = (await this.pickOntologySeedFile(symbol)) || undefined;
-        }
-        const attempts: any[] = [];
-        // First attempt: fast path (precise=false)
-        const fast = await this.handleFindDefinition(
-            { symbol, file, precise: false, maxResults: Math.min(50, Number(args?.maxResults || 50)) },
-            { component: 'MCPAdapter', operation: 'workflow_locate_confirm_definition', timestamp: Date.now() }
-        );
-        const fastOut = this.safeParseContent(fast);
-        attempts.push({ mode: 'fast', count: Array.isArray(fastOut?.definitions) ? fastOut.definitions.length : 0 });
-
-        let chosen = fastOut;
-        // If ambiguous or empty and precise not disabled, try precise pass
-        const ambiguous = !fastOut?.definitions || fastOut.definitions.length !== 1;
-        const doPrecise = args?.precise !== false && ambiguous;
-        if (doPrecise) {
-            const precise = await this.handleFindDefinition(
-                { symbol, file, precise: true, maxResults: Math.min(50, Number(args?.maxResults || 50)) },
-                { component: 'MCPAdapter', operation: 'workflow_locate_confirm_definition', timestamp: Date.now() }
-            );
-            const preciseOut = this.safeParseContent(precise);
-            attempts.push({
-                mode: 'precise',
-                count: Array.isArray(preciseOut?.definitions) ? preciseOut.definitions.length : 0,
-            });
-            // Prefer precise when it yields any results
-            if (preciseOut?.definitions && preciseOut.definitions.length > 0) {
-                chosen = preciseOut;
-            }
-        }
-
-        const out = {
-            workflow: 'locate_confirm_definition',
-            ok: Array.isArray(chosen?.definitions) && chosen.definitions.length > 0,
-            symbol,
-            attempts,
-            definitions: chosen?.definitions || [],
-            decision: ambiguous && doPrecise ? 'precise_retry' : 'fast',
-        };
-        return { content: [{ type: 'text', text: JSON.stringify(out, null, 2) }], isError: false };
+        return this.formatSnapshotWorkflowResult(await this.symbolWorkflows.locateConfirmDefinition(args));
     }
 
     private safeParseContent(result: any): any {
