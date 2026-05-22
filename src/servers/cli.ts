@@ -545,10 +545,6 @@ class CLI {
                 this.startCommandMetrics(`workflow_${String(name).replace(/[^a-zA-Z0-9_]/g, '_')}`);
                 try {
                     await this.ensureInitialized(options);
-                    const [{ ToolWorkflowRouter }, { ToolExecutor }] = await Promise.all([
-                        import('../core/workflows/tool-workflow-router.js'),
-                        import('../core/tools/executor.js'),
-                    ]);
                     let args: Record<string, any> = {};
                     if (options.argsFile) {
                         const p = path.resolve(String(options.argsFile));
@@ -560,9 +556,7 @@ class CLI {
                     if (!args || typeof args !== 'object' || Array.isArray(args)) {
                         throw new CoreError('InvalidParams', 'Arguments must be a JSON object');
                     }
-                    const router = new ToolWorkflowRouter(this.coreAnalyzer);
-                    const exec = new ToolExecutor();
-                    const result = await exec.execute(router as any, String(name), args);
+                    const result = await this.executeToolWorkflow(String(name), args);
                     const printed = this.printToolResult(result, !!options.json);
                     console.log(printed);
                     await this.shutdown();
@@ -591,10 +585,6 @@ class CLI {
             .option('-j, --json', 'Print raw JSON response')
             .action(async (oldName, newName, options) => {
                 await this.ensureInitialized(options);
-                const [{ ToolWorkflowRouter }, { ToolExecutor }] = await Promise.all([
-                    import('../core/workflows/tool-workflow-router.js'),
-                    import('../core/tools/executor.js'),
-                ]);
                 const args: Record<string, any> = {
                     oldName: String(oldName),
                     newName: String(newName),
@@ -607,9 +597,7 @@ class CLI {
                           : ['bun run typecheck'],
                     timeoutSec: parseInt(String(options.timeout) || '240', 10),
                 };
-                const router = new ToolWorkflowRouter(this.coreAnalyzer);
-                const exec = new ToolExecutor();
-                const result = await exec.execute(router as any, 'rename_safely', args);
+                const result = await this.executeToolWorkflow('rename_safely', args);
                 const printed = this.printToolResult(result, !!options.json);
                 console.log(printed);
                 await this.shutdown();
@@ -628,10 +616,6 @@ class CLI {
             .option('-j, --json', 'Print raw JSON response')
             .action(async (options) => {
                 await this.ensureInitialized(options);
-                const [{ ToolWorkflowRouter }, { ToolExecutor }] = await Promise.all([
-                    import('../core/workflows/tool-workflow-router.js'),
-                    import('../core/tools/executor.js'),
-                ]);
                 let patch = '';
                 if (options.patchFile) {
                     patch = fs.readFileSync(path.resolve(String(options.patchFile)), 'utf8');
@@ -649,9 +633,7 @@ class CLI {
                     timeoutSec: parseInt(String(options.timeout) || '240', 10),
                     onlyTouched: !!options.onlyTouched,
                 };
-                const router = new ToolWorkflowRouter(this.coreAnalyzer);
-                const exec = new ToolExecutor();
-                const result = await exec.execute(router as any, 'patch_checks_in_snapshot', args);
+                const result = await this.executeToolWorkflow('patch_checks_in_snapshot', args);
                 const printed = this.printToolResult(result, !!options.json);
                 console.log(printed);
                 await this.shutdown();
@@ -667,19 +649,13 @@ class CLI {
             .option('-j, --json', 'Print raw JSON response')
             .action(async (language, pattern, options) => {
                 await this.ensureInitialized(options);
-                const [{ ToolWorkflowRouter }, { ToolExecutor }] = await Promise.all([
-                    import('../core/workflows/tool-workflow-router.js'),
-                    import('../core/tools/executor.js'),
-                ]);
                 const args = {
                     language: String(language),
                     pattern: String(pattern),
                     paths: options.paths,
                     maxResults: parseInt(String(options.maxResults) || '50', 10),
                 };
-                const router = new ToolWorkflowRouter(this.coreAnalyzer);
-                const exec = new ToolExecutor();
-                const result = await exec.execute(router as any, 'structural_search', args);
+                const result = await this.executeToolWorkflow('structural_search', args);
                 const printed = this.printToolResult(result, !!options.json);
                 console.log(printed);
                 await this.shutdown();
@@ -697,10 +673,6 @@ class CLI {
             .option('-j, --json', 'Print raw JSON response')
             .action(async (language, pattern, rewrite, options) => {
                 await this.ensureInitialized(options);
-                const [{ ToolWorkflowRouter }, { ToolExecutor }] = await Promise.all([
-                    import('../core/workflows/tool-workflow-router.js'),
-                    import('../core/tools/executor.js'),
-                ]);
                 const args = {
                     language: String(language),
                     pattern: String(pattern),
@@ -714,9 +686,7 @@ class CLI {
                     timeoutSec: parseInt(String(options.timeout) || '240', 10),
                     apply: !!options.apply,
                 };
-                const router = new ToolWorkflowRouter(this.coreAnalyzer);
-                const exec = new ToolExecutor();
-                const result = await exec.execute(router as any, 'structural_patch_checks', args);
+                const result = await this.executeToolWorkflow('structural_patch_checks', args);
                 const printed = this.printToolResult(result, !!options.json);
                 console.log(printed);
                 await this.shutdown();
@@ -733,13 +703,7 @@ class CLI {
             .option('-j, --json', 'Print raw JSON response')
             .action(async (options) => {
                 await this.ensureInitialized(options);
-                const [{ ToolWorkflowRouter }, { ToolExecutor }] = await Promise.all([
-                    import('../core/workflows/tool-workflow-router.js'),
-                    import('../core/tools/executor.js'),
-                ]);
-                const router = new ToolWorkflowRouter(this.coreAnalyzer);
-                const exec = new ToolExecutor();
-                const result = await exec.execute(router as any, 'list_pipelines', {});
+                const result = await this.executeToolWorkflow('list_pipelines', {});
                 const printed = this.printToolResult(result, !!options.json);
                 console.log(printed);
                 await this.shutdown();
@@ -753,13 +717,7 @@ class CLI {
             .option('-j, --json', 'Print raw JSON response')
             .action(async (id, options) => {
                 await this.ensureInitialized(options);
-                const [{ ToolWorkflowRouter }, { ToolExecutor }] = await Promise.all([
-                    import('../core/workflows/tool-workflow-router.js'),
-                    import('../core/tools/executor.js'),
-                ]);
-                const router = new ToolWorkflowRouter(this.coreAnalyzer);
-                const exec = new ToolExecutor();
-                const result = await exec.execute(router as any, 'run_pipeline', { id: String(id) });
+                const result = await this.executeToolWorkflow('run_pipeline', { id: String(id) });
                 const printed = this.printToolResult(result, !!options.json);
                 console.log(printed);
                 await this.shutdown();
@@ -774,13 +732,7 @@ class CLI {
             .option('-j, --json', 'Print raw JSON response')
             .action(async (id, options) => {
                 await this.ensureInitialized(options);
-                const [{ ToolWorkflowRouter }, { ToolExecutor }] = await Promise.all([
-                    import('../core/workflows/tool-workflow-router.js'),
-                    import('../core/tools/executor.js'),
-                ]);
-                const router = new ToolWorkflowRouter(this.coreAnalyzer);
-                const exec = new ToolExecutor();
-                const result = await exec.execute(router as any, 'list_pipeline_runs', {
+                const result = await this.executeToolWorkflow('list_pipeline_runs', {
                     id: String(id),
                     limit: parseInt(String(options.limit) || '10', 10),
                 });
@@ -789,6 +741,16 @@ class CLI {
                 await this.shutdown();
                 process.exit(0);
             });
+    }
+
+    private async executeToolWorkflow(name: string, args: Record<string, any>): Promise<any> {
+        const [{ ToolWorkflowRouter }, { ToolExecutor }] = await Promise.all([
+            import('../core/workflows/tool-workflow-router.js'),
+            import('../core/tools/executor.js'),
+        ]);
+        const router = new ToolWorkflowRouter(this.coreAnalyzer);
+        const exec = new ToolExecutor();
+        return exec.execute(router, name, args);
     }
 
     private printToolResult(res: any, rawJson: boolean): string {
