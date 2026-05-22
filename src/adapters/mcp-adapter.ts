@@ -14,7 +14,8 @@ import { CoreError } from '../core/errors.js';
 import { ToolRegistry } from '../core/tools/registry.js';
 import { type RecoveryOptions, withMcpErrorHandling } from '../core/utils/error-handler.js';
 import { adapterLogger } from '../core/utils/file-logger.js';
-import { ToolWorkflowRouter, formatToolWorkflowResult } from '../core/workflows/tool-workflow-router.js';
+import type { SnapshotWorkflowResult } from '../core/workflows/snapshot-patch-workflow.js';
+import { ToolWorkflowRouter } from '../core/workflows/tool-workflow-router.js';
 import type { WorkflowCoreAnalyzer } from '../core/workflows/types.js';
 import { handleAdapterError } from './utils.js';
 
@@ -96,7 +97,7 @@ export class MCPAdapter {
                 const startTime = Date.now();
                 let result: any;
                 try {
-                    result = formatToolWorkflowResult(await this.toolRouter.execute(name, args));
+                    result = this.formatMcpToolWorkflowResult(await this.toolRouter.execute(name, args));
                 } catch (error) {
                     return handleAdapterError(error, 'mcp');
                 }
@@ -136,6 +137,13 @@ export class MCPAdapter {
             // Fallback: return adapter-shaped message for non-core errors
             return handleAdapterError(error, 'mcp');
         }
+    }
+
+    private formatMcpToolWorkflowResult(result: SnapshotWorkflowResult) {
+        if ('text' in result) {
+            return { content: [{ type: 'text', text: result.text }], isError: result.isError === true };
+        }
+        return { content: [{ type: 'text', text: JSON.stringify(result.payload, null, 2) }], isError: result.isError === true };
     }
 
     private normalizeToolCall(

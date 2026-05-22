@@ -127,7 +127,7 @@ export class RenameWorkflowService {
             };
         }
 
-        const tmpRoot = path.join(tmpRootBase, '.mcp-work');
+        const tmpRoot = path.join(tmpRootBase, '.sci-work');
         await fs.mkdir(tmpRoot, { recursive: true }).catch(() => {});
 
         const diffParts: string[] = [];

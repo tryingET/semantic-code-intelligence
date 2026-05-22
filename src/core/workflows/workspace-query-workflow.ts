@@ -9,7 +9,7 @@ import type { SnapshotWorkflowResult } from './snapshot-patch-workflow.js';
 type WorkspaceQueryDependencies = {
     workspaceRoot: () => string;
     coreAnalyzer: any;
-    pathInputFromMcpFile: (value: string, workspaceRoot: string) => string;
+    pathInputFromToolFile: (value: string, workspaceRoot: string) => string;
 };
 
 export class WorkspaceQueryWorkflowService {
@@ -21,7 +21,7 @@ export class WorkspaceQueryWorkflowService {
 
     private snapshotReadPath(requestedPath: string, snapshotRoot: string): string {
         const workspaceRoot = this.workspaceRoot;
-        const decodedPath = this.deps.pathInputFromMcpFile(requestedPath, workspaceRoot);
+        const decodedPath = this.deps.pathInputFromToolFile(requestedPath, workspaceRoot);
         if (!path.isAbsolute(decodedPath)) return decodedPath;
 
         const absolutePath = path.resolve(decodedPath);
