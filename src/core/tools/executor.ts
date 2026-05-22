@@ -50,7 +50,7 @@ export class ToolExecutor {
         }
         validateArgs(args || {}, spec);
         // Extra validation for patch-bearing tools to keep adapters lean
-        if (this.requiresPatchValidation(name)) {
+        if (spec.execution?.requiresPatchValidation) {
             const patch = typeof args?.patch === 'string' ? String(args.patch) : '';
             if (!this.isLikelyDiffOrApplyPatch(patch)) {
                 throw new CoreError(
@@ -60,10 +60,6 @@ export class ToolExecutor {
             }
         }
         return adapter.handleToolCall(name, args || {});
-    }
-
-    private requiresPatchValidation(name: string): boolean {
-        return name === 'patch_checks_in_snapshot' || name === 'apply_after_checks' || name === 'safe_write';
     }
 
     private isLikelyDiffOrApplyPatch(patch: string): boolean {

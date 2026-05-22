@@ -19,6 +19,7 @@ export interface ToolSpec {
     execution?: {
         longRunning?: boolean;
         disableRetries?: boolean;
+        requiresPatchValidation?: boolean;
     };
 }
 
@@ -591,7 +592,7 @@ export class ToolRegistry {
             description:
                 'Use for: validate a unified diff safely. Avoid: editing working tree. Returns: { ok, elapsedMs, output_tail }',
             category: 'workflow',
-            execution: { longRunning: true, disableRetries: true },
+            execution: { longRunning: true, disableRetries: true, requiresPatchValidation: true },
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -652,7 +653,7 @@ export class ToolRegistry {
             description:
                 'Use for: autonomous-safe write path. Stages a patch, runs checks, optionally applies only with apply:true and ALLOW_SNAPSHOT_APPLY=1, and returns risk/rollback/artifact evidence.',
             category: 'workflow',
-            execution: { longRunning: true, disableRetries: true },
+            execution: { longRunning: true, disableRetries: true, requiresPatchValidation: true },
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -678,7 +679,7 @@ export class ToolRegistry {
             description:
                 'Use for: patch → checks → apply (dev only). Guarded by ALLOW_SNAPSHOT_APPLY=1. Returns: { ok, snapshot, applied, output_tail }',
             category: 'workflow',
-            execution: { longRunning: true, disableRetries: true },
+            execution: { longRunning: true, disableRetries: true, requiresPatchValidation: true },
             inputSchema: {
                 type: 'object',
                 properties: {
