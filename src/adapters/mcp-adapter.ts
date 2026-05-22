@@ -15,6 +15,14 @@ import { resolveToolExecutionPolicy } from '../core/tools/execution-policy.js';
 import { ToolExecutor } from '../core/tools/executor.js';
 import { type RecoveryOptions, withMcpErrorHandling } from '../mcp/error-handler.js';
 import { listMcpTools } from '../mcp/tool-list.js';
+import {
+    ensureMcpToolResponse,
+    formatMcpWorkflowResult,
+    normalizeMcpToolCall,
+    safeMcpStringify,
+    sanitizeMcpLogArgs,
+    type McpToolCallInput,
+} from '../mcp/tool-result.js';
 import { adapterLogger } from '../mcp/file-logger.js';
 import type { SnapshotWorkflowResult } from '../core/workflows/snapshot-patch-workflow.js';
 import { ToolWorkflowRouter } from '../core/workflows/tool-workflow-router.js';
@@ -62,17 +70,14 @@ export class MCPAdapter {
     /**
      * Handle MCP tool call with enhanced error handling
      */
-    async handleToolCall(
-        nameOrRequest: string | { name: string; arguments?: Record<string, any> },
-        arguments_: Record<string, any> = {}
-    ): Promise<any> {
-        const { name, args } = this.normalizeToolCall(nameOrRequest, arguments_);
+    async handleToolCall(nameOrRequest: McpToolCallInput, arguments_: Record<string, any> = {}): Promise<any> {
+        const { name, args } = normalizeMcpToolCall(nameOrRequest, arguments_);
         try {
             const errorHandlingOptions = this.errorHandlingOptionsForTool(name, args);
 
             return await withMcpErrorHandling('MCPAdapter', `tool_${name}`, async () => {
                 adapterLogger.debug(`Handling tool call: ${name}`, {
-                    args: this.sanitizeForLogging(args),
+                    args: sanitizeMcpLogArgs(args),
                 });
 
                 // Ensure analyzer is ready before routing any core requests
@@ -83,13 +88,13 @@ export class MCPAdapter {
                 const startTime = Date.now();
                 let result: any;
                 try {
-                    result = this.formatMcpToolWorkflowResult(await this.executeCoreToolWorkflow(name, args));
+                    result = formatMcpWorkflowResult(await this.executeCoreToolWorkflow(name, args));
                 } catch (error) {
                     return handleAdapterError(error, 'mcp');
                 }
 
                 const duration = Date.now() - startTime;
-                const safeStr = this.safeStringify(result);
+                const safeStr = safeMcpStringify(result);
                 adapterLogger.logPerformance(`tool_${name}`, duration, true, {
                     resultSize: safeStr.length,
                 });
@@ -101,19 +106,7 @@ export class MCPAdapter {
                     } catch {}
                 }
 
-                // Ensure MCP-compatible shape
-                if (result && typeof result === 'object' && 'content' in result) {
-                    return result;
-                }
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: typeof result === 'string' ? result : safeStr,
-                        },
-                    ],
-                    isError: false,
-                } as any;
+                return ensureMcpToolResponse(result);
             }, undefined, errorHandlingOptions);
         } catch (error) {
             // Let servers map CoreError to protocol-specific errors
@@ -127,26 +120,6 @@ export class MCPAdapter {
 
     private async executeCoreToolWorkflow(name: string, args: Record<string, any>): Promise<SnapshotWorkflowResult> {
         return this.toolExecutor.execute(this.toolRouter, name, args);
-    }
-
-    private formatMcpToolWorkflowResult(result: SnapshotWorkflowResult) {
-        if ('text' in result) {
-            return { content: [{ type: 'text', text: result.text }], isError: result.isError === true };
-        }
-        return { content: [{ type: 'text', text: JSON.stringify(result.payload, null, 2) }], isError: result.isError === true };
-    }
-
-    private normalizeToolCall(
-        nameOrRequest: string | { name: string; arguments?: Record<string, any> },
-        arguments_: Record<string, any>
-    ): { name: string; args: Record<string, any> } {
-        if (typeof nameOrRequest === 'string') {
-            return { name: nameOrRequest, args: arguments_ || {} };
-        }
-        if (nameOrRequest && typeof nameOrRequest === 'object' && 'name' in nameOrRequest) {
-            return { name: String(nameOrRequest.name), args: nameOrRequest.arguments || {} };
-        }
-        return { name: String(nameOrRequest), args: arguments_ || {} };
     }
 
     private errorHandlingOptionsForTool(name: string, arguments_: Record<string, any>): Partial<RecoveryOptions> | undefined {
@@ -179,37 +152,6 @@ export class MCPAdapter {
      */
     async executeTool(request: { name: string; arguments: Record<string, any> }): Promise<any> {
         return await this.handleToolCall(request.name, request.arguments);
-    }
-
-    /**
-     * Sanitize arguments for logging
-     */
-    private sanitizeForLogging(args: any): any {
-        if (!args || typeof args !== 'object') return args;
-
-        const sanitized = { ...args };
-        const sensitiveFields = ['password', 'token', 'secret', 'key', 'authorization'];
-
-        for (const field of sensitiveFields) {
-            if (sanitized[field]) {
-                sanitized[field] = '[REDACTED]';
-            }
-        }
-
-        return sanitized;
-    }
-
-    private safeStringify(value: any): string {
-        try {
-            const serialized = JSON.stringify(value);
-            return typeof serialized === 'string' ? serialized : '';
-        } catch {
-            try {
-                return String(value ?? '');
-            } catch {
-                return '';
-            }
-        }
     }
 
     /**

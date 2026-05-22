@@ -1,6 +1,7 @@
 import type { ToolAdapter, ToolExecutor } from '../core/tools/executor.js';
 import { ToolExecutor as DefaultToolExecutor } from '../core/tools/executor.js';
 import { resolveToolExecutionPolicy } from '../core/tools/execution-policy.js';
+export { isMcpToolResultSuccess } from './tool-result.js';
 
 export interface McpServerToolCallOptions {
     timeout?: boolean;
@@ -33,13 +34,4 @@ export class McpServerToolCallExecutor {
             ),
         ]);
     }
-}
-
-export function isMcpToolResultSuccess(result: unknown): boolean {
-    return !(
-        result &&
-        typeof result === 'object' &&
-        'isError' in result &&
-        (result as { isError?: unknown }).isError === true
-    );
 }
