@@ -53,6 +53,8 @@ function envelopeForThrownError(err: unknown): { code: string; message: string; 
 export class HTTPServer {
     private coreAnalyzer!: CodeAnalyzer;
     private httpAdapter!: HTTPAdapter;
+    private toolRouter!: ToolWorkflowRouter;
+    private toolExecutor!: ToolExecutor;
     private config: HTTPServerConfig;
     private serverConfig: ServerConfig;
     private server: any = null;
@@ -87,13 +89,15 @@ export class HTTPServer {
 
         await this.coreAnalyzer.initialize();
 
-        // Create HTTP adapter
+        // Create HTTP adapter and reusable core workflow executor
         this.httpAdapter = new HTTPAdapter(this.coreAnalyzer, {
             enableCors: this.config.enableCors,
             enableOpenAPI: this.config.enableOpenAPI,
             maxResults: 100,
             timeout: 30000,
         });
+        this.toolRouter = new ToolWorkflowRouter(this.coreAnalyzer);
+        this.toolExecutor = new ToolExecutor();
 
         if (!process.env.SILENT_MODE) {
             console.log(`[HTTP Server] Core analyzer and HTTP adapter initialized`);
@@ -1251,9 +1255,7 @@ export class HTTPServer {
     // ===== PRIVATE HELPERS =====
 
     private async executeToolWorkflow(name: string, args: Record<string, any>): Promise<SnapshotWorkflowResult> {
-        const router = new ToolWorkflowRouter(this.coreAnalyzer);
-        const executor = new ToolExecutor();
-        return executor.execute(router, name, args);
+        return this.toolExecutor.execute(this.toolRouter, name, args);
     }
 
     private toolWorkflowPayload(result: SnapshotWorkflowResult, fallback: any = {}): any {
