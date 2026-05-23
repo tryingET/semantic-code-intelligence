@@ -6,6 +6,7 @@
  */
 
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
+import { isCoreError } from '../core/errors.js';
 import { fileLogger, mcpLogger } from './file-logger.js';
 
 export interface ErrorContext {
@@ -312,6 +313,12 @@ export class ErrorHandler {
     }
 
     private mapErrorToMcpCode(error: Error): ErrorCode {
+        if (isCoreError(error)) {
+            if (error.code === 'UnknownTool') return ErrorCode.MethodNotFound;
+            if (error.code === 'InvalidParams') return ErrorCode.InvalidParams;
+            return ErrorCode.InternalError;
+        }
+
         if (error.message.includes('timeout')) {
             return ErrorCode.RequestTimeout;
         }
@@ -324,7 +331,7 @@ export class ErrorHandler {
             return ErrorCode.InvalidParams;
         }
 
-        if (error.message.includes('not found')) {
+        if (error.message.includes('not found') || error.message.includes('Unknown tool')) {
             return ErrorCode.MethodNotFound;
         }
 

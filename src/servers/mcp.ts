@@ -17,12 +17,14 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ErrorCode, ListToolsRequestSchema, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { serve } from 'bun';
+import { toMcpError } from '../adapters/error-mapper.js';
 import { MCPAdapter } from '../adapters/mcp-adapter.js';
 import { createDefaultCoreConfig } from '../adapters/utils.js';
+import { isCoreError } from '../core/errors.js';
 import { createCodeAnalyzer } from '../core/index';
 import type { CodeAnalyzer } from '../core/unified-analyzer';
 import { metricsRegistry, recordToolEnd, recordToolStart } from '../instrumentation/metrics.js';
-import { isMcpToolResultSuccess } from '../mcp/tool-call-executor.js';
+import { isMcpToolResultSuccess } from '../mcp/tool-result.js';
 
 export class MCPServer {
     private server: Server;
@@ -70,7 +72,7 @@ export class MCPServer {
             try {
                 const t0 = Date.now();
                 recordToolStart('mcp_stdio');
-                const result = await this.mcpAdapter.handleToolCall(name, args || {});
+                const result = await this.mcpAdapter.handleValidatedToolCall(name, args || {});
                 try {
                     recordToolEnd('mcp_stdio', String(name || 'unknown'), Date.now() - t0, isMcpToolResultSuccess(result));
                 } catch {}
@@ -80,6 +82,9 @@ export class MCPServer {
                     recordToolEnd('mcp_stdio', String(name || 'unknown'), 0, false);
                 } catch {}
                 console.error(`Tool call failed: ${name}`, error);
+                if (isCoreError(error) || error instanceof McpError) {
+                    throw toMcpError(error);
+                }
                 throw new McpError(
                     ErrorCode.InternalError,
                     `Tool ${name} failed: ${error instanceof Error ? error.message : String(error)}`

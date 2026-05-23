@@ -43,7 +43,7 @@ export class ToolExecutor {
         return this.registry.list().find((t) => t.name === name);
     }
 
-    async execute(adapter: ToolAdapter, name: string, args: Record<string, any>): Promise<any> {
+    validate(name: string, args: Record<string, any>): void {
         const spec = this.getSpec(name);
         if (!spec) {
             throw new CoreError('UnknownTool', `Unknown tool: ${name}`);
@@ -59,6 +59,10 @@ export class ToolExecutor {
                 );
             }
         }
+    }
+
+    async execute(adapter: ToolAdapter, name: string, args: Record<string, any>): Promise<any> {
+        this.validate(name, args || {});
         return adapter.handleToolCall(name, args || {});
     }
 

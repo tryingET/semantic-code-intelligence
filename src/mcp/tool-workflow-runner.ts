@@ -6,7 +6,7 @@ import type { WorkflowCoreAnalyzer } from '../core/workflows/types.js';
 import type { RecoveryOptions } from './error-handler.js';
 import { formatMcpWorkflowResult } from './tool-result.js';
 
-type ToolExecutionDelegate = Pick<ToolExecutor, 'execute' | 'getSpec'>;
+type ToolExecutionDelegate = Pick<ToolExecutor, 'execute' | 'getSpec'> & { validate?: ToolExecutor['validate'] };
 
 export interface McpToolWorkflowRunnerConfig {
     maxResults?: number | (() => number);
@@ -28,6 +28,10 @@ export class McpToolWorkflowRunner {
                 maxResults: () => this.getMaxResults(),
             });
         this.toolExecutor = config.toolExecutor ?? new DefaultToolExecutor();
+    }
+
+    validate(name: string, args: Record<string, any>): void {
+        this.toolExecutor.validate?.(name, args || {});
     }
 
     async execute(name: string, args: Record<string, any>) {

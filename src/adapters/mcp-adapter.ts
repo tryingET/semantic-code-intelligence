@@ -62,41 +62,14 @@ export class MCPAdapter {
     }
 
     /**
-     * Handle MCP tool call with enhanced error handling
+     * Handle MCP tool call with enhanced error handling.
+     *
+     * Direct adapter callers receive MCP tool-result error payloads for tool failures.
      */
     async handleToolCall(nameOrRequest: McpToolCallInput, arguments_: Record<string, any> = {}): Promise<any> {
         const { name, args } = normalizeMcpToolCall(nameOrRequest, arguments_);
         try {
-            const errorHandlingOptions = this.toolRunner.errorHandlingOptionsForTool(name, args);
-
-            return await withMcpErrorHandling('MCPAdapter', `tool_${name}`, async () => {
-                adapterLogger.debug(`Handling tool call: ${name}`, {
-                    args: sanitizeMcpLogArgs(args),
-                });
-
-                const startTime = Date.now();
-                let result: any;
-                try {
-                    result = await this.toolRunner.execute(name, args);
-                } catch (error) {
-                    return handleAdapterError(error, 'mcp');
-                }
-
-                const duration = Date.now() - startTime;
-                const safeStr = safeMcpStringify(result);
-                adapterLogger.logPerformance(`tool_${name}`, duration, true, {
-                    resultSize: safeStr.length,
-                });
-                if (process.env.DEBUG && !process.env.SILENT_MODE) {
-                    try {
-                        adapterLogger.debug('tool result keys', {
-                            keys: typeof result === 'object' && result ? Object.keys(result as any) : typeof result,
-                        });
-                    } catch {}
-                }
-
-                return ensureMcpToolResponse(result);
-            }, undefined, errorHandlingOptions);
+            return await this.handleToolCallWithMcpErrors(name, args, { convertValidationErrorsToResult: true });
         } catch (error) {
             // Let servers map CoreError to protocol-specific errors
             if (error instanceof CoreError) {
@@ -107,6 +80,61 @@ export class MCPAdapter {
         }
     }
 
+    /**
+     * Handle MCP tool calls for real MCP servers.
+     *
+     * Validation failures remain protocol errors so transports can emit JSON-RPC error envelopes.
+     */
+    async handleValidatedToolCall(nameOrRequest: McpToolCallInput, arguments_: Record<string, any> = {}): Promise<any> {
+        const { name, args } = normalizeMcpToolCall(nameOrRequest, arguments_);
+        return await this.handleToolCallWithMcpErrors(name, args, { convertValidationErrorsToResult: false });
+    }
+
+    private async handleToolCallWithMcpErrors(
+        name: string,
+        args: Record<string, any>,
+        options: { convertValidationErrorsToResult: boolean }
+    ): Promise<any> {
+        const errorHandlingOptions = this.toolRunner.errorHandlingOptionsForTool(name, args);
+
+        return await withMcpErrorHandling('MCPAdapter', `tool_${name}`, async () => {
+            adapterLogger.debug(`Handling tool call: ${name}`, {
+                args: sanitizeMcpLogArgs(args),
+            });
+
+            try {
+                this.toolRunner.validate(name, args);
+            } catch (error) {
+                if (options.convertValidationErrorsToResult) {
+                    return handleAdapterError(error, 'mcp');
+                }
+                throw error;
+            }
+
+            const startTime = Date.now();
+            let result: any;
+            try {
+                result = await this.toolRunner.execute(name, args);
+            } catch (error) {
+                return handleAdapterError(error, 'mcp');
+            }
+
+            const duration = Date.now() - startTime;
+            const safeStr = safeMcpStringify(result);
+            adapterLogger.logPerformance(`tool_${name}`, duration, true, {
+                resultSize: safeStr.length,
+            });
+            if (process.env.DEBUG && !process.env.SILENT_MODE) {
+                try {
+                    adapterLogger.debug('tool result keys', {
+                        keys: typeof result === 'object' && result ? Object.keys(result as any) : typeof result,
+                    });
+                } catch {}
+            }
+
+            return ensureMcpToolResponse(result);
+        }, undefined, errorHandlingOptions);
+    }
 
     /**
      * Initialize the MCP adapter

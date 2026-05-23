@@ -35,7 +35,7 @@ import { CoreError, isCoreError } from '../core/errors.js';
 import { createCodeAnalyzer } from '../core/index';
 import { overlayStore } from '../core/overlay-store.js';
 import type { CodeAnalyzer } from '../core/unified-analyzer';
-import { isMcpToolResultSuccess, McpServerToolCallExecutor } from '../mcp/tool-call-executor.js';
+import { isMcpToolResultSuccess } from '../mcp/tool-result.js';
 import { metricsRegistry, recordToolEnd, recordToolStart } from '../instrumentation/metrics.js';
 import { registerCommonPrompts, registerCommonResources } from './mcp-shared.js';
 
@@ -180,7 +180,6 @@ async function createMcpServer(desiredSid?: string): Promise<SessionRecord> {
 
     // Create adapter and low-level server with handlers
     const adapter = new MCPAdapter(analyzer);
-    const executor = new McpServerToolCallExecutor();
     const server = new Server(
         { name: 'semantic-code-intelligence', version: '1.0.0' },
         { capabilities: { tools: {}, resources: {}, prompts: {} } }
@@ -196,7 +195,7 @@ async function createMcpServer(desiredSid?: string): Promise<SessionRecord> {
             const sid = transport.sessionId || 'unknown';
             mcpEvents.emit('toolCall', { sessionId: sid, name, args, ts: Date.now() });
             recordToolStart('mcp_http');
-            const out = await executor.execute(adapter, name, (args || {}) as Record<string, any>);
+            const out = await adapter.handleValidatedToolCall(name, (args || {}) as Record<string, any>);
             try {
                 recordToolEnd('mcp_http', String(name || 'unknown'), Date.now() - t0, isMcpToolResultSuccess(out));
             } catch {}
