@@ -24,6 +24,53 @@ describe('McpToolWorkflowRunner', () => {
         expect(result.isError).toBe(false);
     });
 
+    test('ensures the analyzer is initialized before validated execution', async () => {
+        const events: string[] = [];
+        const runner = new McpToolWorkflowRunner(
+            {
+                initialize: async () => {
+                    events.push('initialize');
+                },
+            } as any,
+            {
+                toolRouter: { handleToolCall: async () => ({}) },
+                toolExecutor: {
+                    getSpec: () => undefined,
+                    execute: async () => {
+                        events.push('execute');
+                        return { payload: { ok: true }, isError: false };
+                    },
+                },
+            }
+        );
+
+        const result = await runner.execute('get_snapshot', {});
+
+        expect(events).toEqual(['initialize', 'execute']);
+        expect(JSON.parse(result.content[0].text)).toEqual({ ok: true });
+    });
+
+    test('preserves best-effort initialization behavior when initialization fails', async () => {
+        const runner = new McpToolWorkflowRunner(
+            {
+                initialize: async () => {
+                    throw new Error('already initializing elsewhere');
+                },
+            } as any,
+            {
+                toolRouter: { handleToolCall: async () => ({}) },
+                toolExecutor: {
+                    getSpec: () => undefined,
+                    execute: async () => ({ payload: { ok: true }, isError: false }),
+                },
+            }
+        );
+
+        const result = await runner.execute('get_snapshot', {});
+
+        expect(JSON.parse(result.content[0].text)).toEqual({ ok: true });
+    });
+
     test('derives MCP recovery options from registry execution policy', () => {
         const runner = new McpToolWorkflowRunner({} as any);
 

@@ -31,6 +31,7 @@ export class McpToolWorkflowRunner {
     }
 
     async execute(name: string, args: Record<string, any>) {
+        await this.ensureCoreAnalyzerReady();
         return formatMcpWorkflowResult(await this.toolExecutor.execute(this.toolRouter, name, args));
     }
 
@@ -42,6 +43,12 @@ export class McpToolWorkflowRunner {
             timeoutMs: policy.timeoutMs,
             ...(policy.disableRetries ? { maxRetries: 0 } : {}),
         } satisfies Partial<RecoveryOptions>;
+    }
+
+    private async ensureCoreAnalyzerReady(): Promise<void> {
+        try {
+            await (this.coreAnalyzer as any)?.initialize?.();
+        } catch {}
     }
 
     private getMaxResults(): number {

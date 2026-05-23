@@ -74,11 +74,6 @@ export class MCPAdapter {
                     args: sanitizeMcpLogArgs(args),
                 });
 
-                // Ensure analyzer is ready before routing any core requests
-                try {
-                    await (this.coreAnalyzer as any)?.initialize?.();
-                } catch {}
-
                 const startTime = Date.now();
                 let result: any;
                 try {
