@@ -11,22 +11,15 @@ process.env.STDIO_MODE = 'true';
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { CallToolRequestSchema, ErrorCode, ListToolsRequestSchema, McpError } from '@modelcontextprotocol/sdk/types.js';
+import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 
 import type { MCPAdapter } from '../adapters/mcp-adapter.js';
-import { createDefaultCoreConfig } from '../adapters/utils.js';
-import { createCodeAnalyzer } from '../core/index';
 import type { CodeAnalyzer } from '../core/unified-analyzer';
-import { ConnectionManager, defaultConnectionManager } from '../mcp/connection-manager.js';
-import {
-    createInternalError,
-    createValidationError,
-    type ErrorContext,
-    globalErrorHandler,
-    withMcpErrorHandling,
-} from '../mcp/error-handler.js';
+import { ConnectionManager } from '../mcp/connection-manager.js';
+import { createInternalError, type ErrorContext, globalErrorHandler, withMcpErrorHandling } from '../mcp/error-handler.js';
 // Import enhanced error handling and logging
-import { fileLogger, mcpLogger } from '../mcp/file-logger.js';
+import { mcpLogger } from '../mcp/file-logger.js';
+import { safeMcpStringify, sanitizeMcpLogArgs } from '../mcp/tool-result.js';
 
 export class EnhancedMCPServer {
     private server: Server;
@@ -223,7 +216,7 @@ export class EnhancedMCPServer {
                     const { name, arguments: args } = request.params;
 
                     mcpLogger.debug(`Executing tool: ${name}`, {
-                        args: this.sanitizeArgs(args),
+                        args: sanitizeMcpLogArgs(args),
                         requestId: context.requestId,
                     });
 
@@ -234,8 +227,8 @@ export class EnhancedMCPServer {
 
                     mcpLogger.logPerformance(`tool_${name}`, duration, true, {
                         requestId: context.requestId,
-                        argsSize: JSON.stringify(args || {}).length,
-                        resultSize: JSON.stringify(result).length,
+                        argsSize: safeMcpStringify(args || {}).length,
+                        resultSize: safeMcpStringify(result).length,
                     });
 
                     this.connectionManager.recordMessage('outgoing', result);
@@ -425,24 +418,6 @@ export class EnhancedMCPServer {
 
         const message = error.message.toLowerCase();
         return criticalPatterns.some((pattern) => message.includes(pattern));
-    }
-
-    /**
-     * Sanitize arguments for logging (remove sensitive data)
-     */
-    private sanitizeArgs(args: any): any {
-        if (!args || typeof args !== 'object') return args;
-
-        const sanitized = { ...args };
-        const sensitiveFields = ['password', 'token', 'secret', 'key', 'authorization'];
-
-        for (const field of sensitiveFields) {
-            if (sanitized[field]) {
-                sanitized[field] = '[REDACTED]';
-            }
-        }
-
-        return sanitized;
     }
 
     /**
