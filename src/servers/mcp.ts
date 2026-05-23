@@ -17,13 +17,12 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ErrorCode, ListToolsRequestSchema, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { serve } from 'bun';
-import { toMcpError } from '../adapters/error-mapper.js';
 import { MCPAdapter } from '../adapters/mcp-adapter.js';
 import { createDefaultCoreConfig } from '../adapters/utils.js';
-import { isCoreError } from '../core/errors.js';
 import { createCodeAnalyzer } from '../core/index';
 import type { CodeAnalyzer } from '../core/unified-analyzer';
 import { metricsRegistry, recordToolEnd, recordToolStart } from '../instrumentation/metrics.js';
+import { toMcpToolCallError } from '../mcp/tool-call-error.js';
 import { isMcpToolResultSuccess } from '../mcp/tool-result.js';
 
 export class MCPServer {
@@ -82,13 +81,7 @@ export class MCPServer {
                     recordToolEnd('mcp_stdio', String(name || 'unknown'), 0, false);
                 } catch {}
                 console.error(`Tool call failed: ${name}`, error);
-                if (isCoreError(error) || error instanceof McpError) {
-                    throw toMcpError(error);
-                }
-                throw new McpError(
-                    ErrorCode.InternalError,
-                    `Tool ${name} failed: ${error instanceof Error ? error.message : String(error)}`
-                );
+                throw toMcpToolCallError(name, error);
             }
         });
     }

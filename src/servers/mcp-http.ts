@@ -31,10 +31,11 @@ import { toMcpError } from '../adapters/error-mapper.js';
 import { MCPAdapter } from '../adapters/mcp-adapter.js';
 import { createDefaultCoreConfig } from '../adapters/utils.js';
 import { getEnvironmentConfig } from '../core/config/server-config.js';
-import { CoreError, isCoreError } from '../core/errors.js';
+import { CoreError } from '../core/errors.js';
 import { createCodeAnalyzer } from '../core/index';
 import { overlayStore } from '../core/overlay-store.js';
 import type { CodeAnalyzer } from '../core/unified-analyzer';
+import { toMcpToolCallError } from '../mcp/tool-call-error.js';
 import { isMcpToolResultSuccess } from '../mcp/tool-result.js';
 import { metricsRegistry, recordToolEnd, recordToolStart } from '../instrumentation/metrics.js';
 import { registerCommonPrompts, registerCommonResources } from './mcp-shared.js';
@@ -211,13 +212,7 @@ async function createMcpServer(desiredSid?: string): Promise<SessionRecord> {
             try {
                 recordToolEnd('mcp_http', String(name || 'unknown'), 0, false);
             } catch {}
-            if (isCoreError(error) || error instanceof McpError) {
-                throw toMcpError(error);
-            }
-            throw new McpError(
-                ErrorCode.InternalError,
-                `Tool ${name} failed: ${error instanceof Error ? error.message : String(error)}`
-            );
+            throw toMcpToolCallError(name, error);
         }
     });
 
