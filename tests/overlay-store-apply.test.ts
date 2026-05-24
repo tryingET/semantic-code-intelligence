@@ -227,4 +227,45 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
             rmSync(abs, { force: true });
         }
     }, 30000);
+
+    test('fails closed when workspace changes after checks but before apply', async () => {
+        const rel = `.tmp-overlay-apply-base-${Date.now()}-${Math.random().toString(16).slice(2)}.txt`;
+        const abs = path.join(process.cwd(), rel);
+        try {
+            await fs.writeFile(abs, 'one\n', 'utf8');
+            const snap = overlayStore.createSnapshot(false);
+            const patch = `diff --git a/${rel} b/${rel}\n--- a/${rel}\n+++ b/${rel}\n@@ -1 +1 @@\n-one\n+two\n`;
+            expect(overlayStore.stagePatch(snap.id, patch).accepted).toBe(true);
+            const checks = await overlayStore.runChecks(snap.id, ['true'], 30);
+            expect(checks.ok).toBe(true);
+
+            await fs.writeFile(abs, 'workspace changed\n', 'utf8');
+            const applied = await overlayStore.applyToWorkingTree(snap.id, { check: false, reverse: false });
+            expect(applied.ok).toBe(false);
+            expect(applied.output).toContain('Workspace changed since snapshot creation before apply');
+            expect(await fs.readFile(abs, 'utf8')).toBe('workspace changed\n');
+        } finally {
+            rmSync(abs, { force: true });
+        }
+    }, 30000);
+
+    test('reverse apply preflights current touched-file content before rollback', async () => {
+        const rel = `.tmp-overlay-reverse-preflight-${Date.now()}-${Math.random().toString(16).slice(2)}.txt`;
+        const abs = path.join(process.cwd(), rel);
+        try {
+            await fs.writeFile(abs, 'one\n', 'utf8');
+            const snap = overlayStore.createSnapshot(false);
+            const patch = `diff --git a/${rel} b/${rel}\n--- a/${rel}\n+++ b/${rel}\n@@ -1 +1 @@\n-one\n+two\n`;
+            expect(overlayStore.stagePatch(snap.id, patch).accepted).toBe(true);
+            const applied = await overlayStore.applyToWorkingTree(snap.id, { check: false, reverse: false });
+            expect(applied.ok).toBe(true);
+
+            await fs.writeFile(abs, 'unexpected drift\n', 'utf8');
+            const reversed = await overlayStore.applyToWorkingTree(snap.id, { check: false, reverse: true });
+            expect(reversed.ok).toBe(false);
+            expect(await fs.readFile(abs, 'utf8')).toBe('unexpected drift\n');
+        } finally {
+            rmSync(abs, { force: true });
+        }
+    }, 30000);
 });

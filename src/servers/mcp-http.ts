@@ -313,7 +313,6 @@ app.post('/mcp', async (req, res) => {
                 try {
                     res.setHeader('Mcp-Session-Id', preSid);
                 } catch {}
-                sessions[preSid] = record;
             } catch (e) {
                 // Log detailed error to help diagnose 500s on initialize
                 // eslint-disable-next-line no-console

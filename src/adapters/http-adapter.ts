@@ -2263,10 +2263,8 @@ export class HTTPAdapter {
      * Handle POST /api/v1/stream/definition - Streaming definition search via SSE
      */
     private async handleStreamDefinition(request: HTTPRequest): Promise<HTTPResponse> {
-        console.log('[DEBUG] handleStreamDefinition called with:', request.url);
         try {
             const body = strictJsonParse(request.body || '{}');
-            console.log('[DEBUG] Body parsed:', body);
             validateRequired(body, ['identifier']);
 
             // Create definition search request

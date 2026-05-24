@@ -5,6 +5,17 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { overlayStore } from '../src/core/overlay-store.js';
 
+async function withUnsafeCheckShell<T>(fn: () => Promise<T>): Promise<T> {
+    const previous = process.env.SCI_ALLOW_UNSAFE_CHECK_COMMANDS;
+    process.env.SCI_ALLOW_UNSAFE_CHECK_COMMANDS = '1';
+    try {
+        return await fn();
+    } finally {
+        if (previous === undefined) delete process.env.SCI_ALLOW_UNSAFE_CHECK_COMMANDS;
+        else process.env.SCI_ALLOW_UNSAFE_CHECK_COMMANDS = previous;
+    }
+}
+
 describe('OverlayStore runChecks evidence receipts', () => {
     test('preferExisting reuses only clean base snapshots, not staged preview snapshots', async () => {
         const clean = overlayStore.createSnapshot(false);
@@ -102,17 +113,19 @@ describe('OverlayStore runChecks evidence receipts', () => {
     }, 30000);
 
     test('runChecks command side effects do not mutate reusable materialized snapshots', async () => {
-        const snap = overlayStore.createSnapshot(false);
-        const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
-        expect(typeof ensure).toBe('function');
+        await withUnsafeCheckShell(async () => {
+            const snap = overlayStore.createSnapshot(false);
+            const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
+            expect(typeof ensure).toBe('function');
 
-        const beforeDir = await ensure(snap.id);
-        const result = await overlayStore.runChecks(snap.id, ['bash -lc "echo leaked > .reuse-leak"'], 30);
-        const afterDir = await ensure(snap.id);
+            const beforeDir = await ensure(snap.id);
+            const result = await overlayStore.runChecks(snap.id, ['bash -lc "echo leaked > .reuse-leak"'], 30);
+            const afterDir = await ensure(snap.id);
 
-        expect(result.ok).toBe(true);
-        expect(afterDir).toBe(beforeDir);
-        expect(existsSync(path.join(afterDir, '.reuse-leak'))).toBe(false);
+            expect(result.ok).toBe(true);
+            expect(afterDir).toBe(beforeDir);
+            expect(existsSync(path.join(afterDir, '.reuse-leak'))).toBe(false);
+        });
     });
 
     test('cleanup removes stale disposable check workspaces', async () => {
@@ -228,42 +241,48 @@ describe('OverlayStore runChecks evidence receipts', () => {
         }
     }, 30000);
 
-    test('runs shell-style quoted commands and records receipts', async () => {
-        const snap = overlayStore.createSnapshot(false);
-        const result = await overlayStore.runChecks(snap.id, ['bash -lc "exit 0"'], 30);
+    test('runs explicitly enabled shell-style quoted commands and records receipts', async () => {
+        await withUnsafeCheckShell(async () => {
+            const snap = overlayStore.createSnapshot(false);
+            const result = await overlayStore.runChecks(snap.id, ['bash -lc "exit 0"'], 30);
 
-        expect(result.ok).toBe(true);
-        expect(result.commands[0]).toMatchObject({
-            command: 'bash -lc "exit 0"',
-            ok: true,
-            exitCode: 0,
-            timedOut: false,
+            expect(result.ok).toBe(true);
+            expect(result.commands[0]).toMatchObject({
+                command: 'bash -lc "exit 0"',
+                ok: true,
+                exitCode: 0,
+                timedOut: false,
+            });
         });
     });
 
     test('caps noisy command output while preserving failure receipts', async () => {
-        const snap = overlayStore.createSnapshot(false);
-        const result = await overlayStore.runChecks(snap.id, ['yes'], 1);
+        await withUnsafeCheckShell(async () => {
+            const snap = overlayStore.createSnapshot(false);
+            const result = await overlayStore.runChecks(snap.id, ['yes'], 1);
 
-        expect(result.ok).toBe(false);
-        expect(result.output).toContain('[output truncated at');
-        expect(Buffer.byteLength(result.output, 'utf8')).toBeLessThan(1024 * 1024 + 128);
-        expect(result.commands[0]).toMatchObject({ command: 'yes', ok: false, timedOut: true });
+            expect(result.ok).toBe(false);
+            expect(result.output).toContain('[output truncated at');
+            expect(Buffer.byteLength(result.output, 'utf8')).toBeLessThan(1024 * 1024 + 128);
+            expect(result.commands[0]).toMatchObject({ command: 'yes', ok: false, timedOut: true });
+        });
     }, 5000);
 
-    test('timeout kills shell descendant processes', async () => {
-        const marker = path.join(tmpdir(), `sci-runchecks-leak-${Date.now()}-${Math.random().toString(16).slice(2)}`);
-        try {
-            await rm(marker, { force: true });
-            const snap = overlayStore.createSnapshot(false);
-            const command = `bash -lc "sh -c 'sleep 2; echo leaked > ${JSON.stringify(marker)}' & wait"`;
-            const result = await overlayStore.runChecks(snap.id, [command], 1);
-            expect(result.ok).toBe(false);
-            expect(result.commands[0].timedOut).toBe(true);
-            await Bun.sleep(2500);
-            expect(existsSync(marker)).toBe(false);
-        } finally {
-            await rm(marker, { force: true });
-        }
+    test('timeout kills explicitly enabled shell descendant processes', async () => {
+        await withUnsafeCheckShell(async () => {
+            const marker = path.join(tmpdir(), `sci-runchecks-leak-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+            try {
+                await rm(marker, { force: true });
+                const snap = overlayStore.createSnapshot(false);
+                const command = `bash -lc "sh -c 'sleep 2; echo leaked > ${JSON.stringify(marker)}' & wait"`;
+                const result = await overlayStore.runChecks(snap.id, [command], 1);
+                expect(result.ok).toBe(false);
+                expect(result.commands[0].timedOut).toBe(true);
+                await Bun.sleep(2500);
+                expect(existsSync(marker)).toBe(false);
+            } finally {
+                await rm(marker, { force: true });
+            }
+        });
     }, 8000);
 });

@@ -47,32 +47,44 @@ export const DEFAULT_CONFIG: ServerConfig = {
 /**
  * Environment-based configuration overrides
  */
+function parseIntegerEnv(name: string, value: string): number {
+    if (!/^\d+$/.test(value.trim())) {
+        throw new Error(`Invalid numeric environment variable ${name}: ${value}`);
+    }
+    const parsed = Number(value);
+    if (!Number.isSafeInteger(parsed)) {
+        throw new Error(`Invalid numeric environment variable ${name}: ${value}`);
+    }
+    return parsed;
+}
+
 export function getConfig(): ServerConfig {
-    const config = { ...DEFAULT_CONFIG };
+    const config: ServerConfig = { ...DEFAULT_CONFIG, ports: { ...DEFAULT_CONFIG.ports } };
 
     // Allow environment variables to override defaults
     if (process.env.HTTP_API_PORT) {
-        config.ports.httpAPI = parseInt(process.env.HTTP_API_PORT);
+        config.ports.httpAPI = parseIntegerEnv('HTTP_API_PORT', process.env.HTTP_API_PORT);
     }
     if (process.env.MCP_HTTP_PORT) {
-        config.ports.mcpHTTP = parseInt(process.env.MCP_HTTP_PORT);
+        config.ports.mcpHTTP = parseIntegerEnv('MCP_HTTP_PORT', process.env.MCP_HTTP_PORT);
     }
     if (process.env.LSP_SERVER_PORT) {
-        config.ports.lspServer = parseInt(process.env.LSP_SERVER_PORT);
+        config.ports.lspServer = parseIntegerEnv('LSP_SERVER_PORT', process.env.LSP_SERVER_PORT);
     }
     if (process.env.LSP_TIMEOUT) {
-        config.timeout = parseInt(process.env.LSP_TIMEOUT);
+        config.timeout = parseIntegerEnv('LSP_TIMEOUT', process.env.LSP_TIMEOUT);
     }
     if (process.env.LSP_MAX_RETRIES) {
-        config.maxRetries = parseInt(process.env.LSP_MAX_RETRIES);
+        config.maxRetries = parseIntegerEnv('LSP_MAX_RETRIES', process.env.LSP_MAX_RETRIES);
     }
     if (process.env.LSP_CACHE_ENABLED) {
         config.cacheEnabled = process.env.LSP_CACHE_ENABLED === 'true';
     }
     if (process.env.LSP_CACHE_TTL) {
-        config.cacheTTL = parseInt(process.env.LSP_CACHE_TTL);
+        config.cacheTTL = parseIntegerEnv('LSP_CACHE_TTL', process.env.LSP_CACHE_TTL);
     }
 
+    validatePorts(config);
     return config;
 }
 
@@ -117,8 +129,8 @@ export function validatePorts(config: ServerConfig): void {
 
     // Check if ports are in valid range
     for (const port of ports) {
-        if (port < 1024 || port > 65535) {
-            throw new Error(`Invalid port number: ${port}. Must be between 1024 and 65535`);
+        if (!Number.isInteger(port) || port < 1024 || port > 65535) {
+            throw new Error(`Invalid port number: ${port}. Must be an integer between 1024 and 65535`);
         }
     }
 }

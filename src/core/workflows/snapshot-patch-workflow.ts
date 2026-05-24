@@ -1217,14 +1217,11 @@ export class SnapshotPatchWorkflowService {
   }> {
     const method = "git_diff_patch_id_and_reverse_check_vs_snapshot_overlay";
     try {
-      const ensure = (overlayStore as any).ensureMaterialized?.bind(
+      const existingDiff = (overlayStore as any).getExistingMaterializedDiffPath?.bind(
         overlayStore,
       );
-      const dir = ensure
-        ? await ensure(snapshot, { workspaceRoot: this.workspaceRoot })
-        : null;
-      const diffFile = dir
-        ? path.join(dir, "overlay.diff")
+      const diffFile = existingDiff
+        ? existingDiff(snapshot, { workspaceRoot: this.workspaceRoot })
         : path.resolve(
             this.workspaceRoot,
             ".ontology",

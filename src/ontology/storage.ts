@@ -462,6 +462,7 @@ export class SemanticGraphStorage implements StoragePort {
         if (this.dbPath === ':memory:') {
             throw new Error('BACKUP_NOT_SUPPORTED_FOR_MEMORY_DB');
         }
+        this.db.exec('PRAGMA wal_checkpoint(FULL)');
         fs.copyFileSync(this.dbPath, backupPath);
     }
 

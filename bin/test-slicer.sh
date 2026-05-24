@@ -56,6 +56,7 @@ DISCOVERY_DIRS=()
 if [[ -z "${SUITE_DIR}" ]]; then
   [[ -d tests ]] && DISCOVERY_DIRS+=(tests)
   [[ -d test ]] && DISCOVERY_DIRS+=(test)
+  [[ -d src ]] && DISCOVERY_DIRS+=(src)
   if [[ ${#DISCOVERY_DIRS[@]} -eq 0 ]]; then
     echo "No test directories found."
     exit 0

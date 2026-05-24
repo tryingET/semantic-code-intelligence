@@ -120,3 +120,6 @@ test-output.txt
 # Test temp files
 tests/fixtures/temp-*
 *.orig
+
+# Local/editor backup artifacts; intentional fixtures should use a non-.backup suffix.
+*.backup

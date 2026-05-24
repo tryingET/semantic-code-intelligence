@@ -21,9 +21,7 @@ export function createStorageAdapter(config: Layer4Config | undefined): StorageP
             return new InstrumentedStoragePort(new TripleStoreStorageAdapter());
         }
         default: {
-            // Fallback to sqlite to avoid crashing; callers can validate separately
-            const dbPath = config?.dbPath || '.semantic-graph/semantic-graph.db';
-            return new InstrumentedStoragePort(new SQLiteStorageAdapter(dbPath));
+            throw new Error(`Unsupported Layer 4 storage adapter: ${String(config?.adapter || adapter)}`);
         }
     }
 }

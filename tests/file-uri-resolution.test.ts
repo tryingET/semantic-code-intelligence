@@ -157,7 +157,7 @@ const grep = new AsyncEnhancedGrep();
 
         const checks = await callToolJson('run_checks', {
             snapshot,
-            commands: [`bash -lc ${JSON.stringify(`grep -q ${marker} async-grep.ts`)}`],
+            commands: ['grep -q configuredWorkspaceApplied async-grep.ts'],
             timeoutSec: 30,
         });
         expect(checks.ok).toBe(true);

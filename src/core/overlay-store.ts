@@ -43,6 +43,33 @@ export class OverlayStore {
         const env = process.env;
         return env.DOGFOOD_PROGRESS === '1' || env.PROGRESS_LOGS === '1';
     }
+
+    private assertSafeSnapshotStoragePath(base: string, target: string, label: string): void {
+        if (!fs.existsSync(target)) return;
+        const stat = fs.lstatSync(target);
+        if (stat.isSymbolicLink()) {
+            throw new Error(`${label} must not be a symlink`);
+        }
+        if (!stat.isDirectory()) {
+            throw new Error(`${label} must be a directory`);
+        }
+        const realBase = fs.realpathSync(base);
+        const realTarget = fs.realpathSync(target);
+        const relative = path.relative(realBase, realTarget);
+        if (relative.startsWith('..') || path.isAbsolute(relative)) {
+            throw new Error(`${label} must stay within the workspace`);
+        }
+    }
+
+    private assertSafeSnapshotStorageRoot(workspaceRoot?: string): string {
+        const base = this.resolveWorkspaceBase(workspaceRoot);
+        const ontologyDir = path.join(base, '.ontology');
+        const snapshotsDir = path.join(ontologyDir, 'snapshots');
+        this.assertSafeSnapshotStoragePath(base, ontologyDir, '.ontology');
+        this.assertSafeSnapshotStoragePath(base, snapshotsDir, '.ontology/snapshots');
+        return snapshotsDir;
+    }
+
     private async logProgress(id: string, msg: string): Promise<void> {
         if (!this.wantProgress()) return;
         try {
@@ -58,7 +85,7 @@ export class OverlayStore {
     }
 
     private snapshotsRoot(workspaceRoot?: string): string {
-        return path.join(this.resolveWorkspaceBase(workspaceRoot), '.ontology', 'snapshots');
+        return this.assertSafeSnapshotStorageRoot(workspaceRoot);
     }
 
     private snapshotDir(id: string, workspaceRoot?: string): string {
@@ -392,6 +419,19 @@ export class OverlayStore {
         return this.snapshotDir(snapshotId, snap.workspaceRoot);
     }
 
+    getExistingMaterializedDiffPath(snapshotId: string, opts: { workspaceRoot?: string } = {}): string | null {
+        const snap = this.ensureSnapshot(snapshotId, opts);
+        const dir = this.snapshotDir(snapshotId, snap.workspaceRoot);
+        const markerPath = path.join(dir, '.materialized');
+        const diffPath = path.join(dir, 'overlay.diff');
+        if (!fs.existsSync(markerPath) || !fs.existsSync(diffPath)) return null;
+        if (this.readMaterializedFingerprint(markerPath) !== this.snapshotDiffFingerprint(snap)) return null;
+        const markerStat = fs.lstatSync(markerPath);
+        const diffStat = fs.lstatSync(diffPath);
+        if (!markerStat.isFile() || !diffStat.isFile() || markerStat.isSymbolicLink() || diffStat.isSymbolicLink()) return null;
+        return diffPath;
+    }
+
     /** Clear all in-memory snapshots. Useful for test isolation. */
     clearAll(): void {
         this.snapshots.clear();
@@ -627,6 +667,112 @@ export class OverlayStore {
         return res.status === 0 ? String(res.stdout).trim() : null;
     }
 
+    private parseCheckCommand(command: string): string[] | null {
+        const input = String(command || '').trim();
+        if (!input) return null;
+        const words: string[] = [];
+        let current = '';
+        let quote: 'single' | 'double' | null = null;
+        for (let i = 0; i < input.length; i++) {
+            const ch = input[i];
+            if (ch === '\n' || ch === '\r' || ch === '\0') return null;
+            if (!quote && /\s/.test(ch)) {
+                if (current) {
+                    words.push(current);
+                    current = '';
+                }
+                continue;
+            }
+            if (!quote && ch === "'") {
+                quote = 'single';
+                continue;
+            }
+            if (!quote && ch === '"') {
+                quote = 'double';
+                continue;
+            }
+            if (quote === 'single' && ch === "'") {
+                quote = null;
+                continue;
+            }
+            if (quote === 'double' && ch === '"') {
+                quote = null;
+                continue;
+            }
+            if (ch === '\\') {
+                const next = input[i + 1];
+                if (next === undefined) return null;
+                current += next;
+                i++;
+                continue;
+            }
+            current += ch;
+        }
+        if (quote) return null;
+        if (current) words.push(current);
+        return words.length ? words : null;
+    }
+
+    private isAllowedCheckEnvKey(key: string): boolean {
+        return /^(BUN_JOBS|TIMEOUT|NODE_OPTIONS|CI|FORCE_COLOR|NO_COLOR|LANG|LC_[A-Z_]+)$/.test(key) ||
+            key.startsWith('BUN_') ||
+            key.startsWith('npm_config_');
+    }
+
+    private resolveCheckCommand(command: string): { ok: true; words: string[]; env: Record<string, string> } | { ok: false; message: string } {
+        const parsed = this.parseCheckCommand(command);
+        if (!parsed) return { ok: false, message: 'unsupported shell syntax' };
+        const env: Record<string, string> = {};
+        const words = [...parsed];
+        while (words.length > 1 && /^[A-Za-z_][A-Za-z0-9_]*=.*/.test(words[0])) {
+            const assignment = words.shift()!;
+            const index = assignment.indexOf('=');
+            const key = assignment.slice(0, index);
+            if (!this.isAllowedCheckEnvKey(key)) return { ok: false, message: `unsupported validation environment variable: ${key}` };
+            env[key] = assignment.slice(index + 1);
+        }
+        const executable = words[0];
+        const allowed = new Set(['true', 'false', 'bun', 'bunx', 'npm', 'pnpm', 'yarn', 'just', 'tsgo', 'tsc', 'biome', 'grep', 'rg', 'git']);
+        if (!allowed.has(executable)) {
+            return { ok: false, message: `unsupported validation command: ${executable}` };
+        }
+        if (executable === 'bun' && !['run', 'test', 'install'].includes(words[1] || '')) {
+            return { ok: false, message: `unsupported bun validation subcommand: ${words[1] || '<missing>'}` };
+        }
+        if ((executable === 'npm' || executable === 'pnpm' || executable === 'yarn') && (words[1] || '') !== 'run') {
+            return { ok: false, message: `unsupported ${executable} validation subcommand: ${words[1] || '<missing>'}` };
+        }
+        if (executable === 'bunx' && !['tsgo', '@biomejs/biome', 'biome'].includes(words[1] || '')) {
+            return { ok: false, message: `unsupported bunx validation tool: ${words[1] || '<missing>'}` };
+        }
+        if (executable === 'git') {
+            const subcommand = words[1] || '';
+            if (!['status', 'diff', 'apply', 'ls-files', 'rev-parse'].includes(subcommand)) {
+                return { ok: false, message: `unsupported git validation subcommand: ${subcommand || '<missing>'}` };
+            }
+        }
+        return { ok: true, words, env };
+    }
+
+    private checkCommandEnvironment(gitCeilingDirectory: string, extraEnv: Record<string, string> = {}): Record<string, string> {
+        const env: Record<string, string> = {};
+        const preserve = (key: string) => {
+            const value = process.env[key];
+            if (typeof value === 'string') env[key] = value;
+        };
+        for (const key of ['PATH', 'HOME', 'TMPDIR', 'TMP', 'TEMP', 'CI', 'FORCE_COLOR', 'NO_COLOR', 'BUN_INSTALL', 'BUN_JOBS', 'NODE_OPTIONS', 'XDG_CACHE_HOME', 'LANG']) {
+            preserve(key);
+        }
+        for (const [key, value] of Object.entries(process.env)) {
+            if (typeof value === 'string' && (key.startsWith('LC_') || key.startsWith('npm_config_') || key.startsWith('BUN_'))) {
+                env[key] = value;
+            }
+        }
+        Object.assign(env, extraEnv);
+        env.GIT_CEILING_DIRECTORIES = gitCeilingDirectory;
+        return env;
+    }
+
     private resolveWorkspaceBase(workspaceRoot?: string): string {
         if (workspaceRoot) {
             const abs = path.resolve(workspaceRoot);
@@ -658,13 +804,15 @@ export class OverlayStore {
         return path.resolve('.');
     }
 
-    private async ensureMaterialized(snapshotId: string, opts: { workspaceRoot?: string } = {}): Promise<string | null> {
+    private async ensureMaterialized(snapshotId: string, opts: { workspaceRoot?: string; allowCurrentMaterializedWithWorkspaceDrift?: boolean } = {}): Promise<string | null> {
         this.assertValidId(snapshotId);
         const snap = this.ensureSnapshot(snapshotId, opts);
-        return this.withMaterializeLock(snapshotId, snap.workspaceRoot, () => this.ensureMaterializedUnlocked(snapshotId));
+        return this.withMaterializeLock(snapshotId, snap.workspaceRoot, () =>
+            this.ensureMaterializedUnlocked(snapshotId, !!opts.allowCurrentMaterializedWithWorkspaceDrift)
+        );
     }
 
-    private async ensureMaterializedUnlocked(snapshotId: string): Promise<string | null> {
+    private async ensureMaterializedUnlocked(snapshotId: string, allowCurrentMaterializedWithWorkspaceDrift = false): Promise<string | null> {
         const snap = this.ensureSnapshot(snapshotId);
         const snapsRoot = this.snapshotsRoot(snap.workspaceRoot);
         const dir = path.join(snapsRoot, snapshotId);
@@ -676,10 +824,11 @@ export class OverlayStore {
         const currentFingerprint = fs.existsSync(materializedMarker) ? this.readMaterializedFingerprint(materializedMarker) : null;
         const touched = snap?.touchedFiles ? Array.from(snap.touchedFiles) : [];
 
-        if (currentFingerprint === desiredFingerprint) return dir;
+        if (currentFingerprint === desiredFingerprint && allowCurrentMaterializedWithWorkspaceDrift) return dir;
         if (snap?.baseFingerprint && this.workspaceBaseFingerprint(snap.workspaceRoot) !== snap.baseFingerprint) {
             throw new Error('Workspace changed since snapshot creation before materialization; create a fresh snapshot');
         }
+        if (currentFingerprint === desiredFingerprint) return dir;
 
         const tempDir = path.join(snapsRoot, `.${snapshotId}.${process.pid}.${Date.now()}.tmp`);
         const oldDir = path.join(snapsRoot, `.${snapshotId}.${process.pid}.${Date.now()}.old`);
@@ -924,14 +1073,25 @@ export class OverlayStore {
             const cmd = String(rawCmd);
             await this.logProgress(snapshotId, `run:${cmd}:start`);
             appendOutput(`$ ${cmd}\n`);
-            const [bin, ...args] = cmd.split(' ');
+            const allowUnsafeShell = process.env.SCI_ALLOW_UNSAFE_CHECK_COMMANDS === '1';
+            const resolvedCommand = allowUnsafeShell ? null : this.resolveCheckCommand(cmd);
+            if (resolvedCommand && !resolvedCommand.ok) {
+                const message = `Rejected check command: ${resolvedCommand.message}\n`;
+                appendOutput(message);
+                commandResults.push({ command: cmd, ok: false, elapsedMs: 0, exitCode: null, timedOut: false });
+                return { ok: false, output: output.join(''), elapsedMs: Date.now() - start, commands: commandResults };
+            }
+            const bashPath = allowUnsafeShell ? this.which('bash') : null;
+            if (allowUnsafeShell && !bashPath) {
+                appendOutput('Rejected check command: unsafe shell mode requires bash\n');
+                commandResults.push({ command: cmd, ok: false, elapsedMs: 0, exitCode: null, timedOut: false });
+                return { ok: false, output: output.join(''), elapsedMs: Date.now() - start, commands: commandResults };
+            }
+            const [bin, ...args] = resolvedCommand?.ok ? resolvedCommand.words : [bashPath || 'bash', '-lc', cmd];
             const commandStart = Date.now();
             const result = await new Promise<{ ok: boolean; exitCode: number | null; timedOut: boolean }>((resolve) => {
-                const useShell = this.which('bash');
-                const env = { ...process.env, GIT_CEILING_DIRECTORIES: this.snapshotsRoot(this.ensureSnapshot(snapshotId).workspaceRoot) };
-                const child = useShell
-                    ? spawn('bash', ['-lc', cmd], { stdio: ['ignore', 'pipe', 'pipe'], cwd, env, detached: true })
-                    : spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd, env, detached: true });
+                const env = this.checkCommandEnvironment(this.snapshotsRoot(this.ensureSnapshot(snapshotId).workspaceRoot), resolvedCommand?.ok ? resolvedCommand.env : {});
+                const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd, env, detached: true });
                 let settled = false;
                 let timer: ReturnType<typeof setTimeout>;
                 const finish = (value: { ok: boolean; exitCode: number | null; timedOut: boolean }) => {
@@ -1006,9 +1166,21 @@ export class OverlayStore {
         const start = Date.now();
         const snap = this.ensureSnapshot(snapshotId, { workspaceRoot: requestedWorkspaceRoot });
         const workspaceRoot = this.resolveWorkspaceBase(snap.workspaceRoot);
-        const dir = (await this.ensureMaterialized(snapshotId)) || workspaceRoot;
+        const dir = (await this.ensureMaterialized(snapshotId, { allowCurrentMaterializedWithWorkspaceDrift: true })) || workspaceRoot;
         const diffFile = path.join(dir, 'overlay.diff');
         let output = '';
+        if (!reverse && snap?.baseFingerprint && this.workspaceBaseFingerprint(snap.workspaceRoot) !== snap.baseFingerprint) {
+            const elapsedMs = Date.now() - start;
+            const message = 'Workspace changed since snapshot creation before apply; create a fresh snapshot';
+            this.recordLastApply(snapshotId, {
+                ok: false,
+                elapsedMs,
+                outputTail: message,
+                args: { check, reverse },
+                at: Date.now(),
+            });
+            return { ok: false, output: message, elapsedMs };
+        }
         // Validate caller-controlled diff paths before invoking apply tools. Non-check apply
         // may need parent directories for newly added nested files; check/dry-run must not
         // create workspace directories before proving preview-only behavior.
@@ -1049,6 +1221,30 @@ export class OverlayStore {
                 output: message,
                 elapsedMs,
             };
+        }
+        if (reverse && !check) {
+            const reversePreflight = spawnSync('git', ['apply', '--check', '-R', '--whitespace=nowarn', diffFile], { stdio: 'pipe', cwd: workspaceRoot });
+            if (reversePreflight.status !== 0) {
+                const diffText = await fsp.readFile(diffFile, 'utf8').catch(() => '');
+                const pLevel = /\ndiff --git a\//.test('\n' + diffText) ? 1 : 0;
+                const patchPreflight = this.which('patch')
+                    ? spawnSync('patch', ['--dry-run', '-R', `-p${pLevel}`, '-i', diffFile], { stdio: 'pipe', cwd: workspaceRoot })
+                    : null;
+                if (!patchPreflight || patchPreflight.status !== 0) {
+                    const elapsedMs = Date.now() - start;
+                    const message =
+                        `${String(reversePreflight.stdout || '')}${String(reversePreflight.stderr || '')}${patchPreflight ? `${String(patchPreflight.stdout || '')}${String(patchPreflight.stderr || '')}` : ''}` ||
+                        'Reverse apply preflight failed';
+                    this.recordLastApply(snapshotId, {
+                        ok: false,
+                        elapsedMs,
+                        outputTail: message.slice(-4000),
+                        args: { check, reverse },
+                        at: Date.now(),
+                    });
+                    return { ok: false, output: message, elapsedMs };
+                }
+            }
         }
         const argsGit = ['apply'];
         if (reverse) argsGit.push('-R');

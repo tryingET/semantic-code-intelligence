@@ -9,9 +9,30 @@
  * All analysis work is delegated to the MCP adapter and core analyzer.
  */
 
-// CRITICAL: Set silent mode BEFORE any imports to prevent stdio pollution
+// CRITICAL: Set silent mode before server initialization to prevent stdio pollution.
 process.env.SILENT_MODE = 'true';
 process.env.STDIO_MODE = 'true';
+
+function installStdioConsoleGuard(): void {
+    if (!process.env.STDIO_MODE) return;
+    console.log = (...args: unknown[]) => {
+        if (process.env.DEBUG || process.env.DEBUG_STDIO_LOGS) {
+            process.stderr.write(`[LOG] ${args.map(String).join(' ')}\n`);
+        }
+    };
+    console.info = (...args: unknown[]) => {
+        if (process.env.DEBUG || process.env.DEBUG_STDIO_LOGS) {
+            process.stderr.write(`[INFO] ${args.map(String).join(' ')}\n`);
+        }
+    };
+    console.warn = (...args: unknown[]) => {
+        if (process.env.DEBUG || process.env.DEBUG_STDIO_LOGS) {
+            process.stderr.write(`[WARN] ${args.map(String).join(' ')}\n`);
+        }
+    };
+}
+
+installStdioConsoleGuard();
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';

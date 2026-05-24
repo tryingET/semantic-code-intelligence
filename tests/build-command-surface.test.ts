@@ -86,6 +86,7 @@ describe('build command surface', () => {
         expect(runner).toContain('require_positive_int BATCH_SIZE "$BATCH_SIZE"');
         expect(runner).not.toContain('bun test\n');
         expect(slicer).toContain('BATCH_SIZE=${BATCH_SIZE:-1}');
+        expect(slicer).toContain('[[ -d src ]] && DISCOVERY_DIRS+=(src)');
         expect(slicer).toContain('Invalid BATCH_SIZE');
         expect(slicer).toContain('mapfile -t slice_files <<< "$output"');
         expect(slicer).not.toContain('slice_files=( $output )');
