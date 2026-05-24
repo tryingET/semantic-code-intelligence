@@ -10,11 +10,19 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { EventEmitter } from 'node:events';
+import type { Server as HttpServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { CallToolRequestSchema, ErrorCode, isInitializeRequest, ListToolsRequestSchema, McpError } from '@modelcontextprotocol/sdk/types.js';
+import {
+    CallToolRequestSchema,
+    ErrorCode,
+    isInitializeRequest,
+    ListToolsRequestSchema,
+    type McpError,
+} from '@modelcontextprotocol/sdk/types.js';
 import cors from 'cors';
-import { EventEmitter } from 'events';
 import express from 'express';
 import { toMcpError } from '../adapters/error-mapper.js';
 import { MCPAdapter } from '../adapters/mcp-adapter.js';
@@ -23,18 +31,32 @@ import { getEnvironmentConfig } from '../core/config/server-config.js';
 import { CoreError } from '../core/errors.js';
 import { createCodeAnalyzer } from '../core/index';
 import type { CodeAnalyzer } from '../core/unified-analyzer';
+import { metricsRegistry, recordToolEnd, recordToolStart } from '../instrumentation/metrics.js';
 import { toMcpToolCallError } from '../mcp/tool-call-error.js';
 import { isMcpToolResultSuccess } from '../mcp/tool-result.js';
 import { resolveMcpHttpCorsOrigin } from './mcp-http-cors.js';
-import { metricsRegistry, recordToolEnd, recordToolStart } from '../instrumentation/metrics.js';
 import { registerCommonPrompts, registerCommonResources } from './mcp-shared.js';
+
+type JsonRpcMessageId = string | number | null;
+
+type JsonRpcPayload =
+    | ReturnType<typeof buildJsonRpcErrorPayload>
+    | { jsonrpc: '2.0'; id: JsonRpcMessageId; result?: unknown; error?: unknown };
 
 type SessionRecord = {
     server: Server;
     transport: StreamableHTTPServerTransport;
     analyzer: CodeAnalyzer;
     adapter: MCPAdapter;
+    disposing?: boolean;
+    disposed?: boolean;
+    disposePromise?: Promise<void>;
 };
+
+type McpEventPayload = { sessionId?: string; ts?: number; [key: string]: unknown };
+
+type TransportRequest = Parameters<StreamableHTTPServerTransport['handleRequest']>[0];
+type TransportResponse = Parameters<StreamableHTTPServerTransport['handleRequest']>[1];
 
 const cfg = getEnvironmentConfig();
 const HOST = process.env.MCP_HTTP_HOST || cfg.host || 'localhost';
@@ -51,9 +73,9 @@ app.use(
     })
 );
 
-function buildJsonRpcErrorPayload(error: unknown, id: string | number | null = null) {
-    const mcpError = toMcpError(error);
-    const data = (mcpError as any).data;
+function buildJsonRpcErrorPayload(error: unknown, id: JsonRpcMessageId = null) {
+    const mcpError = toMcpError(error) as McpError & { data?: unknown };
+    const data = mcpError.data;
     const payload = {
         jsonrpc: '2.0',
         error: {
@@ -66,7 +88,7 @@ function buildJsonRpcErrorPayload(error: unknown, id: string | number | null = n
     return payload;
 }
 
-function sendJsonRpcError(res: express.Response, error: unknown, id: string | number | null, status?: number) {
+function sendJsonRpcError(res: express.Response, error: unknown, id: JsonRpcMessageId, status?: number) {
     const payload = buildJsonRpcErrorPayload(error, id);
     const code = payload.error.code;
     const httpStatus =
@@ -80,10 +102,7 @@ function sendJsonRpcError(res: express.Response, error: unknown, id: string | nu
     res.status(httpStatus).json(payload);
 }
 
-function sendSseJsonRpcPayload(
-    res: express.Response,
-    payload: ReturnType<typeof buildJsonRpcErrorPayload> | { jsonrpc: '2.0'; id: any; result?: any; error?: any }
-) {
+function sendSseJsonRpcPayload(res: express.Response, payload: JsonRpcPayload) {
     // Minimal SSE envelope for streamable clients (single event; then close).
     // Keep status=200 even for JSON-RPC errors, matching typical JSON-RPC over HTTP behavior.
     try {
@@ -97,7 +116,7 @@ function sendSseJsonRpcPayload(
     res.end();
 }
 
-function sendSseJsonRpcError(res: express.Response, error: unknown, id: string | number | null) {
+function sendSseJsonRpcError(res: express.Response, error: unknown, id: JsonRpcMessageId) {
     const payload = buildJsonRpcErrorPayload(error, id);
     sendSseJsonRpcPayload(res, payload);
 }
@@ -109,7 +128,7 @@ function sendMissingSession(res: express.Response) {
 }
 
 function ensureMcpAcceptHeaders(req: express.Request) {
-    const accepts = (req.headers['accept'] as string | undefined) || '';
+    const accepts = (req.headers.accept as string | undefined) || '';
     const needJson = !/application\/json/i.test(accepts);
     const needSse = !/text\/event-stream/i.test(accepts);
     if (needJson || needSse) {
@@ -126,23 +145,23 @@ function ensureMcpAcceptHeaders(req: express.Request) {
             ]
                 .filter((v, i, a) => a.indexOf(v) === i)
                 .join(', ');
-            (req.headers as any)['accept'] = merged;
+            (req.headers as Record<string, unknown>).accept = merged;
         } catch {}
     }
     if (!/application\/json/i.test(String(req.headers['content-type'] || ''))) {
-        (req.headers as any)['content-type'] = 'application/json';
+        (req.headers as Record<string, unknown>)['content-type'] = 'application/json';
     }
 }
 
 // Normalize invalid JSON bodies to CoreError InvalidParams for parity
-app.use((err: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+app.use((err: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const errorLike = err as { message?: unknown; type?: unknown };
+    const message = typeof errorLike.message === 'string' ? errorLike.message : undefined;
     const isParseError =
-        err instanceof SyntaxError ||
-        (typeof err?.message === 'string' && err.message.includes('JSON')) ||
-        err?.type === 'entity.parse.failed';
+        err instanceof SyntaxError || (message?.includes('JSON') ?? false) || errorLike.type === 'entity.parse.failed';
     if (isParseError) {
         const core = new CoreError('InvalidParams', 'Invalid JSON', {
-            error: err?.message ? String(err.message) : 'Invalid JSON body',
+            error: message ?? 'Invalid JSON body',
         });
         sendJsonRpcError(res, core, null, 400);
         return;
@@ -160,6 +179,37 @@ app.get('/metrics', (_req, res) => {
 // In-memory session map
 const sessions: Record<string, SessionRecord> = {};
 const mcpEvents = new EventEmitter();
+
+async function disposeSession(record: SessionRecord | undefined, sessionId?: string): Promise<void> {
+    if (!record) return;
+    if (sessionId) delete sessions[sessionId];
+    for (const [sid, candidate] of Object.entries(sessions)) {
+        if (candidate === record) delete sessions[sid];
+    }
+    if (record.disposed) return;
+    if (record.disposing) return record.disposePromise ?? Promise.resolve();
+
+    record.disposing = true;
+    record.disposePromise = Promise.resolve().then(async () => {
+        try {
+            await Promise.resolve(record.transport.close());
+        } catch (error) {
+            // eslint-disable-next-line no-console
+            console.warn('[MCP HTTP] transport close failed during session disposal:', error);
+        }
+        try {
+            await record.analyzer.dispose();
+        } catch (error) {
+            // eslint-disable-next-line no-console
+            console.warn('[MCP HTTP] analyzer dispose failed during session disposal:', error);
+        } finally {
+            record.disposed = true;
+            record.disposing = false;
+        }
+    });
+
+    return record.disposePromise;
+}
 
 async function createMcpServer(desiredSid?: string): Promise<SessionRecord> {
     // Initialize core analyzer
@@ -187,7 +237,7 @@ async function createMcpServer(desiredSid?: string): Promise<SessionRecord> {
             const argKeys = args && typeof args === 'object' && !Array.isArray(args) ? Object.keys(args).sort() : [];
             mcpEvents.emit('toolCall', { sessionId: sid, name, argKeys, ts: Date.now() });
             recordToolStart('mcp_http');
-            const out = await adapter.handleValidatedToolCall(name, (args || {}) as Record<string, any>);
+            const out = await adapter.handleValidatedToolCall(name, (args || {}) as Record<string, unknown>);
             try {
                 recordToolEnd('mcp_http', String(name || 'unknown'), Date.now() - t0, isMcpToolResultSuccess(out));
             } catch {}
@@ -210,7 +260,7 @@ async function createMcpServer(desiredSid?: string): Promise<SessionRecord> {
     // Create transport (session id assigned on first initialize)
     const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => desiredSid || randomUUID(),
-        onsessioninitialized: (sessionId) => {
+        onsessioninitialized: (_sessionId) => {
             // Attach after connect
         },
     });
@@ -220,8 +270,8 @@ async function createMcpServer(desiredSid?: string): Promise<SessionRecord> {
 
     // Prompts and resources (shared module) — guard for SDKs without prompt support
     try {
-        // @ts-expect-error: older SDKs may not have registerPrompt
-        if (typeof (server as any).registerPrompt === 'function') {
+        const promptCapableServer = server as Server & { registerPrompt?: unknown };
+        if (typeof promptCapableServer.registerPrompt === 'function') {
             registerCommonPrompts(server);
         }
     } catch (e) {
@@ -251,11 +301,13 @@ app.post('/mcp', async (req, res) => {
         const sessionId = (req.headers['mcp-session-id'] as string | undefined) || undefined;
 
         let record: SessionRecord | undefined;
+        let provisionalSessionId: string | undefined;
         if (sessionId && sessions[sessionId]) {
             record = sessions[sessionId];
         } else if (!sessionId && (isInitializeRequest(req.body) || (req.body && req.body.method === 'initialize'))) {
             try {
                 const preSid = randomUUID();
+                provisionalSessionId = preSid;
                 record = await createMcpServer(preSid);
                 // Expose session id on first initialize response for client convenience
                 try {
@@ -277,21 +329,26 @@ app.post('/mcp', async (req, res) => {
                 });
                 return;
             }
-            const transport = record.transport;
+            const initializedRecord = record;
+            const transport = initializedRecord.transport;
             // When session is initialized, store it
             transport.onsessioninitialized = (sid: string) => {
-                sessions[sid] = record!;
+                sessions[sid] = initializedRecord;
                 try {
                     res.setHeader('Mcp-Session-Id', sid);
                 } catch {}
             };
             transport.onclose = () => {
                 const sid = transport.sessionId || preSid;
-                if (sid) delete sessions[sid];
-                if (sid && sid != preSid) delete sessions[preSid];
+                void disposeSession(initializedRecord, sid);
             };
-
         } else {
+            sendMissingSession(res);
+            return;
+        }
+
+        const activeRecord = record;
+        if (!activeRecord) {
             sendMissingSession(res);
             return;
         }
@@ -301,22 +358,25 @@ app.post('/mcp', async (req, res) => {
         // SDK request schema validation can surface "missing params" as InternalError (-32603).
         // Normalize the most common transport-level case (tools/call with missing params) to InvalidParams (-32602).
         try {
-            const body: any = req.body;
+            const body = req.body as { method?: unknown; params?: unknown; id?: JsonRpcMessageId };
             if (body && body.method === 'tools/call') {
                 const params = body.params;
                 if (!params || typeof params !== 'object' || Array.isArray(params)) {
                     const core = new CoreError('InvalidParams', 'Missing required parameters: params');
-                    sendSseJsonRpcError(res, core, (body?.id ?? null) as any);
+                    sendSseJsonRpcError(res, core, body.id ?? null);
                     return;
                 }
             }
         } catch {}
 
         try {
-            await record!.transport.handleRequest(req as any, res as any, req.body);
+            await activeRecord.transport.handleRequest(req as TransportRequest, res as TransportResponse, req.body);
         } catch (e) {
             // eslint-disable-next-line no-console
             console.error('[MCP HTTP] handleRequest error:', e);
+            if (provisionalSessionId) {
+                await disposeSession(activeRecord, provisionalSessionId);
+            }
             if (!res.headersSent) {
                 res.status(500).json({
                     jsonrpc: '2.0',
@@ -334,9 +394,9 @@ app.post('/mcp', async (req, res) => {
         // After handling initialize, Streamable HTTP transport may have assigned a session ID
         // Ensure it's stored so subsequent requests can resolve the session without requiring
         // a prior GET /mcp handshake (fixes chicken-and-egg for list/call via HTTP)
-        const sid = (record!.transport as any).sessionId as string | undefined;
+        const sid = (activeRecord.transport as { sessionId?: string }).sessionId;
         if (sid && !sessions[sid]) {
-            sessions[sid] = record!;
+            sessions[sid] = activeRecord;
         }
     } catch (error) {
         // eslint-disable-next-line no-console
@@ -362,7 +422,15 @@ app.get('/mcp', async (req, res) => {
         sendMissingSession(res);
         return;
     }
-    await sessions[sessionId].transport.handleRequest(req as any, res as any);
+    try {
+        await sessions[sessionId].transport.handleRequest(req as TransportRequest, res as TransportResponse);
+    } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('[MCP HTTP] GET handleRequest error:', error);
+        if (!res.headersSent) {
+            sendJsonRpcError(res, error, null, 500);
+        }
+    }
 });
 
 // SSE stream of MCP tool events for live monitoring
@@ -378,19 +446,20 @@ app.get('/mcp-events', (req, res) => {
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders?.();
 
-    const send = (event: string, data: any) => {
-        const ts = typeof data?.ts === 'number' ? data.ts : Date.now();
-        const { sessionId: _sessionId, ...safeData } = data || {};
+    const send = (event: string, data: unknown) => {
+        const eventData = data && typeof data === 'object' ? (data as McpEventPayload) : {};
+        const ts = typeof eventData.ts === 'number' ? eventData.ts : Date.now();
+        const { sessionId: _sessionId, ...safeData } = eventData;
         const payload = { ...safeData, ts, iso: new Date(ts).toISOString() };
         res.write(`event: ${event}\n`);
         res.write(`data: ${JSON.stringify(payload)}\n\n`);
     };
 
-    const onCall = (payload: any) => {
-        if (payload?.sessionId === sessionId) send('toolCall', payload);
+    const onCall = (payload: unknown) => {
+        if ((payload as McpEventPayload | undefined)?.sessionId === sessionId) send('toolCall', payload);
     };
-    const onErr = (payload: any) => {
-        if (payload?.sessionId === sessionId) send('toolError', payload);
+    const onErr = (payload: unknown) => {
+        if ((payload as McpEventPayload | undefined)?.sessionId === sessionId) send('toolError', payload);
     };
 
     mcpEvents.on('toolCall', onCall);
@@ -411,15 +480,14 @@ app.get('/mcp-events', (req, res) => {
 // DELETE /mcp - end session
 app.delete('/mcp', async (req, res) => {
     const sessionId = (req.headers['mcp-session-id'] as string | undefined) || undefined;
-    if (!sessionId || !sessions[sessionId]) {
+    const record = sessionId ? sessions[sessionId] : undefined;
+    if (!sessionId || !record) {
         sendMissingSession(res);
         return;
     }
     try {
-        const transport = sessions[sessionId].transport;
-        transport.close();
+        await disposeSession(record, sessionId);
     } finally {
-        delete sessions[sessionId];
         res.status(204).end();
     }
 });
@@ -430,10 +498,12 @@ app.get('/health', (_req, res) => {
 });
 
 // Start server
-let server: any = null;
+let server: HttpServer | null = null;
 (async () => {
     server = app.listen(PORT, HOST, () => {
-        console.log(`MCP Streamable HTTP server listening at http://${HOST}:${(server.address() as any).port}`);
+        const address = server?.address();
+        const boundPort = typeof address === 'object' && address ? (address as AddressInfo).port : PORT;
+        console.log(`MCP Streamable HTTP server listening at http://${HOST}:${boundPort}`);
     });
 })().catch((e) => {
     console.error('Failed to start MCP HTTP server:', e);

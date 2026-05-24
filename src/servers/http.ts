@@ -285,7 +285,7 @@ export class HTTPServer {
                     if (url.pathname === '/api/v1/ast-query' && request.method === 'POST') {
                         try {
                             const raw = await this.getRequestBody(request);
-                            const body: any = raw ? JSON.parse(raw) : {};
+                            const body: any = strictJsonParse(raw || '{}');
                             const { runAstQuery } = await import('../core/ast-query.js');
                             const out = await runAstQuery({
                                 language: body.language,
@@ -299,10 +299,17 @@ export class HTTPServer {
                                 headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
                             });
                         } catch (err) {
-                            return new Response(JSON.stringify({ success: false, error: 'AST query failed' }), {
-                                status: 500,
-                                headers: { 'Content-Type': 'application/json' },
-                            });
+                            const status = statusForThrownError(err);
+                            return new Response(
+                                JSON.stringify({
+                                    success: false,
+                                    error: isCoreError(err) ? envelopeForThrownError(err) : 'AST query failed',
+                                }),
+                                {
+                                    status,
+                                    headers: { 'Content-Type': 'application/json' },
+                                }
+                            );
                         }
                     }
 
@@ -356,10 +363,13 @@ export class HTTPServer {
                             try {
                                 recordToolEnd('http', 'unknown', 0, false);
                             } catch {}
-                            return new Response(JSON.stringify({ success: false, error: envelopeForThrownError(err) }), {
-                                status: statusForThrownError(err),
-                                headers: { 'Content-Type': 'application/json' },
-                            });
+                            return new Response(
+                                JSON.stringify({ success: false, error: envelopeForThrownError(err) }),
+                                {
+                                    status: statusForThrownError(err),
+                                    headers: { 'Content-Type': 'application/json' },
+                                }
+                            );
                         }
                     }
 
@@ -368,7 +378,7 @@ export class HTTPServer {
                         const encoder = new TextEncoder();
                         try {
                             const raw = await this.getRequestBody(request);
-                            const body: any = raw ? JSON.parse(raw) : {};
+                            const body: any = strictJsonParse(raw || '{}');
                             const pipelineId = String(body?.id || '').trim();
                             const pollMs = Math.max(100, Math.min(2000, Number(body?.pollMs || 300)));
                             const timeoutSec = Math.max(1, Math.min(600, Number(body?.timeoutSec || 30)));
@@ -463,10 +473,17 @@ export class HTTPServer {
                                 },
                             });
                         } catch (err) {
-                            return new Response(JSON.stringify({ success: false, error: 'run-stream failed' }), {
-                                status: 500,
-                                headers: { 'Content-Type': 'application/json' },
-                            });
+                            const status = statusForThrownError(err);
+                            return new Response(
+                                JSON.stringify({
+                                    success: false,
+                                    error: isCoreError(err) ? envelopeForThrownError(err) : 'run-stream failed',
+                                }),
+                                {
+                                    status,
+                                    headers: { 'Content-Type': 'application/json' },
+                                }
+                            );
                         }
                     }
 
@@ -474,7 +491,7 @@ export class HTTPServer {
                     if (url.pathname === '/api/v1/pipelines/run' && request.method === 'POST') {
                         try {
                             const raw = await this.getRequestBody(request);
-                            const body: any = raw ? JSON.parse(raw) : {};
+                            const body: any = strictJsonParse(raw || '{}');
                             const pipelineId = String(body?.id || '').trim();
                             if (!pipelineId) {
                                 return new Response(JSON.stringify({ success: false, error: 'id required' }), {
@@ -485,16 +502,27 @@ export class HTTPServer {
                             const runRes = await this.executeToolWorkflow('run_pipeline', {
                                 id: pipelineId,
                             });
-                            const json = this.toolWorkflowPayload(runRes, { ok: false, runId: '', reason: 'parse_error' });
+                            const json = this.toolWorkflowPayload(runRes, {
+                                ok: false,
+                                runId: '',
+                                reason: 'parse_error',
+                            });
                             return new Response(JSON.stringify({ success: true, data: json }), {
                                 status: 200,
                                 headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
                             });
                         } catch (err) {
-                            return new Response(JSON.stringify({ success: false, error: 'run failed' }), {
-                                status: 500,
-                                headers: { 'Content-Type': 'application/json' },
-                            });
+                            const status = statusForThrownError(err);
+                            return new Response(
+                                JSON.stringify({
+                                    success: false,
+                                    error: isCoreError(err) ? envelopeForThrownError(err) : 'run failed',
+                                }),
+                                {
+                                    status,
+                                    headers: { 'Content-Type': 'application/json' },
+                                }
+                            );
                         }
                     }
 
@@ -614,7 +642,7 @@ export class HTTPServer {
                     if (url.pathname === '/api/v1/pipelines' && request.method === 'POST') {
                         try {
                             const raw = await this.getRequestBody(request);
-                            const body: any = raw ? JSON.parse(raw) : {};
+                            const body: any = strictJsonParse(raw || '{}');
                             const id = String(body?.id || '').trim();
                             const name = String(body?.name || '').trim();
                             const components = Array.isArray(body?.components) ? body.components : [];
@@ -664,10 +692,17 @@ export class HTTPServer {
                                 headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
                             });
                         } catch (err) {
-                            return new Response(JSON.stringify({ success: false, error: 'register failed' }), {
-                                status: 500,
-                                headers: { 'Content-Type': 'application/json' },
-                            });
+                            const status = statusForThrownError(err);
+                            return new Response(
+                                JSON.stringify({
+                                    success: false,
+                                    error: isCoreError(err) ? envelopeForThrownError(err) : 'register failed',
+                                }),
+                                {
+                                    status,
+                                    headers: { 'Content-Type': 'application/json' },
+                                }
+                            );
                         }
                     }
 
@@ -722,7 +757,9 @@ export class HTTPServer {
 
                             if (typeof payload?.note === 'string' && payload.note.length) {
                                 try {
-                                    (this.coreAnalyzer as any)?.sharedServices?.monitoring?.recordToolCall?.('graph_expand_note');
+                                    (this.coreAnalyzer as any)?.sharedServices?.monitoring?.recordToolCall?.(
+                                        'graph_expand_note'
+                                    );
                                 } catch {}
                                 try {
                                     recordToolEnd('http', 'graph_expand_note', 0, true);
@@ -730,7 +767,8 @@ export class HTTPServer {
                             }
 
                             const backend = payload?.impactSummary?.backend;
-                            const metricName = backend === 'fallback' ? 'graph_expand_fallback' : 'graph_expand_primary';
+                            const metricName =
+                                backend === 'fallback' ? 'graph_expand_fallback' : 'graph_expand_primary';
                             try {
                                 (this.coreAnalyzer as any)?.sharedServices?.monitoring?.recordToolCall?.(metricName);
                             } catch {}
@@ -745,10 +783,13 @@ export class HTTPServer {
                             try {
                                 recordToolEnd('http', 'graph_expand_fallback', Date.now() - t0, false);
                             } catch {}
-                            return new Response(JSON.stringify({ success: false, error: envelopeForThrownError(err) }), {
-                                status: statusForThrownError(err),
-                                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-                            });
+                            return new Response(
+                                JSON.stringify({ success: false, error: envelopeForThrownError(err) }),
+                                {
+                                    status: statusForThrownError(err),
+                                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                                }
+                            );
                         }
                     }
 
@@ -827,7 +868,9 @@ export class HTTPServer {
                                     headers: { 'Content-Type': 'application/json' },
                                 });
                             const { overlayStore } = await import('../core/overlay-store.js');
-                            const status = (overlayStore as any).getStatus?.(id, { workspaceRoot: this.config.workspaceRoot });
+                            const status = (overlayStore as any).getStatus?.(id, {
+                                workspaceRoot: this.config.workspaceRoot,
+                            });
                             if (!status)
                                 return new Response(JSON.stringify({ success: false, error: 'Snapshot not found' }), {
                                     status: 404,
@@ -865,7 +908,10 @@ export class HTTPServer {
                             const { overlayStore } = await import('../core/overlay-store.js');
                             let snapshotDir = '';
                             try {
-                                snapshotDir = (overlayStore as any).getSnapshotDirectory?.(id, { workspaceRoot: this.config.workspaceRoot }) || '';
+                                snapshotDir =
+                                    (overlayStore as any).getSnapshotDirectory?.(id, {
+                                        workspaceRoot: this.config.workspaceRoot,
+                                    }) || '';
                             } catch {}
                             const file = snapshotDir ? Bun.file(`${snapshotDir}/progress.log`) : null;
                             if (!file || !(await file.exists())) {

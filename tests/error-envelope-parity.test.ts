@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { spawn } from 'node:child_process';
-import { canBindTcp } from './helpers/bind-utils';
-import { initMcpHttpSession, mcpHttpHeaders } from './helpers/mcp-http';
 import { HTTPAdapter } from '../src/adapters/http-adapter.js';
 import { LSPAdapter } from '../src/adapters/lsp-adapter.js';
 import { HTTPServer } from '../src/servers/http';
+import { canBindTcp } from './helpers/bind-utils';
+import { initMcpHttpSession, mcpHttpHeaders } from './helpers/mcp-http';
 
 function wait(ms: number) {
     return new Promise((r) => setTimeout(r, ms));
@@ -14,10 +14,49 @@ function pickRandomPort(min: number, max: number): number {
     return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+async function runBunSnippetWithTimeout(
+    snippet: string,
+    timeoutMs: number
+): Promise<{ timedOut: boolean; code: number | null; stderr: string }> {
+    const bun = process.env.BUN_PATH || `${process.env.HOME}/.bun/bin/bun`;
+    const child = spawn(bun, ['-e', snippet], {
+        cwd: process.cwd(),
+        env: { ...process.env, SILENT_MODE: '1' },
+    });
+    let stderr = '';
+    child.stderr?.on('data', (chunk) => {
+        stderr += String(chunk);
+    });
+
+    return await new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+            child.kill('SIGTERM');
+            resolve({ timedOut: true, code: null, stderr });
+        }, timeoutMs);
+        child.on('exit', (code) => {
+            clearTimeout(timeout);
+            resolve({ timedOut: false, code, stderr });
+        });
+    });
+}
+
 const canBind = await canBindTcp('127.0.0.1');
 const bindDescribe = canBind ? describe : describe.skip;
 
 describe('Error envelope parity (edge cases)', () => {
+    test('ErrorHandler timeout clears successful operation timers', async () => {
+        const result = await runBunSnippetWithTimeout(
+            `
+            import { ErrorHandler } from './src/mcp/error-handler.ts';
+            const handler = new ErrorHandler({ timeoutMs: 5000, maxRetries: 0 });
+            await handler.withErrorHandling({ component: 'test', operation: 'fast-success', timestamp: Date.now() }, async () => 'ok');
+            `,
+            1500
+        );
+        expect(result.timedOut).toBe(false);
+        expect(result.code).toBe(0);
+    });
+
     test('HTTPAdapter: invalid JSON maps to InvalidParams details', async () => {
         const adapter = new HTTPAdapter({} as any, { enableCors: false, enableOpenAPI: false });
         const res = await adapter.handleRequest({
@@ -130,6 +169,25 @@ describe('Error envelope parity (edge cases)', () => {
             expect(body.error?.code).toBe('InvalidParams');
         });
 
+        test('server-level POST endpoints map invalid JSON to InvalidParams', async () => {
+            for (const path of [
+                '/api/v1/ast-query',
+                '/api/v1/pipelines/run',
+                '/api/v1/pipelines/run-stream',
+                '/api/v1/pipelines',
+            ]) {
+                const res = await fetch(`${base}${path}`, {
+                    method: 'POST',
+                    headers: mcpHttpHeaders(),
+                    body: 'invalid json',
+                });
+                expect(res.status, `${path} should reject malformed JSON as a client error`).toBe(400);
+                const body = await res.json();
+                expect(body.success).toBe(false);
+                expect(body.error?.code).toBe('InvalidParams');
+            }
+        });
+
         test('missing tool name maps to InvalidParams', async () => {
             const res = await fetch(`${base}/api/v1/tools/call`, {
                 method: 'POST',
@@ -210,7 +268,11 @@ describe('Error envelope parity (edge cases)', () => {
                             jsonrpc: '2.0',
                             id: 0,
                             method: 'initialize',
-                            params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'ping', version: '1.0.0' } },
+                            params: {
+                                protocolVersion: '2024-11-05',
+                                capabilities: {},
+                                clientInfo: { name: 'ping', version: '1.0.0' },
+                            },
                         }),
                     });
                     if (resp.status < 500) {
@@ -337,5 +399,4 @@ describe('Error envelope parity (edge cases)', () => {
             expect(String(body.error?.message || '')).toContain('No valid session ID');
         });
     });
-
 });

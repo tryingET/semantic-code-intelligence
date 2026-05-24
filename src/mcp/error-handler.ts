@@ -7,7 +7,7 @@
 
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { isCoreError } from '../core/errors.js';
-import { fileLogger, mcpLogger } from './file-logger.js';
+import { mcpLogger } from './file-logger.js';
 
 export interface ErrorContext {
     component: string;
@@ -185,20 +185,21 @@ export class ErrorHandler {
     /**
      * Validate request parameters and throw appropriate errors
      */
-    validateRequest(request: any, requiredFields: string[], context: ErrorContext): void {
+    validateRequest(request: unknown, requiredFields: string[], context: ErrorContext): void {
         try {
             if (!request || typeof request !== 'object') {
                 throw new Error('Request must be an object');
             }
+            const requestRecord = request as Record<string, unknown>;
 
             for (const field of requiredFields) {
-                if (request[field] === undefined || request[field] === null) {
+                if (requestRecord[field] === undefined || requestRecord[field] === null) {
                     throw new Error(`Missing required field: ${field}`);
                 }
             }
 
             // Validate field types if needed
-            this.validateFieldTypes(request, context);
+            this.validateFieldTypes(requestRecord, context);
         } catch (error) {
             const validationError = error instanceof Error ? error : new Error(String(error));
             this.logError(context, validationError, {
@@ -215,17 +216,18 @@ export class ErrorHandler {
      */
     createMcpError(code: ErrorCode, message: string, context: ErrorContext, originalError?: Error): McpError {
         const mcpError = new McpError(code, message);
+        const mutableMcpError = mcpError as McpError & { rawMessage?: string; message: string; data?: unknown };
         // Align with tests: expose the raw message on the Error.message field
         // SDK prefixes messages (e.g., "MCP error -32602: ..."); tests expect the plain message
         try {
-            (mcpError as any).rawMessage = message;
-            (mcpError as any).message = message;
+            mutableMcpError.rawMessage = message;
+            mutableMcpError.message = message;
         } catch {
             // Fallback – if message is readonly in some environments, keep SDK default
         }
 
         // Add context to error data
-        (mcpError as any).data = {
+        mutableMcpError.data = {
             component: context.component,
             operation: context.operation,
             requestId: context.requestId,
@@ -244,29 +246,29 @@ export class ErrorHandler {
     /**
      * Sanitize sensitive data from logs
      */
-    private sanitizeForLogging(obj: any): any {
+    private sanitizeForLogging(obj: unknown): unknown {
         if (!obj || typeof obj !== 'object') return obj;
 
         const sensitiveFields = ['password', 'token', 'secret', 'key', 'authorization'];
-        const sanitized = { ...obj };
+        const sanitized: Record<string, unknown> = { ...(obj as Record<string, unknown>) };
 
         for (const field of sensitiveFields) {
             if (sanitized[field]) {
-                (sanitized as any)[field] = '[REDACTED]';
+                sanitized[field] = '[REDACTED]';
             }
         }
 
         return sanitized;
     }
 
-    private logError(context: ErrorContext, error: Error, additionalData?: any): void {
+    private logError(context: ErrorContext, error: Error, additionalData?: Record<string, unknown>): void {
         mcpLogger.error(`${context.operation} failed`, error, {
             context,
             ...additionalData,
         });
     }
 
-    private validateFieldTypes(request: any, context: ErrorContext): void {
+    private validateFieldTypes(request: Record<string, unknown>, _context: ErrorContext): void {
         // Add specific field type validations based on MCP protocol requirements
 
         if (request.symbol && typeof request.symbol !== 'string') {
@@ -282,10 +284,11 @@ export class ErrorHandler {
         }
 
         if (request.position) {
-            if (typeof request.position.line !== 'number' || request.position.line < 0) {
+            const position = request.position as Record<string, unknown>;
+            if (typeof position.line !== 'number' || position.line < 0) {
                 throw new Error('Field "position.line" must be a non-negative number');
             }
-            if (typeof request.position.character !== 'number' || request.position.character < 0) {
+            if (typeof position.character !== 'number' || position.character < 0) {
                 throw new Error('Field "position.character" must be a non-negative number');
             }
         }
@@ -355,11 +358,17 @@ export class ErrorHandler {
     }
 
     private async withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+        let timer: ReturnType<typeof setTimeout> | undefined;
         const timeoutPromise = new Promise<never>((_, reject) => {
-            setTimeout(() => reject(new Error(`Operation timed out after ${timeoutMs}ms`)), timeoutMs);
+            timer = setTimeout(() => reject(new Error(`Operation timed out after ${timeoutMs}ms`)), timeoutMs);
+            timer?.unref?.();
         });
 
-        return Promise.race([promise, timeoutPromise]);
+        try {
+            return await Promise.race([promise, timeoutPromise]);
+        } finally {
+            if (timer) clearTimeout(timer);
+        }
     }
 
     private isCircuitOpen(operationKey: string): boolean {
