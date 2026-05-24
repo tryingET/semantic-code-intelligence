@@ -160,7 +160,10 @@ class SimpleMCPServer {
   private mcpAdapter: MCPAdapter;
   
   async handleToolCall(name, args) {
-    return this.mcpAdapter.handleToolCall(name, args);
+    // Real MCP transports use validated calls so registry/input failures
+    // become JSON-RPC errors. Direct embedded callers may use
+    // handleToolCall(...) when they need MCP tool-result error payloads.
+    return this.mcpAdapter.handleValidatedToolCall(name, args);
   }
 }
 ```
@@ -190,10 +193,9 @@ Custom methods are namespaced and keep standard LSP responses spec-clean.
 - `ontology/suggestRefactoring`: `{ uri, position }` → `[]` (stub)
 
 ### MCP Tool Compatibility  
-- ✅ `find_definition` → `MCPAdapter.handleToolCall('find_definition')`
-- ✅ `find_references` → `MCPAdapter.handleToolCall('find_references')`
-- ✅ `rename_symbol` → `MCPAdapter.handleToolCall('rename_symbol')`
-- ✅ `generate_tests` → `MCPAdapter.handleToolCall('generate_tests')`
+- ✅ Direct embedded adapter calls keep `MCPAdapter.handleToolCall(...)` compatibility and return MCP tool-result error payloads.
+- ✅ MCP stdio/HTTP/enhanced server transports use `MCPAdapter.handleValidatedToolCall(...)` so validation failures are JSON-RPC errors.
+- ✅ `find_definition`, `find_references`, `rename_symbol`, `generate_tests`, and Alpha MVP workflow tools route through shared registry validation and workflow dispatch.
 
 ### HTTP API Compatibility
 - ✅ `POST /api/v1/definition` → `HTTPAdapter.handleFindDefinition()`
@@ -217,8 +219,9 @@ Custom methods are namespaced and keep standard LSP responses spec-clean.
 - Hover and code lens (placeholders)
 
 ### MCP Features  
-- Server-Sent Events transport
-- MCP tool schema validation
+- Stdio and Streamable HTTP transports
+- MCP tool schema validation through `ToolRegistry` / `ToolExecutor`
+- Server-grade JSON-RPC error mapping through `handleValidatedToolCall(...)`
 - Resource and prompt providers (scaffolded)
 - Streaming responses
 
@@ -282,9 +285,10 @@ const cliAdapter = new CLIAdapter(analyzer);
 
 ## 🚀 Next Steps
 
-1. Continue extracting bounded workflow slices when adapter code starts owning application behavior.
+1. Continue extracting bounded workflow slices only when adapter code starts owning application behavior.
 2. Prefer shared core services before adding MCP-only workflow branches.
-3. Keep Phase 2/productization work behind explicit direction instead of using adapter cleanup as scope expansion.
+3. Treat `handleToolCall(...)` as the embedded/direct-call compatibility surface and `handleValidatedToolCall(...)` as the MCP server transport surface.
+4. Keep Phase 2/productization work behind explicit direction instead of using adapter cleanup as scope expansion.
 
 ---
 

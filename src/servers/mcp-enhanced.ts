@@ -19,6 +19,7 @@ import { ConnectionManager } from '../mcp/connection-manager.js';
 import { createInternalError, type ErrorContext, globalErrorHandler, withMcpErrorHandling } from '../mcp/error-handler.js';
 // Import enhanced error handling and logging
 import { mcpLogger } from '../mcp/file-logger.js';
+import { toMcpToolCallError } from '../mcp/tool-call-error.js';
 import { safeMcpStringify, sanitizeMcpLogArgs } from '../mcp/tool-result.js';
 
 export class EnhancedMCPServer {
@@ -196,47 +197,46 @@ export class EnhancedMCPServer {
                 requestId: (request as any)?.id,
                 timestamp: Date.now(),
             };
+            const nameForError = (request.params as any)?.name ?? 'unknown';
 
-            return await withMcpErrorHandling(
-                'EnhancedMCPServer',
-                'call_tool',
-                async () => {
-                    this.connectionManager.recordMessage('incoming', request);
+            try {
+                this.connectionManager.recordMessage('incoming', request);
 
-                    // Validate request
-                    globalErrorHandler.validateRequest(request.params, ['name'], context);
+                // Validate request
+                globalErrorHandler.validateRequest(request.params, ['name'], context);
 
-                    // Ensure initialization
-                    await this.ensureInitialized();
+                // Ensure initialization
+                await this.ensureInitialized();
 
-                    if (!this.mcpAdapter) {
-                        throw createInternalError('Server not properly initialized', context);
-                    }
+                if (!this.mcpAdapter) {
+                    throw createInternalError('Server not properly initialized', context);
+                }
 
-                    const { name, arguments: args } = request.params;
+                const { name, arguments: args } = request.params;
 
-                    mcpLogger.debug(`Executing tool: ${name}`, {
-                        args: sanitizeMcpLogArgs(args),
-                        requestId: context.requestId,
-                    });
+                mcpLogger.debug(`Executing tool: ${name}`, {
+                    args: sanitizeMcpLogArgs(args),
+                    requestId: context.requestId,
+                });
 
-                    // Execute tool with timeout and error handling
-                    const startTime = Date.now();
-                    const result = await this.mcpAdapter.handleToolCall(name, args || {});
-                    const duration = Date.now() - startTime;
+                // Execute tool with server-grade validation so invalid tool calls become JSON-RPC errors.
+                const startTime = Date.now();
+                const result = await this.mcpAdapter.handleValidatedToolCall(name, args || {});
+                const duration = Date.now() - startTime;
 
-                    mcpLogger.logPerformance(`tool_${name}`, duration, true, {
-                        requestId: context.requestId,
-                        argsSize: safeMcpStringify(args || {}).length,
-                        resultSize: safeMcpStringify(result).length,
-                    });
+                mcpLogger.logPerformance(`tool_${name}`, duration, true, {
+                    requestId: context.requestId,
+                    argsSize: safeMcpStringify(args || {}).length,
+                    resultSize: safeMcpStringify(result).length,
+                });
 
-                    this.connectionManager.recordMessage('outgoing', result);
+                this.connectionManager.recordMessage('outgoing', result);
 
-                    return result;
-                },
-                (request as any)?.id
-            );
+                return result;
+            } catch (error) {
+                mcpLogger.error(`Tool call failed: ${nameForError}`, error);
+                throw toMcpToolCallError(nameForError, error);
+            }
         });
 
         mcpLogger.debug('Request handlers configured');
