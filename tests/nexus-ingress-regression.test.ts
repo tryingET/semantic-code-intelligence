@@ -1,9 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { HTTPAdapter } from '../src/adapters/http-adapter';
+import { overlayStore } from '../src/core/overlay-store';
 import { ToolWorkflowRouter } from '../src/core/workflows/tool-workflow-router';
 import { HTTPServer } from '../src/servers/http';
 import { canBindTcp } from './helpers/bind-utils';
@@ -60,6 +62,17 @@ bindDescribe('Nexus HTTP ingress regressions', () => {
         expect(body.error?.message).toContain('origin');
     });
 
+    test('rejects non-loopback browser origins before snapshot reads', async () => {
+        const res = await fetch(`${base}/api/v1/snapshots`, {
+            headers: { origin: 'https://attacker.example' },
+        });
+        expect(res.status).toBe(400);
+        expect(res.headers.get('access-control-allow-origin')).not.toBe('*');
+        const body = await res.json();
+        expect(body.success).toBe(false);
+        expect(body.error?.code).toBe('InvalidParams');
+    });
+
     test('rejects non-loopback browser origins before adapter fallback routes', async () => {
         const res = await fetch(`${base}/api/v1/definition`, {
             method: 'POST',
@@ -110,6 +123,142 @@ bindDescribe('Nexus HTTP ingress regressions', () => {
 });
 
 describe('Nexus workflow boundary regressions', () => {
+    test('CLI find rejects absolute file inputs outside the detected workspace', () => {
+        const outside = mkdtempSync(join(tmpdir(), 'sci-nexus-cli-outside-'));
+        try {
+            const outsideFile = join(outside, 'outside.ts');
+            writeFileSync(outsideFile, 'export function OutsideCliSecret() { return 1; }\n');
+            const proc = spawnSync(
+                process.execPath,
+                ['run', 'src/servers/cli.ts', 'find', 'OutsideCliSecret', '-f', outsideFile, '--json', '--no-color'],
+                { cwd: process.cwd(), encoding: 'utf8', env: { ...process.env, SILENT_MODE: 'true' } }
+            );
+            const output = `${proc.stdout || ''}${proc.stderr || ''}`;
+            expect(proc.status).not.toBe(0);
+            const body = JSON.parse(proc.stdout || '{}');
+            expect(body.success).toBe(false);
+            expect(body.error?.message).toContain('workspace');
+            expect(output).not.toContain(`file://${outsideFile}`);
+        } finally {
+            rmSync(outside, { recursive: true, force: true });
+        }
+    });
+
+    test('CLI text-search rejects absolute search roots outside the detected workspace', () => {
+        const outside = mkdtempSync(join(tmpdir(), 'sci-nexus-cli-search-outside-'));
+        try {
+            writeFileSync(join(outside, 'secret.txt'), 'needle_outside_cli_boundary\n');
+            const proc = spawnSync(
+                process.execPath,
+                ['run', 'src/servers/cli.ts', 'text-search', 'needle_outside_cli_boundary', '-p', outside, '--json'],
+                { cwd: process.cwd(), encoding: 'utf8', env: { ...process.env, SILENT_MODE: 'true' } }
+            );
+            const output = `${proc.stdout || ''}${proc.stderr || ''}`;
+            expect(proc.status).not.toBe(0);
+            const body = JSON.parse(proc.stdout || '{}');
+            expect(body.success).toBe(false);
+            expect(body.error?.message).toContain('workspace');
+            expect(output).not.toContain('needle_outside_cli_boundary');
+        } finally {
+            rmSync(outside, { recursive: true, force: true });
+        }
+    });
+
+    test('CLI symbol-map rejects absolute file inputs outside the detected workspace with nonzero JSON error', () => {
+        const outside = mkdtempSync(join(tmpdir(), 'sci-nexus-cli-symbol-outside-'));
+        try {
+            const outsideFile = join(outside, 'outside.ts');
+            writeFileSync(outsideFile, 'export const OutsideSymbolMapSecret = 1;\n');
+            const proc = spawnSync(
+                process.execPath,
+                ['run', 'src/servers/cli.ts', 'symbol-map', 'OutsideSymbolMapSecret', '-f', outsideFile, '--json', '--no-color'],
+                { cwd: process.cwd(), encoding: 'utf8', env: { ...process.env, SILENT_MODE: 'true' } }
+            );
+            expect(proc.status).not.toBe(0);
+            const body = JSON.parse(proc.stdout || '{}');
+            expect(body.success).toBe(false);
+            expect(body.error?.message).toContain('workspace');
+        } finally {
+            rmSync(outside, { recursive: true, force: true });
+        }
+    });
+
+    test('CLI workflow aliases reject boundary errors with nonzero JSON error', () => {
+        const outside = mkdtempSync(join(tmpdir(), 'sci-nexus-cli-workflow-outside-'));
+        try {
+            writeFileSync(join(outside, 'outside.ts'), 'const OutsideStructuralSecret = 1;\n');
+            const proc = spawnSync(
+                process.execPath,
+                ['run', 'src/servers/cli.ts', 'structural-search', 'typescript', 'const $A = $B', '--paths', outside, '--json'],
+                { cwd: process.cwd(), encoding: 'utf8', env: { ...process.env, SILENT_MODE: 'true' } }
+            );
+            expect(proc.status).not.toBe(0);
+            const body = JSON.parse(proc.stdout || '{}');
+            expect(body.success).toBe(false);
+            expect(body.error?.message).toContain('workspace');
+        } finally {
+            rmSync(outside, { recursive: true, force: true });
+        }
+    });
+
+    test('CLI generic workflow exits nonzero for explicit tool errors', () => {
+        const proc = spawnSync(
+            process.execPath,
+            [
+                'run',
+                'src/servers/cli.ts',
+                'workflow',
+                'run_checks',
+                '-a',
+                '{"snapshot":"00000000-0000-4000-8000-000000000000"}',
+                '--json',
+            ],
+            { cwd: process.cwd(), encoding: 'utf8', env: { ...process.env, SILENT_MODE: 'true' } }
+        );
+        expect(proc.status).not.toBe(0);
+        const body = JSON.parse(proc.stdout || '{}');
+        expect(body.isError).toBe(true);
+    });
+
+    test('OverlayStore list can be scoped to a configured workspace after memory is cleared', () => {
+        const cwd = process.cwd();
+        const workspaceA = mkdtempSync(join(tmpdir(), 'sci-nexus-list-a-'));
+        const workspaceB = mkdtempSync(join(tmpdir(), 'sci-nexus-list-b-'));
+        try {
+            const snap = overlayStore.createSnapshot(false, { workspaceRoot: workspaceB });
+            overlayStore.clearAll();
+            process.chdir(workspaceA);
+            expect(overlayStore.list().map((item) => item.id)).not.toContain(snap.id);
+            expect(overlayStore.list({ workspaceRoot: workspaceB }).map((item) => item.id)).toContain(snap.id);
+        } finally {
+            process.chdir(cwd);
+            overlayStore.clearAll();
+            rmSync(workspaceA, { recursive: true, force: true });
+            rmSync(workspaceB, { recursive: true, force: true });
+        }
+    });
+
+    test('OverlayStore scoped list backfills legacy snapshot metadata without workspaceRoot', () => {
+        const cwd = process.cwd();
+        const workspaceA = mkdtempSync(join(tmpdir(), 'sci-nexus-legacy-list-a-'));
+        const workspaceB = mkdtempSync(join(tmpdir(), 'sci-nexus-legacy-list-b-'));
+        try {
+            const snap = overlayStore.createSnapshot(false, { workspaceRoot: workspaceB });
+            const metadataPath = join(workspaceB, '.ontology', 'snapshots', snap.id, 'metadata.json');
+            const metadata = JSON.parse(readFileSync(metadataPath, 'utf8'));
+            delete metadata.workspaceRoot;
+            writeFileSync(metadataPath, JSON.stringify(metadata, null, 2), 'utf8');
+            overlayStore.clearAll();
+            process.chdir(workspaceA);
+            expect(overlayStore.list({ workspaceRoot: workspaceB }).map((item) => item.id)).toContain(snap.id);
+        } finally {
+            process.chdir(cwd);
+            overlayStore.clearAll();
+            rmSync(workspaceA, { recursive: true, force: true });
+            rmSync(workspaceB, { recursive: true, force: true });
+        }
+    });
+
     test('build_symbol_map rejects file inputs outside the configured workspace', async () => {
         const workspace = mkdtempSync(join(tmpdir(), 'sci-nexus-router-ws-'));
         const outside = mkdtempSync(join(tmpdir(), 'sci-nexus-router-outside-'));

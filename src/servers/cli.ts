@@ -111,6 +111,7 @@ class CLI {
                         json: !!options.json,
                         verbose: !!options.verbose,
                     });
+                    await this.exitIfAdapterError(result, !!options.json);
                     if (typeof result === 'string' || options.json) {
                         console.log(result);
                     } else if (Array.isArray(result)) {
@@ -171,6 +172,7 @@ class CLI {
                         json: !!options.json,
                         verbose: !!options.verbose,
                     });
+                    await this.exitIfAdapterError(result, !!options.json);
                     if (typeof result === 'string' || options.json) {
                         console.log(result);
                     } else if (Array.isArray(result)) {
@@ -216,6 +218,7 @@ class CLI {
                     maxFiles: parseInt(options.maxFiles),
                     json: !!options.json,
                 });
+                await this.exitIfAdapterError(result, !!options.json);
                 console.log(result);
                 await this.shutdown();
                 process.exit(0);
@@ -236,6 +239,7 @@ class CLI {
                     maxFiles: parseInt(options.maxFiles),
                     astOnly: options.astOnly !== false,
                 });
+                await this.exitIfAdapterError(result, false);
                 console.log(result);
                 await this.shutdown();
                 process.exit(0);
@@ -253,6 +257,7 @@ class CLI {
                 const result = await this.cliAdapter.handleRename(identifier, newName, {
                     dryRun: options.dryRun !== false,
                 });
+                await this.exitIfAdapterError(result, false);
                 console.log(result);
                 await this.shutdown();
                 process.exit(0);
@@ -271,6 +276,7 @@ class CLI {
                     json: !!options.json,
                     limit: parseInt(options.limit),
                 });
+                await this.exitIfAdapterError(result, !!options.json);
                 console.log(result);
                 await this.shutdown();
                 process.exit(0);
@@ -296,6 +302,7 @@ class CLI {
                         maxResults: parseInt(options.maxResults),
                         json: !!options.json,
                     });
+                    await this.exitIfAdapterError(out, !!options.json);
                     console.log(out);
                 } catch (e) {
                     this.markCommandFailed();
@@ -317,6 +324,7 @@ class CLI {
                     maxResults: parseInt(options.maxResults),
                     json: !!options.json,
                 });
+                await this.exitIfAdapterError(out, !!options.json);
                 console.log(out);
                 await this.shutdown();
                 process.exit(0);
@@ -364,6 +372,7 @@ class CLI {
                     timeoutSec: parseInt(options.timeout),
                     json: !!options.json,
                 });
+                await this.exitIfAdapterError(out, !!options.json);
                 console.log(out);
                 await this.shutdown();
                 process.exit(0);
@@ -385,6 +394,7 @@ class CLI {
                     timeoutSec: parseInt(options.timeout),
                     json: !!options.json,
                 });
+                await this.exitIfAdapterError(out, !!options.json);
                 console.log(out);
                 await this.shutdown();
                 process.exit(0);
@@ -408,6 +418,7 @@ class CLI {
                     limit: parseInt(options.limit),
                     json: !!options.json,
                 } as any);
+                await this.exitIfAdapterError(out, !!options.json);
                 console.log(out);
                 await this.shutdown();
                 process.exit(0);
@@ -435,6 +446,7 @@ class CLI {
                     limit: parseInt(options.limit),
                     json: !!options.json,
                 } as any);
+                await this.exitIfAdapterError(out, !!options.json);
                 console.log(out);
                 await this.shutdown();
                 process.exit(0);
@@ -471,6 +483,7 @@ class CLI {
                 try {
                     await this.ensureInitialized(options);
                     const result = await this.cliAdapter.handleStats(options);
+                    await this.exitIfAdapterError(result, !!options.json);
                     console.log(result);
                 } catch (e) {
                     this.markCommandFailed();
@@ -510,6 +523,7 @@ class CLI {
                         json: !!options.json,
                         verbose: !!options.verbose,
                     });
+                    await this.exitIfAdapterError(output, !!options.json);
                     if (options.tree && !options.json) {
                         const target = options.file ? options.file : this.workspaceRoot;
                         const depth = parseInt(options.treeDepth) || 2;
@@ -560,6 +574,13 @@ class CLI {
                     }
                     const result = await this.executeToolWorkflow(String(name), args);
                     const printed = this.printToolResult(result, !!options.json);
+                    if (this.isToolResultError(result)) {
+                        this.markCommandFailed();
+                        if (options.json) console.log(printed);
+                        else console.error(printed);
+                        await this.shutdown();
+                        process.exit(1);
+                    }
                     console.log(printed);
                     await this.shutdown();
                     process.exit(0);
@@ -599,11 +620,7 @@ class CLI {
                           : ['bun run typecheck'],
                     timeoutSec: parseInt(String(options.timeout) || '240', 10),
                 };
-                const result = await this.executeToolWorkflow('rename_safely', args);
-                const printed = this.printToolResult(result, !!options.json);
-                console.log(printed);
-                await this.shutdown();
-                process.exit(0);
+                await this.printToolWorkflowAndExit('rename_safely', args, !!options.json);
             });
 
         // Alias: patch-checks-in-snapshot (wraps 'patch_checks_in_snapshot')
@@ -635,11 +652,7 @@ class CLI {
                     timeoutSec: parseInt(String(options.timeout) || '240', 10),
                     onlyTouched: !!options.onlyTouched,
                 };
-                const result = await this.executeToolWorkflow('patch_checks_in_snapshot', args);
-                const printed = this.printToolResult(result, !!options.json);
-                console.log(printed);
-                await this.shutdown();
-                process.exit(0);
+                await this.printToolWorkflowAndExit('patch_checks_in_snapshot', args, !!options.json);
             });
 
         // Alias: structural-search (wraps 'structural_search')
@@ -657,11 +670,7 @@ class CLI {
                     paths: options.paths,
                     maxResults: parseInt(String(options.maxResults) || '50', 10),
                 };
-                const result = await this.executeToolWorkflow('structural_search', args);
-                const printed = this.printToolResult(result, !!options.json);
-                console.log(printed);
-                await this.shutdown();
-                process.exit(0);
+                await this.printToolWorkflowAndExit('structural_search', args, !!options.json);
             });
 
         // Alias: structural-patch-checks (wraps 'structural_patch_checks')
@@ -688,11 +697,7 @@ class CLI {
                     timeoutSec: parseInt(String(options.timeout) || '240', 10),
                     apply: !!options.apply,
                 };
-                const result = await this.executeToolWorkflow('structural_patch_checks', args);
-                const printed = this.printToolResult(result, !!options.json);
-                console.log(printed);
-                await this.shutdown();
-                process.exit(0);
+                await this.printToolWorkflowAndExit('structural_patch_checks', args, !!options.json);
             });
 
         // Pipelines (L5) helpers
@@ -705,11 +710,7 @@ class CLI {
             .option('-j, --json', 'Print raw JSON response')
             .action(async (options) => {
                 await this.ensureInitialized(options);
-                const result = await this.executeToolWorkflow('list_pipelines', {});
-                const printed = this.printToolResult(result, !!options.json);
-                console.log(printed);
-                await this.shutdown();
-                process.exit(0);
+                await this.printToolWorkflowAndExit('list_pipelines', {}, !!options.json);
             });
 
         // pipelines run <id>
@@ -719,11 +720,7 @@ class CLI {
             .option('-j, --json', 'Print raw JSON response')
             .action(async (id, options) => {
                 await this.ensureInitialized(options);
-                const result = await this.executeToolWorkflow('run_pipeline', { id: String(id) });
-                const printed = this.printToolResult(result, !!options.json);
-                console.log(printed);
-                await this.shutdown();
-                process.exit(0);
+                await this.printToolWorkflowAndExit('run_pipeline', { id: String(id) }, !!options.json);
             });
 
         // pipelines runs <id>
@@ -734,14 +731,14 @@ class CLI {
             .option('-j, --json', 'Print raw JSON response')
             .action(async (id, options) => {
                 await this.ensureInitialized(options);
-                const result = await this.executeToolWorkflow('list_pipeline_runs', {
-                    id: String(id),
-                    limit: parseInt(String(options.limit) || '10', 10),
-                });
-                const printed = this.printToolResult(result, !!options.json);
-                console.log(printed);
-                await this.shutdown();
-                process.exit(0);
+                await this.printToolWorkflowAndExit(
+                    'list_pipeline_runs',
+                    {
+                        id: String(id),
+                        limit: parseInt(String(options.limit) || '10', 10),
+                    },
+                    !!options.json
+                );
             });
     }
 
@@ -750,6 +747,34 @@ class CLI {
             throw new CoreError('Internal', 'CLI workflow executor not initialized');
         }
         return this.toolExecutor.execute(this.toolRouter, name, args);
+    }
+
+    private async printToolWorkflowAndExit(name: string, args: Record<string, any>, rawJson: boolean): Promise<never> {
+        try {
+            const result = await this.executeToolWorkflow(name, args);
+            const printed = this.printToolResult(result, rawJson);
+            if (this.isToolResultError(result)) {
+                this.markCommandFailed();
+                if (rawJson) console.log(printed);
+                else console.error(printed);
+                await this.shutdown();
+                process.exit(1);
+            }
+            console.log(printed);
+            await this.shutdown();
+            process.exit(0);
+        } catch (error) {
+            this.markCommandFailed();
+            const printed = this.formatToolError(error, rawJson);
+            if (rawJson) console.log(printed);
+            else console.error(printed);
+            await this.shutdown();
+            process.exit(1);
+        }
+    }
+
+    private isToolResultError(res: any): boolean {
+        return res?.isError === true || res?.error || res?.success === false;
     }
 
     private printToolResult(res: any, rawJson: boolean): string {
@@ -781,6 +806,27 @@ class CLI {
         return res;
     }
 
+
+    private isFormattedAdapterError(value: unknown): boolean {
+        return typeof value === 'string' && /^(Error:|\u001b\[1m\u001b\[31mError:)/.test(value);
+    }
+
+    private adapterErrorMessage(value: string): string {
+        return value.replace(/\u001b\[[0-9;]*m/g, '').replace(/^Error:\s*/, '').trim();
+    }
+
+    private async exitIfAdapterError(value: unknown, rawJson: boolean): Promise<void> {
+        if (!this.isFormattedAdapterError(value)) return;
+        this.markCommandFailed();
+        const message = this.adapterErrorMessage(String(value));
+        if (rawJson) {
+            console.log(JSON.stringify({ success: false, error: { code: 'InvalidParams', message } }, null, 2));
+        } else {
+            console.error(`Error: ${message}`);
+        }
+        await this.shutdown();
+        process.exit(1);
+    }
 
     private formatToolError(error: unknown, rawJson: boolean): string {
         const payload = (() => {

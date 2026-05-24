@@ -12,9 +12,13 @@
  */
 
 import * as fs from 'node:fs';
+import * as nodePath from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import leven from 'leven';
+import { CoreError } from '../core/errors.js';
 import { overlayStore } from '../core/overlay-store.js';
 import type { CodeAnalyzer } from '../core/unified-analyzer.js';
+import { resolveWorkspacePath } from '../core/workspace-path.js';
 import { AsyncEnhancedGrep } from '../layers/enhanced-search-tools-async.js';
 import {
     buildFindDefinitionRequest,
@@ -25,7 +29,6 @@ import {
     formatDefinitionForCli,
     formatReferenceForCli,
     handleAdapterError,
-    normalizeUri,
 } from './utils.js';
 
 export interface CLIAdapterConfig {
@@ -54,6 +57,49 @@ export class CLIAdapter {
         };
     }
 
+    private getWorkspaceRoot(): string {
+        const configured = (this.coreAnalyzer as any)?.config?.workspaceRoot;
+        return nodePath.resolve(typeof configured === 'string' && configured.trim() ? configured : process.cwd());
+    }
+
+    private pathInputFromCliFile(value: string, workspaceRoot: string): string {
+        const raw = String(value || '').trim();
+        const workspacePrefix = 'file://workspace';
+        if (!raw || raw === workspacePrefix) return workspaceRoot;
+        if (raw.startsWith(workspacePrefix)) {
+            const suffix = raw.slice(workspacePrefix.length).replace(/^\/+/, '');
+            return suffix ? nodePath.join(workspaceRoot, decodeURIComponent(suffix)) : workspaceRoot;
+        }
+        if (raw.startsWith('file://')) return fileURLToPath(raw);
+        return raw;
+    }
+
+    private async workspaceUriForFile(value: string | undefined, inputLabel: string): Promise<string> {
+        const workspaceRoot = this.getWorkspaceRoot();
+        const requestedPath = this.pathInputFromCliFile(value || 'file://workspace', workspaceRoot);
+        const resolved = await resolveWorkspacePath(requestedPath, { workspaceRoot, inputLabel, allowRoot: true });
+        return pathToFileURL(resolved.realPath).href;
+    }
+
+    private async workspacePathForSearch(value: string | undefined, inputLabel: string): Promise<string> {
+        const workspaceRoot = this.getWorkspaceRoot();
+        const requestedPath = this.pathInputFromCliFile(value || 'file://workspace', workspaceRoot);
+        const resolved = await resolveWorkspacePath(requestedPath, { workspaceRoot, inputLabel, allowRoot: true });
+        return resolved.realPath;
+    }
+
+    private async workspaceRelativePaths(values: string[] | undefined, inputLabel: string): Promise<string[] | undefined> {
+        if (!values) return undefined;
+        const workspaceRoot = this.getWorkspaceRoot();
+        const out: string[] = [];
+        for (const value of values) {
+            const requestedPath = this.pathInputFromCliFile(value, workspaceRoot);
+            const resolved = await resolveWorkspacePath(requestedPath, { workspaceRoot, inputLabel, allowRoot: true });
+            out.push(resolved.relativePath);
+        }
+        return out;
+    }
+
     /**
      * Convenience: for E2E validator – direct definition lookup
      */
@@ -64,7 +110,7 @@ export class CLIAdapter {
         try {
             await (this.coreAnalyzer as any)?.initialize?.();
         } catch {}
-        const uri = normalizeUri(file || 'file://workspace');
+        const uri = await this.workspaceUriForFile(file, 'CLI definition file');
         const symbol = input.symbol || this.extractWordFromFile(uri, input.line ?? 0, input.character ?? 0) || 'symbol';
         const request = buildFindDefinitionRequest({
             uri,
@@ -85,7 +131,7 @@ export class CLIAdapter {
         try {
             await (this.coreAnalyzer as any)?.initialize?.();
         } catch {}
-        const uri = normalizeUri(file || 'file://workspace');
+        const uri = await this.workspaceUriForFile(file, 'CLI references file');
         const request = buildFindReferencesRequest({
             uri,
             position: createPosition(0, 0),
@@ -109,7 +155,7 @@ export class CLIAdapter {
         try {
             await (this.coreAnalyzer as any)?.initialize?.();
         } catch {}
-        const uri = normalizeUri(file || 'file://workspace');
+        const uri = await this.workspaceUriForFile(file, 'CLI rename file');
         const identifier = this.extractWordFromFile(uri, position.line, position.character) || 'symbol';
         const request = buildRenameRequest({ uri, position, identifier, newName, dryRun: true });
         const result = await this.coreAnalyzer.rename(request);
@@ -170,7 +216,7 @@ export class CLIAdapter {
                 return 'Find failed: identifier required';
             }
             const request = buildFindDefinitionRequest({
-                uri: normalizeUri(options.file || 'file://workspace'),
+                uri: await this.workspaceUriForFile(options.file, 'CLI find file'),
                 position: createPosition(0, 0),
                 identifier,
                 maxResults: options.maxResults || this.config.maxResults,
@@ -233,11 +279,11 @@ export class CLIAdapter {
 
             // When no file context provided, first locate the symbol via definitions
             // to get seed files for a more targeted references search
-            let contextUri = options.file ? normalizeUri(options.file) : 'file://workspace';
+            let contextUri = options.file ? await this.workspaceUriForFile(options.file, 'CLI references file') : await this.workspaceUriForFile(undefined, 'CLI references file');
             if (!options.file) {
                 try {
                     const defRequest = buildFindDefinitionRequest({
-                        uri: 'file://workspace',
+                        uri: await this.workspaceUriForFile(undefined, 'CLI references file'),
                         position: createPosition(0, 0),
                         identifier,
                         maxResults: 10,
@@ -296,7 +342,7 @@ export class CLIAdapter {
     async handleRename(identifier: string, newName: string, options: { dryRun?: boolean }): Promise<string> {
         try {
             const request = buildRenameRequest({
-                uri: normalizeUri('file://workspace'),
+                uri: await this.workspaceUriForFile(undefined, 'CLI rename workspace'),
                 position: createPosition(0, 0),
                 identifier,
                 newName,
@@ -349,7 +395,7 @@ export class CLIAdapter {
     ): Promise<string> {
         try {
             const request = buildRenameRequest({
-                uri: normalizeUri('file://workspace'),
+                uri: await this.workspaceUriForFile(undefined, 'CLI plan-rename workspace'),
                 position: createPosition(0, 0),
                 identifier,
                 newName,
@@ -409,7 +455,7 @@ export class CLIAdapter {
             await (this.coreAnalyzer as any)?.initialize?.();
             const kind = options.kind || 'literal';
             const maxResults = Math.min(options.maxResults || this.config.maxResults || 200, 1000);
-            const searchPath = options.path || process.cwd();
+            const searchPath = await this.workspacePathForSearch(options.path, 'CLI text-search path');
 
             const searchViaAsyncGrep = async (pattern: string, useRegex: boolean) => {
                 const asyncGrep = new AsyncEnhancedGrep({ cacheSize: 500, cacheTTL: 30000 });
@@ -449,10 +495,11 @@ export class CLIAdapter {
             if (process.env.DEBUG_TEXT_SEARCH === '1') {
                 console.error('[CLI handleTextSearch] Error calling textSearch:', error);
             }
+            if (error instanceof CoreError) return this.formatError(`Text search failed: ${handleAdapterError(error, 'cli')}`);
             const kind = options.kind || 'literal';
             const caseInsensitive = !!options.caseInsensitive;
             const maxResults = Math.min(options.maxResults || this.config.maxResults || 200, 1000);
-            const path = options.path || process.cwd();
+            const path = await this.workspacePathForSearch(options.path, 'CLI text-search path');
             const asyncGrep = new AsyncEnhancedGrep({ cacheSize: 500, cacheTTL: 30000 });
             const pattern =
                 kind === 'word' ? `\\b${escapeRegex(query)}\\b` : kind === 'literal' ? escapeRegex(query) : query;
@@ -491,7 +538,7 @@ export class CLIAdapter {
      * Snapshot creation
      */
     async handleGetSnapshot(options?: { preferExisting?: boolean; json?: boolean }): Promise<string> {
-        const snap = overlayStore.createSnapshot(!!options?.preferExisting);
+        const snap = overlayStore.createSnapshot(!!options?.preferExisting, { workspaceRoot: this.getWorkspaceRoot() });
         return options?.json ? JSON.stringify({ snapshot: snap.id }, null, 2) : snap.id;
     }
 
@@ -504,14 +551,14 @@ export class CLIAdapter {
     ): Promise<string> {
         let snap;
         try {
-            snap = overlayStore.ensureSnapshot(options.snapshot);
+            snap = overlayStore.ensureSnapshot(options.snapshot, { workspaceRoot: this.getWorkspaceRoot() });
         } catch (e) {
             return this.formatError(`invalid snapshot: ${e instanceof Error ? e.message : String(e)}`);
         }
         const res = overlayStore.stagePatch(snap.id, patch);
         if (!res.accepted) return this.formatError(res.message || 'Patch rejected');
         if (options.runChecks) {
-            const r = await overlayStore.runChecks(snap.id, options.commands || [], options.timeoutSec || 120);
+            const r = await overlayStore.runChecks(snap.id, options.commands || [], options.timeoutSec || 120, { workspaceRoot: this.getWorkspaceRoot() });
             const payload = {
                 snapshot: snap.id,
                 accepted: true,
@@ -536,7 +583,7 @@ export class CLIAdapter {
     }): Promise<string> {
         const snapId = options.snapshot;
         if (!snapId) return this.formatError('snapshot required');
-        const r = await overlayStore.runChecks(snapId, options.commands || [], options.timeoutSec || 120);
+        const r = await overlayStore.runChecks(snapId, options.commands || [], options.timeoutSec || 120, { workspaceRoot: this.getWorkspaceRoot() });
         const payload = { snapshot: snapId, ok: r.ok, elapsedMs: r.elapsedMs, commands: r.commands || [], output: r.output.slice(-4000) };
         return options.json ? JSON.stringify(payload, null, 2) : `${snapId} ${r.ok ? 'OK' : 'FAIL'} (${r.elapsedMs}ms)`;
     }
@@ -548,7 +595,7 @@ export class CLIAdapter {
         const maxKeep = typeof options.maxKeep === 'number' ? options.maxKeep : 10;
         const days = typeof options.maxAgeDays === 'number' ? options.maxAgeDays : 3;
         const maxAgeMs = Math.max(0, days) * 24 * 60 * 60 * 1000;
-        await overlayStore.cleanup(maxKeep, maxAgeMs);
+        await overlayStore.cleanup(maxKeep, maxAgeMs, { workspaceRoot: this.getWorkspaceRoot() });
         return `Cleaned snapshots (maxKeep=${maxKeep}, maxAgeDays=${days})`;
     }
 
@@ -567,9 +614,10 @@ export class CLIAdapter {
         const out = await runAstQuery({
             language: options.language,
             query: options.query,
-            paths: options.paths,
+            paths: await this.workspaceRelativePaths(options.paths, 'CLI ast-query path'),
             glob: options.glob,
             limit: options.limit,
+            workspaceRoot: this.getWorkspaceRoot(),
         });
         return options.json ? JSON.stringify(out, null, 2) : String(out.count);
     }
@@ -616,6 +664,7 @@ export class CLIAdapter {
             limit: options.limit,
             seedFiles,
             seedStrict: !!options.seedOnly,
+            workspaceRoot: this.getWorkspaceRoot(),
         });
         return options.json
             ? JSON.stringify(out, null, 2)
@@ -723,7 +772,7 @@ export class CLIAdapter {
         }
     ): Promise<string> {
         try {
-            const uri = normalizeUri(options.file || 'file://workspace');
+            const uri = await this.workspaceUriForFile(options.file, 'CLI explore file');
             const result = await (this.coreAnalyzer as any).exploreCodebase({
                 uri,
                 identifier,
@@ -803,7 +852,7 @@ export class CLIAdapter {
         try {
             const res = await (this.coreAnalyzer as any).buildSymbolMap({
                 identifier,
-                uri: normalizeUri(options.file || 'file://workspace'),
+                uri: await this.workspaceUriForFile(options.file, 'CLI symbol-map file'),
                 maxFiles: Math.min(options.maxFiles ?? 10, 100),
                 astOnly: true,
             });
@@ -843,7 +892,7 @@ export class CLIAdapter {
         try {
             const res = await (this.coreAnalyzer as any).buildSymbolMap({
                 identifier,
-                uri: normalizeUri(options.file || 'file://workspace'),
+                uri: await this.workspaceUriForFile(options.file, 'CLI symbol-map-graph file'),
                 maxFiles: Math.min(options.maxFiles ?? 10, 100),
                 astOnly: options.astOnly ?? true,
             });
@@ -874,7 +923,7 @@ export class CLIAdapter {
             if (names.length === 0) {
                 try {
                     const defProbe = await (this.coreAnalyzer as any).findDefinitionAsync({
-                        uri: normalizeUri(options.file || 'file://workspace'),
+                        uri: await this.workspaceUriForFile(options.file, 'CLI symbol-map-graph file'),
                         position: createPosition(0, 0),
                         identifier,
                         includeDeclaration: true,
@@ -937,6 +986,10 @@ export class CLIAdapter {
         return `\x1b[36m${text}\x1b[0m`; // Cyan
     }
 
+    private isFormattedErrorOutput(value: unknown): boolean {
+        return typeof value === 'string' && (/^(Error:|\u001b\[1m\u001b\[31mError:)/.test(value));
+    }
+
     /**
      * Initialize the CLI adapter
      */
@@ -972,39 +1025,51 @@ export class CLIAdapter {
                         return { success: false, message: 'Identifier required for find command' };
                     }
                     result = await this.handleFind(args[1], options);
-                    return { success: true, data: result };
+                    return this.isFormattedErrorOutput(result)
+                        ? { success: false, data: [], message: result }
+                        : { success: true, data: result };
 
                 case 'references':
                     if (args[1] === undefined) {
                         return { success: false, message: 'Identifier required for references command' };
                     }
                     result = await this.handleReferences(args[1], options);
-                    return { success: true, data: result };
+                    return this.isFormattedErrorOutput(result)
+                        ? { success: false, data: [], message: result }
+                        : { success: true, data: result };
 
                 case 'rename':
                     if (!args[1] || !args[2]) {
                         return { success: false, message: 'Old name and new name required for rename command' };
                     }
                     result = await this.handleRename(args[1], args[2], options);
-                    return { success: true, data: result };
+                    return this.isFormattedErrorOutput(result)
+                        ? { success: false, data: [], message: result }
+                        : { success: true, data: result };
 
                 case 'plan-rename':
                     if (!args[1] || !args[2]) {
                         return { success: false, message: 'Old name and new name required for plan-rename command' };
                     }
                     result = await this.handlePlanRename(args[1], args[2], options as any);
-                    return { success: true, data: result };
+                    return this.isFormattedErrorOutput(result)
+                        ? { success: false, data: [], message: result }
+                        : { success: true, data: result };
 
                 case 'stats':
                     result = await this.handleStats();
-                    return { success: true, data: result };
+                    return this.isFormattedErrorOutput(result)
+                        ? { success: false, data: [], message: result }
+                        : { success: true, data: result };
 
                 case 'symbol-map':
                     if (!args[1]) {
                         return { success: false, message: 'Identifier required for symbol-map command' };
                     }
                     result = await this.handleSymbolMap(args[1], options as any);
-                    return { success: true, data: result };
+                    return this.isFormattedErrorOutput(result)
+                        ? { success: false, data: [], message: result }
+                        : { success: true, data: result };
 
                 default:
                     return { success: false, message: `Unknown command: ${command}` };

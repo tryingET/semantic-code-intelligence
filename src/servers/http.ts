@@ -162,7 +162,7 @@ export class HTTPServer {
                         const metrics = (this.coreAnalyzer as any).getLayer4StorageMetrics?.();
                         return new Response(JSON.stringify(metrics || { error: 'unavailable' }), {
                             status: metrics ? 200 : 503,
-                            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                            headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                         });
                     }
 
@@ -198,7 +198,7 @@ export class HTTPServer {
                                 }),
                                 {
                                     status: l4 || l1m || l2m || lmAll || lmPerf ? 200 : 503,
-                                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 }
                             );
                         }
@@ -310,7 +310,7 @@ export class HTTPServer {
                             });
                             return new Response(JSON.stringify({ success: true, data: out }), {
                                 status: 200,
-                                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                                headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                             });
                         } catch (err) {
                             const status = statusForThrownError(err);
@@ -321,7 +321,7 @@ export class HTTPServer {
                                 }),
                                 {
                                     status,
-                                    headers: { 'Content-Type': 'application/json' },
+                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 }
                             );
                         }
@@ -370,7 +370,7 @@ export class HTTPServer {
                                     status,
                                     headers: {
                                         'Content-Type': 'application/json',
-                                        'Access-Control-Allow-Origin': '*',
+                                        ...corsHeadersForRequest(request),
                                     },
                                 }
                             );
@@ -382,7 +382,7 @@ export class HTTPServer {
                                 JSON.stringify({ success: false, error: envelopeForThrownError(err) }),
                                 {
                                     status: statusForThrownError(err),
-                                    headers: { 'Content-Type': 'application/json' },
+                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 }
                             );
                         }
@@ -400,7 +400,7 @@ export class HTTPServer {
                             if (!pipelineId) {
                                 return new Response(JSON.stringify({ error: 'id required' }), {
                                     status: 400,
-                                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 });
                             }
 
@@ -413,7 +413,7 @@ export class HTTPServer {
                             if (!runId) {
                                 return new Response(JSON.stringify({ error: 'failed to start pipeline' }), {
                                     status: 500,
-                                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 });
                             }
 
@@ -484,7 +484,7 @@ export class HTTPServer {
                                 headers: {
                                     'Content-Type': 'application/x-ndjson',
                                     'Cache-Control': 'no-cache',
-                                    'Access-Control-Allow-Origin': '*',
+                                    ...corsHeadersForRequest(request),
                                 },
                             });
                         } catch (err) {
@@ -496,7 +496,7 @@ export class HTTPServer {
                                 }),
                                 {
                                     status,
-                                    headers: { 'Content-Type': 'application/json' },
+                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 }
                             );
                         }
@@ -511,7 +511,7 @@ export class HTTPServer {
                             if (!pipelineId) {
                                 return new Response(JSON.stringify({ success: false, error: 'id required' }), {
                                     status: 400,
-                                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 });
                             }
                             const runRes = await this.executeToolWorkflow('run_pipeline', {
@@ -524,7 +524,7 @@ export class HTTPServer {
                             });
                             return new Response(JSON.stringify({ success: true, data: json }), {
                                 status: 200,
-                                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                                headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                             });
                         } catch (err) {
                             const status = statusForThrownError(err);
@@ -535,7 +535,7 @@ export class HTTPServer {
                                 }),
                                 {
                                     status,
-                                    headers: { 'Content-Type': 'application/json' },
+                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 }
                             );
                         }
@@ -553,7 +553,7 @@ export class HTTPServer {
                                         status: 400,
                                         headers: {
                                             'Content-Type': 'application/json',
-                                            'Access-Control-Allow-Origin': '*',
+                                            ...corsHeadersForRequest(request),
                                         },
                                     }
                                 );
@@ -571,13 +571,13 @@ export class HTTPServer {
                                 JSON.stringify({ success: true, data: { pipelineId, runId, run: row } }),
                                 {
                                     status: 200,
-                                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 }
                             );
                         } catch (err) {
                             return new Response(JSON.stringify({ success: false, error: 'run detail failed' }), {
                                 status: 500,
-                                headers: { 'Content-Type': 'application/json' },
+                                headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                             });
                         }
                     }
@@ -589,7 +589,7 @@ export class HTTPServer {
                             if (!pipelineId) {
                                 return new Response(JSON.stringify({ success: false, error: 'id required' }), {
                                     status: 400,
-                                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 });
                             }
                             const res = await this.executeToolWorkflow('pipeline_status', {
@@ -598,12 +598,12 @@ export class HTTPServer {
                             const json = this.toolWorkflowPayload(res, { ok: false, reason: 'parse_error' });
                             return new Response(JSON.stringify({ success: true, data: json }), {
                                 status: 200,
-                                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                                headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                             });
                         } catch (err) {
                             return new Response(JSON.stringify({ success: false, error: 'status failed' }), {
                                 status: 500,
-                                headers: { 'Content-Type': 'application/json' },
+                                headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                             });
                         }
                     }
@@ -616,7 +616,7 @@ export class HTTPServer {
                             if (!pipelineId) {
                                 return new Response(JSON.stringify({ success: false, error: 'id required' }), {
                                     status: 400,
-                                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 });
                             }
                             const res = await this.executeToolWorkflow('list_pipeline_runs', {
@@ -626,12 +626,12 @@ export class HTTPServer {
                             const json = this.toolWorkflowPayload(res, { runs: [] });
                             return new Response(JSON.stringify({ success: true, data: json }), {
                                 status: 200,
-                                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                                headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                             });
                         } catch (err) {
                             return new Response(JSON.stringify({ success: false, error: 'runs failed' }), {
                                 status: 500,
-                                headers: { 'Content-Type': 'application/json' },
+                                headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                             });
                         }
                     }
@@ -643,12 +643,12 @@ export class HTTPServer {
                             const json = this.toolWorkflowPayload(res, { pipelines: [] });
                             return new Response(JSON.stringify({ success: true, data: json }), {
                                 status: 200,
-                                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                                headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                             });
                         } catch (err) {
                             return new Response(JSON.stringify({ success: false, error: 'list failed' }), {
                                 status: 500,
-                                headers: { 'Content-Type': 'application/json' },
+                                headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                             });
                         }
                     }
@@ -674,7 +674,7 @@ export class HTTPServer {
                                         status: 400,
                                         headers: {
                                             'Content-Type': 'application/json',
-                                            'Access-Control-Allow-Origin': '*',
+                                            ...corsHeadersForRequest(request),
                                         },
                                     }
                                 );
@@ -686,7 +686,7 @@ export class HTTPServer {
                                     JSON.stringify({ success: false, error: 'learning orchestrator unavailable' }),
                                     {
                                         status: 500,
-                                        headers: { 'Content-Type': 'application/json' },
+                                        headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                     }
                                 );
                             }
@@ -704,7 +704,7 @@ export class HTTPServer {
                             const pid = await lo.registerPipeline(payload);
                             return new Response(JSON.stringify({ success: true, data: { id: pid } }), {
                                 status: 200,
-                                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                                headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                             });
                         } catch (err) {
                             const status = statusForThrownError(err);
@@ -715,7 +715,7 @@ export class HTTPServer {
                                 }),
                                 {
                                     status,
-                                    headers: { 'Content-Type': 'application/json' },
+                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 }
                             );
                         }
@@ -729,7 +729,7 @@ export class HTTPServer {
                             if (!pipelineId) {
                                 return new Response(JSON.stringify({ success: false, error: 'id required' }), {
                                     status: 400,
-                                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 });
                             }
                             const res = await this.executeToolWorkflow('pipeline_status', {
@@ -738,12 +738,12 @@ export class HTTPServer {
                             const json = this.toolWorkflowPayload(res, { ok: false, reason: 'parse_error' });
                             return new Response(JSON.stringify({ success: true, data: json }), {
                                 status: 200,
-                                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                                headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                             });
                         } catch (err) {
                             return new Response(JSON.stringify({ success: false, error: 'get failed' }), {
                                 status: 500,
-                                headers: { 'Content-Type': 'application/json' },
+                                headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                             });
                         }
                     }
@@ -764,7 +764,7 @@ export class HTTPServer {
                                 const status = statusForCoreErrorCode(error.code);
                                 return new Response(JSON.stringify({ success: false, error }), {
                                     status,
-                                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 });
                             }
 
@@ -792,7 +792,7 @@ export class HTTPServer {
                             } catch {}
                             return new Response(JSON.stringify({ success: true, data: payload }), {
                                 status: 200,
-                                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                                headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                             });
                         } catch (err: any) {
                             try {
@@ -802,7 +802,7 @@ export class HTTPServer {
                                 JSON.stringify({ success: false, error: envelopeForThrownError(err) }),
                                 {
                                     status: statusForThrownError(err),
-                                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 }
                             );
                         }
@@ -810,8 +810,9 @@ export class HTTPServer {
 
                     // Snapshots - list
                     if (url.pathname === '/api/v1/snapshots' && request.method === 'GET') {
+                        assertAllowedBrowserOrigin(request, 'HTTP snapshots');
                         const { overlayStore } = await import('../core/overlay-store.js');
-                        const snaps = overlayStore.list().map((s: any) => ({
+                        const snaps = overlayStore.list({ workspaceRoot: this.config.workspaceRoot }).map((s: any) => ({
                             id: s.id,
                             createdAt: s.createdAt,
                             diffCount: s.diffs.length,
@@ -821,7 +822,7 @@ export class HTTPServer {
                         }));
                         return new Response(JSON.stringify({ success: true, data: snaps }), {
                             status: 200,
-                            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                            headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                         });
                     }
 
@@ -832,12 +833,13 @@ export class HTTPServer {
                         request.method === 'GET'
                     ) {
                         try {
+                            assertAllowedBrowserOrigin(request, 'HTTP snapshot diff');
                             const m = url.pathname.match(/^\/api\/v1\/snapshots\/([^/]+)\/diff$/);
                             const id = m && m[1];
                             if (!id)
                                 return new Response(JSON.stringify({ success: false, error: 'Invalid snapshot id' }), {
                                     status: 400,
-                                    headers: { 'Content-Type': 'application/json' },
+                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 });
                             const { overlayStore } = await import('../core/overlay-store.js');
                             const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
@@ -845,25 +847,28 @@ export class HTTPServer {
                             if (!dir)
                                 return new Response(JSON.stringify({ success: false, error: 'Snapshot not found' }), {
                                     status: 404,
-                                    headers: { 'Content-Type': 'application/json' },
+                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 });
                             const diffPath = `${dir}/overlay.diff`;
                             const file = Bun.file(diffPath);
                             if (!(await file.exists())) {
                                 return new Response(JSON.stringify({ success: true, data: { id, diff: '' } }), {
                                     status: 200,
-                                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 });
                             }
                             const text = await file.text();
                             return new Response(JSON.stringify({ success: true, data: { id, diff: text } }), {
                                 status: 200,
-                                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                                headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                             });
                         } catch (err) {
                             return new Response(
-                                JSON.stringify({ success: false, error: 'Failed to read snapshot diff' }),
-                                { status: 500, headers: { 'Content-Type': 'application/json' } }
+                                JSON.stringify({ success: false, error: envelopeForThrownError(err) }),
+                                {
+                                    status: statusForThrownError(err),
+                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
+                                }
                             );
                         }
                     }
@@ -875,12 +880,13 @@ export class HTTPServer {
                         request.method === 'GET'
                     ) {
                         try {
+                            assertAllowedBrowserOrigin(request, 'HTTP snapshot status');
                             const m = url.pathname.match(/^\/api\/v1\/snapshots\/([^/]+)\/status$/);
                             const id = m && m[1];
                             if (!id)
                                 return new Response(JSON.stringify({ success: false, error: 'Invalid snapshot id' }), {
                                     status: 400,
-                                    headers: { 'Content-Type': 'application/json' },
+                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 });
                             const { overlayStore } = await import('../core/overlay-store.js');
                             const status = (overlayStore as any).getStatus?.(id, {
@@ -889,18 +895,18 @@ export class HTTPServer {
                             if (!status)
                                 return new Response(JSON.stringify({ success: false, error: 'Snapshot not found' }), {
                                     status: 404,
-                                    headers: { 'Content-Type': 'application/json' },
+                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 });
                             return new Response(JSON.stringify({ success: true, data: status }), {
                                 status: 200,
-                                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                                headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                             });
                         } catch (err) {
                             return new Response(
-                                JSON.stringify({ success: false, error: 'Failed to read snapshot status' }),
+                                JSON.stringify({ success: false, error: envelopeForThrownError(err) }),
                                 {
-                                    status: 500,
-                                    headers: { 'Content-Type': 'application/json' },
+                                    status: statusForThrownError(err),
+                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 }
                             );
                         }
@@ -913,12 +919,13 @@ export class HTTPServer {
                         request.method === 'GET'
                     ) {
                         try {
+                            assertAllowedBrowserOrigin(request, 'HTTP snapshot progress');
                             const m = url.pathname.match(/^\/api\/v1\/snapshots\/([^/]+)\/progress$/);
                             const id = m && m[1];
                             if (!id)
                                 return new Response(JSON.stringify({ success: false, error: 'Invalid snapshot id' }), {
                                     status: 400,
-                                    headers: { 'Content-Type': 'application/json' },
+                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 });
                             const { overlayStore } = await import('../core/overlay-store.js');
                             let snapshotDir = '';
@@ -932,20 +939,20 @@ export class HTTPServer {
                             if (!file || !(await file.exists())) {
                                 return new Response(JSON.stringify({ success: true, data: { id, progress: '' } }), {
                                     status: 200,
-                                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 });
                             }
                             const text = await file.text();
                             return new Response(JSON.stringify({ success: true, data: { id, progress: text } }), {
                                 status: 200,
-                                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                                headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                             });
                         } catch (err) {
                             return new Response(
-                                JSON.stringify({ success: false, error: 'Failed to read snapshot progress' }),
+                                JSON.stringify({ success: false, error: envelopeForThrownError(err) }),
                                 {
-                                    status: 500,
-                                    headers: { 'Content-Type': 'application/json' },
+                                    status: statusForThrownError(err),
+                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 }
                             );
                         }
@@ -960,17 +967,19 @@ export class HTTPServer {
                             const { overlayStore } = await import('../core/overlay-store.js');
                             const maxKeep = typeof body.maxKeep === 'number' ? body.maxKeep : 10;
                             const days = typeof body.maxAgeDays === 'number' ? body.maxAgeDays : 3;
-                            await overlayStore.cleanup(maxKeep, days * 24 * 60 * 60 * 1000);
+                            await overlayStore.cleanup(maxKeep, days * 24 * 60 * 60 * 1000, {
+                                workspaceRoot: this.config.workspaceRoot,
+                            });
                             return new Response(JSON.stringify({ success: true }), {
                                 status: 200,
-                                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                                headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                             });
                         } catch (err) {
                             return new Response(
                                 JSON.stringify({ success: false, error: envelopeForThrownError(err) }),
                                 {
                                     status: statusForThrownError(err),
-                                    headers: { 'Content-Type': 'application/json' },
+                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 }
                             );
                         }
@@ -985,14 +994,14 @@ export class HTTPServer {
                             const stats = await (this.coreAnalyzer as any).getStats?.();
                             return new Response(JSON.stringify({ success: true, data: stats || {} }), {
                                 status: 200,
-                                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                                headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                             });
                         } catch (err) {
                             return new Response(
                                 JSON.stringify({ success: false, error: 'Failed to get learning stats' }),
                                 {
                                     status: 500,
-                                    headers: { 'Content-Type': 'application/json' },
+                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 }
                             );
                         }
@@ -1021,7 +1030,7 @@ export class HTTPServer {
                     }
                     return new Response(JSON.stringify({ success: false, error: envelopeForThrownError(error) }), {
                         status: statusForThrownError(error),
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                     });
                 }
             },
@@ -1139,7 +1148,7 @@ export class HTTPServer {
         } catch (error) {
             return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
                 status: 400,
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
             });
         }
 
@@ -1148,7 +1157,7 @@ export class HTTPServer {
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache',
             Connection: 'keep-alive',
-            'Access-Control-Allow-Origin': '*',
+            ...corsHeadersForRequest(request),
             'Access-Control-Allow-Headers': 'Content-Type',
         });
 

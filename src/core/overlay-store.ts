@@ -290,14 +290,19 @@ export class OverlayStore {
         };
     }
 
-    private hydrateSnapshot(raw: any): Snapshot | null {
+    private hydrateSnapshot(raw: any, fallbackWorkspaceRoot?: string): Snapshot | null {
         const id = String(raw?.id || '').trim();
         if (!this.isValidSnapshotId(id)) return null;
         const createdAt = Number(raw?.createdAt || Date.now());
         const diffs = Array.isArray(raw?.diffs) ? raw.diffs.filter((d: any) => typeof d === 'string') : [];
         const touched = Array.isArray(raw?.touchedFiles) ? raw.touchedFiles.filter((f: any) => typeof f === 'string') : [];
         const baseFingerprint = typeof raw?.baseFingerprint === 'string' ? raw.baseFingerprint : undefined;
-        const workspaceRoot = typeof raw?.workspaceRoot === 'string' && raw.workspaceRoot ? path.resolve(raw.workspaceRoot) : undefined;
+        const workspaceRoot =
+            typeof raw?.workspaceRoot === 'string' && raw.workspaceRoot
+                ? path.resolve(raw.workspaceRoot)
+                : fallbackWorkspaceRoot
+                  ? this.resolveWorkspaceBase(fallbackWorkspaceRoot)
+                  : undefined;
         const snap: Snapshot = { id, createdAt, diffs, baseFingerprint, workspaceRoot };
         if (touched.length) snap.touchedFiles = new Set(touched);
         if (raw?.lastApply && typeof raw.lastApply === 'object') snap.lastApply = raw.lastApply;
@@ -335,7 +340,7 @@ export class OverlayStore {
         try {
             this.assertValidId(id);
             const raw = JSON.parse(fs.readFileSync(this.metadataPath(id, workspaceRoot), 'utf8'));
-            const snap = this.hydrateSnapshot(raw);
+            const snap = this.hydrateSnapshot(raw, workspaceRoot);
             if (!snap) return null;
             this.snapshots.set(snap.id, snap);
             return snap;
@@ -409,9 +414,12 @@ export class OverlayStore {
         return found;
     }
 
-    list(): Snapshot[] {
-        this.loadAllSnapshotsFromDisk();
-        return Array.from(this.snapshots.values()).sort((a, b) => b.createdAt - a.createdAt);
+    list(opts: { workspaceRoot?: string } = {}): Snapshot[] {
+        const workspaceRoot = opts.workspaceRoot ? this.resolveWorkspaceBase(opts.workspaceRoot) : undefined;
+        this.loadAllSnapshotsFromDisk(workspaceRoot);
+        return Array.from(this.snapshots.values())
+            .filter((snap) => !workspaceRoot || this.resolveWorkspaceBase(snap.workspaceRoot) === workspaceRoot)
+            .sort((a, b) => b.createdAt - a.createdAt);
     }
 
     getSnapshotDirectory(snapshotId: string, opts: { workspaceRoot?: string } = {}): string {
@@ -490,8 +498,9 @@ export class OverlayStore {
         }
     }
 
-    async cleanup(maxKeep = 10, maxAgeMs = 3 * 24 * 60 * 60 * 1000): Promise<void> {
-        const snaps = this.list();
+    async cleanup(maxKeep = 10, maxAgeMs = 3 * 24 * 60 * 60 * 1000, opts: { workspaceRoot?: string } = {}): Promise<void> {
+        const workspaceRoot = opts.workspaceRoot ? this.resolveWorkspaceBase(opts.workspaceRoot) : undefined;
+        const snaps = this.list({ workspaceRoot });
         const now = Date.now();
         const toDelete: Snapshot[] = [];
         // Age-based
@@ -512,7 +521,7 @@ export class OverlayStore {
                 await fsp.rm(path.join(snapsRoot, s.id), { recursive: true, force: true });
             } catch {}
         }
-        cleanupRoots.add(this.snapshotsRoot());
+        cleanupRoots.add(this.snapshotsRoot(workspaceRoot));
         for (const snapsRoot of cleanupRoots) {
             await this.cleanupTransientSnapshotWorkspaces(snapsRoot, now, maxAgeMs);
             await this.cleanupMaterializeLockWorkspaces(snapsRoot, now, maxAgeMs);
