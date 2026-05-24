@@ -10,6 +10,7 @@
  */
 
 import { serve } from 'bun';
+import { fileURLToPath } from 'node:url';
 import type { Location } from 'vscode-languageserver/node';
 import {
     createConnection,
@@ -88,7 +89,8 @@ export class LSPServer {
 
             // Initialize core analyzer
             const config = createDefaultCoreConfig();
-            const workspaceRoot = params.rootPath || params.workspaceFolders?.[0]?.uri || process.cwd();
+            const rawWorkspaceRoot = params.rootPath || params.workspaceFolders?.[0]?.uri || process.cwd();
+            const workspaceRoot = rawWorkspaceRoot.startsWith('file://') ? fileURLToPath(rawWorkspaceRoot) : rawWorkspaceRoot;
 
             this.coreAnalyzer = await createCodeAnalyzer({
                 ...config,
@@ -98,7 +100,7 @@ export class LSPServer {
             await this.coreAnalyzer.initialize();
 
             // Create LSP adapter
-            this.lspAdapter = new LSPAdapter(this.coreAnalyzer);
+            this.lspAdapter = new LSPAdapter(this.coreAnalyzer, { workspaceRoot });
 
             this.initialized = true;
 

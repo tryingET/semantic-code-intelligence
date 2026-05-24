@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { CoreError } from '../errors.js';
 import { overlayStore } from '../overlay-store.js';
+import { resolveWorkspacePath } from '../workspace-path.js';
 import { snapshotArtifactLinks, type SnapshotWorkflowResult } from './snapshot-patch-workflow.js';
 
 export function findAstGrepBinary(): string | null {
@@ -19,18 +20,18 @@ export function findAstGrepBinary(): string | null {
     return null;
 }
 
-export function normalizeStructuralPaths(pathsArg: any, workspaceRoot: string): string[] {
+export async function normalizeStructuralPaths(pathsArg: any, workspaceRoot: string): Promise<string[]> {
     const rawPaths = Array.isArray(pathsArg) && pathsArg.length > 0 ? pathsArg : ['.'];
     const out: string[] = [];
     for (const raw of rawPaths) {
         const requested = String(raw || '').trim();
         if (!requested) continue;
-        const abs = path.resolve(workspaceRoot, requested);
-        const rel = path.relative(workspaceRoot, abs);
-        if (rel.startsWith('..') || path.isAbsolute(rel)) {
-            throw new CoreError('InvalidParams', 'structural paths must stay within the workspace', { path: requested });
-        }
-        out.push(rel === '' ? '.' : rel);
+        const resolved = await resolveWorkspacePath(requested, {
+            workspaceRoot,
+            inputLabel: 'structural path',
+            allowRoot: true,
+        });
+        out.push(resolved.relativePath === '.' ? '.' : resolved.relativePath);
     }
     return out.length ? out : ['.'];
 }
@@ -164,7 +165,7 @@ export class StructuralWorkflowService {
         if (!bin) {
             return { payload: { ok: false, code: 'ast_grep_unavailable', message: 'ast-grep binary not found on PATH' }, isError: true };
         }
-        const paths = normalizeStructuralPaths(args?.paths, this.workspaceRoot);
+        const paths = await normalizeStructuralPaths(args?.paths, this.workspaceRoot);
         const maxResults = Math.max(1, Math.min(1000, Number(args?.maxResults || 50)));
         const timeoutMs = Math.max(1_000, Math.min(120_000, Number(args?.timeoutMs || 30_000)));
         const maxBuffer = Math.max(64 * 1024, Math.min(32 * 1024 * 1024, Number(args?.maxBuffer || 8 * 1024 * 1024)));
@@ -266,7 +267,7 @@ export class StructuralWorkflowService {
         if (!bin) {
             return { payload: { ok: false, code: 'ast_grep_unavailable', message: 'ast-grep binary not found on PATH' }, isError: true };
         }
-        const paths = normalizeStructuralPaths(args?.paths, this.workspaceRoot);
+        const paths = await normalizeStructuralPaths(args?.paths, this.workspaceRoot);
         const maxResults = Math.max(1, Math.min(2000, Number(args?.maxResults || 200)));
         const commands = Array.isArray(args?.commands) ? (args.commands as string[]) : ['bun run typecheck'];
         const timeoutSec = typeof args?.timeoutSec === 'number' ? args.timeoutSec : 240;

@@ -41,7 +41,7 @@ interface AdapterTestContext {
 
 const createAdapterTestContext = async (): Promise<AdapterTestContext> => {
     // Create configuration using test helpers
-    const config: CoreConfig = createTestConfig();
+    const config: CoreConfig = createTestConfig({ workspaceRoot: process.cwd() });
 
     // Initialize services and core
     const sharedServices = new SharedServices(config);

@@ -12,9 +12,13 @@
  * All actual analysis work is delegated to the unified core analyzer.
  */
 
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { CodeAnalyzer } from '../core/unified-analyzer.js';
 import type { SearchStream } from '../layers/enhanced-search-tools-async.js';
 import { CoreError } from '../core/errors.js';
+import { resolveWorkspacePath } from '../core/workspace-path.js';
 import {
     buildCompletionRequest,
     buildFindDefinitionRequest,
@@ -38,6 +42,7 @@ export interface HTTPAdapterConfig {
     enableCors?: boolean;
     enableOpenAPI?: boolean;
     apiVersion?: string;
+    allowLegacyCwdFallback?: boolean;
 }
 
 export interface HTTPRequest {
@@ -74,6 +79,55 @@ export class HTTPAdapter {
             apiVersion: 'v1',
             ...config,
         };
+    }
+
+    private getWorkspaceRoot(): string {
+        const configured = (this.coreAnalyzer as any)?.config?.workspaceRoot;
+        return path.resolve(typeof configured === 'string' && configured.trim() ? configured : process.cwd());
+    }
+
+    private async containedRequestUri(value: unknown, inputLabel: string, fallback: string): Promise<string> {
+        const raw = typeof value === 'string' ? value.trim() : '';
+        if (!raw) return normalizeUri(fallback);
+        const workspaceRoot = this.getWorkspaceRoot();
+        if (raw === 'file://workspace') return pathToFileURL(workspaceRoot).href;
+        let requested: string;
+        try {
+            requested = this.pathInputFromHttpUri(raw, workspaceRoot);
+        } catch {
+            return normalizeUri(fallback);
+        }
+        try {
+            const resolved = await resolveWorkspacePath(requested, { workspaceRoot, inputLabel });
+            return pathToFileURL(resolved.realPath).href;
+        } catch (error) {
+            if (!fs.existsSync(path.resolve(requested))) return normalizeUri(fallback);
+            if (this.config.allowLegacyCwdFallback === true) {
+                const legacy = await this.legacyRepoLocalUriOrNull(requested);
+                if (legacy) return legacy;
+            }
+            throw error;
+        }
+    }
+
+    private pathInputFromHttpUri(raw: string, workspaceRoot: string): string {
+        const workspacePrefix = 'file://workspace';
+        if (raw.startsWith(workspacePrefix)) {
+            const suffix = raw.slice(workspacePrefix.length).replace(/^\/+/, '');
+            return suffix ? path.join(workspaceRoot, decodeURIComponent(suffix)) : workspaceRoot;
+        }
+        if (raw === 'file://unknown' || raw === 'file://search' || raw === 'file://definition') return workspaceRoot;
+        return raw.startsWith('file://') ? fileURLToPath(raw) : raw;
+    }
+
+    private async legacyRepoLocalUriOrNull(requested: string): Promise<string | null> {
+        try {
+            const cwdRoot = path.resolve(process.cwd());
+            const resolved = await resolveWorkspacePath(requested, { workspaceRoot: cwdRoot, inputLabel: 'legacy HTTP file' });
+            return pathToFileURL(resolved.realPath).href;
+        } catch {
+            return null;
+        }
     }
 
     private recordHttpCacheHit(key: string): void {
@@ -230,7 +284,7 @@ export class HTTPAdapter {
             const position = body.position ? normalizePosition(body.position) : createPosition(0, 0);
 
             const coreRequest = buildFindDefinitionRequest({
-                uri: normalizeUri(body.file || body.uri || 'file://unknown'),
+                uri: await this.containedRequestUri(body.file || body.uri, 'definition file', 'file://unknown'),
                 position,
                 identifier: body.identifier,
                 maxResults: body.maxResults || this.config.maxResults,
@@ -305,7 +359,7 @@ export class HTTPAdapter {
             const position = body.position ? normalizePosition(body.position) : createPosition(0, 0);
 
             const coreRequest = buildFindReferencesRequest({
-                uri: normalizeUri(body.file || body.uri || 'file://workspace'),
+                uri: await this.containedRequestUri(body.file || body.uri, 'references file', 'file://unknown'),
                 position,
                 identifier: ident,
                 maxResults: body.maxResults || this.config.maxResults,
@@ -357,7 +411,7 @@ export class HTTPAdapter {
         validateRequired(body, ['identifier', 'newName']);
 
         const coreRequest = buildRenameRequest({
-            uri: normalizeUri(body.file || body.uri || 'file://workspace'),
+            uri: await this.containedRequestUri(body.file || body.uri, 'rename file', 'file://workspace'),
             position: createPosition(0, 0),
             identifier: body.identifier,
             newName: body.newName,
@@ -396,7 +450,7 @@ export class HTTPAdapter {
             validateRequired(body, ['identifier', 'newName']);
 
             const coreRequest = buildRenameRequest({
-                uri: normalizeUri(body.file || body.uri || 'file://workspace'),
+                uri: await this.containedRequestUri(body.file || body.uri, 'plan-rename file', 'file://workspace'),
                 position: createPosition(0, 0),
                 identifier: body.identifier,
                 newName: body.newName,
@@ -454,7 +508,7 @@ export class HTTPAdapter {
 
             validateRequired(body, ['identifier', 'newName']);
             const coreRequest = buildRenameRequest({
-                uri: normalizeUri(body.file || body.uri || 'file://workspace'),
+                uri: await this.containedRequestUri(body.file || body.uri, 'apply-rename file', 'file://workspace'),
                 position: createPosition(0, 0),
                 identifier: body.identifier,
                 newName: body.newName,
@@ -480,7 +534,7 @@ export class HTTPAdapter {
             validateRequired(body, ['identifier']);
             const res = await (this.coreAnalyzer as any).buildSymbolMap({
                 identifier: body.identifier,
-                uri: normalizeUri(body.file || body.uri || 'file://workspace'),
+                uri: await this.containedRequestUri(body.file || body.uri, 'symbol-map file', 'file://workspace'),
                 maxFiles: Math.min(Number(body.maxFiles || 20), 100),
                 astOnly: !!body.astOnly,
             });
@@ -517,7 +571,7 @@ export class HTTPAdapter {
             }
 
             const coreRequest = buildCompletionRequest({
-                uri: normalizeUri(body.file || body.uri || 'file://unknown'),
+                uri: await this.containedRequestUri(body.file || body.uri, 'completion file', 'file://unknown'),
                 position: normalizePosition(body.position),
                 triggerCharacter: body.triggerCharacter,
                 maxResults: body.maxResults || this.config.maxResults,
@@ -558,7 +612,7 @@ export class HTTPAdapter {
             const body = strictJsonParse(request.body || '{}');
             validateRequired(body, ['identifier']);
 
-            const uri = normalizeUri(body.file || body.uri || 'file://workspace');
+            const uri = await this.containedRequestUri(body.file || body.uri, 'explore file', 'file://workspace');
             const result = await (this.coreAnalyzer as any).exploreCodebase({
                 uri,
                 identifier: body.identifier,
@@ -2157,7 +2211,7 @@ export class HTTPAdapter {
             // Create async search request
             const searchRequest = {
                 identifier: body.pattern,
-                uri: normalizeUri(body.file || body.uri || 'file://search'),
+                uri: await this.containedRequestUri(body.file || body.uri, 'stream search file', 'file://search'),
                 position: createPosition(0, 0),
                 maxResults: body.maxResults || 100,
             };
@@ -2197,7 +2251,7 @@ export class HTTPAdapter {
             // Create definition search request
             const searchRequest = {
                 identifier: body.identifier,
-                uri: normalizeUri(body.file || body.uri || 'file://definition'),
+                uri: await this.containedRequestUri(body.file || body.uri, 'stream definition file', 'file://definition'),
                 position: normalizePosition(body.position) || createPosition(0, 0),
                 maxResults: body.maxResults || 50,
             };

@@ -136,7 +136,8 @@ export class RenameWorkflowService {
             if (!Array.isArray(fileEdits) || !fileEdits.length) continue;
 
             const absPath = filePathFromUriLike(uri);
-            const rel = path.relative(root, absPath);
+            const rel = path.relative(root, absPath).split(path.sep).join('/');
+            if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) continue;
             const srcPath = path.join(root, rel);
             let orig = '';
             try {
@@ -150,11 +151,11 @@ export class RenameWorkflowService {
             await fs.mkdir(path.dirname(tmpPath), { recursive: true }).catch(() => {});
             await fs.writeFile(tmpPath, mod, 'utf8');
 
-            const left = srcPath.replace(/"/g, '\\"');
-            const right = tmpPath.replace(/"/g, '\\"');
-            const cmd = `git diff --no-index --src-prefix=a/ --dst-prefix=b/ -- "${left}" "${right}"`;
-            const proc = spawnSync('bash', ['-lc', cmd], { stdio: 'pipe' });
-            const out = String(proc.stdout || '');
+            const proc = spawnSync('git', ['diff', '--no-index', '--src-prefix=a/', '--dst-prefix=b/', '--', srcPath, tmpPath], {
+                stdio: 'pipe',
+                encoding: 'utf8',
+            });
+            const out = rewriteNoIndexDiffHeaders(String(proc.stdout || ''), rel);
             if (out && out.trim().length > 0) {
                 diffParts.push(out);
             }
@@ -327,10 +328,32 @@ function uriToPath(uri: string): string {
 
 function filePathFromUriLike(uri: string): string {
     try {
+        if (uri.startsWith('file://')) return fileURLToPath(uri);
         return new URL(uri).pathname;
     } catch {
         return uri.replace(/^file:\/\//, '');
     }
+}
+
+function rewriteNoIndexDiffHeaders(diff: string, relPath: string): string {
+    if (!diff.trim()) return diff;
+    const lines = diff.split(/\r?\n/);
+    let sawOld = false;
+    let sawNew = false;
+    return lines
+        .map((line) => {
+            if (line.startsWith('diff --git ')) return `diff --git a/${relPath} b/${relPath}`;
+            if (!sawOld && line.startsWith('--- ')) {
+                sawOld = true;
+                return `--- a/${relPath}`;
+            }
+            if (!sawNew && line.startsWith('+++ ')) {
+                sawNew = true;
+                return `+++ b/${relPath}`;
+            }
+            return line;
+        })
+        .join('\n');
 }
 
 function validateRequired(args: Record<string, any>, fields: string[]) {

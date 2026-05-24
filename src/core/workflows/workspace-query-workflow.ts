@@ -1,4 +1,4 @@
-import { fileURLToPath } from 'node:url';
+import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { CoreError } from '../errors.js';
 import { overlayStore } from '../overlay-store.js';
@@ -103,6 +103,72 @@ export class WorkspaceQueryWorkflowService {
         } finally {
             await opened?.handle.close().catch(() => undefined);
         }
+    }
+
+    async listFiles(args: Record<string, any>): Promise<SnapshotWorkflowResult> {
+        const requestedPath = typeof args?.path === 'string' && args.path.trim() ? String(args.path) : '.';
+        const maxFilesRaw = Number(args?.maxFiles ?? 500);
+        const maxFiles = Number.isFinite(maxFilesRaw) ? Math.max(1, Math.min(5000, Math.floor(maxFilesRaw))) : 500;
+        const depthRaw = Number(args?.depth ?? 5);
+        const maxDepth = Number.isFinite(depthRaw) ? Math.max(0, Math.min(25, Math.floor(depthRaw))) : 5;
+        const ignore = new Set(['.git', 'node_modules', '.ontology', 'dist']);
+        const root = await resolveWorkspacePath(requestedPath, {
+            workspaceRoot: this.workspaceRoot,
+            inputLabel: 'list_files path',
+            allowRoot: true,
+        });
+        const files: Array<{ path: string; type: 'file' | 'directory'; size?: number }> = [];
+        let capped = false;
+
+        const visit = async (absoluteDir: string, relativeDir: string, depth: number): Promise<void> => {
+            if (files.length >= maxFiles) {
+                capped = true;
+                return;
+            }
+            if (depth > maxDepth) return;
+            const entries = await fs.readdir(absoluteDir, { withFileTypes: true }).catch((error) => {
+                throw new CoreError('InvalidParams', `Failed to list workspace files: ${error instanceof Error ? error.message : String(error)}`, { path: requestedPath });
+            });
+            for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+                if (files.length >= maxFiles) {
+                    capped = true;
+                    return;
+                }
+                if (ignore.has(entry.name)) continue;
+                const childRel = relativeDir === '.' ? entry.name : `${relativeDir}/${entry.name}`;
+                const childAbs = path.join(absoluteDir, entry.name);
+                let childResolved;
+                try {
+                    childResolved = await resolveWorkspacePath(childRel, {
+                        workspaceRoot: this.workspaceRoot,
+                        inputLabel: 'list_files entry',
+                        allowRoot: false,
+                    });
+                } catch {
+                    continue;
+                }
+                const stat = await fs.stat(childResolved.realPath).catch(() => null);
+                if (!stat) continue;
+                if (stat.isDirectory()) {
+                    files.push({ path: childResolved.relativePath, type: 'directory' });
+                    await visit(childAbs, childResolved.relativePath, depth + 1);
+                } else if (stat.isFile()) {
+                    files.push({ path: childResolved.relativePath, type: 'file', size: stat.size });
+                }
+            }
+        };
+
+        const stat = await fs.stat(root.realPath).catch(() => null);
+        if (!stat) throw new CoreError('InvalidParams', 'list_files path does not exist', { path: requestedPath });
+        if (stat.isFile()) {
+            files.push({ path: root.relativePath, type: 'file', size: stat.size });
+        } else if (stat.isDirectory()) {
+            await visit(root.realPath, root.relativePath, 0);
+        } else {
+            throw new CoreError('InvalidParams', 'list_files path must be a file or directory', { path: requestedPath });
+        }
+
+        return { payload: { path: root.relativePath, count: files.length, capped, files }, isError: false };
     }
 
     async listSymbols(args: Record<string, any>): Promise<SnapshotWorkflowResult> {

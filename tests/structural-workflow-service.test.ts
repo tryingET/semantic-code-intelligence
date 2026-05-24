@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { StructuralWorkflowService, normalizeStructuralPaths } from '../src/core/workflows/structural-workflow.js';
@@ -36,8 +36,17 @@ describe('StructuralWorkflowService', () => {
         expect(built.diff).toContain('+const renamed = 1;');
     });
 
-    test('rejects structural paths outside the configured workspace', () => {
+    test('rejects structural paths outside the configured workspace', async () => {
         const workspaceRoot = tempWorkspace();
-        expect(() => normalizeStructuralPaths(['../outside'], workspaceRoot)).toThrow('structural paths must stay within the workspace');
+        await expect(normalizeStructuralPaths(['../outside'], workspaceRoot)).rejects.toThrow('structural path must stay within the workspace');
+    });
+
+    test('rejects structural path symlinks that escape the workspace', async () => {
+        const workspaceRoot = tempWorkspace();
+        const outsideRoot = tempWorkspace();
+        writeFileSync(join(outsideRoot, 'secret.ts'), 'function OutsideSecret() { return 1; }\n', 'utf8');
+        symlinkSync(outsideRoot, join(workspaceRoot, 'out'));
+
+        await expect(normalizeStructuralPaths(['out'], workspaceRoot)).rejects.toThrow('structural path must stay within the workspace');
     });
 });

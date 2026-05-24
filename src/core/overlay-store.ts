@@ -2,6 +2,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
+import * as os from 'node:os';
 import * as path from 'path';
 
 export type CheckCommandReceipt = {
@@ -101,8 +102,16 @@ export class OverlayStore {
         await fsp.writeFile(markerPath, JSON.stringify(payload, null, 2), 'utf8');
     }
 
-    private normalizePatchRelativePath(rawPath: string, inputLabel = 'patch path'): string | null {
+    private stripUnifiedHeaderMetadata(rawPath: string): string {
         const raw = String(rawPath || '').trim();
+        const tab = raw.indexOf('\t');
+        if (tab >= 0) return raw.slice(0, tab).trim();
+        const timestamp = /^(.*?)\s+\d{4}-\d{2}-\d{2}(?:\s|T|$)/.exec(raw);
+        return timestamp?.[1]?.trim() || raw;
+    }
+
+    private normalizePatchRelativePath(rawPath: string, inputLabel = 'patch path'): string | null {
+        const raw = this.stripUnifiedHeaderMetadata(rawPath);
         if (!raw || raw === '/dev/null') return null;
         if (raw.includes('\0')) throw new Error(`${inputLabel} must not contain NUL bytes`);
         if (raw.includes('\\')) throw new Error(`${inputLabel} must use POSIX-style relative paths`);
@@ -150,8 +159,20 @@ export class OverlayStore {
         return { absolutePath, relativePath: relativeToRoot.split(path.sep).join('/') };
     }
 
+    private shellQuote(value: string): string {
+        return `'${String(value).replace(/'/g, `'"'"'`)}'`;
+    }
+
     private spawnChecked(command: string, errorLabel: string, cwd?: string): void {
         const result = spawnSync('bash', ['-lc', command], { stdio: 'pipe', cwd });
+        if (result.status !== 0) {
+            const output = `${String(result.stdout || '')}${String(result.stderr || '')}`.slice(-1000);
+            throw new Error(`${errorLabel}: ${output || `exit ${result.status}`}`);
+        }
+    }
+
+    private spawnCheckedArgs(command: string, args: string[], errorLabel: string, cwd?: string): void {
+        const result = spawnSync(command, args, { stdio: 'pipe', cwd });
         if (result.status !== 0) {
             const output = `${String(result.stdout || '')}${String(result.stderr || '')}`.slice(-1000);
             throw new Error(`${errorLabel}: ${output || `exit ${result.status}`}`);
@@ -503,7 +524,12 @@ export class OverlayStore {
         if (!touched.length) {
             return { accepted: false, message: 'invalid_patch: no workspace files found in diff' };
         }
+        if (!/^@@\s/m.test(normalizedDiff)) {
+            return { accepted: false, message: 'invalid_patch: no patch hunks found in diff' };
+        }
         const snap = this.ensureSnapshot(snapshotId);
+        const validation = this.validatePatchAppliesAgainstSnapshot(normalizedDiff, snap);
+        if (!validation.ok) return { accepted: false, message: validation.message };
         snap.diffs.push(normalizedDiff);
         if (touched.length) {
             if (!snap.touchedFiles) snap.touchedFiles = new Set<string>();
@@ -511,6 +537,89 @@ export class OverlayStore {
         }
         this.persistSnapshotSync(snap);
         return { accepted: true };
+    }
+
+    private validatePatchAppliesAgainstSnapshot(diff: string, snap: Snapshot): { ok: boolean; message?: string } {
+        const root = path.resolve(snap.workspaceRoot || process.cwd());
+        const materializedDir = path.join(this.snapshotsRoot(snap.workspaceRoot), snap.id);
+        if (snap.diffs.length === 0) {
+            const materializedMarker = path.join(materializedDir, '.materialized');
+            return this.validatePatchApplies(diff, fs.existsSync(materializedMarker) ? materializedDir : root);
+        }
+
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sci-patch-base-'));
+        try {
+            this.copyWorkspaceForPatchValidation(root, tmpDir);
+            for (const previous of snap.diffs) {
+                const applied = this.applyDiffText(previous, tmpDir, false);
+                if (!applied.ok) return { ok: false, message: `invalid_patch: existing snapshot diff failed validation: ${applied.message || ''}` };
+            }
+            return this.validatePatchApplies(diff, tmpDir);
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    }
+
+    private validatePatchApplies(diff: string, root: string): { ok: boolean; message?: string } {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sci-patch-check-'));
+        const patchFile = path.join(tmpDir, 'candidate.diff');
+        try {
+            fs.writeFileSync(patchFile, diff, 'utf8');
+            const checked = this.applyPatchFile(patchFile, root, true);
+            if (checked.ok) return { ok: true };
+            return { ok: false, message: `invalid_patch: patch validation failed${checked.message ? `: ${checked.message}` : ''}` };
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    }
+
+    private applyDiffText(diff: string, root: string, check: boolean): { ok: boolean; message?: string } {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sci-patch-apply-'));
+        const patchFile = path.join(tmpDir, 'candidate.diff');
+        try {
+            fs.writeFileSync(patchFile, diff, 'utf8');
+            return this.applyPatchFile(patchFile, root, check);
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    }
+
+    private applyPatchFile(patchFile: string, root: string, check: boolean): { ok: boolean; message?: string } {
+        const gitArgs = ['apply'];
+        if (check) gitArgs.push('--check');
+        gitArgs.push('--whitespace=nowarn', patchFile);
+        const git = spawnSync('git', gitArgs, { cwd: root, stdio: 'pipe', encoding: 'utf8' });
+        if (git.status === 0) return { ok: true };
+        const gitOutput = `${String(git.stdout || '')}${String(git.stderr || '')}`.slice(-1000).trim();
+        const diffText = fs.readFileSync(patchFile, 'utf8');
+        const pLevel = /\ndiff --git a\//.test('\n' + diffText) ? 1 : 0;
+        const patchArgs = [];
+        if (check) patchArgs.push('--dry-run');
+        patchArgs.push(`-p${pLevel}`, '-i', patchFile);
+        const patch = spawnSync('patch', patchArgs, { cwd: root, stdio: 'pipe', encoding: 'utf8' });
+        if (patch.status === 0) return { ok: true };
+        const patchOutput = `${String(patch.stdout || '')}${String(patch.stderr || '')}`.slice(-1000).trim();
+        return { ok: false, message: patchOutput || gitOutput };
+    }
+
+    private copyWorkspaceForPatchValidation(root: string, dest: string): void {
+        if (this.which('rsync')) {
+            this.spawnCheckedArgs(
+                'rsync',
+                ['-a', '--delete', '--exclude', '.git', '--exclude', 'node_modules', '--exclude', '.ontology', '--exclude', 'dist', `${root}/`, `${dest}/`],
+                'Failed to copy patch validation workspace'
+            );
+            return;
+        }
+        if (this.which('tar')) {
+            const cmd = `tar -C ${this.shellQuote(root)} --exclude .git --exclude node_modules --exclude .ontology --exclude dist -cf - . | tar -C ${this.shellQuote(dest)} -xf -`;
+            this.spawnChecked(cmd, 'Failed to copy patch validation workspace');
+            return;
+        }
+        for (const ent of fs.readdirSync(root, { withFileTypes: true })) {
+            if (['.git', '.ontology', 'node_modules', 'dist'].includes(ent.name)) continue;
+            this.spawnCheckedArgs('cp', ['-a', path.join(root, ent.name), path.join(dest, ent.name)], 'Failed to copy patch validation workspace entry');
+        }
     }
 
     private which(cmd: string): string | null {
@@ -589,20 +698,21 @@ export class OverlayStore {
                     const { absolutePath: dst } = this.containedPath(tempDir, rel, 'snapshot destination path');
                     await fsp.mkdir(path.dirname(dst), { recursive: true });
                     if (fs.existsSync(src) && fs.statSync(src).isFile()) {
-                        this.spawnChecked(`cp -a ${JSON.stringify(src)} ${JSON.stringify(dst)}`, 'Failed to copy snapshot file');
+                        this.spawnCheckedArgs('cp', ['-a', src, dst], 'Failed to copy snapshot file');
                     }
                 }
             } else {
                 // Full copy: prefer rsync; fallback to tar or cp
                 if (this.which('rsync')) {
                     await this.logProgress(snapshotId, `materialize:rsync ${base} -> ${tempDir}`);
-                    this.spawnChecked(
-                        `rsync -a --delete --exclude .git --exclude node_modules --exclude .ontology --exclude dist ${JSON.stringify(base)}/ ${tempDir}/`,
+                    this.spawnCheckedArgs(
+                        'rsync',
+                        ['-a', '--delete', '--exclude', '.git', '--exclude', 'node_modules', '--exclude', '.ontology', '--exclude', 'dist', `${base}/`, `${tempDir}/`],
                         'Failed to copy snapshot base with rsync'
                     );
                 } else if (this.which('tar')) {
                     await this.logProgress(snapshotId, `materialize:tar ${base} -> ${tempDir}`);
-                    const cmd = `tar -C ${JSON.stringify(base)} --exclude .git --exclude node_modules --exclude .ontology --exclude dist -cf - . | tar -C ${JSON.stringify(tempDir)} -xf -`;
+                    const cmd = `tar -C ${this.shellQuote(base)} --exclude .git --exclude node_modules --exclude .ontology --exclude dist -cf - . | tar -C ${this.shellQuote(tempDir)} -xf -`;
                     this.spawnChecked(cmd, 'Failed to copy snapshot base with tar');
                 } else {
                     const entries = await fsp.readdir(base, { withFileTypes: true });
@@ -610,7 +720,7 @@ export class OverlayStore {
                         if (['.git', '.ontology', 'node_modules', 'dist'].includes(ent.name)) continue;
                         const src = path.join(base, ent.name);
                         const dest = path.join(tempDir, ent.name);
-                        this.spawnChecked(`cp -a ${JSON.stringify(src)} ${JSON.stringify(dest)}`, 'Failed to copy snapshot base entry');
+                        this.spawnCheckedArgs('cp', ['-a', src, dest], 'Failed to copy snapshot base entry');
                     }
                 }
             }
@@ -676,13 +786,14 @@ export class OverlayStore {
         await fsp.mkdir(checkDir, { recursive: true });
         try {
             if (this.which('rsync')) {
-                this.spawnChecked(
-                    `rsync -a --delete ${JSON.stringify(materializedDir)}/ ${JSON.stringify(checkDir)}/`,
+                this.spawnCheckedArgs(
+                    'rsync',
+                    ['-a', '--delete', `${materializedDir}/`, `${checkDir}/`],
                     'Failed to copy snapshot check workspace'
                 );
             } else if (this.which('tar')) {
                 this.spawnChecked(
-                    `tar -C ${JSON.stringify(materializedDir)} -cf - . | tar -C ${JSON.stringify(checkDir)} -xf -`,
+                    `tar -C ${this.shellQuote(materializedDir)} -cf - . | tar -C ${this.shellQuote(checkDir)} -xf -`,
                     'Failed to copy snapshot check workspace'
                 );
             } else {
@@ -690,7 +801,7 @@ export class OverlayStore {
                 for (const ent of entries) {
                     const src = path.join(materializedDir, ent.name);
                     const dest = path.join(checkDir, ent.name);
-                    this.spawnChecked(`cp -a ${JSON.stringify(src)} ${JSON.stringify(dest)}`, 'Failed to copy snapshot check workspace entry');
+                    this.spawnCheckedArgs('cp', ['-a', src, dest], 'Failed to copy snapshot check workspace entry');
                 }
             }
             return { cwd: checkDir, cleanup: async () => { await fsp.rm(checkDir, { recursive: true, force: true }); } };
@@ -948,11 +1059,11 @@ export class OverlayStore {
                 elapsedMs,
             };
         }
-        const argsGit = [
-            '-lc',
-            `git apply ${reverse ? '-R ' : ''}${check ? '--check ' : ''}--whitespace=nowarn ${JSON.stringify(diffFile)}`,
-        ];
-        const git = spawnSync('bash', argsGit, { stdio: 'pipe', cwd: workspaceRoot });
+        const argsGit = ['apply'];
+        if (reverse) argsGit.push('-R');
+        if (check) argsGit.push('--check');
+        argsGit.push('--whitespace=nowarn', diffFile);
+        const git = spawnSync('git', argsGit, { stdio: 'pipe', cwd: workspaceRoot });
         output += String(git.stdout || '') + String(git.stderr || '');
         const elapsed = Date.now() - start;
         if (git.status === 0) {
@@ -969,10 +1080,11 @@ export class OverlayStore {
         if (this.which('patch')) {
             const diffText = await fsp.readFile(diffFile, 'utf8').catch(() => '');
             const pLevel = /\ndiff --git a\//.test('\n' + diffText) ? 1 : 0;
-            const dry = check ? `--dry-run ` : '';
-            const rev = reverse ? `-R ` : '';
-            const patchArgs = ['-lc', `patch ${dry}${rev}-p${pLevel} < ${JSON.stringify(diffFile)}`];
-            const p = spawnSync('bash', patchArgs, { stdio: 'pipe', cwd: workspaceRoot });
+            const patchArgs = [];
+            if (check) patchArgs.push('--dry-run');
+            if (reverse) patchArgs.push('-R');
+            patchArgs.push(`-p${pLevel}`, '-i', diffFile);
+            const p = spawnSync('patch', patchArgs, { stdio: 'pipe', cwd: workspaceRoot });
             output += String(p.stdout || '') + String(p.stderr || '');
             const ok = p.status === 0;
             if (ok && reverse) await this.removeEmptyApplyDirs(diffFile, workspaceRoot).catch(() => undefined);

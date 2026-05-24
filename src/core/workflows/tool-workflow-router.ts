@@ -125,6 +125,8 @@ export class ToolWorkflowRouter {
                 return this.snapshotWorkflows.getSnapshot(args);
             case 'read_file':
                 return this.workspaceQueries.readFile(args);
+            case 'list_files':
+                return this.workspaceQueries.listFiles(args);
             case 'propose_patch':
                 return this.snapshotWorkflows.proposePatch(args);
             case 'run_checks':

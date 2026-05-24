@@ -18,12 +18,24 @@ export function snapshotArtifactLinks(snapshot: string) {
   };
 }
 
+function shellQuote(value: string): string {
+  return `'${String(value).replace(/'/g, `'"'"'`)}'`;
+}
+
+function stripUnifiedHeaderMetadata(rawPath: string): string {
+  const raw = String(rawPath || '').trim();
+  const tab = raw.indexOf('\t');
+  if (tab >= 0) return raw.slice(0, tab).trim();
+  const timestamp = /^(.*?)\s+\d{4}-\d{2}-\d{2}(?:\s|T|$)/.exec(raw);
+  return timestamp?.[1]?.trim() || raw;
+}
+
 export function extractFilesFromPatch(patch: string): string[] {
   const files = new Set<string>();
   for (const line of patch.split(/\r?\n/)) {
     const match = /^(?:\+\+\+|---)\s+(?:a\/|b\/)?(.+)$/.exec(line.trim());
     if (!match) continue;
-    const file = match[1]?.trim();
+    const file = stripUnifiedHeaderMetadata(match[1] || '');
     if (!file || file === "/dev/null") continue;
     files.add(file);
   }
@@ -1111,7 +1123,7 @@ export class SnapshotPatchWorkflowService {
     const rollback = {
       available: !!snapshot,
       strategy: "reverse_snapshot_apply",
-      command: `cd ${JSON.stringify(this.workspaceRoot)} && ALLOW_SNAPSHOT_APPLY=1 semantic-code-intelligence workflow apply_snapshot --args ${JSON.stringify(rollbackArgs)} --json`,
+      command: `cd ${shellQuote(this.workspaceRoot)} && ALLOW_SNAPSHOT_APPLY=1 semantic-code-intelligence workflow apply_snapshot --args ${shellQuote(rollbackArgs)} --json`,
       artifact: snapshotArtifacts.overlayDiff,
     };
     const validationPlan = buildValidationPlan({
@@ -1235,11 +1247,9 @@ export class SnapshotPatchWorkflowService {
         };
       }
 
-      const quote = (value: string) => JSON.stringify(value);
-      const quotedFiles = touchedFiles.map(quote).join(" ");
       const workingDiffProc = spawnSync(
-        "bash",
-        ["-lc", `git diff --no-ext-diff -- ${quotedFiles}`],
+        "git",
+        ["diff", "--no-ext-diff", "--", ...touchedFiles],
         {
           cwd: this.workspaceRoot,
           stdio: "pipe",

@@ -11,7 +11,8 @@
  * All actual analysis work is delegated to the unified core analyzer.
  */
 
-import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type {
     CompletionItem,
     CompletionParams,
@@ -26,6 +27,7 @@ import type {
 } from 'vscode-languageserver';
 import { ResponseError, TextDocumentSyncKind } from 'vscode-languageserver';
 import { CoreError } from '../core/errors.js';
+import { openWorkspaceFileForRead } from '../core/workspace-path.js';
 
 // Minimal core analyzer surface required by the LSP adapter
 type CoreAnalyzer = {
@@ -65,6 +67,7 @@ export interface LSPAdapterConfig {
     enableFolding?: boolean;
     maxResults?: number;
     timeout?: number;
+    workspaceRoot?: string;
 }
 
 /**
@@ -100,10 +103,12 @@ export class LSPAdapter {
             await (this.coreAnalyzer as any)?.initialize?.();
         } catch {}
         const uri = normalizeUri(file || 'file://workspace');
+        const containedUri = await this.containedLspUriOrNull(uri);
+        if (!containedUri) return [];
         const pos = normalizePosition({ line: input.line ?? 0, character: input.character ?? 0 } as any);
-        const identifier = input.symbol || this.extractIdentifierAtPosition(uri, pos);
+        const identifier = input.symbol || (await this.extractIdentifierAtPosition(containedUri, pos));
         const request = buildFindDefinitionRequest({
-            uri,
+            uri: containedUri,
             position: pos,
             identifier,
             maxResults: this.config.maxResults,
@@ -122,8 +127,10 @@ export class LSPAdapter {
             await (this.coreAnalyzer as any)?.initialize?.();
         } catch {}
         const uri = normalizeUri(file || 'file://workspace');
+        const containedUri = await this.containedLspUriOrNull(uri);
+        if (!containedUri) return [];
         const request = buildFindReferencesRequest({
-            uri,
+            uri: containedUri,
             position: normalizePosition({ line: 0, character: 0 } as any),
             identifier: symbol,
             maxResults: this.config.maxResults,
@@ -142,9 +149,11 @@ export class LSPAdapter {
             await (this.coreAnalyzer as any)?.initialize?.();
         } catch {}
         const uri = normalizeUri(file || 'file://workspace');
-        const identifier = this.extractIdentifierAtPosition(uri, position);
+        const containedUri = await this.containedLspUriOrNull(uri);
+        if (!containedUri) return { changes: {} } as WorkspaceEdit;
+        const identifier = await this.extractIdentifierAtPosition(containedUri, position);
         const request = buildRenameRequest({
-            uri,
+            uri: containedUri,
             position: normalizePosition(position as any),
             identifier,
             newName,
@@ -203,14 +212,16 @@ export class LSPAdapter {
             if (!params || !(params as any).textDocument?.uri || !(params as any).position) {
                 throw new CoreError('InvalidParams', 'Missing required parameters: textDocument.uri, position');
             }
+            const containedUri = await this.containedLspUriOrNull(params.textDocument.uri);
+            if (!containedUri) return [];
             // Extract identifier from document if not provided
-            const identifier = this.extractIdentifierAtPosition(params.textDocument.uri, params.position);
-            const key = `${params.textDocument.uri}:${params.position.line}:${params.position.character}`;
+            const identifier = await this.extractIdentifierAtPosition(containedUri, params.position);
+            const key = `${containedUri}:${params.position.line}:${params.position.character}`;
             const memo = this.defMemo.get(key);
             if (memo && Date.now() - memo.ts < 30_000) return memo.result;
 
             const request = buildFindDefinitionRequest({
-                uri: params.textDocument.uri,
+                uri: containedUri,
                 position: normalizePosition(params.position),
                 identifier,
                 maxResults: this.config.maxResults,
@@ -245,7 +256,9 @@ export class LSPAdapter {
                     'Missing required parameters: textDocument.uri, position, context.includeDeclaration'
                 );
             }
-            const identifier = this.extractIdentifierAtPosition(params.textDocument.uri, params.position);
+            const containedUri = await this.containedLspUriOrNull(params.textDocument.uri);
+            if (!containedUri) return [];
+            const identifier = await this.extractIdentifierAtPosition(containedUri, params.position);
 
             // Parity: return empty results (not errors) for ambiguous/empty identifiers
             if (!identifier || /^symbol_at_\d+_\d+$/.test(identifier)) {
@@ -253,7 +266,7 @@ export class LSPAdapter {
             }
 
             const request = buildFindReferencesRequest({
-                uri: params.textDocument.uri,
+                uri: containedUri,
                 position: normalizePosition(params.position),
                 identifier,
                 maxResults: this.config.maxResults,
@@ -273,13 +286,15 @@ export class LSPAdapter {
      */
     async handlePrepareRename(params: PrepareRenameParams): Promise<{ range: any; placeholder: string } | null> {
         try {
-            const identifier = this.extractIdentifierAtPosition(params.textDocument.uri, params.position);
+            const containedUri = await this.containedLspUriOrNull(params.textDocument.uri);
+            if (!containedUri) return null;
+            const identifier = await this.extractIdentifierAtPosition(containedUri, params.position);
             if (!identifier) {
                 return null;
             }
 
             const request = buildPrepareRenameRequest({
-                uri: params.textDocument.uri,
+                uri: containedUri,
                 position: normalizePosition(params.position),
                 identifier,
             });
@@ -306,13 +321,17 @@ export class LSPAdapter {
             ) {
                 throw new CoreError('InvalidParams', 'Missing required parameters: textDocument.uri, position, newName');
             }
-            const identifier = this.extractIdentifierAtPosition(params.textDocument.uri, params.position);
+            const containedUri = await this.containedLspUriOrNull(params.textDocument.uri);
+            if (!containedUri) {
+                throw new CoreError('InvalidParams', 'textDocument.uri must stay within the workspace');
+            }
+            const identifier = await this.extractIdentifierAtPosition(containedUri, params.position);
             if (!identifier) {
                 throw new Error('Cannot determine identifier to rename');
             }
 
             const request = buildRenameRequest({
-                uri: params.textDocument.uri,
+                uri: containedUri,
                 position: normalizePosition(params.position),
                 identifier,
                 newName: params.newName,
@@ -414,18 +433,47 @@ export class LSPAdapter {
     // ===== PRIVATE HELPER METHODS =====
 
     /**
-     * Extract identifier at given position (stub - would need document content)
-     * In practice, this would use document content from the LSP server
+     * Extract identifier at a position only after the requested file is proven to be
+     * inside the configured workspace. Outside paths fall back to the synthetic
+     * placeholder so LSP callers do not get arbitrary local-file reads.
      */
-    private extractIdentifierAtPosition(uri: string, position: any): string {
+    private async extractIdentifierAtPosition(uri: string, position: any): Promise<string> {
+        const fallback = `symbol_at_${position.line}_${position.character}`;
+        let opened: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
         try {
-            const fsPath = uri.startsWith('file://') ? uri.substring(7) : uri;
-            if (fs.existsSync(fsPath)) {
-                const text = fs.readFileSync(fsPath, 'utf8');
-                return this.wordAtPosition(text, position) || `symbol_at_${position.line}_${position.character}`;
-            }
-        } catch {}
-        return `symbol_at_${position.line}_${position.character}`;
+            const fsPath = uri.startsWith('file://') ? fileURLToPath(uri) : uri;
+            opened = await openWorkspaceFileForRead(fsPath, {
+                workspaceRoot: this.getWorkspaceRoot(),
+                inputLabel: 'LSP document uri',
+            });
+            const text = await opened.handle.readFile('utf8');
+            return this.wordAtPosition(text, position) || fallback;
+        } catch {
+            return fallback;
+        } finally {
+            await opened?.handle.close().catch(() => undefined);
+        }
+    }
+
+    private getWorkspaceRoot(): string {
+        const configured = this.config.workspaceRoot || (this.coreAnalyzer as any)?.config?.workspaceRoot;
+        return path.resolve(typeof configured === 'string' && configured.trim() ? configured : process.cwd());
+    }
+
+    private async containedLspUriOrNull(uri: string): Promise<string | null> {
+        let opened: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
+        try {
+            const fsPath = uri.startsWith('file://') ? fileURLToPath(uri) : uri;
+            opened = await openWorkspaceFileForRead(fsPath, {
+                workspaceRoot: this.getWorkspaceRoot(),
+                inputLabel: 'LSP document uri',
+            });
+            return normalizeUri(opened.realPath);
+        } catch {
+            return null;
+        } finally {
+            await opened?.handle.close().catch(() => undefined);
+        }
     }
 
     private wordAtPosition(text: string, pos: { line: number; character: number }): string | null {
