@@ -184,7 +184,8 @@ async function createMcpServer(desiredSid?: string): Promise<SessionRecord> {
         try {
             const t0 = Date.now();
             const sid = transport.sessionId || 'unknown';
-            mcpEvents.emit('toolCall', { sessionId: sid, name, args, ts: Date.now() });
+            const argKeys = args && typeof args === 'object' && !Array.isArray(args) ? Object.keys(args).sort() : [];
+            mcpEvents.emit('toolCall', { sessionId: sid, name, argKeys, ts: Date.now() });
             recordToolStart('mcp_http');
             const out = await adapter.handleValidatedToolCall(name, (args || {}) as Record<string, any>);
             try {
@@ -366,6 +367,12 @@ app.get('/mcp', async (req, res) => {
 
 // SSE stream of MCP tool events for live monitoring
 app.get('/mcp-events', (req, res) => {
+    const sessionId = (req.headers['mcp-session-id'] as string | undefined) || undefined;
+    if (!sessionId || !sessions[sessionId]) {
+        sendMissingSession(res);
+        return;
+    }
+
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
@@ -373,13 +380,18 @@ app.get('/mcp-events', (req, res) => {
 
     const send = (event: string, data: any) => {
         const ts = typeof data?.ts === 'number' ? data.ts : Date.now();
-        const payload = { ...data, ts, iso: new Date(ts).toISOString() };
+        const { sessionId: _sessionId, ...safeData } = data || {};
+        const payload = { ...safeData, ts, iso: new Date(ts).toISOString() };
         res.write(`event: ${event}\n`);
         res.write(`data: ${JSON.stringify(payload)}\n\n`);
     };
 
-    const onCall = (payload: any) => send('toolCall', payload);
-    const onErr = (payload: any) => send('toolError', payload);
+    const onCall = (payload: any) => {
+        if (payload?.sessionId === sessionId) send('toolCall', payload);
+    };
+    const onErr = (payload: any) => {
+        if (payload?.sessionId === sessionId) send('toolError', payload);
+    };
 
     mcpEvents.on('toolCall', onCall);
     mcpEvents.on('toolError', onErr);

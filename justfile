@@ -960,8 +960,24 @@ mcp-tools:
 
 # Test MCP stdio server directly
 test-mcp-stdio:
-    @echo "🧪 Testing MCP STDIO Server..."
-    @(echo '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}},"id":1}'; sleep 0.5; echo '{"jsonrpc":"2.0","method":"tools/list","params":{},"id":2}'; sleep 0.5) | timeout 2s {{bun}} run dist/mcp/mcp.js 2>/dev/null | grep -o '"method":\|"result":\|"tools":\|"name":' | head -5 || echo "✅ MCP stdio server appears to be working (timeout expected)"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    {{bun}} run build:mcp-stdio
+    echo "🧪 Testing MCP STDIO Server..."
+    output_file="$(mktemp)"
+    trap 'rm -f "$output_file"' EXIT
+    set +e
+    {
+        printf '%s\n' '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}},"id":1}'
+        sleep 0.5
+        printf '%s\n' '{"jsonrpc":"2.0","method":"tools/list","params":{},"id":2}'
+        sleep 0.5
+    } | timeout 2s {{bun}} run dist/mcp/mcp.js >"$output_file" 2>/dev/null
+    status="$?"
+    set -e
+    if [[ "$status" -ne 0 && "$status" -ne 124 ]]; then exit "$status"; fi
+    grep -q '"tools"' "$output_file"
+    grep -Eo '"method"|"result"|"tools"|"name"' "$output_file" | head -5
 
 # Test enhanced MCP server with error handling
 test-mcp-enhanced:

@@ -189,6 +189,47 @@ bindDescribe('Alpha MVP MCP HTTP protocol', () => {
         expect(String(errorText)).toContain('workspace');
     });
 
+    test('mcp-events requires a session and redacts raw tool arguments', async () => {
+        const eventsUrl = base.replace(/\/mcp$/, '/mcp-events');
+        const missing = await fetch(eventsUrl, { method: 'GET' });
+        expect(missing.status).toBe(400);
+        const missingBody = await missing.json();
+        expect(missingBody?.error?.message).toContain('No valid session ID');
+
+        const events = await fetch(eventsUrl, { method: 'GET', headers: mcpHttpHeaders(sessionId) });
+        expect(events.status).toBe(200);
+        expect(String(events.headers.get('content-type') || '')).toContain('text/event-stream');
+        expect(events.body).toBeTruthy();
+
+        const reader = events.body!.getReader();
+        const decoder = new TextDecoder();
+        let eventText = '';
+        const readUntilToolCall = (async () => {
+            for (let i = 0; i < 20; i++) {
+                const { value, done } = await reader.read();
+                if (value) eventText += decoder.decode(value, { stream: !done });
+                if (eventText.includes('event: toolCall') || done) break;
+            }
+            return eventText;
+        })();
+
+        const called = await toolsCall(4, 'read_file', {
+            path: 'docs/project/alpha-mvp-contract.md',
+            range: { startLine: 1, endLine: 1 },
+        });
+        expect(called.status).toBe(200);
+
+        const observed = await Promise.race([readUntilToolCall, wait(5000).then(() => eventText)]);
+        await reader.cancel();
+
+        expect(observed).toContain('event: toolCall');
+        expect(observed).toContain('"name":"read_file"');
+        expect(observed).toContain('"argKeys":["path","range"]');
+        expect(observed).not.toContain('"args"');
+        expect(observed).not.toContain('docs/project/alpha-mvp-contract.md');
+        expect(observed).not.toContain(sessionId);
+    }, 10000);
+
     test('navigation cluster succeeds through JSON-RPC tools/call', async () => {
         const calls = [
             ['text_search', { query: 'handleToolCall', path: 'src', maxResults: 5 }],

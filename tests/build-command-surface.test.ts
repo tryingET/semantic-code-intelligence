@@ -213,18 +213,23 @@ describe('build command surface', () => {
         expect(body).not.toContain('dist/mcp-fast');
     });
 
-    test('enhanced MCP build and smoke surfaces use the release artifact', () => {
+    test('MCP stdio and enhanced smoke surfaces are fail-closed over release artifacts', () => {
         const justfile = readText('justfile');
         const buildBody = recipeBody(justfile, 'build-mcp-enhanced');
-        const testBody = recipeBody(justfile, 'test-mcp-enhanced');
+        const stdioTestBody = recipeBody(justfile, 'test-mcp-stdio');
+        const enhancedTestBody = recipeBody(justfile, 'test-mcp-enhanced');
 
         expect(buildBody).toContain('{{bun}} run build:mcp-enhanced');
         expect(buildBody).not.toContain('src/servers/mcp-enhanced.ts --target');
-        expect(testBody).toContain('just build-mcp-enhanced');
-        expect(testBody).toContain('{{bun}} run dist/mcp-enhanced/mcp-enhanced.js');
-        expect(testBody).toContain('grep -q');
-        expect(testBody).not.toContain('{{bun}} run src/servers/mcp-enhanced.ts');
-        expect(testBody).not.toContain('|| echo');
+        expect(stdioTestBody).toContain('{{bun}} run build:mcp-stdio');
+        expect(stdioTestBody).toContain('{{bun}} run dist/mcp/mcp.js');
+        expect(stdioTestBody).toContain('grep -q');
+        expect(stdioTestBody).not.toContain('|| echo');
+        expect(enhancedTestBody).toContain('just build-mcp-enhanced');
+        expect(enhancedTestBody).toContain('{{bun}} run dist/mcp-enhanced/mcp-enhanced.js');
+        expect(enhancedTestBody).toContain('grep -q');
+        expect(enhancedTestBody).not.toContain('{{bun}} run src/servers/mcp-enhanced.ts');
+        expect(enhancedTestBody).not.toContain('|| echo');
     });
 
     test('MCP HTTP docs and env sample use streamable HTTP names', () => {
