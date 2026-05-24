@@ -331,13 +331,7 @@ build-mcp:
 # Build the enhanced MCP server with error handling
 build-mcp-enhanced:
     @echo "🚀 Building enhanced MCP server with error handling..."
-    @mkdir -p dist/mcp-enhanced
-    {{bun}} build src/servers/mcp-enhanced.ts --target=bun --outdir=dist/mcp-enhanced --format=esm \
-        --external tree-sitter --external tree-sitter-typescript \
-        --external tree-sitter-javascript --external tree-sitter-python \
-        --external tree-sitter-rust --external tree-sitter-go \
-        --external pg --external bun:sqlite --external express --external cors \
-        --sourcemap
+    {{bun}} run build:mcp-enhanced
     @echo "✅ Enhanced MCP server built at dist/mcp-enhanced/mcp-enhanced.js"
 
 # Clean and rebuild all servers
@@ -971,11 +965,12 @@ test-mcp-stdio:
 
 # Test enhanced MCP server with error handling
 test-mcp-enhanced:
+    @just build-mcp-enhanced
     @echo "🧪 Testing Enhanced MCP Server with error handling..."
     @echo "Testing valid request..."
-    @(echo '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}},"id":1}'; sleep 0.5; echo '{"jsonrpc":"2.0","method":"tools/list","params":{},"id":2}'; sleep 0.5) | timeout 3s {{bun}} run src/servers/mcp-enhanced.ts 2>/dev/null | grep -o '"method":\|"result":\|"tools":\|"name":' | head -5 || echo "✅ Enhanced MCP server basic functionality working"
+    @(echo '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}},"id":1}'; sleep 0.5; echo '{"jsonrpc":"2.0","method":"tools/list","params":{},"id":2}'; sleep 0.5) | timeout 3s {{bun}} run dist/mcp-enhanced/mcp-enhanced.js 2>/dev/null | grep -o '"method":\|"result":\|"tools":\|"name":' | head -5 || echo "✅ Enhanced MCP server basic functionality working"
     @echo "Testing invalid request (should handle gracefully)..."
-    @(echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"invalid_tool","arguments":{}},"id":3}'; sleep 1) | timeout 2s {{bun}} run src/servers/mcp-enhanced.ts 2>/dev/null | grep -o '"error":\|"code":\|"message":' | head -3 || echo "✅ Enhanced MCP server error handling working"
+    @(echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"invalid_tool","arguments":{}},"id":3}'; sleep 1) | timeout 2s {{bun}} run dist/mcp-enhanced/mcp-enhanced.js 2>/dev/null | grep -o '"error":\|"code":\|"message":' | head -3 || echo "✅ Enhanced MCP server error handling working"
 
 # Test error handling and recovery systems
 test-error-handling:

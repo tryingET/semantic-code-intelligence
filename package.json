@@ -21,7 +21,7 @@
   ],
   "scripts": {
     "build": "bun run build:all",
-    "build:all": "bun run build:lsp && bun run build:mcp-stdio && bun run build:mcp-http && bun run build:http && bun run build:cli",
+    "build:all": "bun run build:lsp && bun run build:mcp-stdio && bun run build:mcp-http && bun run build:mcp-enhanced && bun run build:http && bun run build:cli",
     "build:lsp": "bun build ./src/servers/lsp.ts --target=bun --outdir=dist/lsp --format=esm --external tree-sitter --external tree-sitter-typescript --external tree-sitter-javascript --external tree-sitter-python --external tree-sitter-rust --external tree-sitter-go --external pg --external bun:sqlite --external express --external cors",
     "build:mcp-stdio": "bun build ./src/servers/mcp.ts --target=bun --outdir=dist/mcp --format=esm --external tree-sitter --external tree-sitter-typescript --external tree-sitter-javascript --external tree-sitter-python --external tree-sitter-rust --external tree-sitter-go --external pg --external bun:sqlite --external express --external cors",
     "build:http": "bun build ./src/servers/http.ts --target=bun --outdir=dist/http --format=esm --external tree-sitter --external tree-sitter-typescript --external tree-sitter-javascript --external tree-sitter-python --external tree-sitter-rust --external tree-sitter-go --external pg --external bun:sqlite --external express --external cors",
@@ -43,6 +43,7 @@
     "format": "bunx @biomejs/biome format --write .",
     "clean": "rimraf dist",
     "build:mcp-http": "bun build ./src/servers/mcp-http.ts --target=bun --outdir=dist/mcp-http --format=esm --external tree-sitter --external tree-sitter-typescript --external tree-sitter-javascript --external tree-sitter-python --external tree-sitter-rust --external tree-sitter-go --external pg --external bun:sqlite --external express --external cors",
+    "build:mcp-enhanced": "bun build ./src/servers/mcp-enhanced.ts --target=bun --outdir=dist/mcp-enhanced --format=esm --external tree-sitter --external tree-sitter-typescript --external tree-sitter-javascript --external tree-sitter-python --external tree-sitter-rust --external tree-sitter-go --external pg --external bun:sqlite --external express --external cors",
     "prepack": "bun run build:all",
     "alpha:mvp:test": "bun test tests/alpha-mvp-tool-contract.test.ts tests/alpha-mvp-mcp-parity.test.ts tests/alpha-mvp-mcp-http-protocol.test.ts tests/alpha-mvp-mcp-stdio-protocol.test.ts tests/alpha-mvp-cli-parity.test.ts",
     "alpha:mvp:dogfood": "bun run scripts/dogfood-alpha-mvp.ts --json",

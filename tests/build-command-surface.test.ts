@@ -194,9 +194,13 @@ describe('build command surface', () => {
         const packageJson = JSON.parse(readText('package.json')) as { scripts?: Record<string, string> };
         expect(packageJson.scripts?.build).toBe('bun run build:all');
         expect(packageJson.scripts?.['build:all']).toContain('bun run build:mcp-stdio');
+        expect(packageJson.scripts?.['build:all']).toContain('bun run build:mcp-http');
+        expect(packageJson.scripts?.['build:all']).toContain('bun run build:mcp-enhanced');
         expect(packageJson.scripts?.['build:all']).toContain('bun run build:http');
         expect(packageJson.scripts?.['build:http']).toContain('--outdir=dist/http');
         expect(packageJson.scripts?.['build:mcp-stdio']).toContain('--outdir=dist/mcp');
+        expect(packageJson.scripts?.['build:mcp-http']).toContain('--outdir=dist/mcp-http');
+        expect(packageJson.scripts?.['build:mcp-enhanced']).toContain('--outdir=dist/mcp-enhanced');
     });
 
     test('Just build delegates to the package build instead of hand-rolling divergent artifacts', () => {
@@ -207,5 +211,17 @@ describe('build command surface', () => {
         expect(body).not.toContain('dist/api');
         expect(body).not.toContain('src/servers/mcp-fast.ts');
         expect(body).not.toContain('dist/mcp-fast');
+    });
+
+    test('enhanced MCP build and smoke surfaces use the release artifact', () => {
+        const justfile = readText('justfile');
+        const buildBody = recipeBody(justfile, 'build-mcp-enhanced');
+        const testBody = recipeBody(justfile, 'test-mcp-enhanced');
+
+        expect(buildBody).toContain('{{bun}} run build:mcp-enhanced');
+        expect(buildBody).not.toContain('src/servers/mcp-enhanced.ts --target');
+        expect(testBody).toContain('@just build-mcp-enhanced');
+        expect(testBody).toContain('{{bun}} run dist/mcp-enhanced/mcp-enhanced.js');
+        expect(testBody).not.toContain('{{bun}} run src/servers/mcp-enhanced.ts');
     });
 });
