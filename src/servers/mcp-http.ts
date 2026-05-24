@@ -25,6 +25,7 @@ import { createCodeAnalyzer } from '../core/index';
 import type { CodeAnalyzer } from '../core/unified-analyzer';
 import { toMcpToolCallError } from '../mcp/tool-call-error.js';
 import { isMcpToolResultSuccess } from '../mcp/tool-result.js';
+import { resolveMcpHttpCorsOrigin } from './mcp-http-cors.js';
 import { metricsRegistry, recordToolEnd, recordToolStart } from '../instrumentation/metrics.js';
 import { registerCommonPrompts, registerCommonResources } from './mcp-shared.js';
 
@@ -38,12 +39,13 @@ type SessionRecord = {
 const cfg = getEnvironmentConfig();
 const HOST = process.env.MCP_HTTP_HOST || cfg.host || 'localhost';
 const PORT = Number(process.env.MCP_HTTP_PORT || cfg.ports.mcpHTTP || 7001);
+const CORS_ORIGIN = resolveMcpHttpCorsOrigin(HOST);
 
 const app = express();
 app.use(express.json());
 app.use(
     cors({
-        origin: '*',
+        origin: CORS_ORIGIN,
         exposedHeaders: ['Mcp-Session-Id'],
         allowedHeaders: ['Content-Type', 'mcp-session-id'],
     })

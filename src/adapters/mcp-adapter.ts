@@ -27,8 +27,11 @@ import { handleAdapterError } from './utils.js';
 
 export interface MCPAdapterConfig {
     maxResults?: number;
+    /** @deprecated Tool execution timeouts are registry/argument-driven; retained as an ignored compatibility field. */
     timeout?: number;
+    /** @deprecated MCP transports are server-owned; retained as an ignored compatibility field. */
     enableSSE?: boolean;
+    /** @deprecated Use MCP_HTTP_PORT on the MCP HTTP server; retained as an ignored compatibility field. */
     ssePort?: number;
 }
 
@@ -44,9 +47,6 @@ export class MCPAdapter {
         this.coreAnalyzer = coreAnalyzer;
         this.config = {
             maxResults: 100,
-            timeout: 30000,
-            enableSSE: true,
-            ssePort: 7001,
             ...config,
         };
         this.toolRunner = new McpToolWorkflowRunner(this.coreAnalyzer, {

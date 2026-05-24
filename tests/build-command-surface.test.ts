@@ -224,4 +224,17 @@ describe('build command surface', () => {
         expect(testBody).toContain('{{bun}} run dist/mcp-enhanced/mcp-enhanced.js');
         expect(testBody).not.toContain('{{bun}} run src/servers/mcp-enhanced.ts');
     });
+
+    test('MCP HTTP docs and env sample use streamable HTTP names', () => {
+        const envSample = readText('.env.sample');
+        const readme = readText('README.md');
+
+        expect(envSample).toContain('MCP_HTTP_PORT=7001');
+        expect(envSample).toContain('MCP_HTTP_CORS_ORIGIN');
+        expect(envSample).not.toContain('MCP_SSE_PORT');
+        expect(readme).toContain('"type": "streamable-http"');
+        expect(readme).toContain('"url": "http://localhost:7001/mcp"');
+        expect(readme).not.toContain('/mcp/sse');
+        expect(readme).not.toContain('semantic-code-intelligence-sse');
+    });
 });

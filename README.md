@@ -167,9 +167,9 @@ Add to your `.mcp.json`:
       "type": "stdio",
       "description": "Semantic code intelligence LSP with 5-layer architecture"
     },
-    "semantic-code-intelligence-sse": {
-      "type": "sse",
-      "url": "http://localhost:7001/mcp/sse",
+    "semantic-code-intelligence-http": {
+      "type": "streamable-http",
+      "url": "http://localhost:7001/mcp",
       "description": "Semantic code intelligence LSP with Streamable HTTP transport (requires 'just start')"
     }
   }
