@@ -30,7 +30,13 @@ export interface MCPAdapterConfig {
 
 const SUPPORTED_CONFIG_FIELDS = new Set(['maxResults']);
 
-function rejectUnsupportedConfig(config: Record<string, unknown>): void {
+function normalizeMcpAdapterConfig(config: unknown): MCPAdapterConfig {
+    if (!isPlainConfigObject(config)) {
+        throw new CoreError('InvalidParams', 'MCPAdapter config must be a plain object', {
+            remediation: 'Pass an object with only the maxResults field, or omit config entirely.',
+        });
+    }
+
     const unsupported = Object.keys(config).filter((field) => !SUPPORTED_CONFIG_FIELDS.has(field));
     if (unsupported.length > 0) {
         throw new CoreError('InvalidParams', `Unsupported MCPAdapter config field(s): ${unsupported.join(', ')}`, {
@@ -39,6 +45,24 @@ function rejectUnsupportedConfig(config: Record<string, unknown>): void {
                 'Keep MCPAdapter config to maxResults only; use registry/tool arguments for execution policy and MCP server environment variables for transports.',
         });
     }
+
+    if ('maxResults' in config && config.maxResults !== undefined) {
+        const maxResults = config.maxResults;
+        if (typeof maxResults !== 'number' || !Number.isFinite(maxResults) || !Number.isInteger(maxResults) || maxResults <= 0) {
+            throw new CoreError('InvalidParams', 'MCPAdapter config maxResults must be a positive finite integer', {
+                field: 'maxResults',
+                value: maxResults,
+            });
+        }
+    }
+
+    return config;
+}
+
+function isPlainConfigObject(value: unknown): value is MCPAdapterConfig & Record<string, unknown> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === Object.prototype || prototype === null;
 }
 
 /**
@@ -50,11 +74,11 @@ export class MCPAdapter {
     private toolRunner: McpToolWorkflowRunner;
 
     constructor(coreAnalyzer: WorkflowCoreAnalyzer, config: MCPAdapterConfig = {}) {
-        rejectUnsupportedConfig(config as Record<string, unknown>);
+        const normalizedConfig = normalizeMcpAdapterConfig(config);
         this.coreAnalyzer = coreAnalyzer;
         this.config = {
             maxResults: 100,
-            ...config,
+            ...normalizedConfig,
         };
         this.toolRunner = new McpToolWorkflowRunner(this.coreAnalyzer, {
             maxResults: () => this.config.maxResults || 100,

@@ -1,17 +1,42 @@
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { describe, expect, test } from 'bun:test';
 import { MCPAdapter } from '../src/adapters/mcp-adapter';
+import { CoreError } from '../src/core/errors';
 
 function toolResultText(result: any) {
     return String(result?.content?.[0]?.text || '');
 }
 
+function expectInvalidConfig(config: any, message: string) {
+    try {
+        new MCPAdapter(undefined as any, config);
+        throw new Error('Expected invalid MCPAdapter config');
+    } catch (error) {
+        expect(error).toBeInstanceOf(CoreError);
+        expect((error as CoreError).code).toBe('InvalidParams');
+        expect(String((error as Error).message)).toContain(message);
+    }
+}
+
 describe('MCPAdapter validated server calls', () => {
     test('constructor rejects every config field except maxResults', () => {
         expect(() => new MCPAdapter(undefined as any, { maxResults: 10 })).not.toThrow();
-        expect(() => new MCPAdapter(undefined as any, { timeout: 1 } as any)).toThrow('Unsupported MCPAdapter config field');
-        expect(() => new MCPAdapter(undefined as any, { enableSSE: false, ssePort: 9999 } as any)).toThrow('enableSSE, ssePort');
-        expect(() => new MCPAdapter(undefined as any, { serverName: 'legacy-name' } as any)).toThrow('serverName');
+        expectInvalidConfig({ timeout: 1 }, 'Unsupported MCPAdapter config field');
+        expectInvalidConfig({ enableSSE: false, ssePort: 9999 }, 'enableSSE, ssePort');
+        expectInvalidConfig({ serverName: 'legacy-name' }, 'serverName');
+    });
+
+    test('constructor rejects non-object config and invalid maxResults values', () => {
+        expect(() => new MCPAdapter(undefined as any, undefined)).not.toThrow();
+        expectInvalidConfig(null, 'MCPAdapter config must be a plain object');
+        expectInvalidConfig(42, 'MCPAdapter config must be a plain object');
+        expectInvalidConfig(true, 'MCPAdapter config must be a plain object');
+        expectInvalidConfig([], 'MCPAdapter config must be a plain object');
+        expectInvalidConfig(new Date(), 'MCPAdapter config must be a plain object');
+        expectInvalidConfig({ maxResults: 0 }, 'maxResults must be a positive finite integer');
+        expectInvalidConfig({ maxResults: -5 }, 'maxResults must be a positive finite integer');
+        expectInvalidConfig({ maxResults: 2.5 }, 'maxResults must be a positive finite integer');
+        expectInvalidConfig({ maxResults: Number.POSITIVE_INFINITY }, 'maxResults must be a positive finite integer');
     });
 
     test('direct handleToolCall keeps unknown tools as MCP tool-result errors', async () => {
