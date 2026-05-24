@@ -333,6 +333,10 @@ build-mcp-enhanced:
     @echo "🚀 Building enhanced MCP server with error handling..."
     @mkdir -p dist/mcp-enhanced
     {{bun}} build src/servers/mcp-enhanced.ts --target=bun --outdir=dist/mcp-enhanced --format=esm \
+        --external tree-sitter --external tree-sitter-typescript \
+        --external tree-sitter-javascript --external tree-sitter-python \
+        --external tree-sitter-rust --external tree-sitter-go \
+        --external pg --external bun:sqlite --external express --external cors \
         --sourcemap
     @echo "✅ Enhanced MCP server built at dist/mcp-enhanced/mcp-enhanced.js"
 
