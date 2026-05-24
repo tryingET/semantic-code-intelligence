@@ -12,6 +12,7 @@ export interface CodeAnalysisWorkflowDeps {
     coreAnalyzer: any;
     maxResults: () => number;
     resolveWorkspaceFile: (value: string, inputLabel: string) => Promise<WorkspaceFileContext>;
+    resolveWorkspaceLexicalPath: (value: string, inputLabel: string) => { path: string; relativePath: string };
     filterWorkspaceItemsByUri: <T extends { uri?: unknown }>(items: T[], inputLabel: string) => Promise<T[]>;
 }
 
@@ -32,7 +33,9 @@ export class CodeAnalysisWorkflowService {
             maxResults: Math.min(Number(args.maxResults || 20), 200),
         });
         const result = await this.deps.coreAnalyzer.getCompletions(request);
-        const items = Array.isArray(result.data) ? result.data.map((completion: any) => completionToWireCompletion(completion)) : [];
+        const items = Array.isArray(result.data)
+            ? result.data.map((completion: any) => completionToWireCompletion(completion))
+            : [];
 
         return {
             payload: {
@@ -48,9 +51,20 @@ export class CodeAnalysisWorkflowService {
 
     async buildSymbolMap(args: Record<string, any>): Promise<SnapshotWorkflowResult> {
         validateRequired(args, ['symbol']);
+        const rawFile = typeof args.file === 'string' && args.file.trim() ? args.file : args.uri;
+        let uri = 'file://workspace';
+        if (typeof rawFile === 'string' && rawFile.trim() && rawFile.trim() !== 'file://workspace') {
+            try {
+                uri = (await this.deps.resolveWorkspaceFile(rawFile, 'build_symbol_map file')).uri;
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                if (!message.includes('does not exist')) throw error;
+                uri = normalizeUri(this.deps.resolveWorkspaceLexicalPath(rawFile, 'build_symbol_map file').path);
+            }
+        }
         const result = await this.deps.coreAnalyzer.buildSymbolMap({
             identifier: args.symbol,
-            uri: normalizeUri(args.file || 'file://workspace'),
+            uri,
             maxFiles: Math.min(Number(args.maxFiles || 20), 100),
             astOnly: !!args.astOnly,
         });
@@ -124,13 +138,22 @@ function validateRequired(args: Record<string, any>, fields: string[]) {
         throw new CoreError('InvalidParams', 'Arguments must be an object');
     }
     for (const field of fields) {
-        if (args[field] === undefined || args[field] === null || (typeof args[field] === 'string' && args[field].trim() === '')) {
+        if (
+            args[field] === undefined ||
+            args[field] === null ||
+            (typeof args[field] === 'string' && args[field].trim() === '')
+        ) {
             throw new CoreError('InvalidParams', `Missing required parameter: ${field}`, { field });
         }
     }
 }
 
-function buildCompletionRequest(params: { uri: string; position: Position; triggerCharacter?: string; maxResults?: number }) {
+function buildCompletionRequest(params: {
+    uri: string;
+    position: Position;
+    triggerCharacter?: string;
+    maxResults?: number;
+}) {
     return {
         uri: normalizeUri(params.uri),
         position: params.position,
@@ -235,15 +258,18 @@ function normalizePosition(position: any): Position {
         if (typeof position.line === 'number' && typeof position.character === 'number') {
             return createPosition(position.line, position.character);
         }
-        if (typeof position.line === 'number' && typeof position.col === 'number') return createPosition(position.line, position.col);
-        if (typeof position.row === 'number' && typeof position.column === 'number') return createPosition(position.row, position.column);
+        if (typeof position.line === 'number' && typeof position.col === 'number')
+            return createPosition(position.line, position.col);
+        if (typeof position.row === 'number' && typeof position.column === 'number')
+            return createPosition(position.row, position.column);
     }
     throw new Error(`Invalid position format: ${JSON.stringify(position)}`);
 }
 
 function normalizeRange(range: any): Range {
     if (typeof range === 'object' && range) {
-        if (range.start && range.end) return { start: normalizePosition(range.start), end: normalizePosition(range.end) };
+        if (range.start && range.end)
+            return { start: normalizePosition(range.start), end: normalizePosition(range.end) };
         if (
             typeof range.startLine === 'number' &&
             typeof range.startChar === 'number' &&

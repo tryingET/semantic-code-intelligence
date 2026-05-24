@@ -20,6 +20,7 @@ import type { CodeAnalyzer } from '../core/unified-analyzer';
 import type { SnapshotWorkflowResult } from '../core/workflows/snapshot-patch-workflow.js';
 import { ToolWorkflowRouter } from '../core/workflows/tool-workflow-router.js';
 import { metricsRegistry, recordLayerLatency, recordToolEnd, recordToolStart } from '../instrumentation/metrics.js';
+import { assertAllowedBrowserOrigin, corsHeadersForRequest, readLimitedJsonBody } from './http-ingress.js';
 import type { FastSearchLayer } from '../layers/layer1-fast-search.js';
 import type { SearchQuery } from '../types/core.js';
 
@@ -118,6 +119,18 @@ export class HTTPServer {
             fetch: async (request) => {
                 try {
                     const url = new URL(request.url);
+
+                    if (request.method === 'OPTIONS') {
+                        const headers = corsHeadersForRequest(request);
+                        if (request.headers.get('origin') && headers['Access-Control-Allow-Origin'] === 'null') {
+                            return new Response('', { status: 403, headers });
+                        }
+                        return new Response('', { status: 204, headers });
+                    }
+
+                    if (request.method !== 'GET' && request.method !== 'HEAD') {
+                        assertAllowedBrowserOrigin(request, 'HTTP write request');
+                    }
 
                     // Serve static web UI from web-ui/dist under /ui; fallback to unbundled web-ui/index.html
                     if (url.pathname === '/ui' || url.pathname === '/ui/') {
@@ -293,6 +306,7 @@ export class HTTPServer {
                                 paths: body.paths,
                                 glob: body.glob,
                                 limit: body.limit,
+                                workspaceRoot: this.config.workspaceRoot,
                             });
                             return new Response(JSON.stringify({ success: true, data: out }), {
                                 status: 200,
@@ -316,6 +330,7 @@ export class HTTPServer {
                     // Generic Tools endpoint (HTTP parity with MCP tools)
                     if (url.pathname === '/api/v1/tools/call' && request.method === 'POST') {
                         try {
+                            assertAllowedBrowserOrigin(request, 'HTTP tools/call');
                             const raw = await this.getRequestBody(request);
                             const body: any = strictJsonParse(raw || '{}');
                             const name = String(body?.name || '').trim();
@@ -939,7 +954,9 @@ export class HTTPServer {
                     // Snapshots - clean
                     if (url.pathname === '/api/v1/snapshots/clean' && request.method === 'POST') {
                         try {
-                            const body = await this.getRequestBody(request);
+                            assertAllowedBrowserOrigin(request, 'HTTP snapshots/clean');
+                            const raw = await this.getRequestBody(request);
+                            const body: any = strictJsonParse(raw || '{}');
                             const { overlayStore } = await import('../core/overlay-store.js');
                             const maxKeep = typeof body.maxKeep === 'number' ? body.maxKeep : 10;
                             const days = typeof body.maxAgeDays === 'number' ? body.maxAgeDays : 3;
@@ -948,11 +965,14 @@ export class HTTPServer {
                                 status: 200,
                                 headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
                             });
-                        } catch {
-                            return new Response(JSON.stringify({ success: false, error: 'Cleanup failed' }), {
-                                status: 500,
-                                headers: { 'Content-Type': 'application/json' },
-                            });
+                        } catch (err) {
+                            return new Response(
+                                JSON.stringify({ success: false, error: envelopeForThrownError(err) }),
+                                {
+                                    status: statusForThrownError(err),
+                                    headers: { 'Content-Type': 'application/json' },
+                                }
+                            );
                         }
                     }
 
@@ -996,18 +1016,13 @@ export class HTTPServer {
                         headers: response.headers,
                     });
                 } catch (error) {
-                    console.error('[HTTP Server] Request failed:', error);
-                    return new Response(
-                        JSON.stringify({
-                            success: false,
-                            error: 'Internal server error',
-                            message: error instanceof Error ? error.message : String(error),
-                        }),
-                        {
-                            status: 500,
-                            headers: { 'Content-Type': 'application/json' },
-                        }
-                    );
+                    if (!isCoreError(error)) {
+                        console.error('[HTTP Server] Request failed:', error);
+                    }
+                    return new Response(JSON.stringify({ success: false, error: envelopeForThrownError(error) }), {
+                        status: statusForThrownError(error),
+                        headers: { 'Content-Type': 'application/json' },
+                    });
                 }
             },
         });
@@ -1355,20 +1370,7 @@ export class HTTPServer {
     }
 
     private async getRequestBody(request: Request): Promise<string | undefined> {
-        if (request.method === 'GET' || request.method === 'HEAD') {
-            return undefined;
-        }
-
-        try {
-            const contentType = request.headers.get('content-type') || '';
-            if (contentType.includes('application/json')) {
-                return await request.text();
-            }
-            return undefined;
-        } catch (error) {
-            console.warn('[HTTP Server] Failed to read request body:', error);
-            return undefined;
-        }
+        return readLimitedJsonBody(request);
     }
 
     private extractQuery(url: string): Record<string, string> {

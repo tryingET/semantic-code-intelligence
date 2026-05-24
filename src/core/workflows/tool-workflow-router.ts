@@ -69,6 +69,7 @@ export class ToolWorkflowRouter {
             coreAnalyzer: this.coreAnalyzer,
             maxResults: () => this.getMaxResults(),
             resolveWorkspaceFile: (value, inputLabel) => this.resolveToolWorkspaceFile(value, inputLabel),
+            resolveWorkspaceLexicalPath: (value, inputLabel) => this.resolveToolWorkspaceLexicalPath(value, inputLabel),
             filterWorkspaceItemsByUri: (items, inputLabel) => this.filterToolWorkspaceItemsByUri(items, inputLabel),
         });
         this.learningWorkflows = new LearningWorkflowService({ coreAnalyzer: this.coreAnalyzer });
@@ -180,7 +181,9 @@ export class ToolWorkflowRouter {
     private getWorkspaceRoot(): string {
         if (this.config.workspaceRoot) return path.resolve(this.config.workspaceRoot());
         const configuredRoot = (this.coreAnalyzer as any)?.config?.workspaceRoot;
-        return path.resolve(typeof configuredRoot === 'string' && configuredRoot.trim() ? configuredRoot : process.cwd());
+        return path.resolve(
+            typeof configuredRoot === 'string' && configuredRoot.trim() ? configuredRoot : process.cwd()
+        );
     }
 
     private pathInputFromToolFile(value: string, workspaceRoot: string): string {
@@ -228,7 +231,10 @@ export class ToolWorkflowRouter {
         }
     }
 
-    private async filterToolWorkspaceItemsByUri<T extends { uri?: unknown }>(items: T[], inputLabel: string): Promise<T[]> {
+    private async filterToolWorkspaceItemsByUri<T extends { uri?: unknown }>(
+        items: T[],
+        inputLabel: string
+    ): Promise<T[]> {
         const contained: T[] = [];
         for (const item of items) {
             const uri = typeof item?.uri === 'string' ? item.uri : '';
@@ -257,7 +263,8 @@ export class ToolWorkflowRouter {
             if (!concept) return undefined;
             let bestUri: string | undefined;
             let bestCount = -1;
-            const anchors = typeof engine.listConceptAnchors === 'function' ? engine.listConceptAnchors(concept.id) : [];
+            const anchors =
+                typeof engine.listConceptAnchors === 'function' ? engine.listConceptAnchors(concept.id) : [];
             for (const anchor of anchors) {
                 const uri = (anchor as any)?.location?.uri as string | undefined;
                 const occurrences = (anchor as any)?.occurrences ?? 0;

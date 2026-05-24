@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 const target = 'tests/fixtures/safe-write-target.md';
 const outputPath = '.test-results/safe-write-dogfood.json';
@@ -54,15 +55,20 @@ function callSafeWrite(args: Record<string, unknown>, env: Record<string, string
 }
 
 function unifiedPatch(original: string, modified: string) {
-  const before = '/tmp/sci-safe-write-before.md';
-  const after = '/tmp/sci-safe-write-after.md';
-  writeFileSync(before, original);
-  writeFileSync(after, modified);
-  const diff = spawnSync('diff', ['-u', '--label', `a/${target}`, '--label', `b/${target}`, before, after], {
-    encoding: 'utf8',
-  });
-  const body = String(diff.stdout || '');
-  return `diff --git a/${target} b/${target}\n${body.endsWith('\n') ? body : `${body}\n`}`;
+  const dir = mkdtempSync(join(tmpdir(), 'sci-safe-write-'));
+  try {
+    const before = join(dir, 'before.md');
+    const after = join(dir, 'after.md');
+    writeFileSync(before, original, { flag: 'wx' });
+    writeFileSync(after, modified, { flag: 'wx' });
+    const diff = spawnSync('diff', ['-u', '--label', `a/${target}`, '--label', `b/${target}`, before, after], {
+      encoding: 'utf8',
+    });
+    const body = String(diff.stdout || '');
+    return `diff --git a/${target} b/${target}\n${body.endsWith('\n') ? body : `${body}\n`}`;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 const original = await Bun.file(target).text();

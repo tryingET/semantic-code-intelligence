@@ -123,7 +123,10 @@ export class HTTPAdapter {
     private async legacyRepoLocalUriOrNull(requested: string): Promise<string | null> {
         try {
             const cwdRoot = path.resolve(process.cwd());
-            const resolved = await resolveWorkspacePath(requested, { workspaceRoot: cwdRoot, inputLabel: 'legacy HTTP file' });
+            const resolved = await resolveWorkspacePath(requested, {
+                workspaceRoot: cwdRoot,
+                inputLabel: 'legacy HTTP file',
+            });
             return pathToFileURL(resolved.realPath).href;
         } catch {
             return null;
@@ -264,8 +267,15 @@ export class HTTPAdapter {
             const body = strictJsonParse(request.body || '{}');
             validateRequired(body, ['identifier']);
 
-            // Simple cache key for HTTP responses
-            const cacheKey = `def:${body.identifier}:${body.file || body.uri || ''}:${JSON.stringify(body.position || {})}`;
+            // Cache key must include every request field that can change result semantics.
+            const cacheKey = `def:${JSON.stringify({
+                identifier: body.identifier,
+                file: body.file || body.uri || '',
+                position: body.position || {},
+                maxResults: body.maxResults || this.config.maxResults,
+                includeDeclaration: body.includeDeclaration ?? true,
+                precise: !!body.precise,
+            })}`;
 
             // Check for cached response - fast path
             const cached = this.responseCache.get(cacheKey);
@@ -340,8 +350,15 @@ export class HTTPAdapter {
                 return { status: 200, headers: { 'X-Cache': 'SKIP' }, body: empty };
             }
 
-            // Simple cache key for HTTP responses
-            const cacheKey = `ref:${ident}:${body.file || body.uri || ''}:${body.position?.line || 0}:${body.position?.character || 0}`;
+            // Cache key must include every request field that can change result semantics.
+            const cacheKey = `ref:${JSON.stringify({
+                identifier: ident,
+                file: body.file || body.uri || '',
+                position: { line: body.position?.line || 0, character: body.position?.character || 0 },
+                maxResults: body.maxResults || this.config.maxResults,
+                includeDeclaration: body.includeDeclaration ?? false,
+                precise: !!body.precise,
+            })}`;
 
             // Check for cached response
             const cached = this.responseCache.get(cacheKey);
@@ -1516,7 +1533,11 @@ export class HTTPAdapter {
                                                     enum: ['imports', 'exports', 'callers', 'callees'],
                                                 },
                                             },
-                                            depth: { type: 'integer', description: 'Reserved for future recursive expansion; current graph_expand returns one-hop evidence.' },
+                                            depth: {
+                                                type: 'integer',
+                                                description:
+                                                    'Reserved for future recursive expansion; current graph_expand returns one-hop evidence.',
+                                            },
                                             limit: { type: 'integer' },
                                         },
                                     },
@@ -2251,7 +2272,11 @@ export class HTTPAdapter {
             // Create definition search request
             const searchRequest = {
                 identifier: body.identifier,
-                uri: await this.containedRequestUri(body.file || body.uri, 'stream definition file', 'file://definition'),
+                uri: await this.containedRequestUri(
+                    body.file || body.uri,
+                    'stream definition file',
+                    'file://definition'
+                ),
                 position: normalizePosition(body.position) || createPosition(0, 0),
                 maxResults: body.maxResults || 50,
             };
@@ -2358,7 +2383,9 @@ export class HTTPAdapter {
         const normalized = handleAdapterError(cause, 'http') as any;
         const resolvedStatus = status === 500 && typeof normalized?.status === 'number' ? normalized.status : status;
         const details =
-            normalized && typeof normalized === 'object' && 'details' in normalized ? (normalized as any).details : normalized;
+            normalized && typeof normalized === 'object' && 'details' in normalized
+                ? (normalized as any).details
+                : normalized;
         return {
             status: resolvedStatus,
             headers: {},

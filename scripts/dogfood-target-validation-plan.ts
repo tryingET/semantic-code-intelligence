@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, dirname, resolve } from 'node:path';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { basename, dirname, join, resolve } from 'node:path';
 
 const outputPath = '.test-results/target-validation-plan-dogfood.json';
 
@@ -77,13 +78,18 @@ function workflow(name: string, args: Record<string, unknown>, observation: stri
 }
 
 function unifiedPatch(file: string, original: string, modified: string) {
-  const before = '/tmp/sci-target-dogfood-before';
-  const after = '/tmp/sci-target-dogfood-after';
-  writeFileSync(before, original);
-  writeFileSync(after, modified);
-  const diff = spawnSync('diff', ['-u', '--label', `a/${file}`, '--label', `b/${file}`, before, after], { encoding: 'utf8' });
-  const body = String(diff.stdout || '');
-  return `diff --git a/${file} b/${file}\n${body.endsWith('\n') ? body : `${body}\n`}`;
+  const dir = mkdtempSync(join(tmpdir(), 'sci-target-dogfood-'));
+  try {
+    const before = join(dir, 'before');
+    const after = join(dir, 'after');
+    writeFileSync(before, original, { flag: 'wx' });
+    writeFileSync(after, modified, { flag: 'wx' });
+    const diff = spawnSync('diff', ['-u', '--label', `a/${file}`, '--label', `b/${file}`, before, after], { encoding: 'utf8' });
+    const body = String(diff.stdout || '');
+    return `diff --git a/${file} b/${file}\n${body.endsWith('\n') ? body : `${body}\n`}`;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 function cleanupSnapshot(snapshot: string | undefined, removeOntologyRoot: boolean) {

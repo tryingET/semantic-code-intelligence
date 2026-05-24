@@ -50,7 +50,13 @@ if [[ ${#CMDS[@]} -eq 0 ]]; then
 fi
 
 # Prefer the workflow alias which reads the patch and runs checks inside the snapshot
-if semantic-code-intelligence patch-checks-in-snapshot --snapshot "$SNAP" --patch-file "$PATCH_FILE" --only-touched $(printf ' --cmd %q' "${CMDS[@]}") --timeout 240; then
+ARGS=(patch-checks-in-snapshot --snapshot "$SNAP" --patch-file "$PATCH_FILE" --only-touched)
+for CMD in "${CMDS[@]}"; do
+  ARGS+=(--cmd "$CMD")
+done
+ARGS+=(--timeout 240)
+
+if semantic-code-intelligence "${ARGS[@]}"; then
   :
 else
   echo "✗ Patch checks failed (snapshot: $SNAP). See output above." >&2
