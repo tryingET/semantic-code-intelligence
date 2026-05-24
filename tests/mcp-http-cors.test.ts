@@ -1,11 +1,39 @@
 import { describe, expect, test } from 'bun:test';
-import { isLoopbackHost, resolveMcpHttpCorsOrigin } from '../src/servers/mcp-http-cors';
+import { isLoopbackHost, isLoopbackOrigin, resolveMcpHttpCorsOrigin, type McpHttpCorsOrigin } from '../src/servers/mcp-http-cors';
+
+function assertCorsCallback(policy: McpHttpCorsOrigin): asserts policy is Exclude<McpHttpCorsOrigin, boolean | string | string[]> {
+    expect(typeof policy).toBe('function');
+}
+
+function evaluateCorsPolicy(policy: Exclude<McpHttpCorsOrigin, boolean | string | string[]>, origin: string | undefined) {
+    let result: boolean | string | string[] | undefined;
+    let error: Error | null | undefined;
+    policy(origin, (err, allow) => {
+        error = err;
+        result = allow;
+    });
+    expect(error).toBeNull();
+    return result;
+}
 
 describe('MCP HTTP CORS policy', () => {
-    test('keeps localhost development origins permissive by default', () => {
-        expect(resolveMcpHttpCorsOrigin('localhost', '')).toBe('*');
-        expect(resolveMcpHttpCorsOrigin('127.0.0.1', '')).toBe('*');
-        expect(resolveMcpHttpCorsOrigin('[::1]', '')).toBe('*');
+    test('keeps localhost browser origins permissive by default', () => {
+        const policy = resolveMcpHttpCorsOrigin('localhost', '');
+        assertCorsCallback(policy);
+
+        expect(evaluateCorsPolicy(policy, undefined)).toBe(true);
+        expect(evaluateCorsPolicy(policy, 'http://localhost:7001')).toBe(true);
+        expect(evaluateCorsPolicy(policy, 'http://127.0.0.1:7001')).toBe(true);
+        expect(evaluateCorsPolicy(policy, 'http://[::1]:7001')).toBe(true);
+    });
+
+    test('rejects non-loopback browser origins even when bound to loopback', () => {
+        const policy = resolveMcpHttpCorsOrigin('localhost', '');
+        assertCorsCallback(policy);
+
+        expect(evaluateCorsPolicy(policy, 'https://client.example.test')).toBe(false);
+        expect(evaluateCorsPolicy(policy, 'http://192.168.1.10:7001')).toBe(false);
+        expect(evaluateCorsPolicy(policy, 'not a url')).toBe(false);
     });
 
     test('fails closed for externally bound hosts unless explicitly configured', () => {
@@ -29,9 +57,11 @@ describe('MCP HTTP CORS policy', () => {
         expect(resolveMcpHttpCorsOrigin('localhost', 'none')).toBe(false);
     });
 
-    test('detects normalized loopback hosts', () => {
+    test('detects normalized loopback hosts and origins', () => {
         expect(isLoopbackHost('LOCALHOST')).toBe(true);
         expect(isLoopbackHost('[::1]')).toBe(true);
         expect(isLoopbackHost('0.0.0.0')).toBe(false);
+        expect(isLoopbackOrigin('http://localhost:7001')).toBe(true);
+        expect(isLoopbackOrigin('https://client.example.test')).toBe(false);
     });
 });

@@ -46,7 +46,7 @@ Settings are loaded in this priority order:
 - `HTTP_API_PORT` - HTTP API server port (default: 7000)
 - `MCP_HTTP_PORT` - MCP HTTP server port (default: 7001)
 - `MCP_HTTP_HOST` - MCP HTTP bind host (default: central server host / localhost)
-- `MCP_HTTP_CORS_ORIGIN` - MCP HTTP browser CORS policy. Defaults to `*` for loopback hosts (`localhost`, `127.0.0.1`, `::1`) and no browser CORS headers for externally bound hosts. Set to `*`, one origin, a comma-separated allowlist, or `false`/`none`/`0` to disable.
+- `MCP_HTTP_CORS_ORIGIN` - MCP HTTP browser CORS policy. Defaults to allowing only loopback browser origins (`localhost`, `127.0.0.1`, `::1`) when bound to a loopback host, and no browser CORS headers for externally bound hosts. Set explicitly for reverse-proxy/external exposure: `*`, one origin, a comma-separated allowlist, or `false`/`none`/`0` to disable.
 - `LSP_SERVER_PORT` - LSP server port for TCP mode (default: 7002)
 - `LSP_HOST` - Server host (default: localhost)
 
