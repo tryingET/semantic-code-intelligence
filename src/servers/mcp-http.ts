@@ -10,30 +10,18 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { completable } from '@modelcontextprotocol/sdk/server/completable.js';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import {
-    CallToolRequestSchema,
-    ErrorCode,
-    isInitializeRequest,
-    ListResourcesRequestSchema,
-    ListResourceTemplatesRequestSchema,
-    ListToolsRequestSchema,
-    McpError,
-    ReadResourceRequestSchema,
-} from '@modelcontextprotocol/sdk/types.js';
+import { CallToolRequestSchema, ErrorCode, isInitializeRequest, ListToolsRequestSchema, McpError } from '@modelcontextprotocol/sdk/types.js';
 import cors from 'cors';
 import { EventEmitter } from 'events';
 import express from 'express';
-import { z } from 'zod';
 import { toMcpError } from '../adapters/error-mapper.js';
 import { MCPAdapter } from '../adapters/mcp-adapter.js';
 import { createDefaultCoreConfig } from '../adapters/utils.js';
 import { getEnvironmentConfig } from '../core/config/server-config.js';
 import { CoreError } from '../core/errors.js';
 import { createCodeAnalyzer } from '../core/index';
-import { overlayStore } from '../core/overlay-store.js';
 import type { CodeAnalyzer } from '../core/unified-analyzer';
 import { toMcpToolCallError } from '../mcp/tool-call-error.js';
 import { isMcpToolResultSuccess } from '../mcp/tool-result.js';
