@@ -30,6 +30,9 @@ describe('WorkspaceQueryWorkflowService', () => {
 
         const out = payload(await service.readFile({ path: 'sample.ts', range: { startLine: 2, endLine: 3 } }));
         expect(out).toMatchObject({ path: 'sample.ts', content: 'line 2\nline 3', totalLines: 4 });
+
+        const nullEnd = payload(await service.readFile({ path: 'sample.ts', range: { startLine: 2, endLine: null } }));
+        expect(nullEnd.content).toBe('line 2\nline 3\n');
     });
 
     test('delegates text search to the configured analyzer with bounded path resolution', async () => {

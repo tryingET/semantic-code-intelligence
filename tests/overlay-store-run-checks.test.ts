@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { chmod, mkdir, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -67,6 +67,39 @@ describe('OverlayStore runChecks evidence receipts', () => {
             await rm(workspaceB, { recursive: true, force: true });
         }
     });
+
+    test('snapshot materialization treats metacharacter workspace paths as data, not shell syntax', async () => {
+        const markerName = `sci-shell-marker-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        const marker = path.join(tmpdir(), markerName);
+        const workspace = path.join(tmpdir(), `sci-$(touch\${IFS}`, 'tmp', `${markerName})`);
+        try {
+            await rm(marker, { force: true });
+            await mkdir(workspace, { recursive: true });
+            writeFileSync(path.join(workspace, 'sample.txt'), 'before\n', 'utf8');
+            const snap = overlayStore.createSnapshot(false, { workspaceRoot: workspace });
+            const staged = overlayStore.stagePatch(
+                snap.id,
+                `diff --git a/sample.txt b/sample.txt
+--- a/sample.txt
++++ b/sample.txt
+@@ -1 +1 @@
+-before
++after
+`
+            );
+            expect(staged.accepted).toBe(true);
+
+            const result = await overlayStore.runChecks(snap.id, ['true'], 30, { workspaceRoot: workspace });
+
+            expect(result.ok).toBe(true);
+            expect(existsSync(marker)).toBe(false);
+        } finally {
+            overlayStore.clearAll();
+            await rm(workspace, { recursive: true, force: true });
+            await rm(path.dirname(path.dirname(workspace)), { recursive: true, force: true }).catch(() => undefined);
+            await rm(marker, { force: true });
+        }
+    }, 30000);
 
     test('runChecks command side effects do not mutate reusable materialized snapshots', async () => {
         const snap = overlayStore.createSnapshot(false);

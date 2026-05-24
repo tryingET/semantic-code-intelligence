@@ -72,27 +72,27 @@ export class WorkspaceQueryWorkflowService {
 
             const maxBytesRaw = Number(args?.maxBytes ?? 65_536);
             const maxBytes = Number.isFinite(maxBytesRaw) ? Math.max(1, Math.min(262_144, Math.floor(maxBytesRaw))) : 65_536;
-            const content = await opened.handle.readFile('utf8');
-            const lines = content.split(/\r?\n/);
-
             const range = args?.range && typeof args.range === 'object' ? args.range : null;
             const startLineRaw = Number(range?.startLine ?? 1);
-            const endLineRaw = Number(range?.endLine ?? lines.length);
+            const requestedEndLineRaw = range?.endLine == null ? null : Number(range.endLine);
             const startLine = Number.isFinite(startLineRaw) ? Math.max(1, Math.floor(startLineRaw)) : 1;
-            const endLine = Number.isFinite(endLineRaw) ? Math.max(startLine, Math.floor(endLineRaw)) : lines.length;
-            const selected = lines.slice(startLine - 1, Math.min(endLine, lines.length)).join('\n');
-            const bytes = Buffer.byteLength(selected, 'utf8');
-            const truncated = bytes > maxBytes;
-            const text = truncated ? selected.slice(0, maxBytes) : selected;
+            const requestedEndLine =
+                requestedEndLineRaw === null
+                    ? Number.POSITIVE_INFINITY
+                    : Number.isFinite(requestedEndLineRaw)
+                      ? Math.max(startLine, Math.floor(requestedEndLineRaw))
+                      : Number.POSITIVE_INFINITY;
+            const selected = await this.readSelectedRangeBounded(opened.handle, startLine, requestedEndLine, maxBytes);
 
             return {
                 payload: {
                     path: opened.relativePath,
-                    range: { startLine, endLine: Math.min(endLine, lines.length) },
-                    content: text,
-                    truncated,
-                    bytes: Buffer.byteLength(text, 'utf8'),
-                    totalLines: lines.length,
+                    range: { startLine, endLine: Math.min(requestedEndLine, selected.totalLines) },
+                    content: selected.content,
+                    truncated: selected.truncated,
+                    bytes: selected.bytes,
+                    totalLines: selected.totalLines,
+                    totalLinesKnown: selected.totalLinesKnown,
                 },
                 isError: false,
             };
@@ -103,6 +103,87 @@ export class WorkspaceQueryWorkflowService {
         } finally {
             await opened?.handle.close().catch(() => undefined);
         }
+    }
+
+    private async readSelectedRangeBounded(
+        handle: Awaited<ReturnType<typeof openWorkspaceFileForRead>>['handle'],
+        startLine: number,
+        endLine: number,
+        maxBytes: number
+    ): Promise<{ content: string; truncated: boolean; bytes: number; totalLines: number; totalLinesKnown: boolean }> {
+        const decoder = new TextDecoder('utf-8');
+        const buffer = Buffer.allocUnsafe(64 * 1024);
+        const parts: string[] = [];
+        let position = 0;
+        let currentLine = 1;
+        let bytes = 0;
+        let truncated = false;
+        let pendingCarriageReturn = false;
+
+        const appendBounded = (text: string) => {
+            if (!text || truncated) return;
+            for (const char of text) {
+                const charBytes = Buffer.byteLength(char, 'utf8');
+                if (bytes + charBytes > maxBytes) {
+                    truncated = true;
+                    return;
+                }
+                parts.push(char);
+                bytes += charBytes;
+            }
+        };
+        let stoppedEarly = false;
+        const shouldStop = () => truncated || currentLine > endLine;
+        const appendIfSelected = (text: string) => {
+            if (currentLine >= startLine && currentLine <= endLine) appendBounded(text);
+        };
+        const finishLine = () => {
+            if (currentLine >= startLine && currentLine < endLine) appendBounded('\n');
+            currentLine += 1;
+        };
+        const processRegularChar = (char: string) => appendIfSelected(char);
+        const processChar = (char: string) => {
+            if (pendingCarriageReturn) {
+                if (char === '\n') {
+                    pendingCarriageReturn = false;
+                    finishLine();
+                    return;
+                }
+                pendingCarriageReturn = false;
+                processRegularChar('\r');
+            }
+            if (char === '\r') {
+                pendingCarriageReturn = true;
+                return;
+            }
+            if (char === '\n') {
+                finishLine();
+                return;
+            }
+            processRegularChar(char);
+        };
+
+        while (true) {
+            const { bytesRead } = await handle.read(buffer, 0, buffer.length, position);
+            if (bytesRead === 0) break;
+            position += bytesRead;
+            const chunk = decoder.decode(buffer.subarray(0, bytesRead), { stream: true });
+            for (const char of chunk) {
+                processChar(char);
+                if (shouldStop()) {
+                    stoppedEarly = true;
+                    break;
+                }
+            }
+            if (stoppedEarly) break;
+        }
+        if (!stoppedEarly) {
+            const tail = decoder.decode();
+            for (const char of tail) processChar(char);
+            if (pendingCarriageReturn) processRegularChar('\r');
+        }
+
+        return { content: parts.join(''), truncated, bytes, totalLines: currentLine, totalLinesKnown: !stoppedEarly };
     }
 
     async listFiles(args: Record<string, any>): Promise<SnapshotWorkflowResult> {

@@ -56,7 +56,7 @@ async function main() {
   await fs.mkdir(tmpDir, { recursive: true });
   const tmpPath = path.join(tmpDir, `utils.${randomUUID()}.ts`);
   await fs.writeFile(tmpPath, hardened2, 'utf8');
-  const diffProc = spawnSync('bash', ['-lc', `git diff --no-index --src-prefix=a/ --dst-prefix=b/ -- ${JSON.stringify(targetAbs)} ${JSON.stringify(tmpPath)}`], { stdio: 'pipe' });
+  const diffProc = spawnSync('git', ['diff', '--no-index', '--src-prefix=a/', '--dst-prefix=b/', '--', targetAbs, tmpPath], { stdio: 'pipe' });
   let unified = String(diffProc.stdout || '');
   // Normalize paths in diff to repo-relative so git apply in snapshot can find files
   unified = unified.replace(/diff --git a\/.+?src\/adapters\/utils\.ts b\/.+?\n/, 'diff --git a/src/adapters/utils.ts b/src/adapters/utils.ts\n');
@@ -91,7 +91,7 @@ async function main() {
     mcpNew = mcpNew.replace(/fs\.readFileSync\(([^,]+),\s*'utf8'\)/g, 'await fs.readFile($1, "utf8")');
     const tmpMcp = path.join(tmpDir, `mcp.${randomUUID()}.ts`);
     await fs.writeFile(tmpMcp, mcpNew, 'utf8');
-    const diff2 = spawnSync('bash', ['-lc', `git diff --no-index --src-prefix=a/ --dst-prefix=b/ -- ${JSON.stringify(mcpFile)} ${JSON.stringify(tmpMcp)}`], { stdio: 'pipe' });
+    const diff2 = spawnSync('git', ['diff', '--no-index', '--src-prefix=a/', '--dst-prefix=b/', '--', mcpFile, tmpMcp], { stdio: 'pipe' });
     let unified2 = String(diff2.stdout || '');
     unified2 = unified2.replace(/diff --git a\/.+?src\/adapters\/mcp-adapter\.ts b\/.+?\n/, 'diff --git a/src/adapters/mcp-adapter.ts b/src/adapters/mcp-adapter.ts\n');
     unified2 = unified2.replace(/--- a\/.+?mcp-adapter\.ts\n/, '--- a/src/adapters/mcp-adapter.ts\n');

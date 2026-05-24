@@ -737,12 +737,9 @@ export class OverlayStore {
 
                 if (this.which('git')) {
                     const applied = spawnSync(
-                        'bash',
-                        [
-                            '-lc',
-                            `GIT_CEILING_DIRECTORIES=${JSON.stringify(snapsRoot)} git -C ${JSON.stringify(tempDir)} apply --whitespace=nowarn overlay.diff`,
-                        ],
-                        { stdio: 'pipe' }
+                        'git',
+                        ['-C', tempDir, 'apply', '--whitespace=nowarn', 'overlay.diff'],
+                        { stdio: 'pipe', env: { ...process.env, GIT_CEILING_DIRECTORIES: snapsRoot } }
                     );
                     ok = applied.status === 0;
                     output += `${String(applied.stdout || '')}${String(applied.stderr || '')}`;
@@ -750,7 +747,7 @@ export class OverlayStore {
 
                 if (!ok && this.which('patch')) {
                     const pLevel = /\ndiff --git a\//.test('\n' + diffText) ? 1 : 0;
-                    const patched = spawnSync('bash', ['-lc', `patch -p${pLevel} < overlay.diff`], { cwd: tempDir, stdio: 'pipe' });
+                    const patched = spawnSync('patch', [`-p${pLevel}`, '-i', 'overlay.diff'], { cwd: tempDir, stdio: 'pipe' });
                     ok = patched.status === 0;
                     output += `${String(patched.stdout || '')}${String(patched.stderr || '')}`;
                 }
@@ -870,30 +867,24 @@ export class OverlayStore {
                     await this.logProgress(snapshotId, `materialize:ensure-${d}`);
 
                     // Fill in missing files without clobbering already-copied (and patched) touched files.
+                    fs.mkdirSync(dstDir, { recursive: true });
                     if (this.which('rsync')) {
-                        spawnSync(
-                            'bash',
-                            ['-lc', `mkdir -p ${JSON.stringify(dstDir)} && rsync -a --ignore-existing ${JSON.stringify(srcDir)}/ ${JSON.stringify(dstDir)}/`],
-                            { stdio: 'pipe' }
+                        this.spawnCheckedArgs(
+                            'rsync',
+                            ['-a', '--ignore-existing', `${srcDir}/`, `${dstDir}/`],
+                            'Failed to ensure partial snapshot directory'
                         );
                     } else if (this.which('tar')) {
                         // tar-based copy is more reliable than cp -n for deep trees and preserves existing (patched) files.
-                        spawnSync(
-                            'bash',
-                            [
-                                '-lc',
-                                `mkdir -p ${JSON.stringify(dstDir)} && tar -C ${JSON.stringify(srcDir)} -cf - . | tar -C ${JSON.stringify(dstDir)} -xf - --skip-old-files`,
-                            ],
-                            { stdio: 'pipe' }
+                        this.spawnChecked(
+                            `tar -C ${this.shellQuote(srcDir)} -cf - . | tar -C ${this.shellQuote(dstDir)} -xf - --skip-old-files`,
+                            'Failed to ensure partial snapshot directory'
                         );
                     } else {
-                        spawnSync(
-                            'bash',
-                            [
-                                '-lc',
-                                `mkdir -p ${JSON.stringify(dstDir)} && cp -a -n ${JSON.stringify(srcDir)}/. ${JSON.stringify(dstDir)}/`,
-                            ],
-                            { stdio: 'pipe' }
+                        this.spawnCheckedArgs(
+                            'cp',
+                            ['-a', '-n', `${srcDir}/.`, `${dstDir}/`],
+                            'Failed to ensure partial snapshot directory'
                         );
                     }
                 }
@@ -912,7 +903,7 @@ export class OverlayStore {
                 // Prefer a quick tsgo typecheck against touched TS files
                 const limited = tsFiles
                     .slice(0, 50) // cap to avoid overly long cmdlines
-                    .map((f) => JSON.stringify(f))
+                    .map((f) => this.shellQuote(f))
                     .join(' ');
                 const quick = `bunx tsgo --noEmit --pretty false ${limited}`;
                 // Prepend quick check if no explicit commands were provided

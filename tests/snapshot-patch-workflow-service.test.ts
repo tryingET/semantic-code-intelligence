@@ -49,6 +49,30 @@ describe('SnapshotPatchWorkflowService', () => {
         expect(artifacts.contents.overlayDiff.truncated).toBe(true);
     });
 
+    test('extractSnapshotArtifacts clamps invalid maxBytes and truncates UTF-8 on code point boundaries', async () => {
+        const workspaceRoot = tempWorkspace();
+        const file = 'éééabc.txt';
+        writeFileSync(join(workspaceRoot, file), 'before\n', 'utf8');
+        const service = new SnapshotPatchWorkflowService({ workspaceRoot: () => workspaceRoot });
+        const snap = payload(await service.getSnapshot({ preferExisting: false }));
+        const patch = `diff --git a/${file} b/${file}
+--- a/${file}
++++ b/${file}
+@@ -1 +1 @@
+-before
++after
+`;
+        expect(payload(await service.proposePatch({ snapshot: snap.snapshot, patch })).accepted).toBe(true);
+
+        const invalidLimit = payload(await service.extractSnapshotArtifacts({ snapshot: snap.snapshot, includeContent: true, maxBytes: 'not-a-number' }));
+        expect(invalidLimit.contents.overlayDiff.text).toContain(file);
+
+        const bounded = payload(await service.extractSnapshotArtifacts({ snapshot: snap.snapshot, includeContent: true, maxBytes: 14 }));
+        expect(bounded.contents.overlayDiff.truncated).toBe(true);
+        expect(Buffer.byteLength(bounded.contents.overlayDiff.text, 'utf8')).toBeLessThanOrEqual(14);
+        expect(bounded.contents.overlayDiff.text).toBe('diff --git a/');
+    });
+
     test('reports missing snapshot artifact arguments without MCP protocol objects', async () => {
         const service = new SnapshotPatchWorkflowService({ workspaceRoot: () => tempWorkspace() });
 

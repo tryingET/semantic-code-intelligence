@@ -30,6 +30,27 @@ function stripUnifiedHeaderMetadata(rawPath: string): string {
   return timestamp?.[1]?.trim() || raw;
 }
 
+function clampMaxBytes(value: unknown, fallback = 65_536): number {
+  const parsed = Number(value ?? fallback);
+  return Number.isFinite(parsed) ? Math.max(1, Math.min(262_144, Math.floor(parsed))) : fallback;
+}
+
+function truncateUtf8WholeCodePoints(text: string, maxBytes: number): { text: string; truncated: boolean } {
+  let bytes = 0;
+  let truncated = false;
+  const out: string[] = [];
+  for (const char of text) {
+    const charBytes = Buffer.byteLength(char, "utf8");
+    if (bytes + charBytes > maxBytes) {
+      truncated = true;
+      break;
+    }
+    out.push(char);
+    bytes += charBytes;
+  }
+  return { text: out.join(""), truncated: truncated || bytes < Buffer.byteLength(text, "utf8") };
+}
+
 export function extractFilesFromPatch(patch: string): string[] {
   const files = new Set<string>();
   for (const line of patch.split(/\r?\n/)) {
@@ -435,7 +456,7 @@ export class SnapshotPatchWorkflowService {
     if (!snapshot) return { text: "snapshot required", isError: true };
 
     const includeContent = args?.includeContent === true;
-    const maxBytes = Math.max(1, Math.min(262_144, Number(args?.maxBytes || 65_536)));
+    const maxBytes = clampMaxBytes(args?.maxBytes);
     const links = [
       { uri: `snapshot://${snapshot}/overlay.diff`, name: "overlay.diff", mimeType: "text/plain" },
       { uri: `snapshot://${snapshot}/status`, name: "status", mimeType: "application/json" },
@@ -486,8 +507,7 @@ export class SnapshotPatchWorkflowService {
         const readBounded = async (file: string) => {
           try {
             const text = await fs.readFile(path.join(dir, file), "utf8");
-            const truncated = Buffer.byteLength(text, "utf8") > maxBytes;
-            return { text: truncated ? text.slice(0, maxBytes) : text, truncated };
+            return truncateUtf8WholeCodePoints(text, maxBytes);
           } catch {
             return { text: "", truncated: false };
           }
@@ -1294,11 +1314,8 @@ export class SnapshotPatchWorkflowService {
       const workingPatchId = patchId(workingDiff);
 
       const reverse = spawnSync(
-        "bash",
-        [
-          "-lc",
-          `git apply --check -R --whitespace=nowarn ${JSON.stringify(diffFile)}`,
-        ],
+        "git",
+        ["apply", "--check", "-R", "--whitespace=nowarn", diffFile],
         { cwd: this.workspaceRoot, stdio: "pipe", encoding: "utf8" },
       );
       const reverseOk = reverse.status === 0;

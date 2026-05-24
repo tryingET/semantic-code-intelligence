@@ -64,6 +64,8 @@ export class CodeAnalyzer {
     private symbolLocationCache: Map<string, { data: Definition[]; ts: number; accessed?: number }> = new Map();
     // Simple in-memory plan cache for rename previews
     private lastRenamePlan: { key: string; edit: WorkspaceEdit; ts: number } | null = null;
+    private cacheWarmupPromise: Promise<void> | null = null;
+    private cacheWarmupAbort = false;
 
     constructor(layerManager: LayerManager, sharedServices: SharedServices, config?: CoreConfig, eventBus?: EventBus) {
         this.layerManager = layerManager;
@@ -166,11 +168,20 @@ export class CodeAnalyzer {
         }
 
         this.initialized = true;
+        this.cacheWarmupAbort = false;
 
-        // Start cache warming in background (don't await to avoid blocking initialization)
-        this.warmCacheForWorkspace(this.config.workspaceRoot ?? process.cwd()).catch((error) => {
-            console.debug('Background cache warming failed:', error);
-        });
+        // Start cache warming in background (don't await to avoid blocking initialization),
+        // but keep lifecycle ownership so dispose can stop it before shared services/tools close.
+        // Test runs default this off to keep server teardown deterministic under Bun's 5s hook budget.
+        const cacheWarmupDisabled =
+            process.env.SCI_DISABLE_CACHE_WARMUP === '1' ||
+            ((process.env.BUN_ENV === 'test' || process.env.NODE_ENV === 'test') &&
+                process.env.SCI_ENABLE_CACHE_WARMUP_IN_TESTS !== '1');
+        this.cacheWarmupPromise = cacheWarmupDisabled
+            ? null
+            : this.warmCacheForWorkspace(this.config.workspaceRoot ?? process.cwd()).catch((error) => {
+                  console.debug('Background cache warming failed:', error);
+              });
 
         this.eventBus.emit('code-analyzer:initialized', {
             timestamp: Date.now(),
@@ -1033,6 +1044,13 @@ export class CodeAnalyzer {
     async dispose(): Promise<void> {
         if (!this.initialized) {
             return;
+        }
+
+        this.cacheWarmupAbort = true;
+        if (this.cacheWarmupPromise) {
+            const warmup = this.cacheWarmupPromise;
+            this.cacheWarmupPromise = null;
+            await warmup.catch(() => undefined);
         }
 
         // Dispose learning orchestrator first
@@ -2460,36 +2478,38 @@ export class CodeAnalyzer {
                 maxResults: 10,
             }));
 
-            // Execute warming requests with minimal processing
-            const warmingPromises = warmingRequests.map(async (request) => {
-                try {
-                    const cacheKey = this.generateCacheKey('definition', request);
-
-                    // Check if already cached
-                    if (await this.sharedServices.cache.has(cacheKey)) {
-                        return;
-                    }
-
-                    // Do a lightweight search and cache the result
-                    const fastResult = await this.executeLayer1Search(request as FindDefinitionRequest);
-                    if (fastResult.length > 0) {
-                        const ttl = this.calculateOptimalCacheTtl(fastResult, 'exact');
-                        await this.sharedServices.cache.set(cacheKey, fastResult, ttl);
-                    }
-                } catch (error) {
-                    // Ignore warming errors - they shouldn't block normal operation
-                    console.debug(`Cache warming failed for ${request.identifier}:`, error);
-                }
-            });
-
-            // Execute warming in batches to avoid overwhelming the system
+            // Execute warming in batches to avoid overwhelming the system. Construct
+            // promises inside each batch; creating them up front starts all work eagerly.
             const batchSize = 5;
-            for (let i = 0; i < warmingPromises.length; i += batchSize) {
-                const batch = warmingPromises.slice(i, i + batchSize);
+            for (let i = 0; i < warmingRequests.length; i += batchSize) {
+                if (this.cacheWarmupAbort || !this.initialized) return;
+                const batch = warmingRequests.slice(i, i + batchSize).map(async (request) => {
+                    if (this.cacheWarmupAbort || !this.initialized) return;
+                    try {
+                        const cacheKey = this.generateCacheKey('definition', request);
+
+                        // Check if already cached
+                        if (await this.sharedServices.cache.has(cacheKey)) {
+                            return;
+                        }
+                        if (this.cacheWarmupAbort || !this.initialized) return;
+
+                        // Do a lightweight search and cache the result
+                        const fastResult = await this.executeLayer1Search(request as FindDefinitionRequest);
+                        if (this.cacheWarmupAbort || !this.initialized) return;
+                        if (fastResult.length > 0) {
+                            const ttl = this.calculateOptimalCacheTtl(fastResult, 'exact');
+                            await this.sharedServices.cache.set(cacheKey, fastResult, ttl);
+                        }
+                    } catch (error) {
+                        // Ignore warming errors - they shouldn't block normal operation
+                        console.debug(`Cache warming failed for ${request.identifier}:`, error);
+                    }
+                });
                 await Promise.all(batch);
 
                 // Small delay between batches to avoid blocking
-                if (i + batchSize < warmingPromises.length) {
+                if (i + batchSize < warmingRequests.length) {
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
             }

@@ -822,6 +822,9 @@ class CLI {
 
             const config = createDefaultCoreConfig();
             const workspaceRoot = this.findWorkspaceRoot();
+            if (process.env.SCI_ENABLE_CACHE_WARMUP_IN_CLI !== '1' && process.env.SCI_DISABLE_CACHE_WARMUP === undefined) {
+                process.env.SCI_DISABLE_CACHE_WARMUP = '1';
+            }
 
             this.coreAnalyzer = await createCodeAnalyzer({
                 ...config,

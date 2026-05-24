@@ -205,6 +205,22 @@ describe('read_file workspace trust boundary', () => {
         expect(payload.content).toBe('y'.repeat(32));
     });
 
+    test('read_file maxBytes is byte-accurate for multibyte content', async () => {
+        const absPath = uniqueWorkspacePath('.tmp-read-file-unicode.txt');
+        const relPath = relative(process.cwd(), absPath);
+        writeFileSync(absPath, 'éééabc\n', 'utf8');
+
+        const mcp = new MCPAdapter(undefined as any);
+        const result = await mcp.handleToolCall('read_file', { path: relPath, maxBytes: 5 });
+        const payload = parseToolJson(result);
+
+        expect(result.isError).toBe(false);
+        expect(payload.truncated).toBe(true);
+        expect(payload.bytes).toBe(4);
+        expect(Buffer.byteLength(payload.content, 'utf8')).toBeLessThanOrEqual(5);
+        expect(payload.content).toBe('éé');
+    });
+
     test('does not leave workspace artifacts behind after adversarial symlink checks', () => {
         const status = spawnSync('git', ['status', '--short'], { cwd: process.cwd(), encoding: 'utf8' }).stdout;
         expect(status).not.toContain('.tmp-read-file-');
