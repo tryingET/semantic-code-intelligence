@@ -157,8 +157,6 @@ const createAdapterTestContext = async (): Promise<AdapterTestContext> => {
 
     const mcpAdapter = new MCPAdapter(codeAnalyzer, {
         maxResults: 50,
-        timeout: 30000,
-        enableDiagnostics: true,
     });
 
     const httpAdapter = new HTTPAdapter(codeAnalyzer, {

@@ -197,10 +197,10 @@ describe('build command surface', () => {
         expect(packageJson.scripts?.['build:all']).toContain('bun run build:mcp-http');
         expect(packageJson.scripts?.['build:all']).toContain('bun run build:mcp-enhanced');
         expect(packageJson.scripts?.['build:all']).toContain('bun run build:http');
-        expect(packageJson.scripts?.['build:http']).toContain('--outdir=dist/http');
-        expect(packageJson.scripts?.['build:mcp-stdio']).toContain('--outdir=dist/mcp');
-        expect(packageJson.scripts?.['build:mcp-http']).toContain('--outdir=dist/mcp-http');
-        expect(packageJson.scripts?.['build:mcp-enhanced']).toContain('--outdir=dist/mcp-enhanced');
+        expect(packageJson.scripts?.['build:http']).toBe('bun run scripts/build-server.ts http');
+        expect(packageJson.scripts?.['build:mcp-stdio']).toBe('bun run scripts/build-server.ts mcp-stdio');
+        expect(packageJson.scripts?.['build:mcp-http']).toBe('bun run scripts/build-server.ts mcp-http');
+        expect(packageJson.scripts?.['build:mcp-enhanced']).toBe('bun run scripts/build-server.ts mcp-enhanced');
     });
 
     test('Just build delegates to the package build instead of hand-rolling divergent artifacts', () => {
@@ -211,6 +211,19 @@ describe('build command surface', () => {
         expect(body).not.toContain('dist/api');
         expect(body).not.toContain('src/servers/mcp-fast.ts');
         expect(body).not.toContain('dist/mcp-fast');
+    });
+
+    test('package server builds share one build helper for externals', () => {
+        const packageJson = JSON.parse(readText('package.json')) as { scripts?: Record<string, string> };
+        const helper = readText('scripts/build-server.ts');
+
+        for (const script of ['build:lsp', 'build:mcp-stdio', 'build:mcp-http', 'build:mcp-enhanced', 'build:http', 'build:cli']) {
+            expect(packageJson.scripts?.[script]).toStartWith('bun run scripts/build-server.ts ');
+            expect(packageJson.scripts?.[script]).not.toContain('--external');
+        }
+        expect(helper).toContain("'tree-sitter-rust'");
+        expect(helper).toContain("'bun:sqlite'");
+        expect(helper).toContain('mcp-enhanced');
     });
 
     test('MCP stdio and enhanced smoke surfaces are fail-closed over release artifacts', () => {

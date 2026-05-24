@@ -114,19 +114,7 @@ const createConsistencyTestContext = async (): Promise<ConsistencyTestContext> =
         },
     });
 
-    const mcpAdapter = new MCPAdapter(codeAnalyzer, {
-        serverName: 'semantic-code-intelligence-mcp-consistency-test',
-        version: '1.0.0-test',
-        tools: {
-            searchFiles: true,
-            grepContent: true,
-            findDefinition: true,
-            findReferences: true,
-            analyzeComplexity: true,
-            detectPatterns: true,
-            suggestRefactoring: true,
-        },
-    });
+    const mcpAdapter = new MCPAdapter(codeAnalyzer);
 
     const httpAdapter = new HTTPAdapter(codeAnalyzer, {
         port: 7020, // Different port for consistency tests
@@ -1059,17 +1047,7 @@ describe('Cross-Protocol Consistency', () => {
                 },
             });
 
-            const newMcpAdapter = new MCPAdapter(context.codeAnalyzer, {
-                serverName: 'semantic-code-intelligence-mcp-restart-test',
-                version: '1.0.0-test',
-                tools: {
-                    searchFiles: true,
-                    findDefinition: true,
-                    findReferences: true,
-                    analyzeComplexity: true,
-                    suggestRefactoring: true,
-                },
-            });
+            const newMcpAdapter = new MCPAdapter(context.codeAnalyzer);
 
             await newLspAdapter.initialize();
             await newMcpAdapter.initialize();

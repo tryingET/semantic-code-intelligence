@@ -4,7 +4,6 @@
  * This adapter handles MCP-specific concerns:
  * - MCP tool call/response format
  * - Enhanced error handling and validation
- * - Timeout management
  * - Request/response logging
  *
  * Tool/application orchestration is delegated to the core workflow router.
@@ -27,12 +26,19 @@ import { handleAdapterError } from './utils.js';
 
 export interface MCPAdapterConfig {
     maxResults?: number;
-    /** @deprecated Tool execution timeouts are registry/argument-driven; retained as an ignored compatibility field. */
-    timeout?: number;
-    /** @deprecated MCP transports are server-owned; retained as an ignored compatibility field. */
-    enableSSE?: boolean;
-    /** @deprecated Use MCP_HTTP_PORT on the MCP HTTP server; retained as an ignored compatibility field. */
-    ssePort?: number;
+}
+
+const SUPPORTED_CONFIG_FIELDS = new Set(['maxResults']);
+
+function rejectUnsupportedConfig(config: Record<string, unknown>): void {
+    const unsupported = Object.keys(config).filter((field) => !SUPPORTED_CONFIG_FIELDS.has(field));
+    if (unsupported.length > 0) {
+        throw new CoreError('InvalidParams', `Unsupported MCPAdapter config field(s): ${unsupported.join(', ')}`, {
+            unsupported,
+            remediation:
+                'Keep MCPAdapter config to maxResults only; use registry/tool arguments for execution policy and MCP server environment variables for transports.',
+        });
+    }
 }
 
 /**
@@ -44,6 +50,7 @@ export class MCPAdapter {
     private toolRunner: McpToolWorkflowRunner;
 
     constructor(coreAnalyzer: WorkflowCoreAnalyzer, config: MCPAdapterConfig = {}) {
+        rejectUnsupportedConfig(config as Record<string, unknown>);
         this.coreAnalyzer = coreAnalyzer;
         this.config = {
             maxResults: 100,

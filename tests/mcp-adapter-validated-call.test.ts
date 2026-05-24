@@ -7,6 +7,13 @@ function toolResultText(result: any) {
 }
 
 describe('MCPAdapter validated server calls', () => {
+    test('constructor rejects every config field except maxResults', () => {
+        expect(() => new MCPAdapter(undefined as any, { maxResults: 10 })).not.toThrow();
+        expect(() => new MCPAdapter(undefined as any, { timeout: 1 } as any)).toThrow('Unsupported MCPAdapter config field');
+        expect(() => new MCPAdapter(undefined as any, { enableSSE: false, ssePort: 9999 } as any)).toThrow('enableSSE, ssePort');
+        expect(() => new MCPAdapter(undefined as any, { serverName: 'legacy-name' } as any)).toThrow('serverName');
+    });
+
     test('direct handleToolCall keeps unknown tools as MCP tool-result errors', async () => {
         const adapter = new MCPAdapter(undefined as any);
 
