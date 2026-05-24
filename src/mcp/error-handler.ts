@@ -106,23 +106,24 @@ export class ErrorHandler {
             } catch (error) {
                 lastError = error instanceof Error ? error : new Error(String(error));
 
+                const nonRetryable = this.shouldNotRetry(lastError);
                 this.logError(context, lastError, {
                     attempt,
                     maxAttempts,
-                    willRetry: attempt < maxAttempts,
+                    willRetry: !nonRetryable && attempt < maxAttempts,
                 });
 
-                // Update circuit breaker
-                this.recordFailure(operationKey);
-
-                // Don't retry on certain error types
-                if (this.shouldNotRetry(lastError)) {
+                // Don't retry client/validation errors, and don't wrap them as exhausted retries.
+                if (nonRetryable) {
                     mcpLogger.warn('Not retrying due to error type', {
                         error: lastError.message,
                         type: lastError.constructor.name,
                     });
-                    break;
+                    throw this.createMcpError(this.mapErrorToMcpCode(lastError), lastError.message, context, lastError);
                 }
+
+                // Update circuit breaker for retryable/system failures only.
+                this.recordFailure(operationKey);
 
                 // Wait before retry (except on last attempt)
                 if (attempt < maxAttempts) {

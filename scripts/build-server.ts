@@ -1,5 +1,7 @@
 #!/usr/bin/env bun
 
+import { rmSync } from 'node:fs';
+
 type BuildTarget = {
     entry: string;
     outdir: string;
@@ -36,6 +38,8 @@ if (!target) {
     console.error(`Available targets: ${available}`);
     process.exit(2);
 }
+
+rmSync(target.outdir, { recursive: true, force: true });
 
 const args = [
     'build',

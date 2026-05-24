@@ -193,11 +193,15 @@ describe('build command surface', () => {
     test('package build delegates to the canonical all-adapter build', () => {
         const packageJson = JSON.parse(readText('package.json')) as { scripts?: Record<string, string> };
         expect(packageJson.scripts?.build).toBe('bun run build:all');
+        expect(packageJson.scripts?.['build:all']).toContain('bun run build:lsp');
         expect(packageJson.scripts?.['build:all']).toContain('bun run build:mcp-stdio');
         expect(packageJson.scripts?.['build:all']).toContain('bun run build:mcp-http');
         expect(packageJson.scripts?.['build:all']).toContain('bun run build:mcp-enhanced');
         expect(packageJson.scripts?.['build:all']).toContain('bun run build:http');
+        expect(packageJson.scripts?.['build:all']).toContain('bun run build:cli');
+        expect(packageJson.scripts?.['build:lsp']).toBe('bun run scripts/build-server.ts lsp');
         expect(packageJson.scripts?.['build:http']).toBe('bun run scripts/build-server.ts http');
+        expect(packageJson.scripts?.['build:cli']).toBe('bun run scripts/build-server.ts cli');
         expect(packageJson.scripts?.['build:mcp-stdio']).toBe('bun run scripts/build-server.ts mcp-stdio');
         expect(packageJson.scripts?.['build:mcp-http']).toBe('bun run scripts/build-server.ts mcp-http');
         expect(packageJson.scripts?.['build:mcp-enhanced']).toBe('bun run scripts/build-server.ts mcp-enhanced');
@@ -224,6 +228,18 @@ describe('build command surface', () => {
         expect(helper).toContain("'tree-sitter-rust'");
         expect(helper).toContain("'bun:sqlite'");
         expect(helper).toContain('mcp-enhanced');
+        expect(helper).toContain('rmSync(target.outdir, { recursive: true, force: true })');
+    });
+
+    test('build helper fails closed for unknown targets', () => {
+        const proc = spawnSync('bun', ['run', 'scripts/build-server.ts', 'not-a-target'], {
+            cwd: process.cwd(),
+            encoding: 'utf8',
+        });
+
+        expect(proc.status).toBe(2);
+        expect(proc.stderr).toContain('Usage: bun run scripts/build-server.ts <target>');
+        expect(proc.stderr).toContain('Available targets:');
     });
 
     test('MCP stdio and enhanced smoke surfaces are fail-closed over release artifacts', () => {

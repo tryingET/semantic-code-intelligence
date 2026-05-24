@@ -28,7 +28,8 @@ export interface MCPAdapterConfig {
     maxResults?: number;
 }
 
-const SUPPORTED_CONFIG_FIELDS = new Set(['maxResults']);
+const SUPPORTED_CONFIG_FIELDS = new Set<PropertyKey>(['maxResults']);
+const MAX_CONFIGURED_RESULTS = 1000;
 
 function normalizeMcpAdapterConfig(config: unknown): MCPAdapterConfig {
     if (!isPlainConfigObject(config)) {
@@ -37,10 +38,10 @@ function normalizeMcpAdapterConfig(config: unknown): MCPAdapterConfig {
         });
     }
 
-    const unsupported = Object.keys(config).filter((field) => !SUPPORTED_CONFIG_FIELDS.has(field));
+    const unsupported = Reflect.ownKeys(config).filter((field) => !SUPPORTED_CONFIG_FIELDS.has(field));
     if (unsupported.length > 0) {
-        throw new CoreError('InvalidParams', `Unsupported MCPAdapter config field(s): ${unsupported.join(', ')}`, {
-            unsupported,
+        throw new CoreError('InvalidParams', `Unsupported MCPAdapter config field(s): ${unsupported.map(formatConfigFieldName).join(', ')}`, {
+            unsupported: unsupported.map(formatConfigFieldName),
             remediation:
                 'Keep MCPAdapter config to maxResults only; use registry/tool arguments for execution policy and MCP server environment variables for transports.',
         });
@@ -48,10 +49,11 @@ function normalizeMcpAdapterConfig(config: unknown): MCPAdapterConfig {
 
     if ('maxResults' in config && config.maxResults !== undefined) {
         const maxResults = config.maxResults;
-        if (typeof maxResults !== 'number' || !Number.isFinite(maxResults) || !Number.isInteger(maxResults) || maxResults <= 0) {
-            throw new CoreError('InvalidParams', 'MCPAdapter config maxResults must be a positive finite integer', {
+        if (!Number.isSafeInteger(maxResults) || maxResults <= 0 || maxResults > MAX_CONFIGURED_RESULTS) {
+            throw new CoreError('InvalidParams', `MCPAdapter config maxResults must be an integer from 1 to ${MAX_CONFIGURED_RESULTS}`, {
                 field: 'maxResults',
                 value: maxResults,
+                max: MAX_CONFIGURED_RESULTS,
             });
         }
     }
@@ -63,6 +65,10 @@ function isPlainConfigObject(value: unknown): value is MCPAdapterConfig & Record
     if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
     const prototype = Object.getPrototypeOf(value);
     return prototype === Object.prototype || prototype === null;
+}
+
+function formatConfigFieldName(field: PropertyKey): string {
+    return typeof field === 'symbol' ? field.toString() : String(field);
 }
 
 /**

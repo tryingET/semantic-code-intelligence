@@ -24,6 +24,12 @@ describe('MCPAdapter validated server calls', () => {
         expectInvalidConfig({ timeout: 1 }, 'Unsupported MCPAdapter config field');
         expectInvalidConfig({ enableSSE: false, ssePort: 9999 }, 'enableSSE, ssePort');
         expectInvalidConfig({ serverName: 'legacy-name' }, 'serverName');
+
+        const configWithHiddenField = { maxResults: 10 } as Record<string, unknown>;
+        Object.defineProperty(configWithHiddenField, 'hiddenLegacyField', { value: true, enumerable: false });
+        expectInvalidConfig(configWithHiddenField, 'hiddenLegacyField');
+
+        expectInvalidConfig({ [Symbol.for('legacy-mcp-config')]: true }, 'Symbol(legacy-mcp-config)');
     });
 
     test('constructor rejects non-object config and invalid maxResults values', () => {
@@ -33,10 +39,12 @@ describe('MCPAdapter validated server calls', () => {
         expectInvalidConfig(true, 'MCPAdapter config must be a plain object');
         expectInvalidConfig([], 'MCPAdapter config must be a plain object');
         expectInvalidConfig(new Date(), 'MCPAdapter config must be a plain object');
-        expectInvalidConfig({ maxResults: 0 }, 'maxResults must be a positive finite integer');
-        expectInvalidConfig({ maxResults: -5 }, 'maxResults must be a positive finite integer');
-        expectInvalidConfig({ maxResults: 2.5 }, 'maxResults must be a positive finite integer');
-        expectInvalidConfig({ maxResults: Number.POSITIVE_INFINITY }, 'maxResults must be a positive finite integer');
+        expectInvalidConfig({ maxResults: 0 }, 'maxResults must be an integer from 1 to 1000');
+        expectInvalidConfig({ maxResults: -5 }, 'maxResults must be an integer from 1 to 1000');
+        expectInvalidConfig({ maxResults: 2.5 }, 'maxResults must be an integer from 1 to 1000');
+        expectInvalidConfig({ maxResults: Number.POSITIVE_INFINITY }, 'maxResults must be an integer from 1 to 1000');
+        expectInvalidConfig({ maxResults: Number.MAX_SAFE_INTEGER + 1 }, 'maxResults must be an integer from 1 to 1000');
+        expectInvalidConfig({ maxResults: 1001 }, 'maxResults must be an integer from 1 to 1000');
     });
 
     test('direct handleToolCall keeps unknown tools as MCP tool-result errors', async () => {
@@ -58,6 +66,7 @@ describe('MCPAdapter validated server calls', () => {
             expect(error).toBeInstanceOf(McpError);
             expect((error as McpError).code).toBe(ErrorCode.MethodNotFound);
             expect(String((error as Error).message)).toContain('Unknown tool');
+            expect(String((error as Error).message)).not.toContain('Operation failed after');
         }
     });
 
@@ -71,6 +80,7 @@ describe('MCPAdapter validated server calls', () => {
             expect(error).toBeInstanceOf(McpError);
             expect((error as McpError).code).toBe(ErrorCode.InvalidParams);
             expect(String((error as Error).message)).toContain('Missing required parameters');
+            expect(String((error as Error).message)).not.toContain('Operation failed after');
         }
     });
 });
