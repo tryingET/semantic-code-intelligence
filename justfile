@@ -965,12 +965,38 @@ test-mcp-stdio:
 
 # Test enhanced MCP server with error handling
 test-mcp-enhanced:
-    @just build-mcp-enhanced
-    @echo "🧪 Testing Enhanced MCP Server with error handling..."
-    @echo "Testing valid request..."
-    @(echo '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}},"id":1}'; sleep 0.5; echo '{"jsonrpc":"2.0","method":"tools/list","params":{},"id":2}'; sleep 0.5) | timeout 3s {{bun}} run dist/mcp-enhanced/mcp-enhanced.js 2>/dev/null | grep -o '"method":\|"result":\|"tools":\|"name":' | head -5 || echo "✅ Enhanced MCP server basic functionality working"
-    @echo "Testing invalid request (should handle gracefully)..."
-    @(echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"invalid_tool","arguments":{}},"id":3}'; sleep 1) | timeout 2s {{bun}} run dist/mcp-enhanced/mcp-enhanced.js 2>/dev/null | grep -o '"error":\|"code":\|"message":' | head -3 || echo "✅ Enhanced MCP server error handling working"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just build-mcp-enhanced
+    echo "🧪 Testing Enhanced MCP Server with error handling..."
+    valid_output_file="$(mktemp)"
+    invalid_output_file="$(mktemp)"
+    trap 'rm -f "$valid_output_file" "$invalid_output_file"' EXIT
+    echo "Testing valid request..."
+    set +e
+    {
+        printf '%s\n' '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}},"id":1}'
+        sleep 0.5
+        printf '%s\n' '{"jsonrpc":"2.0","method":"tools/list","params":{},"id":2}'
+        sleep 0.5
+    } | timeout 3s {{bun}} run dist/mcp-enhanced/mcp-enhanced.js >"$valid_output_file" 2>/dev/null
+    valid_status="$?"
+    set -e
+    if [[ "$valid_status" -ne 0 && "$valid_status" -ne 124 ]]; then exit "$valid_status"; fi
+    grep -q '"tools"' "$valid_output_file"
+    grep -Eo '"method"|"result"|"tools"|"name"' "$valid_output_file" | head -5
+    echo "Testing invalid request (should handle gracefully)..."
+    set +e
+    {
+        printf '%s\n' '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"invalid_tool","arguments":{}},"id":3}'
+        sleep 1
+    } | timeout 2s {{bun}} run dist/mcp-enhanced/mcp-enhanced.js >"$invalid_output_file" 2>/dev/null
+    invalid_status="$?"
+    set -e
+    if [[ "$invalid_status" -ne 0 && "$invalid_status" -ne 124 ]]; then exit "$invalid_status"; fi
+    grep -q '"error"' "$invalid_output_file"
+    grep -q '"code"' "$invalid_output_file"
+    grep -Eo '"error"|"code"|"message"' "$invalid_output_file" | head -3
 
 # Test error handling and recovery systems
 test-error-handling:

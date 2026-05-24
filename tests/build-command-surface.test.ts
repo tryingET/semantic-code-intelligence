@@ -220,9 +220,11 @@ describe('build command surface', () => {
 
         expect(buildBody).toContain('{{bun}} run build:mcp-enhanced');
         expect(buildBody).not.toContain('src/servers/mcp-enhanced.ts --target');
-        expect(testBody).toContain('@just build-mcp-enhanced');
+        expect(testBody).toContain('just build-mcp-enhanced');
         expect(testBody).toContain('{{bun}} run dist/mcp-enhanced/mcp-enhanced.js');
+        expect(testBody).toContain('grep -q');
         expect(testBody).not.toContain('{{bun}} run src/servers/mcp-enhanced.ts');
+        expect(testBody).not.toContain('|| echo');
     });
 
     test('MCP HTTP docs and env sample use streamable HTTP names', () => {
