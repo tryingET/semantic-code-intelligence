@@ -1,9 +1,13 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { overlayStore } from '../src/core/overlay-store.js';
-import { SnapshotPatchWorkflowService, extractFilesFromPatch, recommendChecksPayload } from '../src/core/workflows/snapshot-patch-workflow.js';
+import {
+    extractFilesFromPatch,
+    recommendChecksPayload,
+    SnapshotPatchWorkflowService,
+} from '../src/core/workflows/snapshot-patch-workflow.js';
 
 const roots: string[] = [];
 function tempWorkspace() {
@@ -35,11 +39,15 @@ describe('SnapshotPatchWorkflowService', () => {
         const snapshotDir = overlayStore.getSnapshotDirectory(snap.snapshot, { workspaceRoot });
         expect(snapshotDir.startsWith(join(workspaceRoot, '.ontology', 'snapshots'))).toBe(true);
 
-        const checked = payload(await service.runChecks({ snapshot: snap.snapshot, commands: ['true'], timeoutSec: 30 }));
+        const checked = payload(
+            await service.runChecks({ snapshot: snap.snapshot, commands: ['true'], timeoutSec: 30 })
+        );
         expect(checked).toMatchObject({ snapshot: snap.snapshot, ok: true });
         expect(checked.commands?.[0]).toMatchObject({ command: 'true', ok: true });
 
-        const artifacts = payload(await service.extractSnapshotArtifacts({ snapshot: snap.snapshot, includeContent: true, maxBytes: 20 }));
+        const artifacts = payload(
+            await service.extractSnapshotArtifacts({ snapshot: snap.snapshot, includeContent: true, maxBytes: 20 })
+        );
         expect(artifacts).toMatchObject({
             snapshot: snap.snapshot,
             status: { exists: true, diffCount: 1, materialized: true },
@@ -47,6 +55,82 @@ describe('SnapshotPatchWorkflowService', () => {
         expect(artifacts.links.map((link: any) => link.uri)).toContain(`snapshot://${snap.snapshot}/overlay.diff`);
         expect(artifacts.contents.overlayDiff.text.length).toBeLessThanOrEqual(20);
         expect(artifacts.contents.overlayDiff.truncated).toBe(true);
+    });
+
+    test('stages sequential apply_patch updates against snapshot overlay state', async () => {
+        const workspaceRoot = tempWorkspace();
+        writeFileSync(join(workspaceRoot, 'target.ts'), 'export const value = 1;\n', 'utf8');
+        const service = new SnapshotPatchWorkflowService({ workspaceRoot: () => workspaceRoot });
+        const snap = payload(await service.getSnapshot({ preferExisting: false }));
+
+        const first = `*** Begin Patch\n*** Update File: target.ts\n@@\n-export const value = 1;\n+export const value = 2;\n*** End Patch\n`;
+        expect(payload(await service.proposePatch({ snapshot: snap.snapshot, patch: first })).accepted).toBe(true);
+
+        const second = `*** Begin Patch\n*** Update File: target.ts\n@@\n-export const value = 2;\n+export const value = 3;\n*** End Patch\n`;
+        const staged = payload(await service.proposePatch({ snapshot: snap.snapshot, patch: second }));
+        expect(staged).toMatchObject({ accepted: true, snapshot: snap.snapshot });
+    });
+
+    test('extractSnapshotArtifacts does not follow replaced snapshot artifact symlinks', async () => {
+        const workspaceRoot = tempWorkspace();
+        const outside = join(tempWorkspace(), 'secret.txt');
+        writeFileSync(outside, 'secret-from-outside\n', 'utf8');
+        writeFileSync(join(workspaceRoot, 'target.ts'), 'export const value = 1;\n', 'utf8');
+        const service = new SnapshotPatchWorkflowService({ workspaceRoot: () => workspaceRoot });
+        const snap = payload(await service.getSnapshot({ preferExisting: false }));
+        const patch = `diff --git a/target.ts b/target.ts
+--- a/target.ts
++++ b/target.ts
+@@ -1 +1 @@
+-export const value = 1;
++export const value = 2;
+`;
+        expect(payload(await service.proposePatch({ snapshot: snap.snapshot, patch })).accepted).toBe(true);
+        const firstArtifacts = payload(
+            await service.extractSnapshotArtifacts({ snapshot: snap.snapshot, includeContent: true })
+        );
+        expect(firstArtifacts.contents.overlayDiff.text).toContain('target.ts');
+
+        const snapshotDir = overlayStore.getSnapshotDirectory(snap.snapshot, { workspaceRoot });
+        rmSync(join(snapshotDir, 'overlay.diff'), { force: true });
+        symlinkSync(outside, join(snapshotDir, 'overlay.diff'));
+
+        const artifacts = payload(
+            await service.extractSnapshotArtifacts({ snapshot: snap.snapshot, includeContent: true })
+        );
+        expect(artifacts.contents.overlayDiff.text).not.toContain('secret-from-outside');
+    });
+
+    test('snapshot progress logging does not follow replaced progress symlinks', async () => {
+        const previousProgress = process.env.PROGRESS_LOGS;
+        process.env.PROGRESS_LOGS = '1';
+        try {
+            const workspaceRoot = tempWorkspace();
+            const outside = join(tempWorkspace(), 'progress-outside.txt');
+            writeFileSync(outside, 'original-outside\n', 'utf8');
+            writeFileSync(join(workspaceRoot, 'target.ts'), 'export const value = 1;\n', 'utf8');
+            const service = new SnapshotPatchWorkflowService({ workspaceRoot: () => workspaceRoot });
+            const snap = payload(await service.getSnapshot({ preferExisting: false }));
+            const patch = `diff --git a/target.ts b/target.ts
+--- a/target.ts
++++ b/target.ts
+@@ -1 +1 @@
+-export const value = 1;
++export const value = 2;
+`;
+            expect(payload(await service.proposePatch({ snapshot: snap.snapshot, patch })).accepted).toBe(true);
+            expect(payload(await service.extractSnapshotArtifacts({ snapshot: snap.snapshot, includeContent: true })).status.materialized).toBe(true);
+
+            const snapshotDir = overlayStore.getSnapshotDirectory(snap.snapshot, { workspaceRoot });
+            rmSync(join(snapshotDir, 'progress.log'), { force: true });
+            symlinkSync(outside, join(snapshotDir, 'progress.log'));
+
+            expect(payload(await service.extractSnapshotArtifacts({ snapshot: snap.snapshot, includeContent: true })).status.materialized).toBe(true);
+            expect(readFileSync(outside, 'utf8')).toBe('original-outside\n');
+        } finally {
+            if (previousProgress === undefined) delete process.env.PROGRESS_LOGS;
+            else process.env.PROGRESS_LOGS = previousProgress;
+        }
     });
 
     test('extractSnapshotArtifacts clamps invalid maxBytes and truncates UTF-8 on code point boundaries', async () => {
@@ -64,10 +148,18 @@ describe('SnapshotPatchWorkflowService', () => {
 `;
         expect(payload(await service.proposePatch({ snapshot: snap.snapshot, patch })).accepted).toBe(true);
 
-        const invalidLimit = payload(await service.extractSnapshotArtifacts({ snapshot: snap.snapshot, includeContent: true, maxBytes: 'not-a-number' }));
+        const invalidLimit = payload(
+            await service.extractSnapshotArtifacts({
+                snapshot: snap.snapshot,
+                includeContent: true,
+                maxBytes: 'not-a-number',
+            })
+        );
         expect(invalidLimit.contents.overlayDiff.text).toContain(file);
 
-        const bounded = payload(await service.extractSnapshotArtifacts({ snapshot: snap.snapshot, includeContent: true, maxBytes: 14 }));
+        const bounded = payload(
+            await service.extractSnapshotArtifacts({ snapshot: snap.snapshot, includeContent: true, maxBytes: 14 })
+        );
         expect(bounded.contents.overlayDiff.truncated).toBe(true);
         expect(Buffer.byteLength(bounded.contents.overlayDiff.text, 'utf8')).toBeLessThanOrEqual(14);
         expect(bounded.contents.overlayDiff.text).toBe('diff --git a/');

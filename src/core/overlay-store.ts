@@ -78,7 +78,14 @@ export class OverlayStore {
             const dir = this.snapshotDir(id, snap?.workspaceRoot);
             await fsp.mkdir(dir, { recursive: true }).catch(() => {});
             const line = `[${new Date().toISOString()}] ${msg}\n`;
-            await fsp.appendFile(path.join(dir, 'progress.log'), line, 'utf8');
+            const progressPath = path.join(dir, 'progress.log');
+            const noFollow = typeof fs.constants.O_NOFOLLOW === 'number' ? fs.constants.O_NOFOLLOW : 0;
+            const handle = await fsp.open(progressPath, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_APPEND | noFollow, 0o600);
+            try {
+                await handle.writeFile(line, 'utf8');
+            } finally {
+                await handle.close().catch(() => undefined);
+            }
         } catch {
             // ignore progress errors
         }
@@ -110,12 +117,19 @@ export class OverlayStore {
     }
 
     private readMaterializedFingerprint(markerPath: string): string | null {
+        let fd: number | null = null;
         try {
-            const raw = fs.readFileSync(markerPath, 'utf8');
+            const stat = fs.lstatSync(markerPath);
+            if (!stat.isFile() || stat.isSymbolicLink()) return null;
+            const noFollow = typeof fs.constants.O_NOFOLLOW === 'number' ? fs.constants.O_NOFOLLOW : 0;
+            fd = fs.openSync(markerPath, fs.constants.O_RDONLY | noFollow);
+            const raw = fs.readFileSync(fd, 'utf8');
             const parsed = JSON.parse(raw);
             return typeof parsed?.diffFingerprint === 'string' ? parsed.diffFingerprint : null;
         } catch {
             return null;
+        } finally {
+            if (fd !== null) fs.closeSync(fd);
         }
     }
 
@@ -438,6 +452,32 @@ export class OverlayStore {
         const diffStat = fs.lstatSync(diffPath);
         if (!markerStat.isFile() || !diffStat.isFile() || markerStat.isSymbolicLink() || diffStat.isSymbolicLink()) return null;
         return diffPath;
+    }
+
+    private isSafeMaterializedSnapshotDir(dir: string, snap: Snapshot): boolean {
+        try {
+            const dirStat = fs.lstatSync(dir);
+            if (!dirStat.isDirectory() || dirStat.isSymbolicLink()) return false;
+            const markerPath = path.join(dir, '.materialized');
+            const markerStat = fs.lstatSync(markerPath);
+            if (!markerStat.isFile() || markerStat.isSymbolicLink()) return false;
+            const overlayPath = path.join(dir, 'overlay.diff');
+            if (snap.diffs.length > 0) {
+                const overlayStat = fs.lstatSync(overlayPath);
+                if (!overlayStat.isFile() || overlayStat.isSymbolicLink()) return false;
+            } else if (fs.existsSync(overlayPath)) {
+                const overlayStat = fs.lstatSync(overlayPath);
+                if (!overlayStat.isFile() || overlayStat.isSymbolicLink()) return false;
+            }
+            const progressPath = path.join(dir, 'progress.log');
+            if (fs.existsSync(progressPath)) {
+                const progressStat = fs.lstatSync(progressPath);
+                if (!progressStat.isFile() || progressStat.isSymbolicLink()) return false;
+            }
+            return true;
+        } catch {
+            return false;
+        }
     }
 
     /** Clear all in-memory snapshots. Useful for test isolation. */
@@ -833,11 +873,12 @@ export class OverlayStore {
         const currentFingerprint = fs.existsSync(materializedMarker) ? this.readMaterializedFingerprint(materializedMarker) : null;
         const touched = snap?.touchedFiles ? Array.from(snap.touchedFiles) : [];
 
-        if (currentFingerprint === desiredFingerprint && allowCurrentMaterializedWithWorkspaceDrift) return dir;
+        const currentMaterializationIsSafe = currentFingerprint === desiredFingerprint && this.isSafeMaterializedSnapshotDir(dir, snap);
+        if (currentMaterializationIsSafe && allowCurrentMaterializedWithWorkspaceDrift) return dir;
         if (snap?.baseFingerprint && this.workspaceBaseFingerprint(snap.workspaceRoot) !== snap.baseFingerprint) {
             throw new Error('Workspace changed since snapshot creation before materialization; create a fresh snapshot');
         }
-        if (currentFingerprint === desiredFingerprint) return dir;
+        if (currentMaterializationIsSafe) return dir;
 
         const tempDir = path.join(snapsRoot, `.${snapshotId}.${process.pid}.${Date.now()}.tmp`);
         const oldDir = path.join(snapsRoot, `.${snapshotId}.${process.pid}.${Date.now()}.old`);

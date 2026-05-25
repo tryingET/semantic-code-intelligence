@@ -485,7 +485,8 @@ export class SnapshotPatchWorkflowService {
       const materializedMarker = path.join(snapshotDir, ".materialized");
       const hasMaterializedMarker = async () => {
         try {
-          return (await fs.stat(materializedMarker)).isFile();
+          const stat = await fs.lstat(materializedMarker);
+          return stat.isFile() && !stat.isSymbolicLink();
         } catch {
           return false;
         }
@@ -506,7 +507,20 @@ export class SnapshotPatchWorkflowService {
       if (includeContent && dir) {
         const readBounded = async (file: string) => {
           try {
-            const text = await fs.readFile(path.join(dir, file), "utf8");
+            const filePath = path.join(dir, file);
+            const stat = await fs.lstat(filePath);
+            if (!stat.isFile() || stat.isSymbolicLink()) {
+              return { text: "", truncated: false };
+            }
+            const [realDir, realFile] = await Promise.all([
+              fs.realpath(dir),
+              fs.realpath(filePath),
+            ]);
+            const relative = path.relative(realDir, realFile);
+            if (relative.startsWith("..") || path.isAbsolute(relative)) {
+              return { text: "", truncated: false };
+            }
+            const text = await fs.readFile(filePath, "utf8");
             return truncateUtf8WholeCodePoints(text, maxBytes);
           } catch {
             return { text: "", truncated: false };
@@ -565,7 +579,7 @@ export class SnapshotPatchWorkflowService {
     try {
       const isApplyPatch = /\*\*\*\s+Begin Patch/.test(patch);
       const unified = isApplyPatch
-        ? await this.convertApplyPatchToUnified(patch)
+        ? await this.convertApplyPatchToUnified(patch, { snapshotId: snap.id })
         : patch;
       const res = overlayStore.stagePatch(snap.id, unified);
       return {
@@ -590,7 +604,10 @@ export class SnapshotPatchWorkflowService {
     }
   }
 
-  async convertApplyPatchToUnified(patch: string): Promise<string> {
+  async convertApplyPatchToUnified(
+    patch: string,
+    options: { snapshotId?: string } = {},
+  ): Promise<string> {
     type HunkLine = { op: " " | "+" | "-"; text: string };
     const lines = patch.replace(/\r\n/g, "\n").split("\n");
     const out: string[] = [];
@@ -626,6 +643,35 @@ export class SnapshotPatchWorkflowService {
       }
       return matches;
     };
+    const readSourceLines = async (file: string): Promise<string[]> => {
+      let workspaceRoot = this.workspaceRoot;
+      const snapshotId = options.snapshotId;
+      if (snapshotId) {
+        const snap = overlayStore.ensureSnapshot(snapshotId, {
+          workspaceRoot: this.workspaceRoot,
+        });
+        if (Array.isArray((snap as any).diffs) && (snap as any).diffs.length > 0) {
+          const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
+          const materializedRoot = ensure
+            ? await ensure(snapshotId, { workspaceRoot: this.workspaceRoot })
+            : null;
+          if (materializedRoot) workspaceRoot = materializedRoot;
+        }
+      }
+
+      const opened = await openWorkspaceFileForRead(file, {
+        workspaceRoot,
+        inputLabel: "apply_patch file",
+      });
+      let fileText: string;
+      try {
+        fileText = await opened.handle.readFile("utf8");
+      } finally {
+        await opened.handle.close().catch(() => undefined);
+      }
+      return splitFileLines(fileText);
+    };
+
     const buildHunks = async (
       kind: string,
       file: string,
@@ -656,17 +702,7 @@ export class SnapshotPatchWorkflowService {
         });
       }
 
-      const opened = await openWorkspaceFileForRead(file, {
-        workspaceRoot: this.workspaceRoot,
-        inputLabel: "apply_patch file",
-      });
-      let fileText: string;
-      try {
-        fileText = await opened.handle.readFile("utf8");
-      } finally {
-        await opened.handle.close().catch(() => undefined);
-      }
-      const sourceLines = splitFileLines(fileText);
+      const sourceLines = await readSourceLines(file);
       let cursor = 0;
       return hunks.flatMap((hunk) => {
         const oldLines = hunk
