@@ -42,6 +42,7 @@ import { MCPAdapter } from '../adapters/mcp-adapter.js';
 import { createDefaultCoreConfig } from '../adapters/utils.js';
 import { createCodeAnalyzer } from '../core/index';
 import type { CodeAnalyzer } from '../core/unified-analyzer';
+import { resolveConfiguredWorkspaceRoot } from '../core/workspace-root.js';
 import { metricsRegistry, recordToolEnd, recordToolStart } from '../instrumentation/metrics.js';
 import { toMcpToolCallError } from '../mcp/tool-call-error.js';
 import { isMcpToolResultSuccess } from '../mcp/tool-result.js';
@@ -94,7 +95,12 @@ export class MCPServer {
                 recordToolStart('mcp_stdio');
                 const result = await this.mcpAdapter.handleValidatedToolCall(name, args || {});
                 try {
-                    recordToolEnd('mcp_stdio', String(name || 'unknown'), Date.now() - t0, isMcpToolResultSuccess(result));
+                    recordToolEnd(
+                        'mcp_stdio',
+                        String(name || 'unknown'),
+                        Date.now() - t0,
+                        isMcpToolResultSuccess(result)
+                    );
                 } catch {}
                 return result;
             } catch (error) {
@@ -111,7 +117,7 @@ export class MCPServer {
         // Initialize core analyzer
         const config = createDefaultCoreConfig();
         config.monitoring.enabled = false; // disable periodic metrics for stdio MCP
-        const workspaceRoot = process.env.WORKSPACE_ROOT || process.cwd();
+        const workspaceRoot = resolveConfiguredWorkspaceRoot();
 
         this.coreAnalyzer = await createCodeAnalyzer({
             ...config,

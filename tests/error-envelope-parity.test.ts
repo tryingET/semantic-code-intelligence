@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { spawn } from 'node:child_process';
 import { HTTPAdapter } from '../src/adapters/http-adapter.js';
 import { LSPAdapter } from '../src/adapters/lsp-adapter.js';
+import { resolveConfiguredWorkspaceRoot } from '../src/core/workspace-root.js';
 import { HTTPServer } from '../src/servers/http';
 import { canBindTcp } from './helpers/bind-utils';
 import { initMcpHttpSession, mcpHttpHeaders } from './helpers/mcp-http';
@@ -103,6 +104,21 @@ describe('Error envelope parity (edge cases)', () => {
         expect(body.details?.code).toBe('UnknownTool');
     });
 
+    test('workspace root resolver prefers canonical SEMANTIC_CODE_WORKSPACE over legacy WORKSPACE_ROOT', () => {
+        const previousSemantic = process.env.SEMANTIC_CODE_WORKSPACE;
+        const previousLegacy = process.env.WORKSPACE_ROOT;
+        try {
+            process.env.SEMANTIC_CODE_WORKSPACE = '/tmp/sci-canonical-workspace';
+            process.env.WORKSPACE_ROOT = '/tmp/sci-legacy-workspace';
+            expect(resolveConfiguredWorkspaceRoot()).toBe('/tmp/sci-canonical-workspace');
+        } finally {
+            if (previousSemantic === undefined) delete process.env.SEMANTIC_CODE_WORKSPACE;
+            else process.env.SEMANTIC_CODE_WORKSPACE = previousSemantic;
+            if (previousLegacy === undefined) delete process.env.WORKSPACE_ROOT;
+            else process.env.WORKSPACE_ROOT = previousLegacy;
+        }
+    });
+
     test('LSPAdapter: null params maps to InvalidParams (-32602)', async () => {
         const adapter = new LSPAdapter({
             prepareRename: async () => ({ data: null }),
@@ -186,6 +202,19 @@ describe('Error envelope parity (edge cases)', () => {
                 expect(body.success).toBe(false);
                 expect(body.error?.code).toBe('InvalidParams');
             }
+        });
+
+        test('non-object tool arguments map to InvalidParams', async () => {
+            const res = await fetch(`${base}/api/v1/tools/call`, {
+                method: 'POST',
+                headers: mcpHttpHeaders(),
+                body: JSON.stringify({ name: 'list_pipelines', arguments: 'bad' }),
+            });
+            expect(res.status).toBe(400);
+            const body = await res.json();
+            expect(body.success).toBe(false);
+            expect(body.error?.code).toBe('InvalidParams');
+            expect(String(body.error?.message || '')).toContain('arguments');
         });
 
         test('missing tool name maps to InvalidParams', async () => {
@@ -299,7 +328,7 @@ describe('Error envelope parity (edge cases)', () => {
             return await initMcpHttpSession(base);
         }
 
-        test('invalid JSON maps to InvalidParams (-32602)', async () => {
+        test('invalid JSON maps to JSON-RPC ParseError (-32700)', async () => {
             const res = await fetch(base, {
                 method: 'POST',
                 headers: mcpHttpHeaders(),
@@ -308,8 +337,21 @@ describe('Error envelope parity (edge cases)', () => {
             expect(res.status).toBe(400);
             expect(String(res.headers.get('content-type') || '')).toContain('application/json');
             const body = await parseMcpBody(res);
-            expect(body.error?.code).toBe(-32602);
-            expect(String(body.error?.message || '')).toContain('Invalid JSON');
+            expect(body.error?.code).toBe(-32700);
+            expect(String(body.error?.message || '')).toContain('Parse error');
+        });
+
+        test('JSON-RPC batch arrays reach the MCP transport instead of preflight rejection', async () => {
+            const sid = await initSession();
+            const res = await fetch(base, {
+                method: 'POST',
+                headers: mcpHttpHeaders(String(sid)),
+                body: JSON.stringify([{ jsonrpc: '2.0', id: 70, method: 'tools/list' }]),
+            });
+            expect(res.status).toBe(200);
+            const body = await parseMcpBody(res);
+            expect(body?.id).toBe(70);
+            expect(body?.result?.tools?.length).toBeGreaterThan(0);
         });
 
         test('missing JSON-RPC params maps to InvalidParams (-32602)', async () => {

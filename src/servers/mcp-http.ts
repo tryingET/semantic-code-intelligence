@@ -20,7 +20,7 @@ import {
     ErrorCode,
     isInitializeRequest,
     ListToolsRequestSchema,
-    type McpError,
+    McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import cors from 'cors';
 import express from 'express';
@@ -31,9 +31,11 @@ import { getEnvironmentConfig } from '../core/config/server-config.js';
 import { CoreError } from '../core/errors.js';
 import { createCodeAnalyzer } from '../core/index';
 import type { CodeAnalyzer } from '../core/unified-analyzer';
+import { resolveConfiguredWorkspaceRoot } from '../core/workspace-root.js';
 import { metricsRegistry, recordToolEnd, recordToolStart } from '../instrumentation/metrics.js';
 import { toMcpToolCallError } from '../mcp/tool-call-error.js';
 import { isMcpToolResultSuccess } from '../mcp/tool-result.js';
+import { maxJsonBodyBytes } from './http-ingress.js';
 import { resolveMcpHttpCorsOrigin } from './mcp-http-cors.js';
 import { registerCommonPrompts, registerCommonResources } from './mcp-shared.js';
 
@@ -64,7 +66,7 @@ const PORT = Number(process.env.MCP_HTTP_PORT || cfg.ports.mcpHTTP || 7001);
 const CORS_ORIGIN = resolveMcpHttpCorsOrigin(HOST);
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: maxJsonBodyBytes() }));
 app.use(
     cors({
         origin: CORS_ORIGIN,
@@ -127,6 +129,20 @@ function sendMissingSession(res: express.Response) {
     res.status(400).json({ jsonrpc: '2.0', error: { ...missingSessionError }, id: null });
 }
 
+function isJsonRpcObjectOrBatch(body: unknown): body is Record<string, unknown> | Record<string, unknown>[] {
+    if (!body || typeof body !== 'object') return false;
+    if (!Array.isArray(body)) return true;
+    return body.every((item) => !!item && typeof item === 'object' && !Array.isArray(item));
+}
+
+function containsInitializeRequest(body: unknown): boolean {
+    const messages = Array.isArray(body) ? body : [body];
+    return messages.some((message) => {
+        if (!message || typeof message !== 'object' || Array.isArray(message)) return false;
+        return isInitializeRequest(message) || (message as { method?: unknown }).method === 'initialize';
+    });
+}
+
 function ensureMcpAcceptHeaders(req: express.Request) {
     const accepts = (req.headers.accept as string | undefined) || '';
     const needJson = !/application\/json/i.test(accepts);
@@ -153,17 +169,31 @@ function ensureMcpAcceptHeaders(req: express.Request) {
     }
 }
 
-// Normalize invalid JSON bodies to CoreError InvalidParams for parity
 app.use((err: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const errorLike = err as { message?: unknown; type?: unknown };
+    const errorLike = err as { message?: unknown; type?: unknown; limit?: unknown; length?: unknown };
     const message = typeof errorLike.message === 'string' ? errorLike.message : undefined;
+    const isTooLarge = errorLike.type === 'entity.too.large';
     const isParseError =
         err instanceof SyntaxError || (message?.includes('JSON') ?? false) || errorLike.type === 'entity.parse.failed';
-    if (isParseError) {
-        const core = new CoreError('InvalidParams', 'Invalid JSON', {
-            error: message ?? 'Invalid JSON body',
+
+    if (isTooLarge) {
+        const core = new CoreError('InvalidParams', 'HTTP JSON request body exceeds maximum size', {
+            bytes: typeof errorLike.length === 'number' ? errorLike.length : undefined,
+            maxBytes: typeof errorLike.limit === 'number' ? errorLike.limit : maxJsonBodyBytes(),
         });
         sendJsonRpcError(res, core, null, 400);
+        return;
+    }
+
+    if (isParseError) {
+        sendJsonRpcError(
+            res,
+            new McpError(ErrorCode.ParseError, 'Parse error', {
+                error: message ?? 'Invalid JSON body',
+            }),
+            null,
+            400
+        );
         return;
     }
     next(err);
@@ -215,7 +245,7 @@ async function createMcpServer(desiredSid?: string): Promise<SessionRecord> {
     // Initialize core analyzer
     const coreConfig = createDefaultCoreConfig();
     coreConfig.monitoring.enabled = false; // disable periodic metrics for MCP HTTP dogfooding
-    const workspaceRoot = process.env.WORKSPACE_ROOT || process.cwd();
+    const workspaceRoot = resolveConfiguredWorkspaceRoot();
     const analyzer = await createCodeAnalyzer({ ...coreConfig, workspaceRoot });
     await analyzer.initialize();
 
@@ -291,9 +321,9 @@ async function createMcpServer(desiredSid?: string): Promise<SessionRecord> {
 // POST /mcp - client -> server
 app.post('/mcp', async (req, res) => {
     try {
-        if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+        if (!isJsonRpcObjectOrBatch(req.body)) {
             const core = new CoreError('InvalidParams', 'Invalid JSON', {
-                error: 'Body must be a JSON-RPC object',
+                error: 'Body must be a JSON-RPC object or batch array',
             });
             sendJsonRpcError(res, core, null, 400);
             return;
@@ -304,7 +334,7 @@ app.post('/mcp', async (req, res) => {
         let provisionalSessionId: string | undefined;
         if (sessionId && sessions[sessionId]) {
             record = sessions[sessionId];
-        } else if (!sessionId && (isInitializeRequest(req.body) || (req.body && req.body.method === 'initialize'))) {
+        } else if (!sessionId && containsInitializeRequest(req.body)) {
             try {
                 const preSid = randomUUID();
                 provisionalSessionId = preSid;
@@ -358,7 +388,7 @@ app.post('/mcp', async (req, res) => {
         // Normalize the most common transport-level case (tools/call with missing params) to InvalidParams (-32602).
         try {
             const body = req.body as { method?: unknown; params?: unknown; id?: JsonRpcMessageId };
-            if (body && body.method === 'tools/call') {
+            if (!Array.isArray(body) && body && body.method === 'tools/call') {
                 const params = body.params;
                 if (!params || typeof params !== 'object' || Array.isArray(params)) {
                     const core = new CoreError('InvalidParams', 'Missing required parameters: params');

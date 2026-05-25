@@ -19,10 +19,11 @@ import { ToolExecutor } from '../core/tools/executor.js';
 import type { CodeAnalyzer } from '../core/unified-analyzer';
 import type { SnapshotWorkflowResult } from '../core/workflows/snapshot-patch-workflow.js';
 import { ToolWorkflowRouter } from '../core/workflows/tool-workflow-router.js';
+import { resolveConfiguredWorkspaceRoot } from '../core/workspace-root.js';
 import { metricsRegistry, recordLayerLatency, recordToolEnd, recordToolStart } from '../instrumentation/metrics.js';
-import { assertAllowedBrowserOrigin, corsHeadersForRequest, readLimitedJsonBody } from './http-ingress.js';
 import type { FastSearchLayer } from '../layers/layer1-fast-search.js';
 import type { SearchQuery } from '../types/core.js';
+import { assertAllowedBrowserOrigin, corsHeadersForRequest, readLimitedJsonBody } from './http-ingress.js';
 
 interface HTTPServerConfig {
     port?: number;
@@ -64,12 +65,12 @@ export class HTTPServer {
     constructor(config: HTTPServerConfig = {}) {
         this.serverConfig = getEnvironmentConfig();
         this.config = {
+            ...config,
             port: config.port ?? this.serverConfig.ports.httpAPI,
             host: config.host ?? this.serverConfig.host,
-            workspaceRoot: config.workspaceRoot ?? process.cwd(),
+            workspaceRoot: resolveConfiguredWorkspaceRoot(config.workspaceRoot),
             enableCors: config.enableCors ?? true,
             enableOpenAPI: config.enableOpenAPI ?? true,
-            ...config,
         };
     }
 
@@ -334,10 +335,16 @@ export class HTTPServer {
                             const raw = await this.getRequestBody(request);
                             const body: any = strictJsonParse(raw || '{}');
                             const name = String(body?.name || '').trim();
-                            const args =
-                                body?.arguments && typeof body.arguments === 'object'
-                                    ? (body.arguments as Record<string, any>)
-                                    : {};
+                            const hasArguments = Object.hasOwn(body || {}, 'arguments');
+                            if (
+                                hasArguments &&
+                                (!body?.arguments ||
+                                    typeof body.arguments !== 'object' ||
+                                    Array.isArray(body.arguments))
+                            ) {
+                                throw new CoreError('InvalidParams', 'Tool arguments must be an object');
+                            }
+                            const args = hasArguments ? (body.arguments as Record<string, any>) : {};
                             if (!name) {
                                 throw new CoreError('InvalidParams', 'Missing tool name');
                             }
@@ -686,7 +693,10 @@ export class HTTPServer {
                                     JSON.stringify({ success: false, error: 'learning orchestrator unavailable' }),
                                     {
                                         status: 500,
-                                        headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            ...corsHeadersForRequest(request),
+                                        },
                                     }
                                 );
                             }
