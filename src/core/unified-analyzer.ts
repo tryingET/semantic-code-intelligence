@@ -334,7 +334,7 @@ export class CodeAnalyzer {
             })();
             const asyncOptions: AsyncSearchOptions = {
                 // Allow partial, case-insensitive substring matching for responsiveness
-                pattern: `${this.escapeRegex(request.identifier)}`,
+                pattern: request.identifier,
                 path: searchDir,
                 maxResults: request.maxResults ?? 50,
                 timeout: asyncTimeout,
@@ -728,6 +728,7 @@ export class CodeAnalyzer {
             caseInsensitive: false,
             fileType: this.getFileTypeFromUri(request.uri),
             streaming: true,
+            useRegex: true,
         };
 
         return this.asyncSearchTools.searchStream(asyncOptions);
@@ -764,7 +765,7 @@ export class CodeAnalyzer {
                 }
             })();
             const asyncOptions: AsyncSearchOptions = {
-                pattern: `${this.escapeRegex(request.identifier)}`,
+                pattern: request.identifier,
                 path: searchDir,
                 maxResults: request.maxResults ?? 200,
                 timeout: asyncTimeout,
@@ -1036,6 +1037,7 @@ export class CodeAnalyzer {
             timeout: l1Budget,
             caseInsensitive: false,
             streaming: true,
+            useRegex: true,
         };
 
         return this.asyncSearchTools.searchStream(asyncOptions);

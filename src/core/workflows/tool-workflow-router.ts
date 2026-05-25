@@ -71,6 +71,7 @@ export class ToolWorkflowRouter {
             resolveWorkspaceFile: (value, inputLabel) => this.resolveToolWorkspaceFile(value, inputLabel),
             resolveWorkspaceLexicalPath: (value, inputLabel) => this.resolveToolWorkspaceLexicalPath(value, inputLabel),
             filterWorkspaceItemsByUri: (items, inputLabel) => this.filterToolWorkspaceItemsByUri(items, inputLabel),
+            workspaceRoot: () => this.getWorkspaceRoot(),
         });
         this.learningWorkflows = new LearningWorkflowService({ coreAnalyzer: this.coreAnalyzer });
         this.symbolWorkflows = new SymbolWorkflowService({

@@ -63,8 +63,26 @@ describe('RenameWorkflowService', () => {
         const planned = payload(await service.planRename({ oldName: 'oldName', newName: 'newName' }));
         expect(planned).toMatchObject({ schemaVersion: 2, preview: true, summary: { filesAffected: 1, totalEdits: 1 } });
 
-        const applied = payload(await service.applyRename({ changes: { 'file:///tmp/a.ts': [] } }));
-        expect(applied).toEqual({ schemaVersion: 2, status: 'applied', changes: { 'file:///tmp/a.ts': [] } });
+        const applied = await service.applyRename({ changes: { 'file:///tmp/a.ts': [] } });
+        expect(applied.isError).toBe(true);
+        expect(payload(applied)).toMatchObject({ schemaVersion: 2, status: 'unsupported' });
+    });
+
+    test('plans rename against configured workspace root instead of process cwd', async () => {
+        const workspaceRoot = tempWorkspace();
+        const seen: any[] = [];
+        const service = new RenameWorkflowService({
+            workspaceRoot: () => workspaceRoot,
+            coreAnalyzer: {
+                rename: async (request: any) => {
+                    seen.push(request);
+                    return { data: { changes: {} }, performance: {}, requestId: 'rename-root' };
+                },
+            },
+        });
+
+        await service.planRename({ oldName: 'oldName', newName: 'newName' });
+        expect(seen[0].uri).toBe(`file://${workspaceRoot}`);
     });
 
     test('stages safe rename diffs in configured workspace snapshots', async () => {

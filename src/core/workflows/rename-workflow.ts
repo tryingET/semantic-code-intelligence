@@ -1,9 +1,10 @@
 import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { CoreError } from '../errors.js';
 import { overlayStore } from '../overlay-store.js';
+import { normalizeWorkspaceUri } from './request-semantics.js';
 import type { SnapshotWorkflowResult } from './snapshot-patch-workflow.js';
 
 type TextEdit = {
@@ -25,7 +26,7 @@ export class RenameWorkflowService {
         validateRequired(args, ['oldName', 'newName']);
         const result = await this.coreAnalyzer.rename(
             buildRenameRequest({
-                uri: normalizeUri('file://workspace'),
+                uri: this.normalizeUri('file://workspace'),
                 position: createPosition(0, 0),
                 identifier: args.oldName,
                 newName: args.newName,
@@ -65,13 +66,20 @@ export class RenameWorkflowService {
 
     async applyRename(args: Record<string, any>): Promise<SnapshotWorkflowResult> {
         if (args && typeof args === 'object' && args.changes) {
-            return { payload: { schemaVersion: 2, status: 'applied', changes: args.changes }, isError: false };
+            return {
+                payload: {
+                    schemaVersion: 2,
+                    status: 'unsupported',
+                    message: 'Direct changes application is unsupported; use plan_rename with oldName/newName or stage changes with snapshot workflows.',
+                },
+                isError: true,
+            };
         }
 
         validateRequired(args, ['oldName', 'newName']);
         const result = await this.coreAnalyzer.rename(
             buildRenameRequest({
-                uri: normalizeUri(args.file || 'file://workspace'),
+                uri: this.normalizeUri(args.file || 'file://workspace'),
                 position: createPosition(0, 0),
                 identifier: args.oldName,
                 newName: args.newName,
@@ -214,11 +222,15 @@ export class RenameWorkflowService {
         return this.deps.coreAnalyzer;
     }
 
+    private normalizeUri(uri: string): string {
+        return normalizeWorkspaceUri(uri, this.deps.workspaceRoot());
+    }
+
     private async computePlanRename(args: Record<string, any>) {
         validateRequired(args, ['oldName', 'newName']);
         const result = await this.coreAnalyzer.rename(
             buildRenameRequest({
-                uri: normalizeUri(args.file || 'file://workspace'),
+                uri: this.normalizeUri(args.file || 'file://workspace'),
                 position: createPosition(0, 0),
                 identifier: args.oldName,
                 newName: args.newName,
@@ -230,7 +242,7 @@ export class RenameWorkflowService {
         if (Object.keys(changes).length === 0 && typeof args.file === 'string' && args.file.trim()) {
             try {
                 const definitions = await this.coreAnalyzer.findDefinitionAsync({
-                    uri: normalizeUri(args.file),
+                    uri: this.normalizeUri(args.file),
                     position: createPosition(0, 0),
                     identifier: args.oldName,
                     includeDeclaration: true,
@@ -291,7 +303,7 @@ export function applyTextEdits(text: string, edits: TextEdit[]): string {
 
 function buildRenameRequest(params: { uri: string; position: { line: number; character: number }; identifier: string; newName: string; dryRun?: boolean }) {
     return {
-        uri: normalizeUri(params.uri),
+        uri: params.uri,
         position: params.position,
         oldName: params.identifier,
         newName: params.newName,
@@ -301,29 +313,6 @@ function buildRenameRequest(params: { uri: string; position: { line: number; cha
 
 function createPosition(line: number, character: number) {
     return { line: Math.max(0, line), character: Math.max(0, character) };
-}
-
-function normalizeUri(uri: string): string {
-    return pathToFileURL(uriToPath(uri)).href;
-}
-
-function uriToPath(uri: string): string {
-    const workspacePrefix = 'file://workspace';
-    if (uri.startsWith(workspacePrefix)) {
-        const sub = uri.length > workspacePrefix.length ? uri.substring(workspacePrefix.length) : '';
-        const rel = sub.replace(/^\/+/, '');
-        const resolved = rel ? path.join(process.cwd(), rel) : process.cwd();
-        return path.resolve(resolved);
-    }
-    if (uri.startsWith('file://')) {
-        try {
-            return fileURLToPath(uri);
-        } catch {
-            const body = uri.replace(/^file:\/\//, '');
-            return path.isAbsolute(body) ? body : path.resolve('/', body);
-        }
-    }
-    return path.isAbsolute(uri) ? uri : path.resolve(process.cwd(), uri);
 }
 
 function filePathFromUriLike(uri: string): string {

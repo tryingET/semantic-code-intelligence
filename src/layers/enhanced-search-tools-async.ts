@@ -19,6 +19,7 @@ import * as path from 'node:path';
 import { createInterface } from 'node:readline';
 
 const activeChildProcesses = new Set<ChildProcess>();
+const RIPGREP_FIELD_SEPARATOR = '\x1f';
 let exitHookInstalled = false;
 const ensureExitHook = () => {
     if (exitHookInstalled) return;
@@ -175,9 +176,14 @@ class SmartSearchCache {
     private getCacheKey(options: AsyncSearchOptions): string {
         return JSON.stringify({
             pattern: options.pattern,
-            path: options.path,
-            caseInsensitive: options.caseInsensitive,
-            fileType: options.fileType,
+            path: options.path || '.',
+            maxResults: options.maxResults ?? null,
+            timeout: options.timeout ?? null,
+            caseInsensitive: !!options.caseInsensitive,
+            fileType: options.fileType || null,
+            excludePaths: [...(options.excludePaths || [])].sort(),
+            includeHidden: !!options.includeHidden,
+            useRegex: !!options.useRegex,
         });
     }
 
@@ -1019,8 +1025,11 @@ export class AsyncEnhancedGrep {
 
         // Performance optimizations (flags before pattern)
         args.push('--no-heading'); // No file headers
+        args.push('--with-filename'); // Keep parser shape stable even when searching one file
         args.push('--line-number'); // Include line numbers
         args.push('--column'); // Include column numbers for precise ranges
+        args.push('--field-match-separator', RIPGREP_FIELD_SEPARATOR);
+        args.push('--field-context-separator', RIPGREP_FIELD_SEPARATOR);
         // Respect .gitignore for performance; do not disable parent ignores
 
         // Smart exclusions (configured, not hardcoded)
@@ -1089,20 +1098,10 @@ export class AsyncEnhancedGrep {
     private parseLine(line: string, options: AsyncSearchOptions): StreamingGrepResult | null {
         if (!line.trim()) return null;
 
-        // Parse format: filename:line:column:text
-        const parts = line.split(':');
-        if (parts.length < 3) return null;
+        const parsed = parseRipgrepLine(line);
+        if (!parsed) return null;
 
-        const file = parts[0];
-        const lineNum = parseInt(parts[1], 10);
-        let columnNum: number | undefined;
-        let text: string;
-        if (!isNaN(parseInt(parts[2], 10))) {
-            columnNum = parseInt(parts[2], 10);
-            text = parts.slice(3).join(':').trim();
-        } else {
-            text = parts.slice(2).join(':').trim();
-        }
+        const { file, lineNum, columnNum, text } = parsed;
 
         return {
             file,
@@ -1199,6 +1198,60 @@ export class AsyncEnhancedGrep {
             fileDiscoveryPrefer: String(this.config.fileDiscoveryPrefer || 'auto'),
         };
     }
+}
+
+function parseRipgrepLine(line: string): { file: string; lineNum: number; columnNum?: number; text: string } | null {
+    if (line.includes(RIPGREP_FIELD_SEPARATOR)) {
+        const parts = line.split(RIPGREP_FIELD_SEPARATOR);
+        if (parts.length >= 4 && /^\d+$/.test(parts[1]) && /^\d+$/.test(parts[2])) {
+            return {
+                file: parts[0],
+                lineNum: Number.parseInt(parts[1], 10),
+                columnNum: Number.parseInt(parts[2], 10),
+                text: parts.slice(3).join(RIPGREP_FIELD_SEPARATOR).trim(),
+            };
+        }
+    }
+
+    const separators: number[] = [];
+    for (let index = 0; index < line.length; index++) {
+        if (line[index] === ':') separators.push(index);
+    }
+
+    for (let i = separators.length - 3; i >= 0; i--) {
+        const first = separators[i];
+        const second = separators[i + 1];
+        const third = separators[i + 2];
+        const lineText = line.slice(first + 1, second);
+        const columnText = line.slice(second + 1, third);
+        if (/^\d+$/.test(lineText) && /^\d+$/.test(columnText)) {
+            const file = line.slice(0, first);
+            if (!file) return null;
+            return {
+                file,
+                lineNum: Number.parseInt(lineText, 10),
+                columnNum: Number.parseInt(columnText, 10),
+                text: line.slice(third + 1).trim(),
+            };
+        }
+    }
+
+    for (let i = separators.length - 2; i >= 0; i--) {
+        const first = separators[i];
+        const second = separators[i + 1];
+        const lineText = line.slice(first + 1, second);
+        if (/^\d+$/.test(lineText)) {
+            const file = line.slice(0, first);
+            if (!file) return null;
+            return {
+                file,
+                lineNum: Number.parseInt(lineText, 10),
+                text: line.slice(second + 1).trim(),
+            };
+        }
+    }
+
+    return null;
 }
 
 /**

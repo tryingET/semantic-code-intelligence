@@ -501,8 +501,7 @@ export class CLIAdapter {
             const maxResults = Math.min(options.maxResults || this.config.maxResults || 200, 1000);
             const path = await this.workspacePathForSearch(options.path, 'CLI text-search path');
             const asyncGrep = new AsyncEnhancedGrep({ cacheSize: 500, cacheTTL: 30000 });
-            const pattern =
-                kind === 'word' ? `\\b${escapeRegex(query)}\\b` : kind === 'literal' ? escapeRegex(query) : query;
+            const pattern = kind === 'word' ? `\\b${escapeRegex(query)}\\b` : query;
             const results = await asyncGrep.search({ pattern, path, maxResults, timeout: 200, caseInsensitive, useRegex: kind !== 'literal' });
             const normalized = results.map((r) => ({
                 file: r.file,

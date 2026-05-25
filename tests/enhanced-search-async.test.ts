@@ -12,12 +12,63 @@ const perfDescribe = perfOnly ? describe : describe.skip;
 
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import * as os from 'node:os';
 import {
     AsyncEnhancedGrep,
     RipgrepProcessPool,
     type SearchStream,
     SmartSearchCache,
 } from '../src/layers/enhanced-search-tools-async';
+
+async function tempDir(prefix: string): Promise<string> {
+    return fs.mkdtemp(path.join(os.tmpdir(), prefix));
+}
+
+describe('Async Enhanced Search correctness', () => {
+    test('separates fixed-string and regex searches in cache keys', async () => {
+        const root = await tempDir('sci-grep-regex-');
+        const grep = new AsyncEnhancedGrep({ cacheSize: 10, cacheTTL: 60000, defaultTimeout: 1000 });
+        try {
+            await fs.writeFile(path.join(root, 'sample.ts'), 'const foo = 1;\nfoobar\n', 'utf8');
+            const fixed = await grep.search({ pattern: '\\bfoo\\b', path: root, maxResults: 10, timeout: 1000 });
+            const regex = await grep.search({ pattern: '\\bfoo\\b', path: root, maxResults: 10, timeout: 1000, useRegex: true });
+            expect(fixed).toHaveLength(0);
+            expect(regex).toHaveLength(1);
+        } finally {
+            grep.destroy();
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    });
+
+    test('cache key preserves maxResults semantics', async () => {
+        const root = await tempDir('sci-grep-cache-');
+        const grep = new AsyncEnhancedGrep({ cacheSize: 10, cacheTTL: 60000, defaultTimeout: 1000 });
+        try {
+            for (let i = 1; i <= 3; i++) await fs.writeFile(path.join(root, `f${i}.ts`), `foo ${i}\n`, 'utf8');
+            const first = await grep.search({ pattern: 'foo', path: root, maxResults: 1, timeout: 1000 });
+            const second = await grep.search({ pattern: 'foo', path: root, maxResults: 10, timeout: 1000 });
+            expect(first).toHaveLength(1);
+            expect(second).toHaveLength(3);
+        } finally {
+            grep.destroy();
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    });
+
+    test('parses ripgrep output for paths containing colons', async () => {
+        const root = await tempDir('sci-grep-colon-');
+        const grep = new AsyncEnhancedGrep({ cacheSize: 10, cacheTTL: 1000, defaultTimeout: 1000 });
+        try {
+            const target = path.join(root, 'a:b.ts');
+            await fs.writeFile(target, 'foo here\n', 'utf8');
+            const results = await grep.search({ pattern: 'foo', path: root, maxResults: 10, timeout: 1000 });
+            expect(results[0]).toMatchObject({ file: target, line: 1, column: 1, text: 'foo here' });
+        } finally {
+            grep.destroy();
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    });
+});
 
 perfDescribe('Async Enhanced Search Performance', () => {
     let grep: AsyncEnhancedGrep;

@@ -394,6 +394,7 @@ export class FastSearchLayer implements Layer<SearchQuery, EnhancedMatches> {
                 caseInsensitive: false,
                 fileType: this.getFileTypeForGrep(query.fileTypes),
                 excludePaths: this.getExcludeDirs(),
+                useRegex: true,
             }),
         }));
 
@@ -530,6 +531,7 @@ export class FastSearchLayer implements Layer<SearchQuery, EnhancedMatches> {
                     caseInsensitive: false,
                     fileType: this.getFileTypeForGrep(query.fileTypes),
                     excludePaths: this.getExcludeDirs(),
+                    useRegex: true,
                 };
                 const results = await asyncSearchTools.search(searchOptions);
                 if (results.length === 0) throw new Error('no-results');
@@ -581,6 +583,7 @@ export class FastSearchLayer implements Layer<SearchQuery, EnhancedMatches> {
                 caseInsensitive: true,
                 maxResults: 10,
                 excludePaths: this.getExcludeDirs(),
+                useRegex: true,
             };
             try {
                 const results = await asyncSearchTools.search(fallbackOptions);
@@ -626,6 +629,7 @@ export class FastSearchLayer implements Layer<SearchQuery, EnhancedMatches> {
                     caseInsensitive: false,
                     fileType: this.getFileTypeForGrep(query.fileTypes),
                     excludePaths: this.getExcludeDirs(),
+                    useRegex: true,
                 },
                 confidence: 1.0,
                 matchType: 'exact',
@@ -640,6 +644,7 @@ export class FastSearchLayer implements Layer<SearchQuery, EnhancedMatches> {
                     caseInsensitive: false,
                     fileType: this.getFileTypeForGrep(query.fileTypes),
                     excludePaths: this.getExcludeDirs(),
+                    useRegex: true,
                 },
                 confidence: 0.95,
                 matchType: 'exact',
@@ -654,6 +659,7 @@ export class FastSearchLayer implements Layer<SearchQuery, EnhancedMatches> {
                     caseInsensitive: false,
                     fileType: this.getFileTypeForGrep(query.fileTypes),
                     excludePaths: this.getExcludeDirs(),
+                    useRegex: true,
                 },
                 confidence: 0.93,
                 matchType: 'exact',
@@ -668,6 +674,7 @@ export class FastSearchLayer implements Layer<SearchQuery, EnhancedMatches> {
                     caseInsensitive: true,
                     fileType: this.getFileTypeForGrep(query.fileTypes),
                     excludePaths: this.getExcludeDirs(),
+                    useRegex: true,
                 },
                 confidence: 0.85,
                 matchType: 'fuzzy',
@@ -682,6 +689,7 @@ export class FastSearchLayer implements Layer<SearchQuery, EnhancedMatches> {
                     caseInsensitive: true,
                     fileType: this.getFileTypeForGrep(query.fileTypes),
                     excludePaths: this.getExcludeDirs(),
+                    useRegex: true,
                 },
                 confidence: 0.7,
                 matchType: 'fuzzy',
@@ -922,6 +930,7 @@ export class FastSearchLayer implements Layer<SearchQuery, EnhancedMatches> {
             fileType: this.getFileTypeForGrep(query.fileTypes),
             streaming: true,
             parallel: true,
+            useRegex: true,
         };
 
         return asyncSearchTools.searchStream(searchOptions);

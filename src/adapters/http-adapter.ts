@@ -29,7 +29,6 @@ import {
     definitionToApiResponse,
     handleAdapterError,
     normalizePosition,
-    normalizeUri,
     referenceToApiResponse,
     safeJsonParse,
     strictJsonParse,
@@ -88,26 +87,38 @@ export class HTTPAdapter {
 
     private async containedRequestUri(value: unknown, inputLabel: string, fallback: string): Promise<string> {
         const raw = typeof value === 'string' ? value.trim() : '';
-        if (!raw) return normalizeUri(fallback);
         const workspaceRoot = this.getWorkspaceRoot();
-        if (raw === 'file://workspace') return pathToFileURL(workspaceRoot).href;
+        if (!raw) return this.placeholderRequestUri(fallback, workspaceRoot);
+        if (this.isVirtualFilePlaceholder(raw)) return pathToFileURL(workspaceRoot).href;
         let requested: string;
         try {
             requested = this.pathInputFromHttpUri(raw, workspaceRoot);
-        } catch {
-            return normalizeUri(fallback);
+        } catch (error) {
+            throw new CoreError('InvalidParams', `${inputLabel} must be a valid file URI or workspace path`, { inputLabel });
         }
         try {
             const resolved = await resolveWorkspacePath(requested, { workspaceRoot, inputLabel });
             return pathToFileURL(resolved.realPath).href;
         } catch (error) {
-            if (!fs.existsSync(path.resolve(requested))) return normalizeUri(fallback);
+            if (raw.startsWith('file://') && !fs.existsSync(workspaceRoot)) {
+                return pathToFileURL(workspaceRoot).href;
+            }
             if (this.config.allowLegacyCwdFallback === true) {
                 const legacy = await this.legacyRepoLocalUriOrNull(requested);
                 if (legacy) return legacy;
             }
             throw error;
         }
+    }
+
+    private placeholderRequestUri(fallback: string, workspaceRoot: string): string {
+        if (this.isVirtualFilePlaceholder(fallback)) return pathToFileURL(workspaceRoot).href;
+        const fallbackPath = path.isAbsolute(fallback) ? fallback : path.resolve(workspaceRoot, fallback);
+        return pathToFileURL(fallbackPath).href;
+    }
+
+    private isVirtualFilePlaceholder(value: string): boolean {
+        return value === 'file://workspace' || value === 'file://unknown' || value === 'file://search' || value === 'file://definition';
     }
 
     private pathInputFromHttpUri(raw: string, workspaceRoot: string): string {
@@ -265,11 +276,25 @@ export class HTTPAdapter {
     private async handleFindDefinition(request: HTTPRequest): Promise<HTTPResponse> {
         try {
             const body = strictJsonParse(request.body || '{}');
-            validateRequired(body, ['identifier']);
+            if (!body || typeof body !== 'object' || body.identifier === undefined || body.identifier === null) {
+                validateRequired(body, ['identifier']);
+            }
+            const ident = typeof body.identifier === 'string' ? body.identifier.trim() : String(body.identifier || '').trim();
+            if (ident.length === 0) {
+                const empty = JSON.stringify({
+                    success: true,
+                    data: [],
+                    performance: {},
+                    requestId: undefined,
+                    timestamp: Date.now(),
+                    cacheHit: false,
+                });
+                return { status: 200, headers: { 'X-Cache': 'SKIP' }, body: empty };
+            }
 
             // Cache key must include every request field that can change result semantics.
             const cacheKey = `def:${JSON.stringify({
-                identifier: body.identifier,
+                identifier: ident,
                 file: body.file || body.uri || '',
                 position: body.position || {},
                 maxResults: body.maxResults || this.config.maxResults,
@@ -296,7 +321,7 @@ export class HTTPAdapter {
             const coreRequest = buildFindDefinitionRequest({
                 uri: await this.containedRequestUri(body.file || body.uri, 'definition file', 'file://unknown'),
                 position,
-                identifier: body.identifier,
+                identifier: ident,
                 maxResults: body.maxResults || this.config.maxResults,
                 includeDeclaration: body.includeDeclaration ?? true,
                 precise: !!body.precise,
@@ -516,11 +541,7 @@ export class HTTPAdapter {
         try {
             const body = strictJsonParse(request.body || '{}');
             if (body && body.changes) {
-                return {
-                    status: 200,
-                    headers: {},
-                    body: JSON.stringify({ success: true, status: 'applied', changes: body.changes }),
-                };
+                throw new Error('Direct changes application is unsupported; provide identifier/newName or use snapshot apply workflows');
             }
 
             validateRequired(body, ['identifier', 'newName']);
@@ -2275,7 +2296,7 @@ export class HTTPAdapter {
                     'stream definition file',
                     'file://definition'
                 ),
-                position: normalizePosition(body.position) || createPosition(0, 0),
+                position: body.position ? normalizePosition(body.position) : createPosition(0, 0),
                 maxResults: body.maxResults || 50,
             };
 

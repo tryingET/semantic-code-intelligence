@@ -161,7 +161,13 @@ export class LSPServer {
         this.documents.onDidChangeContent((change) => {
             this.lspAdapter.handleDidChangeTextDocument({
                 textDocument: { uri: change.document.uri },
-                contentChanges: [], // Would contain actual changes in real implementation
+                contentChanges: [{ text: change.document.getText() }],
+            });
+        });
+
+        this.documents.onDidClose((e) => {
+            this.lspAdapter.handleDidCloseTextDocument({
+                textDocument: { uri: e.document.uri },
             });
         });
 
@@ -263,14 +269,14 @@ export class LSPServer {
             if (!this.initialized) throw new Error('Server not initialized');
             const uri = params.uri;
             const position = params.position || { line: 0, character: 0 };
-            const identifier = params.symbol || this.lspAdapter.extractIdentifierAtPosition(uri, position);
+            const identifier = params.symbol || (await this.lspAdapter.resolveIdentifierAtPosition(uri, position));
             const t0 = Date.now();
             recordToolStart('lsp');
             const req = buildFindReferencesRequest({
                 uri,
                 position,
                 identifier,
-                maxResults: params.maxResults ?? (this.lspAdapter as any)['config'].maxResults,
+                maxResults: params.maxResults ?? this.lspAdapter.getMaxResults(),
                 includeDeclaration: params.includeDeclaration ?? false,
                 precise: true,
             } as any);
@@ -295,14 +301,14 @@ export class LSPServer {
             if (!this.initialized) throw new Error('Server not initialized');
             const uri = params.uri;
             const position = params.position || { line: 0, character: 0 };
-            const identifier = params.symbol || this.lspAdapter.extractIdentifierAtPosition(uri, position);
+            const identifier = params.symbol || (await this.lspAdapter.resolveIdentifierAtPosition(uri, position));
             const t0 = Date.now();
             recordToolStart('lsp');
             const req = buildFindDefinitionRequest({
                 uri,
                 position,
                 identifier,
-                maxResults: params.maxResults ?? (this.lspAdapter as any)['config'].maxResults,
+                maxResults: params.maxResults ?? this.lspAdapter.getMaxResults(),
                 includeDeclaration: true,
                 precise: true,
             } as any);

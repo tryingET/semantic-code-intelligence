@@ -537,7 +537,7 @@ export class SnapshotPatchWorkflowService {
 
     return {
       payload: { snapshot, links, status, contents },
-      isError: !status.exists,
+      isError: !status.exists || !!status.error,
     };
   }
 

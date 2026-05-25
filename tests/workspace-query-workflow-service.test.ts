@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { WorkspaceQueryWorkflowService } from '../src/core/workflows/workspace-query-workflow.js';
@@ -33,6 +33,29 @@ describe('WorkspaceQueryWorkflowService', () => {
 
         const nullEnd = payload(await service.readFile({ path: 'sample.ts', range: { startLine: 2, endLine: null } }));
         expect(nullEnd.content).toBe('line 2\nline 3\n');
+    });
+
+    test('regex text search bypasses heuristic core search and preserves regex semantics', async () => {
+        const workspaceRoot = tempWorkspace();
+        mkdirSync(join(workspaceRoot, 'src'));
+        writeFileSync(join(workspaceRoot, 'src', 'sample.ts'), 'literal a.b\nregex acb\n', 'utf8');
+        const calls: any[] = [];
+        const service = new WorkspaceQueryWorkflowService({
+            workspaceRoot: () => workspaceRoot,
+            coreAnalyzer: {
+                async initialize() {},
+                async textSearch(pattern: string, options: any) {
+                    calls.push({ pattern, options });
+                    return { count: 1, results: [{ file: 'sample.ts', line: 1, text: 'literal a.b' }] };
+                },
+            },
+            pathInputFromToolFile: (value) => value,
+        });
+
+        const out = payload(await service.textSearch({ query: 'a.b', path: 'src', kind: 'regex', maxResults: 10 }));
+        expect(calls).toHaveLength(0);
+        expect(out.count).toBe(2);
+        expect(JSON.stringify(out)).toContain('regex acb');
     });
 
     test('delegates text search to the configured analyzer with bounded path resolution', async () => {

@@ -4,6 +4,7 @@ import { CoreError } from '../errors.js';
 import { overlayStore } from '../overlay-store.js';
 import { openWorkspaceFileForRead, resolveWorkspacePath } from '../workspace-path.js';
 import { AsyncEnhancedGrep } from '../../layers/enhanced-search-tools-async.js';
+import { escapeRegex, textSearchPattern } from './request-semantics.js';
 import type { SnapshotWorkflowResult } from './snapshot-patch-workflow.js';
 
 type WorkspaceQueryDependencies = {
@@ -385,11 +386,21 @@ export class WorkspaceQueryWorkflowService {
             const searchRoot = await resolveWorkspacePath(searchPath, { workspaceRoot, inputLabel: 'text_search path', allowRoot: true });
             const searchRootPath = searchRoot.realPath;
 
-            let searchQuery = query;
-            if (kind === 'word') {
-                searchQuery = `\\b${escapeRegex(query)}\\b`;
-            } else if (kind === 'literal') {
-                searchQuery = escapeRegex(query);
+            const searchSpec = textSearchPattern(query, kind);
+            const searchQuery = kind === 'literal' ? escapeRegex(query) : searchSpec.pattern;
+
+            if (searchSpec.useRegex) {
+                const asyncGrep = new AsyncEnhancedGrep({ cacheSize: 500, cacheTTL: 30000 });
+                const results = await asyncGrep.search({
+                    pattern: searchSpec.pattern,
+                    path: searchRootPath,
+                    maxResults,
+                    timeout: 200,
+                    caseInsensitive,
+                    useRegex: true,
+                });
+                const normalized = normalizeGrepResults(results);
+                return { payload: { count: normalized.length, results: normalized }, isError: false };
             }
 
             const result = await this.deps.coreAnalyzer.textSearch(searchQuery, {
@@ -400,7 +411,14 @@ export class WorkspaceQueryWorkflowService {
 
             if (Number(result?.count || 0) === 0 && typeof query === 'string' && query.length > 0) {
                 const asyncGrep = new AsyncEnhancedGrep({ cacheSize: 500, cacheTTL: 30000 });
-                const results = await asyncGrep.search({ pattern: searchQuery, path: searchRootPath, maxResults, timeout: 200, caseInsensitive });
+                const results = await asyncGrep.search({
+                    pattern: searchSpec.pattern,
+                    path: searchRootPath,
+                    maxResults,
+                    timeout: 200,
+                    caseInsensitive,
+                    useRegex: false,
+                });
                 if (results.length > 0) {
                     const normalized = normalizeGrepResults(results);
                     return { payload: { count: normalized.length, results: normalized }, isError: false };
@@ -420,8 +438,15 @@ export class WorkspaceQueryWorkflowService {
             const searchRoot = await resolveWorkspacePath(searchPath, { workspaceRoot, inputLabel: 'text_search path', allowRoot: true });
             const searchRootPath = searchRoot.realPath;
             const asyncGrep = new AsyncEnhancedGrep({ cacheSize: 500, cacheTTL: 30000 });
-            const pattern = kind === 'word' ? `\\b${escapeRegex(query)}\\b` : kind === 'literal' ? escapeRegex(query) : query;
-            const results = await asyncGrep.search({ pattern, path: searchRootPath, maxResults, timeout: 200, caseInsensitive });
+            const searchSpec = textSearchPattern(query, kind);
+            const results = await asyncGrep.search({
+                pattern: searchSpec.pattern,
+                path: searchRootPath,
+                maxResults,
+                timeout: 200,
+                caseInsensitive,
+                useRegex: searchSpec.useRegex,
+            });
             const normalized = normalizeGrepResults(results);
             return { payload: { count: normalized.length, results: normalized }, isError: false };
         }
@@ -503,8 +528,4 @@ function normalizeGrepResults(results: any[]) {
         column: r.column ?? 0,
         text: r.text,
     }));
-}
-
-function escapeRegex(s: string): string {
-    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

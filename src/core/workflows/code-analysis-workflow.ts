@@ -1,6 +1,5 @@
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import * as path from 'node:path';
 import { CoreError } from '../errors.js';
+import { normalizeWorkspaceUri } from './request-semantics.js';
 import type { SnapshotWorkflowResult } from './snapshot-patch-workflow.js';
 
 type WorkspaceFileContext = { path: string; uri: string; relativePath: string };
@@ -14,6 +13,7 @@ export interface CodeAnalysisWorkflowDeps {
     resolveWorkspaceFile: (value: string, inputLabel: string) => Promise<WorkspaceFileContext>;
     resolveWorkspaceLexicalPath: (value: string, inputLabel: string) => { path: string; relativePath: string };
     filterWorkspaceItemsByUri: <T extends { uri?: unknown }>(items: T[], inputLabel: string) => Promise<T[]>;
+    workspaceRoot?: () => string;
 }
 
 export class CodeAnalysisWorkflowService {
@@ -28,7 +28,7 @@ export class CodeAnalysisWorkflowService {
         }
 
         const request = buildCompletionRequest({
-            uri: normalizeUri(String(args.file || args.uri || 'file://workspace')),
+            uri: this.normalizeUri(String(args.file || args.uri || 'file://workspace')),
             position: normalizePosition(args.position),
             maxResults: Math.min(Number(args.maxResults || 20), 200),
         });
@@ -59,7 +59,7 @@ export class CodeAnalysisWorkflowService {
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 if (!message.includes('does not exist')) throw error;
-                uri = normalizeUri(this.deps.resolveWorkspaceLexicalPath(rawFile, 'build_symbol_map file').path);
+                uri = this.normalizeUri(this.deps.resolveWorkspaceLexicalPath(rawFile, 'build_symbol_map file').path);
             }
         }
         const result = await this.deps.coreAnalyzer.buildSymbolMap({
@@ -91,7 +91,7 @@ export class CodeAnalysisWorkflowService {
         const includeDeclaration = args.includeDeclaration ?? true;
         const uri = args.file
             ? (await this.deps.resolveWorkspaceFile(args.file, 'explore_codebase file')).uri
-            : normalizeUri('file://workspace');
+            : this.normalizeUri('file://workspace');
 
         const coreResult = await this.deps.coreAnalyzer.exploreCodebase({
             uri,
@@ -116,14 +116,18 @@ export class CodeAnalysisWorkflowService {
                 schemaVersion: 2,
                 symbol: coreResult.symbol,
                 contextUri: coreResult.contextUri,
-                definitions: containedDefinitions.map((definition: any) => definitionToApiResponse(definition)),
-                references: containedReferences.map((reference: any) => referenceToApiResponse(reference)),
+                definitions: containedDefinitions.map((definition: any) => definitionToApiResponse(definition, this.deps.workspaceRoot?.() || process.cwd())),
+                references: containedReferences.map((reference: any) => referenceToApiResponse(reference, this.deps.workspaceRoot?.() || process.cwd())),
                 performance: coreResult.performance,
                 diagnostics: coreResult.diagnostics,
                 timestamp: coreResult.timestamp,
             },
             isError: false,
         };
+    }
+
+    private normalizeUri(uri: string): string {
+        return normalizeWorkspaceUri(uri, this.deps.workspaceRoot?.() || process.cwd());
     }
 }
 
@@ -155,7 +159,7 @@ function buildCompletionRequest(params: {
     maxResults?: number;
 }) {
     return {
-        uri: normalizeUri(params.uri),
+        uri: params.uri,
         position: params.position,
         maxResults: params.maxResults ?? 20,
         context: params.triggerCharacter
@@ -209,48 +213,22 @@ function completionKindToLspKind(kind: unknown): number | undefined {
     return kindMap[key];
 }
 
-function definitionToApiResponse(definition: any) {
+function definitionToApiResponse(definition: any, workspaceRoot: string) {
     return {
-        uri: normalizeUri(definition.uri),
+        uri: normalizeOutputUri(definition.uri, workspaceRoot),
         range: normalizeRange(definition.range),
         kind: definition.kind,
         name: definition.name,
     };
 }
 
-function referenceToApiResponse(reference: any) {
+function referenceToApiResponse(reference: any, workspaceRoot: string) {
     return {
-        uri: normalizeUri(reference.uri),
+        uri: normalizeOutputUri(reference.uri, workspaceRoot),
         range: normalizeRange(reference.range),
         kind: reference.kind,
         name: reference.name,
     };
-}
-
-function normalizeUri(uri: string): string {
-    try {
-        return pathToFileURL(uriToPath(uri)).href;
-    } catch {
-        return uri.startsWith('file://') ? uri : '';
-    }
-}
-
-function uriToPath(uri: string): string {
-    const workspacePrefix = 'file://workspace';
-    if (uri.startsWith(workspacePrefix)) {
-        const sub = uri.length > workspacePrefix.length ? uri.substring(workspacePrefix.length) : '';
-        const rel = sub.replace(/^\/+/, '');
-        return path.resolve(rel ? path.join(process.cwd(), rel) : process.cwd());
-    }
-    if (uri.startsWith('file://')) {
-        try {
-            return fileURLToPath(uri);
-        } catch {
-            const body = uri.replace(/^file:\/\//, '');
-            return path.isAbsolute(body) ? body : path.resolve('/', body);
-        }
-    }
-    return path.isAbsolute(uri) ? uri : path.resolve(process.cwd(), uri);
 }
 
 function normalizePosition(position: any): Position {
@@ -288,4 +266,8 @@ function createPosition(line: number, character: number): Position {
 
 function createRange(startLine: number, startChar: number, endLine: number, endChar: number): Range {
     return { start: createPosition(startLine, startChar), end: createPosition(endLine, endChar) };
+}
+
+function normalizeOutputUri(uri: unknown, workspaceRoot: string): string {
+    return normalizeWorkspaceUri(String(uri || ''), workspaceRoot);
 }

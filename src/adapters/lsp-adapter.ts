@@ -77,6 +77,7 @@ export class LSPAdapter {
     private coreAnalyzer: CoreAnalyzer;
     private config: LSPAdapterConfig;
     private defMemo = new Map<string, { ts: number; result: Location[] }>();
+    private documentTextByUri = new Map<string, string>();
 
     constructor(coreAnalyzer: CoreAnalyzer, config: LSPAdapterConfig = {}) {
         this.coreAnalyzer = coreAnalyzer;
@@ -374,14 +375,12 @@ export class LSPAdapter {
      */
     async handleDidChangeTextDocument(params: { textDocument: { uri: string }; contentChanges: any[] }): Promise<void> {
         try {
-            // Notify core analyzer about file changes for learning
-            await this.coreAnalyzer.trackFileChange(
-                params.textDocument.uri,
-                'modified',
-                undefined, // We don't have before/after content here
-                undefined,
-                { timestamp: new Date().toISOString() }
-            );
+            const after = this.extractLatestFullDocumentText(params.contentChanges);
+            if (after !== undefined) this.rememberDocumentText(params.textDocument.uri, after);
+            await this.coreAnalyzer.trackFileChange(params.textDocument.uri, 'modified', undefined, after, {
+                timestamp: new Date().toISOString(),
+                hasInMemoryContent: after !== undefined,
+            });
         } catch (error) {
             // Don't throw for tracking failures
             console.warn('Failed to track file change:', error);
@@ -391,10 +390,14 @@ export class LSPAdapter {
     /**
      * Handle file save notifications
      */
+    async handleDidCloseTextDocument(params: { textDocument: { uri: string } }): Promise<void> {
+        this.forgetDocumentText(params.textDocument.uri);
+    }
+
     async handleDidSaveTextDocument(params: { textDocument: { uri: string } }): Promise<void> {
         try {
             // Trigger any post-save processing in core
-            await this.coreAnalyzer.trackFileChange(params.textDocument.uri, 'modified', undefined, undefined, {
+            await this.coreAnalyzer.trackFileChange(params.textDocument.uri, 'modified', undefined, this.documentTextByUri.get(params.textDocument.uri), {
                 event: 'saved',
                 timestamp: new Date().toISOString(),
             });
@@ -437,10 +440,20 @@ export class LSPAdapter {
      * inside the configured workspace. Outside paths fall back to the synthetic
      * placeholder so LSP callers do not get arbitrary local-file reads.
      */
+    getMaxResults(): number {
+        return this.config.maxResults ?? 50;
+    }
+
+    async resolveIdentifierAtPosition(uri: string, position: any): Promise<string> {
+        return this.extractIdentifierAtPosition(uri, position);
+    }
+
     private async extractIdentifierAtPosition(uri: string, position: any): Promise<string> {
         const fallback = `symbol_at_${position.line}_${position.character}`;
         let opened: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
         try {
+            const cachedText = this.documentTextByUri.get(uri);
+            if (cachedText !== undefined) return this.wordAtPosition(cachedText, position) || fallback;
             const fsPath = uri.startsWith('file://') ? fileURLToPath(uri) : uri;
             opened = await openWorkspaceFileForRead(fsPath, {
                 workspaceRoot: this.getWorkspaceRoot(),
@@ -453,6 +466,31 @@ export class LSPAdapter {
         } finally {
             await opened?.handle.close().catch(() => undefined);
         }
+    }
+
+    private extractLatestFullDocumentText(contentChanges: any[]): string | undefined {
+        if (!Array.isArray(contentChanges)) return undefined;
+        for (let i = contentChanges.length - 1; i >= 0; i--) {
+            const change = contentChanges[i];
+            if (change?.range || change?.rangeLength !== undefined) continue;
+            const text = change?.text;
+            if (typeof text === 'string') return text;
+        }
+        return undefined;
+    }
+
+    private rememberDocumentText(uri: string, text: string): void {
+        this.documentTextByUri.set(uri, text);
+        try {
+            this.documentTextByUri.set(normalizeUri(uri), text);
+        } catch {}
+    }
+
+    private forgetDocumentText(uri: string): void {
+        this.documentTextByUri.delete(uri);
+        try {
+            this.documentTextByUri.delete(normalizeUri(uri));
+        } catch {}
     }
 
     private getWorkspaceRoot(): string {
