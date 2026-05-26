@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CoreError } from '../errors.js';
 import { overlayStore } from '../overlay-store.js';
+import { resolveWorkspacePath } from '../workspace-path.js';
 import { normalizeWorkspaceUri } from './request-semantics.js';
 import type { SnapshotWorkflowResult } from './snapshot-patch-workflow.js';
 
@@ -124,6 +125,7 @@ export class RenameWorkflowService {
         }
 
         const root = this.deps.workspaceRoot();
+        const invalidPlanPaths: string[] = [];
         const snap = overlayStore.createSnapshot(true, { workspaceRoot: root });
         const tmpRootBase = runChecksFlag
             ? (await (overlayStore as any).ensureMaterialized?.(snap.id, { workspaceRoot: root })) || ''
@@ -143,10 +145,18 @@ export class RenameWorkflowService {
             const fileEdits = changes[uri] as TextEdit[];
             if (!Array.isArray(fileEdits) || !fileEdits.length) continue;
 
-            const absPath = filePathFromUriLike(uri);
-            const rel = path.relative(root, absPath).split(path.sep).join('/');
-            if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) continue;
-            const srcPath = path.join(root, rel);
+            let resolvedPath: Awaited<ReturnType<typeof resolveWorkspacePath>>;
+            try {
+                resolvedPath = await resolveWorkspacePath(filePathFromUriLike(uri), {
+                    workspaceRoot: root,
+                    inputLabel: 'rename plan path',
+                });
+            } catch {
+                invalidPlanPaths.push(uri);
+                continue;
+            }
+            const rel = resolvedPath.relativePath;
+            const srcPath = resolvedPath.realPath;
             let orig = '';
             try {
                 orig = await fs.readFile(srcPath, 'utf8');
@@ -167,6 +177,18 @@ export class RenameWorkflowService {
             if (out && out.trim().length > 0) {
                 diffParts.push(out);
             }
+        }
+
+        if (invalidPlanPaths.length > 0) {
+            return {
+                payload: {
+                    ok: false,
+                    reason: 'invalid_plan_path',
+                    message: 'Rename plan included paths outside the workspace',
+                    paths: invalidPlanPaths,
+                },
+                isError: true,
+            };
         }
 
         const unifiedDiff = diffParts.join('\n');

@@ -87,7 +87,7 @@ export async function openWorkspaceFileForRead(requestedPath: string, options: O
 
 function assertLexicallyWithinWorkspace(workspaceRoot: string, candidate: string, inputLabel: string, requestedPath: string, allowRoot = false): string {
     const relativePath = path.relative(workspaceRoot, candidate);
-    if ((!relativePath && !allowRoot) || relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+    if (isOutsideWorkspaceRelative(relativePath, allowRoot)) {
         throw new CoreError('InvalidParams', `${inputLabel} must stay within the workspace`, { path: requestedPath });
     }
     return relativePath;
@@ -95,9 +95,13 @@ function assertLexicallyWithinWorkspace(workspaceRoot: string, candidate: string
 
 function assertRealPathWithinWorkspace(realWorkspaceRoot: string, realCandidate: string, inputLabel: string, requestedPath: string, allowRoot = false): void {
     const relativePath = path.relative(realWorkspaceRoot, realCandidate);
-    if ((!relativePath && !allowRoot) || relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+    if (isOutsideWorkspaceRelative(relativePath, allowRoot)) {
         throw new CoreError('InvalidParams', `${inputLabel} must stay within the workspace`, { path: requestedPath });
     }
+}
+
+function isOutsideWorkspaceRelative(relativePath: string, allowRoot = false): boolean {
+    return (!relativePath && !allowRoot) || relativePath === '..' || relativePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativePath);
 }
 
 async function realpathOpenFileDescriptor(handle: FileHandle, inputLabel: string, requestedPath: string): Promise<string> {

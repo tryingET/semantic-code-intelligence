@@ -27,8 +27,11 @@ describe('Layer 3 - plan rename (preview)', () => {
         expect(result).toBeDefined();
         expect(result.data).toBeDefined();
         const changes = result.data.changes || {};
-        // Shape validation only; edit counts depend on host tooling availability
         expect(typeof changes).toBe('object');
+        expect(Object.keys(changes).length).toBeGreaterThan(0);
+        const edits = Object.values(changes).flat() as Array<{ newText: string }>;
+        expect(edits.length).toBeGreaterThan(0);
+        expect(edits.some((edit) => edit.newText === 'RenamedClass')).toBe(true);
         expect(result.performance).toBeDefined();
     });
 });

@@ -30,7 +30,6 @@ import {
     handleAdapterError,
     normalizePosition,
     referenceToApiResponse,
-    safeJsonParse,
     strictJsonParse,
     validateRequired,
 } from './utils.js';
@@ -449,38 +448,45 @@ export class HTTPAdapter {
      * Handle POST /api/v1/rename
      */
     private async handleRename(request: HTTPRequest): Promise<HTTPResponse> {
-        const body = safeJsonParse(request.body || '{}', {});
-        validateRequired(body, ['identifier', 'newName']);
+        try {
+            const body = strictJsonParse(request.body || '{}');
+            validateRequired(body, ['identifier', 'newName']);
 
-        const coreRequest = buildRenameRequest({
-            uri: await this.containedRequestUri(body.file || body.uri, 'rename file', 'file://workspace'),
-            position: createPosition(0, 0),
-            identifier: body.identifier,
-            newName: body.newName,
-            dryRun: body.dryRun ?? false,
-        });
+            const coreRequest = buildRenameRequest({
+                uri: await this.containedRequestUri(body.file || body.uri, 'rename file', 'file://workspace'),
+                position: createPosition(0, 0),
+                identifier: body.identifier,
+                newName: body.newName,
+                dryRun: body.dryRun ?? false,
+            });
 
-        const result = await this.coreAnalyzer.rename(coreRequest);
+            const result = await this.coreAnalyzer.rename(coreRequest);
 
-        const changes = Object.entries(result.data.changes || {});
+            const changes = Object.entries(result.data.changes || {});
 
-        return {
-            status: 200,
-            headers: {},
-            body: JSON.stringify({
-                success: true,
-                data: {
-                    changes: changes.map(([uri, edits]) => ({ file: uri, edits })),
-                    summary: {
-                        filesAffected: changes.length,
-                        totalEdits: changes.reduce((acc, [, edits]) => acc + edits.length, 0),
+            return {
+                status: 200,
+                headers: {},
+                body: JSON.stringify({
+                    success: true,
+                    data: {
+                        changes: changes.map(([uri, edits]) => ({ file: uri, edits })),
+                        summary: {
+                            filesAffected: changes.length,
+                            totalEdits: changes.reduce((acc, [, edits]) => acc + edits.length, 0),
+                        },
+                        performance: result.performance,
+                        requestId: result.requestId,
+                        dryRun: body.dryRun ?? false,
                     },
-                    performance: result.performance,
-                    requestId: result.requestId,
-                    dryRun: body.dryRun ?? false,
-                },
-            }),
-        };
+                }),
+            };
+        } catch (error) {
+            if ((error as any)?.code === 'InvalidParams') {
+                return this.createErrorResponse(400, 'Bad Request', error);
+            }
+            return this.createErrorResponse(500, 'Rename failed', error);
+        }
     }
 
     /**

@@ -62,8 +62,6 @@ export class CodeAnalyzer {
     private initialized = false;
     private asyncSearchTools: AsyncEnhancedGrep;
     private symbolLocationCache: Map<string, { data: Definition[]; ts: number; accessed?: number }> = new Map();
-    // Simple in-memory plan cache for rename previews
-    private lastRenamePlan: { key: string; edit: WorkspaceEdit; ts: number } | null = null;
     private cacheWarmupPromise: Promise<void> | null = null;
     private cacheWarmupAbort = false;
 
@@ -1418,7 +1416,7 @@ export class CodeAnalyzer {
         };
 
         try {
-            const edits: WorkspaceEdit = { changes: {} };
+            let edits: WorkspaceEdit = { changes: {} };
             const layerTimes: Record<string, number> = {};
 
             // Phase 1: Find all instances to rename (Layer 1 + 2)
@@ -1426,7 +1424,9 @@ export class CodeAnalyzer {
             let instances: any[] = [];
             const l3Start = Date.now();
             await this.layerManager.executeWithLayer('layer3', 'planRename', requestMetadata, async () => {
-                instances = await this.findRenameInstances(request, requestMetadata);
+                const plan = await this.findRenamePlan(request, requestMetadata);
+                instances = plan.instances;
+                edits = plan.edit;
                 return instances;
             });
             layerTimes.layer3 = Date.now() - l3Start;
@@ -1458,7 +1458,7 @@ export class CodeAnalyzer {
                 layerTimes.layer5 = (layerTimes.layer5 || 0) + (Date.now() - layer5Start);
             }
 
-            // Merge all changes (instances already encoded into edits)
+            // Merge the primary plan with any future propagated related changes.
             const mergedEdit = this.mergeWorkspaceEdits(edits, propagatedChanges);
 
             const performance: LayerPerformance = {
@@ -1680,7 +1680,7 @@ export class CodeAnalyzer {
             const candidateNames = new Set<string>(
                 (existing.map((e: any) => (e.name || '').toString()).filter(Boolean).length > 0
                     ? existing.map((e: any) => (e.name || '').toString()).filter(Boolean)
-                    : [request.identifier]
+                    : [(request.identifier || '').toString()].filter(Boolean)
                 ).map((s: string) => s.toLowerCase())
             );
 
@@ -1950,10 +1950,12 @@ export class CodeAnalyzer {
         return { range: def.range, placeholder: request.identifier };
     }
 
-    private async findRenameInstances(request: RenameRequest, metadata: RequestMetadata): Promise<any[]> {
+    private async findRenamePlan(request: RenameRequest, metadata: RequestMetadata): Promise<{ instances: any[]; edit: WorkspaceEdit }> {
         const oldName = (request as any).identifier || (request as any).oldName || '';
         const newName = (request as any).newName || '';
-        if (!oldName || !newName) return [];
+        if (!oldName || !newName) {
+            return { instances: [], edit: { changes: {} } };
+        }
 
         // Collect references with AST preference
         const refsRes = await this.findReferencesAsync({
@@ -2010,9 +2012,7 @@ export class CodeAnalyzer {
         }
 
         const edit: WorkspaceEdit = { changes: editsByFile } as any;
-        this.lastRenamePlan = { key: `${oldName}->${newName}`, edit, ts: Date.now() };
-        // Encode into return for propagation phase (not used yet)
-        return chosen;
+        return { instances: chosen, edit };
     }
 
     private async learnFromRename(request: RenameRequest): Promise<void> {
@@ -2051,8 +2051,9 @@ export class CodeAnalyzer {
     }
 
     private async propagateRename(request: RenameRequest, instances: any[]): Promise<WorkspaceEdit> {
-        // For now, the primary plan lives in lastRenamePlan
-        return this.lastRenamePlan?.edit || { changes: {} };
+        // Future Layer 5 propagation can add related edits here. The primary rename
+        // plan is already merged by renameInternal and must not be duplicated.
+        return { changes: {} };
     }
 
     /**

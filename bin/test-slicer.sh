@@ -44,6 +44,34 @@ if [[ -n "${MAX_FILES}" ]] && { ! [[ ${MAX_FILES} =~ ^[0-9]+$ ]] || [[ ${MAX_FIL
   exit 2
 fi
 
+git_tree_fingerprint() {
+  if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    printf 'not-a-git-worktree\n'
+    return 0
+  fi
+  {
+    printf 'status\0'
+    git status --porcelain=v1 -z --untracked-files=normal || true
+    printf 'diff\0'
+    git diff --binary || true
+    printf 'cached-diff\0'
+    git diff --cached --binary || true
+    printf 'untracked\0'
+    git ls-files --others --exclude-standard -z | python3 -c 'import hashlib, os, sys
+paths = sorted(p for p in sys.stdin.buffer.read().split(b"\0") if p)
+for raw in paths:
+    path = os.fsdecode(raw)
+    digest = hashlib.sha256()
+    try:
+        with open(path, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+                digest.update(chunk)
+        print(f"{digest.hexdigest()}  {path}")
+    except OSError as exc:
+        print(f"ERROR {path}: {exc}")'
+  } | sha256sum | awk '{print $1}'
+}
+
 # Balanced slicing knobs (optional)
 BALANCE_SLICES=${BALANCE_SLICES:-}
 HOT_SLICE=${HOT_SLICE:-}
@@ -150,7 +178,17 @@ if [[ "${DRY:-}" = "1" ]]; then
   exit 0
 fi
 
+BASE_GIT_FINGERPRINT="$(git_tree_fingerprint)"
+
 # Run via batch runner for steady progress
 REPORT_FILE="${SLICE_DIR}/batch-report.jsonl" FILE_LIST="${SLICE_LIST}" BATCH_SIZE=${BATCH_SIZE} TIMEOUT=${TIMEOUT_MS} MAX_FILES= bin/test-progress-batch.sh
+
+AFTER_GIT_FINGERPRINT="$(git_tree_fingerprint)"
+if [[ "$AFTER_GIT_FINGERPRINT" != "$BASE_GIT_FINGERPRINT" ]]; then
+  echo "Test slice changed git working tree content; restore or commit intentional outputs." >&2
+  echo "--- status ---" >&2
+  git status --short --untracked-files=normal >&2 || true
+  exit 1
+fi
 
 echo "✅ Slice ${SLICE}/${SLICES} complete"

@@ -336,4 +336,111 @@ describe('nexus contract regressions', () => {
         expect(result).toEqual([]);
         expect(seen).toEqual([]);
     });
+
+    test('LSP completion does not delegate outside-workspace file URIs', async () => {
+        const workspaceRoot = tempWorkspace();
+        const outsideRoot = tempWorkspace('sci-nexus-lsp-completion-outside-');
+        const outsideFile = join(outsideRoot, 'outside.ts');
+        writeFileSync(outsideFile, 'const OutsideCompletionSecret = 1;\n', 'utf8');
+        const seen: any[] = [];
+        const core: any = {
+            prepareRename: async () => ({ data: null }),
+            rename: async () => ({ data: { changes: {} } }),
+            getCompletions: async (req: any) => {
+                seen.push(req);
+                return { data: [] };
+            },
+            trackFileChange: async () => {},
+            getDiagnostics: () => ({}),
+            config: { workspaceRoot },
+        };
+        const adapter = new LSPAdapter(core, { workspaceRoot });
+
+        const result = await adapter.handleCompletion({
+            textDocument: { uri: pathToFileURL(outsideFile).href },
+            position: { line: 0, character: 8 },
+        } as any);
+
+        expect(result).toEqual([]);
+        expect(seen).toEqual([]);
+    });
+
+    test('LSP completion allows cached unsaved in-workspace documents', async () => {
+        const workspaceRoot = tempWorkspace();
+        const unsavedFile = join(workspaceRoot, 'unsaved.ts');
+        const uri = pathToFileURL(unsavedFile).href;
+        const seen: any[] = [];
+        const core: any = {
+            prepareRename: async () => ({ data: null }),
+            rename: async () => ({ data: { changes: {} } }),
+            getCompletions: async (req: any) => {
+                seen.push(req);
+                return { data: [] };
+            },
+            trackFileChange: async () => {},
+            getDiagnostics: () => ({}),
+            config: { workspaceRoot },
+        };
+        const adapter = new LSPAdapter(core, { workspaceRoot });
+
+        await adapter.handleDidChangeTextDocument({
+            textDocument: { uri },
+            contentChanges: [{ text: 'const UnsavedCompletionName = 1;\n' }],
+        });
+        const result = await adapter.handleCompletion({
+            textDocument: { uri },
+            position: { line: 0, character: 8 },
+        } as any);
+
+        expect(result).toEqual([]);
+        expect(seen).toHaveLength(1);
+        expect(seen[0].uri).toBe(uri);
+    });
+
+    test('HTTP rename reports client input failures as bad requests', async () => {
+        const adapter = new HTTPAdapter({
+            config: { workspaceRoot: process.cwd() },
+            rename: async () => ({ data: { changes: {} }, performance: {}, requestId: 'rename-should-not-run' }),
+            sharedServices: {},
+        } as any);
+
+        const missing = await adapter.handleRequest({
+            method: 'POST',
+            url: '/api/v1/rename',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ identifier: 'OnlyOldName' }),
+        });
+        expect(missing.status).toBe(400);
+        expect(JSON.parse(missing.body)).toMatchObject({ success: false, error: 'Bad Request' });
+
+        const malformed = await adapter.handleRequest({
+            method: 'POST',
+            url: '/api/v1/rename',
+            headers: { 'content-type': 'application/json' },
+            body: '{not-json',
+        });
+        expect(malformed.status).toBe(400);
+        expect(JSON.parse(malformed.body)).toMatchObject({ success: false, error: 'Bad Request' });
+        expect(JSON.parse(malformed.body).details?.message).toBe('Invalid JSON');
+    });
+
+    test('HTTP rename preserves internal failures as server errors', async () => {
+        const adapter = new HTTPAdapter({
+            config: { workspaceRoot: process.cwd() },
+            rename: async () => {
+                throw new Error('rename exploded');
+            },
+            sharedServices: {},
+        } as any);
+
+        const response = await adapter.handleRequest({
+            method: 'POST',
+            url: '/api/v1/rename',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ identifier: 'OldName', newName: 'NewName' }),
+        });
+
+        expect(response.status).toBe(500);
+        expect(JSON.parse(response.body)).toMatchObject({ success: false, error: 'Rename failed' });
+    });
 });

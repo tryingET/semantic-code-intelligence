@@ -92,6 +92,14 @@ describe('build command surface', () => {
         expect(slicer).not.toContain('slice_files=( $output )');
         expect(recipeBody(justfile, 'test-fast')).toContain('BATCH_SIZE=${BATCH_SIZE:-1}');
         expect(recipeBody(justfile, 'test-slices slices="4"')).toContain('BATCH_SIZE=${BATCH_SIZE:-1}');
+        expect(runner).toContain('git_tree_fingerprint()');
+        expect(runner).toContain('BASE_GIT_FINGERPRINT="$(git_tree_fingerprint)"');
+        expect(runner).toContain('AFTER_GIT_FINGERPRINT="$(git_tree_fingerprint)"');
+        expect(runner).toContain('Test run changed git working tree content');
+        expect(slicer).toContain('git_tree_fingerprint()');
+        expect(slicer).toContain('BASE_GIT_FINGERPRINT="$(git_tree_fingerprint)"');
+        expect(slicer).toContain('AFTER_GIT_FINGERPRINT="$(git_tree_fingerprint)"');
+        expect(slicer).toContain('Test slice changed git working tree content');
     });
 
     test('normal test runners fail closed for invalid batch sizing', () => {

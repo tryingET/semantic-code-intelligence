@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { overlayStore } from '../src/core/overlay-store.js';
@@ -114,5 +114,83 @@ describe('RenameWorkflowService', () => {
 
         const snapshotDir = overlayStore.getSnapshotDirectory(result.snapshot, { workspaceRoot });
         expect(snapshotDir.startsWith(join(workspaceRoot, '.ontology', 'snapshots'))).toBe(true);
+    });
+
+    test('safe rename rejects out-of-workspace plan paths explicitly', async () => {
+        const workspaceRoot = tempWorkspace();
+        const outsideRoot = tempWorkspace();
+        const outsideTarget = join(outsideRoot, 'outside.ts');
+        writeFileSync(outsideTarget, 'export const oldName = 1;\n', 'utf8');
+
+        const service = new RenameWorkflowService({
+            workspaceRoot: () => workspaceRoot,
+            planRename: async () => ({
+                changes: {
+                    [`file://${outsideTarget}`]: [
+                        {
+                            range: { start: { line: 0, character: 13 }, end: { line: 0, character: 20 } },
+                            newText: 'newName',
+                        },
+                    ],
+                },
+            }),
+        });
+
+        const result = await service.safeRename({ oldName: 'oldName', newName: 'newName', runChecks: false });
+        expect(result.isError).toBe(true);
+        expect(payload(result)).toMatchObject({ ok: false, reason: 'invalid_plan_path' });
+        expect(payload(result).paths).toEqual([`file://${outsideTarget}`]);
+    });
+
+    test('safe rename rejects plan paths that escape through workspace symlinks', async () => {
+        const workspaceRoot = tempWorkspace();
+        const outsideRoot = tempWorkspace();
+        const outsideTarget = join(outsideRoot, 'outside.ts');
+        const linkPath = join(workspaceRoot, 'linked-outside');
+        writeFileSync(outsideTarget, 'export const oldName = 1;\n', 'utf8');
+        symlinkSync(outsideRoot, linkPath, 'dir');
+
+        const service = new RenameWorkflowService({
+            workspaceRoot: () => workspaceRoot,
+            planRename: async () => ({
+                changes: {
+                    [`file://${join(linkPath, 'outside.ts')}`]: [
+                        {
+                            range: { start: { line: 0, character: 13 }, end: { line: 0, character: 20 } },
+                            newText: 'newName',
+                        },
+                    ],
+                },
+            }),
+        });
+
+        const result = await service.safeRename({ oldName: 'oldName', newName: 'newName', runChecks: false });
+        expect(result.isError).toBe(true);
+        expect(payload(result)).toMatchObject({ ok: false, reason: 'invalid_plan_path' });
+    });
+
+    test('safe rename accepts in-workspace paths with names that start with dot-dot text', async () => {
+        const workspaceRoot = tempWorkspace();
+        const weirdDir = join(workspaceRoot, '..fixtures');
+        const target = join(weirdDir, 'target.ts');
+        mkdirSync(weirdDir);
+        writeFileSync(target, 'export const oldName = 1;\n', 'utf8');
+
+        const service = new RenameWorkflowService({
+            workspaceRoot: () => workspaceRoot,
+            planRename: async () => ({
+                changes: {
+                    [`file://${target}`]: [
+                        {
+                            range: { start: { line: 0, character: 13 }, end: { line: 0, character: 20 } },
+                            newText: 'newName',
+                        },
+                    ],
+                },
+            }),
+        });
+
+        const result = payload(await service.safeRename({ oldName: 'oldName', newName: 'newName', runChecks: false }));
+        expect(result).toMatchObject({ workflow: 'rename_safely', ok: true, filesAffected: 1, totalEdits: 1 });
     });
 });

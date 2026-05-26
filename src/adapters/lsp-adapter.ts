@@ -11,6 +11,7 @@
  * All actual analysis work is delegated to the unified core analyzer.
  */
 
+import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type {
@@ -355,8 +356,10 @@ export class LSPAdapter {
             if (!params || !(params as any).textDocument?.uri || !(params as any).position) {
                 throw new CoreError('InvalidParams', 'Missing required parameters: textDocument.uri, position');
             }
+            const containedUri = await this.containedLspUriOrNull(params.textDocument.uri);
+            if (!containedUri) return [];
             const request = buildCompletionRequest({
-                uri: params.textDocument.uri,
+                uri: containedUri,
                 position: normalizePosition(params.position),
                 triggerCharacter: params.context?.triggerCharacter,
                 maxResults: this.config.maxResults,
@@ -500,18 +503,36 @@ export class LSPAdapter {
 
     private async containedLspUriOrNull(uri: string): Promise<string | null> {
         let opened: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
+        const fsPath = uri.startsWith('file://') ? fileURLToPath(uri) : uri;
         try {
-            const fsPath = uri.startsWith('file://') ? fileURLToPath(uri) : uri;
             opened = await openWorkspaceFileForRead(fsPath, {
                 workspaceRoot: this.getWorkspaceRoot(),
                 inputLabel: 'LSP document uri',
             });
             return normalizeUri(opened.realPath);
         } catch {
-            return null;
+            const cachedText = this.documentTextByUri.get(uri) ?? this.documentTextByUri.get(normalizeUri(fsPath));
+            if (cachedText === undefined) return null;
+
+            const root = this.getWorkspaceRoot();
+            const absPath = path.resolve(fsPath);
+            const rel = path.relative(root, absPath);
+            if (this.isOutsideWorkspaceRelative(rel)) return null;
+
+            try {
+                await fs.lstat(absPath);
+                return null;
+            } catch (error: any) {
+                if (error?.code !== 'ENOENT') return null;
+                return normalizeUri(absPath);
+            }
         } finally {
             await opened?.handle.close().catch(() => undefined);
         }
+    }
+
+    private isOutsideWorkspaceRelative(relativePath: string): boolean {
+        return !relativePath || relativePath === '..' || relativePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativePath);
     }
 
     private wordAtPosition(text: string, pos: { line: number; character: number }): string | null {

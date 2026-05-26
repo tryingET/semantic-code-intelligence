@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-05-26T19:04:26.168318727+00:00",
+  "task_id": 3417,
+  "entity_version": 7,
+  "commit_sha": null,
+  "scope": {
+    "allowed_paths": [
+      "bin/test-slicer.sh",
+      "governance/task-scopes/AK-3417.snapshot.json",
+      "scripts/run-normal-tests.sh",
+      "src/adapters/http-adapter.ts",
+      "src/adapters/lsp-adapter.ts",
+      "src/core/unified-analyzer.ts",
+      "src/core/workflows/rename-workflow.ts",
+      "src/core/workspace-path.ts",
+      "tests/build-command-surface.test.ts",
+      "tests/consistency.test.ts",
+      "tests/layer3-rename-plan.test.ts",
+      "tests/navigation-workflow-service.test.ts",
+      "tests/nexus-contract-regression.test.ts",
+      "tests/rename-workflow-service.test.ts"
+    ],
+    "required_paths": [
+      "bin/test-slicer.sh",
+      "governance/task-scopes/AK-3417.snapshot.json",
+      "scripts/run-normal-tests.sh",
+      "src/adapters/http-adapter.ts",
+      "src/adapters/lsp-adapter.ts",
+      "src/core/unified-analyzer.ts",
+      "src/core/workflows/rename-workflow.ts",
+      "src/core/workspace-path.ts",
+      "tests/build-command-surface.test.ts",
+      "tests/consistency.test.ts",
+      "tests/layer3-rename-plan.test.ts",
+      "tests/navigation-workflow-service.test.ts",
+      "tests/nexus-contract-regression.test.ts",
+      "tests/rename-workflow-service.test.ts"
+    ],
+    "forbidden_paths": []
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}

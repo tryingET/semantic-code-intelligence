@@ -66,6 +66,16 @@ describe('NavigationWorkflowService', () => {
         expect(result.definitions[0].uri).toBe(pathToFileURL(insideFile).href);
     });
 
+    test('workspace path containment accepts in-workspace names that begin with dot-dot text', async () => {
+        const workspaceRoot = tempWorkspace();
+        const target = join(workspaceRoot, '..fixtures.ts');
+        writeFileSync(target, 'export const value = 1;\n', 'utf8');
+
+        const resolved = await resolveWorkspacePath('..fixtures.ts', { workspaceRoot, inputLabel: 'test path' });
+        expect(resolved.relativePath).toBe('..fixtures.ts');
+        expect(resolved.realPath).toBe(target);
+    });
+
     test('find_references keeps empty workspace-wide parity response', async () => {
         const workspaceRoot = tempWorkspace();
         const service = new NavigationWorkflowService({
