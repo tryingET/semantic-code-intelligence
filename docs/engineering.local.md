@@ -34,3 +34,16 @@ Practical rule:
 - Use package/app local checks for language-specific validation.
 - Use each package/app `policy/engineering-lane.json` as the source of truth for the declared upstream lane command; root docs should not hardcode package lane commands.
 - Use `design-system` only for browser/workbench UI surfaces and generated visual/operator-facing affordances.
+
+## Repo loop validation
+
+Semantic Code Intelligence adopts `repo-loop-validation-v1` for harnessed-LLM and prompt-loop work. The machine-readable declaration lives in `policy/engineering-lane.json`.
+
+- `loop-doctor`: `just loop-doctor` (non-failing git/Bun/Just/server-status diagnostics, exact dirty paths including untracked files, and AK task-scope snapshot checks when present; set `LOOP_TASK_ID` or `AK_TASK_ID` when multiple snapshots exist)
+- `loop-verify-fast`: `just loop-verify-fast` (declares the focused smoke-test slice and maps to `just test-smoke`)
+- `loop-impact-plan`: `just loop-impact-plan` (lists exact changed files, emits `impact=bounded|expanded|wide`, and names `next=<command>` from the shared impact classifier)
+- `loop-impact-run`: `just loop-impact-run` (uses the same classifier as `loop-impact-plan`, refuses wide-risk changes, and maps bounded/expanded work to the normal sliced/batched `just test` path)
+- `loop-impact-wide`: `LOOP_WIDE_REASON="<why wide validation is accepted>" just loop-impact-wide` (requires explicit acceptance and maps to `just test-ci-like`)
+- `loop-landing-check`: `just loop-landing-check` (runs a failing task-scope snapshot guard when present, then names and runs the repo-declared `just alpha-mvp-check` gate)
+
+These commands produce repo-local evidence for loop orchestration. They do not replace snapshot/overlay review, AK task/evidence/decision authority, release approval, or future production/workbench promotion authority. `loop-doctor` is diagnostic-only even when it reports `scope_check=pass`; `loop-impact-plan` is plan-only until the selected check is run.

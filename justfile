@@ -751,6 +751,234 @@ typecheck:
 # Run all checks (format, lint, typecheck, test)
 check: format lint typecheck test
 
+# Shared task-scope guard for repo-loop-validation-v1 commands
+_loop-scope-check fail_on_blocker="0":
+    #!/usr/bin/env bash
+    set +e
+    python3 - <<'PY'
+    import fnmatch
+    import json
+    import os
+    import pathlib
+    import subprocess
+    import sys
+
+    fail_on_blocker = {{fail_on_blocker}} == 1
+    snapshot_dir = pathlib.Path("governance/task-scopes")
+    selected_task_id = os.environ.get("LOOP_TASK_ID") or os.environ.get("AK_TASK_ID")
+
+    if selected_task_id:
+        snapshots = [snapshot_dir / f"AK-{selected_task_id}.snapshot.json"]
+        if not snapshots[0].exists():
+            print(f"task_scope_snapshot=missing selected=AK-{selected_task_id}")
+            print("scope_check=blocker reason=selected-snapshot-missing")
+            raise SystemExit(2 if fail_on_blocker else 0)
+    else:
+        snapshots = sorted(snapshot_dir.glob("AK-*.snapshot.json"))
+        if not snapshots:
+            print("task_scope_snapshot=absent")
+            print("scope_check=not-run")
+            raise SystemExit(0)
+        if len(snapshots) > 1:
+            print("task_scope_snapshot=ambiguous")
+            for snapshot in snapshots:
+                print(f"- {snapshot}")
+            print("scope_check=blocker reason=multiple-snapshots-set-LOOP_TASK_ID")
+            raise SystemExit(2 if fail_on_blocker else 0)
+
+    snapshot = snapshots[0]
+    print(f"task_scope_snapshot={snapshot}")
+    try:
+        payload = json.loads(snapshot.read_text())
+    except Exception as exc:
+        print(f"scope_check=blocker reason=invalid-snapshot-json detail={exc}")
+        raise SystemExit(2 if fail_on_blocker else 0)
+
+    scope = payload.get("scope") if isinstance(payload, dict) else None
+    if not isinstance(scope, dict):
+        print("scope_check=blocker reason=missing-scope-object")
+        raise SystemExit(2 if fail_on_blocker else 0)
+
+    allowed = [str(path) for path in (scope.get("allowed_paths") or [])]
+    required = [str(path) for path in (scope.get("required_paths") or [])]
+    forbidden = [str(path) for path in (scope.get("forbidden_paths") or [])]
+
+    raw = subprocess.run(
+        ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", "."],
+        check=False,
+        stdout=subprocess.PIPE,
+    ).stdout.split(b"\0")
+
+    dirty_paths = []
+    index = 0
+    while index < len(raw):
+        entry = raw[index]
+        if not entry:
+            index += 1
+            continue
+        text = entry.decode("utf-8", "surrogateescape")
+        status = text[:2]
+        path = text[3:] if len(text) > 3 else ""
+        if path:
+            dirty_paths.append(path)
+        index += 2 if ("R" in status or "C" in status) else 1
+
+    def matches(patterns, path):
+        return any(path == pattern or fnmatch.fnmatch(path, pattern) or (pattern.endswith("/") and path.startswith(pattern)) for pattern in patterns)
+
+    out_of_scope = [path for path in dirty_paths if not matches(allowed, path)]
+    forbidden_dirty = [path for path in dirty_paths if matches(forbidden, path)]
+    missing_required = [path for path in sorted(required) if not pathlib.Path(path).exists()]
+
+    if out_of_scope or forbidden_dirty or missing_required:
+        print("scope_check=blocker")
+        if out_of_scope:
+            print("scope_out_of_allowed:")
+            for path in out_of_scope:
+                print(f"- {path}")
+        if forbidden_dirty:
+            print("scope_forbidden_dirty:")
+            for path in forbidden_dirty:
+                print(f"- {path}")
+        if missing_required:
+            print("scope_missing_required:")
+            for path in missing_required:
+                print(f"- {path}")
+        raise SystemExit(2 if fail_on_blocker else 0)
+
+    print("scope_check=pass")
+    PY
+
+# Shared impact classifier for repo-loop-validation-v1 commands
+_loop-impact-classify:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    python3 - <<'PY'
+    import subprocess
+
+    raw = subprocess.run(
+        ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", "."],
+        check=False,
+        stdout=subprocess.PIPE,
+    ).stdout.split(b"\0")
+
+    paths = []
+    index = 0
+    while index < len(raw):
+        entry = raw[index]
+        if not entry:
+            index += 1
+            continue
+        text = entry.decode("utf-8", "surrogateescape")
+        status = text[:2]
+        path = text[3:] if len(text) > 3 else ""
+        if path:
+            paths.append(path)
+        index += 2 if ("R" in status or "C" in status) else 1
+
+    wide_prefixes = ("src/", "bin/", "scripts/", "tests/", "vscode-client/", ".github/")
+    wide_exact = {"package.json", "bun.lock", "tsconfig.json", "tsconfig.build.json"}
+    expanded_exact = {"justfile", "policy/engineering-lane.json"}
+    expanded_prefixes = ("docs/", "governance/task-scopes/")
+
+    if not paths:
+        impact = "bounded"
+        next_command = "just loop-verify-fast"
+        reason = "no dirty paths"
+    elif any(path in wide_exact or path.startswith(wide_prefixes) for path in paths):
+        impact = "wide"
+        next_command = "just loop-impact-wide"
+        reason = "runtime, test, script, package, CI, or build-surface changes detected"
+    elif any(path in expanded_exact or path.startswith(expanded_prefixes) for path in paths):
+        impact = "expanded"
+        next_command = "just loop-impact-run"
+        reason = "repo control-plane/docs/governance changes detected"
+    else:
+        impact = "bounded"
+        next_command = "just loop-impact-run"
+        reason = "localized non-runtime changes detected"
+
+    print("changed_files:")
+    if paths:
+        for path in paths:
+            print(f"- {path}")
+    else:
+        print("- <none>")
+    print(f"impact={impact}")
+    print(f"next={next_command}")
+    print(f"reason={reason}")
+    PY
+
+# Non-failing repo-loop-validation-v1 diagnostics for prompt/agent loops
+loop-doctor:
+    #!/usr/bin/env bash
+    set +e
+    echo "phase=loop-doctor"
+    echo "result=diagnostic"
+    echo "validation_scope=repo diagnostics, exact dirty paths, task-scope snapshot when present"
+    echo "dirty_paths:"
+    git status --short --untracked-files=all -- . || true
+    echo "tools:"
+    {{bun}} --version || true
+    just --version || true
+    just --quiet _loop-scope-check 0 || true
+    echo "server_status:"
+    just status || true
+    echo "authority_boundary=diagnostic-only; AK task/evidence/decision authority remains outside this command"
+
+# Focused inner-loop validation for current changes
+loop-verify-fast:
+    @echo "phase=loop-verify-fast"
+    @echo "validation_scope=minimal smoke: tests/mcp-http-init.test.ts and tests/layer2-parse-cap-boundaries.test.ts"
+    @just test-smoke
+
+# Classify changed-file risk for loop validation
+loop-impact-plan:
+    @echo "phase=loop-impact-plan"
+    @just --quiet _loop-impact-classify
+    @echo "authority_boundary=plan-only; caller chooses/runs checks and records evidence"
+
+# Run bounded/expanded impact validation
+loop-impact-run:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    plan=$(just --quiet _loop-impact-classify)
+    impact=$(printf '%s\n' "$plan" | awk -F= '$1 == "impact" { print $2; exit }')
+    echo "phase=loop-impact-run"
+    printf '%s\n' "$plan"
+    echo "selected_impact=$impact"
+    if [ "$impact" = "wide" ]; then
+        echo "result=blocked"
+        echo "reason=wide impact requires explicit acceptance via LOOP_WIDE_REASON and just loop-impact-wide"
+        exit 2
+    fi
+    echo "validation_scope=normal sliced/batched test path via just test"
+    just test
+
+# Run explicitly accepted wide validation
+loop-impact-wide:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -z "${LOOP_WIDE_REASON:-}" ]; then
+        echo "phase=loop-impact-wide"
+        echo "result=blocked"
+        echo "reason=missing LOOP_WIDE_REASON for explicitly accepted wide validation"
+        exit 2
+    fi
+    echo "phase=loop-impact-wide"
+    echo "acceptance_reason=$LOOP_WIDE_REASON"
+    echo "validation_scope=CI-like local sliced test path via just test-ci-like"
+    just test-ci-like
+
+# Repo-declared landing/readiness gate
+loop-landing-check:
+    @echo "phase=loop-landing-check"
+    @echo "repo_declared_gate=just alpha-mvp-check"
+    @echo "scope_guard=just _loop-scope-check 1"
+    @just --quiet _loop-scope-check 1
+    @echo "authority_boundary=repo-local readiness only; AK/CI/release/governance authority remains outside this command"
+    @just alpha-mvp-check
+
 # === CLEANUP ===
 
 # Clean build artifacts and logs
