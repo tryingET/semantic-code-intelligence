@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { CoreError } from '../errors.js';
 import { overlayStore } from '../overlay-store.js';
 import { resolveWorkspacePath } from '../workspace-path.js';
-import { normalizeWorkspaceUri } from './request-semantics.js';
+import { normalizeWorkspaceUri, uriToWorkspacePath } from './request-semantics.js';
 import type { SnapshotWorkflowResult } from './snapshot-patch-workflow.js';
 
 type TextEdit = {
@@ -80,7 +80,7 @@ export class RenameWorkflowService {
         validateRequired(args, ['oldName', 'newName']);
         const result = await this.coreAnalyzer.rename(
             buildRenameRequest({
-                uri: this.normalizeUri(args.file || 'file://workspace'),
+                uri: await this.containedWorkspaceUri(args.file, 'apply_rename file'),
                 position: createPosition(0, 0),
                 identifier: args.oldName,
                 newName: args.newName,
@@ -248,11 +248,21 @@ export class RenameWorkflowService {
         return normalizeWorkspaceUri(uri, this.deps.workspaceRoot());
     }
 
+    private async containedWorkspaceUri(value: unknown, inputLabel: string): Promise<string> {
+        const root = this.deps.workspaceRoot();
+        const raw = typeof value === 'string' && value.trim() ? value.trim() : 'file://workspace';
+        if (raw === 'file://workspace') return this.normalizeUri(raw);
+        const requestedPath = uriToWorkspacePath(raw, root);
+        const resolved = await resolveWorkspacePath(requestedPath, { workspaceRoot: root, inputLabel });
+        return this.normalizeUri(resolved.realPath);
+    }
+
     private async computePlanRename(args: Record<string, any>) {
         validateRequired(args, ['oldName', 'newName']);
+        const requestUri = await this.containedWorkspaceUri(args.file, 'plan_rename file');
         const result = await this.coreAnalyzer.rename(
             buildRenameRequest({
-                uri: this.normalizeUri(args.file || 'file://workspace'),
+                uri: requestUri,
                 position: createPosition(0, 0),
                 identifier: args.oldName,
                 newName: args.newName,
@@ -264,7 +274,7 @@ export class RenameWorkflowService {
         if (Object.keys(changes).length === 0 && typeof args.file === 'string' && args.file.trim()) {
             try {
                 const definitions = await this.coreAnalyzer.findDefinitionAsync({
-                    uri: this.normalizeUri(args.file),
+                    uri: requestUri,
                     position: createPosition(0, 0),
                     identifier: args.oldName,
                     includeDeclaration: true,

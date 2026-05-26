@@ -43,6 +43,11 @@ describe('tool boundary contract', () => {
 
         const explore = tool('explore_codebase').inputSchema.properties;
         expect(explore.conceptual).toBeDefined();
+
+        const applyRename = tool('apply_rename').inputSchema;
+        expect(applyRename.required).toEqual(['oldName', 'newName']);
+        expect(applyRename.properties.oldName).toBeDefined();
+        expect(applyRename.properties.changes).toBeUndefined();
     });
 
     test('run_checks accepts common validation command shapes without shell execution', async () => {
@@ -66,12 +71,26 @@ describe('tool boundary contract', () => {
 
         const envResult = await store.runChecks(snap.id, ['env'], 5, { workspaceRoot: root });
         const evalResult = await store.runChecks(snap.id, ['bun -e "console.log(1)"'], 5, { workspaceRoot: root });
+        const outsideReadResult = await store.runChecks(snap.id, ['grep root /etc/passwd'], 5, { workspaceRoot: root });
+        const traversalReadResult = await store.runChecks(snap.id, ['grep root ../../../../etc/passwd'], 5, { workspaceRoot: root });
+        const nodeOptionsResult = await store.runChecks(snap.id, ['NODE_OPTIONS=--require=/tmp/pwn.cjs true'], 5, { workspaceRoot: root });
+        const npmConfigResult = await store.runChecks(snap.id, ['npm_config_userconfig=/tmp/npmrc true'], 5, { workspaceRoot: root });
 
         expect(envResult.ok).toBe(false);
         expect(envResult.output).toContain('Rejected check command');
         expect(envResult.commands[0]).toMatchObject({ command: 'env', ok: false, exitCode: null, timedOut: false });
         expect(evalResult.ok).toBe(false);
         expect(evalResult.output).toContain('unsupported bun validation subcommand');
+        expect(outsideReadResult.ok).toBe(false);
+        expect(outsideReadResult.output).toContain('workspace-relative paths');
+        expect(outsideReadResult.output).not.toContain('root:x:0:0');
+        expect(traversalReadResult.ok).toBe(false);
+        expect(traversalReadResult.output).toContain('workspace-relative paths');
+        expect(traversalReadResult.output).not.toContain('root:x:0:0');
+        expect(nodeOptionsResult.ok).toBe(false);
+        expect(nodeOptionsResult.output).toContain('unsupported validation environment variable: NODE_OPTIONS');
+        expect(npmConfigResult.ok).toBe(false);
+        expect(npmConfigResult.output).toContain('unsupported validation environment variable: npm_config_userconfig');
     });
 
     test('snapshot artifacts fail closed when .ontology is a symlink', async () => {

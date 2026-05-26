@@ -20,7 +20,7 @@ describe('CodeAnalysisWorkflowService', () => {
             },
         });
 
-        const result = payload(await service.getCompletions({ position: { line: 0, character: 0 } }));
+        const result = payload(await service.getCompletions({ file: 'target.ts', position: { line: 0, character: 0 } }));
         expect(result).toMatchObject({ schemaVersion: 2, requestId: 'comp-1', count: 1 });
         expect(result.completions[0]).toMatchObject({ label: 'alpha', kind: 3, detail: 'demo', confidence: 0.8 });
     });

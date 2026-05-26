@@ -5,7 +5,7 @@ import { HTTPServer } from '../src/servers/http';
 const canBind = await canBindTcp('127.0.0.1');
 const bindDescribe = canBind ? describe : describe.skip;
 
-bindDescribe('HTTP OpenAPI includes pipelines endpoints', () => {
+bindDescribe('HTTP OpenAPI includes contract endpoints', () => {
     let server: HTTPServer;
     const host = '127.0.0.1';
     const port = 7015; // dedicated test port
@@ -31,5 +31,22 @@ bindDescribe('HTTP OpenAPI includes pipelines endpoints', () => {
         expect(paths['/api/v1/pipelines/runs']).toBeDefined();
         expect(paths['/api/v1/pipelines/run']).toBeDefined();
         expect(paths['/api/v1/pipelines']).toBeDefined();
+        expect(paths['/api/v1/plan-rename']).toBeDefined();
+        expect(paths['/api/v1/apply-rename']).toBeDefined();
+        expect(paths['/api/v1/symbol-map']).toBeDefined();
+    });
+
+    test('legacy OpenAPI documents MCP-compatible aliases', async () => {
+        const res = await fetch(`${base}/openapi.json`);
+        expect(res.status).toBe(200);
+        const spec = await res.json();
+        const planSchema = spec.paths['/api/v1/plan-rename'].post.requestBody.content['application/json'].schema;
+        const symbolMapSchema = spec.paths['/api/v1/symbol-map'].post.requestBody.content['application/json'].schema;
+        const exploreSchema = spec.paths['/api/v1/explore'].post.requestBody.content['application/json'].schema;
+
+        expect(planSchema.properties.oldName).toBeDefined();
+        expect(planSchema.anyOf).toEqual([{ required: ['identifier'] }, { required: ['oldName'] }]);
+        expect(symbolMapSchema.properties.symbol).toBeDefined();
+        expect(exploreSchema.properties.symbol).toBeDefined();
     });
 });

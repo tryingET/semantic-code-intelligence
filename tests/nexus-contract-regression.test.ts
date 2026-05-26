@@ -111,6 +111,37 @@ describe('nexus contract regressions', () => {
         expect(response.body).not.toContain('OutsideHttpSecret = 1');
     });
 
+    test('HTTP legacy plan-rename accepts MCP-style oldName alias', async () => {
+        const workspaceRoot = tempWorkspace();
+        const target = join(workspaceRoot, 'sample.ts');
+        writeFileSync(target, 'export const OldHttpName = 1;\n', 'utf8');
+        let seen: any = null;
+        const core: any = {
+            config: { workspaceRoot },
+            rename: async (request: any) => {
+                seen = request;
+                return {
+                    data: { changes: { [request.uri]: [] } },
+                    performance: {},
+                    requestId: 'rename-alias',
+                };
+            },
+            sharedServices: {},
+        };
+        const adapter = new HTTPAdapter(core, { enableCors: false, enableOpenAPI: false });
+
+        const response = await adapter.handleRequest({
+            method: 'POST',
+            url: '/api/v1/plan-rename',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ oldName: 'OldHttpName', newName: 'NewHttpName', file: target }),
+        });
+
+        expect(response.status).toBe(200);
+        expect(seen.oldName).toBe('OldHttpName');
+        expect(JSON.parse(response.body).success).toBe(true);
+    });
+
     test('HTTP apply-rename rejects direct changes instead of reporting false success', async () => {
         const workspaceRoot = tempWorkspace();
         let renameCalled = false;

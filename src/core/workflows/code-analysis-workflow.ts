@@ -20,15 +20,17 @@ export class CodeAnalysisWorkflowService {
     constructor(private readonly deps: CodeAnalysisWorkflowDeps) {}
 
     async getCompletions(args: Record<string, any>): Promise<SnapshotWorkflowResult> {
-        validateRequired(args, ['position']);
+        const fileInput = args?.file ?? args?.uri;
+        validateRequired({ file: fileInput, position: args?.position }, ['file', 'position']);
         await initializeBestEffort(this.deps.coreAnalyzer);
 
         if (typeof this.deps.coreAnalyzer.getCompletions !== 'function') {
             throw new CoreError('Internal', 'Core analyzer does not support getCompletions');
         }
 
+        const file = await this.deps.resolveWorkspaceFile(fileInput, 'get_completions file');
         const request = buildCompletionRequest({
-            uri: this.normalizeUri(String(args.file || args.uri || 'file://workspace')),
+            uri: file.uri,
             position: normalizePosition(args.position),
             maxResults: Math.min(Number(args.maxResults || 20), 200),
         });

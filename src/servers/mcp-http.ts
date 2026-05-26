@@ -382,6 +382,7 @@ app.post('/mcp', async (req, res) => {
             return;
         }
 
+        const originalAccept = String(req.headers.accept || '');
         ensureMcpAcceptHeaders(req);
 
         // SDK request schema validation can surface "missing params" as InternalError (-32603).
@@ -392,7 +393,8 @@ app.post('/mcp', async (req, res) => {
                 const params = body.params;
                 if (!params || typeof params !== 'object' || Array.isArray(params)) {
                     const core = new CoreError('InvalidParams', 'Missing required parameters: params');
-                    sendSseJsonRpcError(res, core, body.id ?? null);
+                    if (/text\/event-stream/i.test(originalAccept)) sendSseJsonRpcError(res, core, body.id ?? null);
+                    else sendJsonRpcError(res, core, body.id ?? null, 400);
                     return;
                 }
             }

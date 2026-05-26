@@ -385,13 +385,15 @@ export class ToolRegistry {
         },
         {
             name: 'apply_rename',
-            description: 'Apply a previously computed rename plan (WorkspaceEdit)',
+            description: 'Apply a rename by oldName/newName. Direct WorkspaceEdit application is unsupported; use snapshot workflows for reviewed patches.',
             inputSchema: {
                 type: 'object',
                 properties: {
-                    changes: { type: 'object' },
+                    oldName: { type: 'string' },
+                    newName: { type: 'string' },
+                    file: { type: 'string' },
                 },
-                required: ['changes'],
+                required: ['oldName', 'newName'],
             },
         },
         {
@@ -449,7 +451,7 @@ export class ToolRegistry {
                     },
                     maxResults: { type: 'number' },
                 },
-                required: ['position'],
+                required: ['file', 'position'],
             },
         },
         {

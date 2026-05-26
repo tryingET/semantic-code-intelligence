@@ -131,27 +131,30 @@ export class MCPServer {
 
         console.error('Ontology MCP Server initialized');
 
-        // Start metrics endpoint on loopback (does not interfere with stdio)
-        try {
-            const port = Number(process.env.MCP_STDIO_PROM_PORT || 9466);
-            serve({
-                hostname: '127.0.0.1',
-                port,
-                fetch: async (req) => {
-                    const url = new URL(req.url);
-                    if (url.pathname === '/metrics' && req.method === 'GET') {
-                        const text = metricsRegistry.renderPrometheusText();
-                        return new Response(text, {
-                            status: 200,
-                            headers: { 'Content-Type': 'text/plain; version=0.0.4', 'Cache-Control': 'no-cache' },
-                        });
-                    }
-                    return new Response('Not found', { status: 404 });
-                },
-            });
-            console.error(`[MCP stdio] Metrics on http://127.0.0.1:${port}/metrics`);
-        } catch (err) {
-            console.error('[MCP stdio] Metrics server failed to start:', (err as Error)?.message || String(err));
+        // Start metrics endpoint on loopback only when explicitly requested.
+        // Stdio protocol servers should not open a TCP listener by default.
+        if (process.env.MCP_STDIO_PROM_PORT) {
+            try {
+                const port = Number(process.env.MCP_STDIO_PROM_PORT);
+                serve({
+                    hostname: '127.0.0.1',
+                    port,
+                    fetch: async (req) => {
+                        const url = new URL(req.url);
+                        if (url.pathname === '/metrics' && req.method === 'GET') {
+                            const text = metricsRegistry.renderPrometheusText();
+                            return new Response(text, {
+                                status: 200,
+                                headers: { 'Content-Type': 'text/plain; version=0.0.4', 'Cache-Control': 'no-cache' },
+                            });
+                        }
+                        return new Response('Not found', { status: 404 });
+                    },
+                });
+                console.error(`[MCP stdio] Metrics on http://127.0.0.1:${port}/metrics`);
+            } catch (err) {
+                console.error('[MCP stdio] Metrics server failed to start:', (err as Error)?.message || String(err));
+            }
         }
     }
 

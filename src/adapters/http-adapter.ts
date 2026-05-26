@@ -450,12 +450,13 @@ export class HTTPAdapter {
     private async handleRename(request: HTTPRequest): Promise<HTTPResponse> {
         try {
             const body = strictJsonParse(request.body || '{}');
-            validateRequired(body, ['identifier', 'newName']);
+            const identifier = body.identifier ?? body.oldName;
+            validateRequired({ identifier, newName: body.newName }, ['identifier', 'newName']);
 
             const coreRequest = buildRenameRequest({
                 uri: await this.containedRequestUri(body.file || body.uri, 'rename file', 'file://workspace'),
                 position: createPosition(0, 0),
-                identifier: body.identifier,
+                identifier,
                 newName: body.newName,
                 dryRun: body.dryRun ?? false,
             });
@@ -495,12 +496,13 @@ export class HTTPAdapter {
     private async handlePlanRename(request: HTTPRequest): Promise<HTTPResponse> {
         try {
             const body = strictJsonParse(request.body || '{}');
-            validateRequired(body, ['identifier', 'newName']);
+            const identifier = body.identifier ?? body.oldName;
+            validateRequired({ identifier, newName: body.newName }, ['identifier', 'newName']);
 
             const coreRequest = buildRenameRequest({
                 uri: await this.containedRequestUri(body.file || body.uri, 'plan-rename file', 'file://workspace'),
                 position: createPosition(0, 0),
-                identifier: body.identifier,
+                identifier,
                 newName: body.newName,
                 dryRun: true,
             });
@@ -550,11 +552,12 @@ export class HTTPAdapter {
                 throw new Error('Direct changes application is unsupported; provide identifier/newName or use snapshot apply workflows');
             }
 
-            validateRequired(body, ['identifier', 'newName']);
+            const identifier = body.identifier ?? body.oldName;
+            validateRequired({ identifier, newName: body.newName }, ['identifier', 'newName']);
             const coreRequest = buildRenameRequest({
                 uri: await this.containedRequestUri(body.file || body.uri, 'apply-rename file', 'file://workspace'),
                 position: createPosition(0, 0),
-                identifier: body.identifier,
+                identifier,
                 newName: body.newName,
                 dryRun: false,
             });
@@ -575,9 +578,10 @@ export class HTTPAdapter {
     private async handleBuildSymbolMap(request: HTTPRequest): Promise<HTTPResponse> {
         try {
             const body = strictJsonParse(request.body || '{}');
-            validateRequired(body, ['identifier']);
+            const identifier = body.identifier ?? body.symbol;
+            validateRequired({ identifier }, ['identifier']);
             const res = await (this.coreAnalyzer as any).buildSymbolMap({
-                identifier: body.identifier,
+                identifier,
                 uri: await this.containedRequestUri(body.file || body.uri, 'symbol-map file', 'file://workspace'),
                 maxFiles: Math.min(Number(body.maxFiles || 20), 100),
                 astOnly: !!body.astOnly,
@@ -594,11 +598,12 @@ export class HTTPAdapter {
     private async handleCompletions(request: HTTPRequest): Promise<HTTPResponse> {
         try {
             const body = strictJsonParse(request.body || '{}');
-            validateRequired(body, ['position']);
+            const file = body.file || body.uri;
+            validateRequired({ file, position: body.position }, ['file', 'position']);
 
             // Create cache key from request essentials
             const cacheKey = this.createCacheKey('completions', {
-                file: body.file || body.uri,
+                file,
                 position: body.position,
                 triggerCharacter: body.triggerCharacter,
                 maxResults: body.maxResults,
@@ -615,7 +620,7 @@ export class HTTPAdapter {
             }
 
             const coreRequest = buildCompletionRequest({
-                uri: await this.containedRequestUri(body.file || body.uri, 'completion file', 'file://unknown'),
+                uri: await this.containedRequestUri(file, 'completion file', 'file://unknown'),
                 position: normalizePosition(body.position),
                 triggerCharacter: body.triggerCharacter,
                 maxResults: body.maxResults || this.config.maxResults,
@@ -654,12 +659,13 @@ export class HTTPAdapter {
     private async handleExplore(request: HTTPRequest): Promise<HTTPResponse> {
         try {
             const body = strictJsonParse(request.body || '{}');
-            validateRequired(body, ['identifier']);
+            const identifier = body.identifier ?? body.symbol;
+            validateRequired({ identifier }, ['identifier']);
 
             const uri = await this.containedRequestUri(body.file || body.uri, 'explore file', 'file://workspace');
             const result = await (this.coreAnalyzer as any).exploreCodebase({
                 uri,
-                identifier: body.identifier,
+                identifier,
                 includeDeclaration: body.includeDeclaration ?? true,
                 maxResults: body.maxResults || this.config.maxResults,
                 conceptual: !!body.conceptual,
@@ -2008,9 +2014,11 @@ export class HTTPAdapter {
                                 'application/json': {
                                     schema: {
                                         type: 'object',
-                                        required: ['identifier', 'newName'],
+                                        required: ['newName'],
+                                        anyOf: [{ required: ['identifier'] }, { required: ['oldName'] }],
                                         properties: {
                                             identifier: { type: 'string' },
+                                            oldName: { type: 'string', description: 'MCP-compatible alias for identifier' },
                                             newName: { type: 'string' },
                                             file: { type: 'string' },
                                             uri: { type: 'string' },
@@ -2030,6 +2038,71 @@ export class HTTPAdapter {
                         },
                     },
                 },
+                [api('/plan-rename')]: {
+                    post: {
+                        summary: 'Preview a symbol rename without applying it',
+                        requestBody: {
+                            required: true,
+                            content: {
+                                'application/json': {
+                                    schema: {
+                                        type: 'object',
+                                        required: ['newName'],
+                                        anyOf: [{ required: ['identifier'] }, { required: ['oldName'] }],
+                                        properties: {
+                                            identifier: { type: 'string' },
+                                            oldName: { type: 'string', description: 'MCP-compatible alias for identifier' },
+                                            newName: { type: 'string' },
+                                            file: { type: 'string' },
+                                            uri: { type: 'string' },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                        responses: {
+                            '200': {
+                                description: 'Preview success',
+                                content: {
+                                    'application/json': { schema: { $ref: '#/components/schemas/WorkspaceEdit' } },
+                                },
+                            },
+                        },
+                    },
+                },
+                [api('/apply-rename')]: {
+                    post: {
+                        summary: 'Apply a symbol rename by identifier/oldName and newName',
+                        requestBody: {
+                            required: true,
+                            content: {
+                                'application/json': {
+                                    schema: {
+                                        type: 'object',
+                                        required: ['newName'],
+                                        anyOf: [{ required: ['identifier'] }, { required: ['oldName'] }],
+                                        properties: {
+                                            identifier: { type: 'string' },
+                                            oldName: { type: 'string', description: 'MCP-compatible alias for identifier' },
+                                            newName: { type: 'string' },
+                                            file: { type: 'string' },
+                                            uri: { type: 'string' },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                        responses: {
+                            '200': {
+                                description: 'Apply success',
+                                content: {
+                                    'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } },
+                                },
+                            },
+                            '400': { description: 'Bad Request' },
+                        },
+                    },
+                },
                 [api('/completions')]: {
                     post: {
                         summary: 'Get completions at a position',
@@ -2039,7 +2112,7 @@ export class HTTPAdapter {
                                 'application/json': {
                                     schema: {
                                         type: 'object',
-                                        required: ['position'],
+                                        required: ['file', 'position'],
                                         properties: {
                                             file: { type: 'string' },
                                             uri: { type: 'string' },
@@ -2076,6 +2149,38 @@ export class HTTPAdapter {
                         },
                     },
                 },
+                [api('/symbol-map')]: {
+                    post: {
+                        summary: 'Build a targeted symbol map',
+                        requestBody: {
+                            required: true,
+                            content: {
+                                'application/json': {
+                                    schema: {
+                                        type: 'object',
+                                        anyOf: [{ required: ['identifier'] }, { required: ['symbol'] }],
+                                        properties: {
+                                            identifier: { type: 'string' },
+                                            symbol: { type: 'string', description: 'MCP-compatible alias for identifier' },
+                                            file: { type: 'string' },
+                                            uri: { type: 'string' },
+                                            maxFiles: { type: 'integer' },
+                                            astOnly: { type: 'boolean' },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                        responses: {
+                            '200': {
+                                description: 'Success',
+                                content: {
+                                    'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } },
+                                },
+                            },
+                        },
+                    },
+                },
                 [api('/explore')]: {
                     post: {
                         summary: 'Explore codebase (definitions + references)',
@@ -2085,9 +2190,10 @@ export class HTTPAdapter {
                                 'application/json': {
                                     schema: {
                                         type: 'object',
-                                        required: ['identifier'],
+                                        anyOf: [{ required: ['identifier'] }, { required: ['symbol'] }],
                                         properties: {
                                             identifier: { type: 'string' },
+                                            symbol: { type: 'string', description: 'MCP-compatible alias for identifier' },
                                             file: { type: 'string' },
                                             uri: { type: 'string' },
                                             includeDeclaration: { type: 'boolean' },

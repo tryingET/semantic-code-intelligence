@@ -70,6 +70,15 @@ export class OverlayStore {
         return snapshotsDir;
     }
 
+    private assertSafeSnapshotStorageRootAfterCreate(workspaceRoot?: string): string {
+        const base = this.resolveWorkspaceBase(workspaceRoot);
+        const ontologyDir = path.join(base, '.ontology');
+        const snapshotsDir = path.join(ontologyDir, 'snapshots');
+        this.assertSafeSnapshotStoragePath(base, ontologyDir, '.ontology');
+        this.assertSafeSnapshotStoragePath(base, snapshotsDir, '.ontology/snapshots');
+        return snapshotsDir;
+    }
+
     private async logProgress(id: string, msg: string): Promise<void> {
         if (!this.wantProgress()) return;
         try {
@@ -239,11 +248,14 @@ export class OverlayStore {
     }
 
     private async acquireMaterializeFileLock(snapshotId: string, workspaceRoot?: string): Promise<() => Promise<void>> {
-        const lockDir = path.join(this.snapshotsRoot(workspaceRoot), `${snapshotId}.lock`);
+        const root = this.snapshotsRoot(workspaceRoot);
+        const lockDir = path.join(root, `${snapshotId}.lock`);
         const deadline = Date.now() + 30_000;
         while (true) {
             try {
+                this.assertSafeSnapshotStorageRootAfterCreate(workspaceRoot);
                 await fsp.mkdir(lockDir, { recursive: false });
+                this.assertSafeSnapshotStorageRootAfterCreate(workspaceRoot);
                 await fsp.writeFile(path.join(lockDir, 'owner.json'), JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() }), 'utf8');
                 return async () => { await fsp.rm(lockDir, { recursive: true, force: true }); };
             } catch (error: any) {
@@ -763,9 +775,32 @@ export class OverlayStore {
     }
 
     private isAllowedCheckEnvKey(key: string): boolean {
-        return /^(BUN_JOBS|TIMEOUT|NODE_OPTIONS|CI|FORCE_COLOR|NO_COLOR|LANG|LC_[A-Z_]+)$/.test(key) ||
-            key.startsWith('BUN_') ||
-            key.startsWith('npm_config_');
+        return /^(BUN_JOBS|TIMEOUT|CI|FORCE_COLOR|NO_COLOR|LANG|LC_[A-Z_]+)$/.test(key);
+    }
+
+    private checkCommandPathBoundaryViolation(words: string[], env: Record<string, string>): string | null {
+        for (const [key, value] of Object.entries(env)) {
+            if (this.valueMentionsAbsolutePath(value)) return `validation environment variable ${key} must not reference absolute paths`;
+        }
+        for (const word of words.slice(1)) {
+            if (this.valueMentionsAbsolutePath(word)) return `validation command argument must use workspace-relative paths: ${word}`;
+        }
+        return null;
+    }
+
+    private valueMentionsAbsolutePath(value: string): boolean {
+        const raw = String(value || '');
+        if (/file:\/\//i.test(raw)) return true;
+        const candidates = [raw];
+        const equalsIndex = raw.indexOf('=');
+        if (equalsIndex > 0) candidates.push(raw.slice(equalsIndex + 1));
+        return candidates.some((candidate) => path.isAbsolute(candidate) || this.valueMentionsParentTraversal(candidate));
+    }
+
+    private valueMentionsParentTraversal(value: string): boolean {
+        return value
+            .split(/[\\/]+/)
+            .some((segment) => segment === '..');
     }
 
     private resolveCheckCommand(command: string): { ok: true; words: string[]; env: Record<string, string> } | { ok: false; message: string } {
@@ -800,6 +835,8 @@ export class OverlayStore {
                 return { ok: false, message: `unsupported git validation subcommand: ${subcommand || '<missing>'}` };
             }
         }
+        const pathBoundaryViolation = this.checkCommandPathBoundaryViolation(words, env);
+        if (pathBoundaryViolation) return { ok: false, message: pathBoundaryViolation };
         return { ok: true, words, env };
     }
 
@@ -809,11 +846,11 @@ export class OverlayStore {
             const value = process.env[key];
             if (typeof value === 'string') env[key] = value;
         };
-        for (const key of ['PATH', 'HOME', 'TMPDIR', 'TMP', 'TEMP', 'CI', 'FORCE_COLOR', 'NO_COLOR', 'BUN_INSTALL', 'BUN_JOBS', 'NODE_OPTIONS', 'XDG_CACHE_HOME', 'LANG']) {
+        for (const key of ['PATH', 'HOME', 'TMPDIR', 'TMP', 'TEMP', 'CI', 'FORCE_COLOR', 'NO_COLOR', 'BUN_INSTALL', 'BUN_JOBS', 'XDG_CACHE_HOME', 'LANG']) {
             preserve(key);
         }
         for (const [key, value] of Object.entries(process.env)) {
-            if (typeof value === 'string' && (key.startsWith('LC_') || key.startsWith('npm_config_') || key.startsWith('BUN_'))) {
+            if (typeof value === 'string' && key.startsWith('LC_')) {
                 env[key] = value;
             }
         }
@@ -863,9 +900,10 @@ export class OverlayStore {
 
     private async ensureMaterializedUnlocked(snapshotId: string, allowCurrentMaterializedWithWorkspaceDrift = false): Promise<string | null> {
         const snap = this.ensureSnapshot(snapshotId);
-        const snapsRoot = this.snapshotsRoot(snap.workspaceRoot);
+        let snapsRoot = this.snapshotsRoot(snap.workspaceRoot);
         const dir = path.join(snapsRoot, snapshotId);
         await fsp.mkdir(snapsRoot, { recursive: true }).catch(() => {});
+        snapsRoot = this.assertSafeSnapshotStorageRootAfterCreate(snap.workspaceRoot);
         const materializedMarker = path.join(dir, '.materialized');
         const preferPartial = process.env.SNAPSHOT_PARTIAL === '1';
         const base = this.resolveWorkspaceBase(snap.workspaceRoot);

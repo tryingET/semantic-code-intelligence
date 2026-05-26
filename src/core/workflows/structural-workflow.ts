@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { CoreError } from '../errors.js';
 import { overlayStore } from '../overlay-store.js';
-import { resolveWorkspacePath } from '../workspace-path.js';
+import { openWorkspaceFileForRead, resolveWorkspacePath } from '../workspace-path.js';
 import { snapshotArtifactLinks, type SnapshotWorkflowResult } from './snapshot-patch-workflow.js';
 
 export function findAstGrepBinary(): string | null {
@@ -230,8 +230,16 @@ export class StructuralWorkflowService {
                         throw new CoreError('InvalidParams', 'ast-grep produced overlapping structural replacements', { file: rel });
                     }
                 }
-                const abs = path.join(workspaceRoot, rel);
-                const original = await fs.readFile(abs, 'utf8');
+                const opened = await openWorkspaceFileForRead(rel, {
+                    workspaceRoot,
+                    inputLabel: 'structural match file',
+                });
+                let original = '';
+                try {
+                    original = await opened.handle.readFile('utf8');
+                } finally {
+                    await opened.handle.close().catch(() => undefined);
+                }
                 const modified = applyStructuralReplacements(original, edits);
                 if (modified === original) continue;
                 replacementCount += edits.length;

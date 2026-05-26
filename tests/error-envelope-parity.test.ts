@@ -366,8 +366,8 @@ describe('Error envelope parity (edge cases)', () => {
                     method: 'tools/call',
                 }),
             });
-            expect(res.status).toBe(200);
-            expect(String(res.headers.get('content-type') || '')).toContain('text/event-stream');
+            expect(res.status).toBe(400);
+            expect(String(res.headers.get('content-type') || '')).toContain('application/json');
             const body = await parseMcpBody(res);
             expect(body.error?.code).toBe(-32602);
             expect(String(body.error?.message || '')).toContain('Missing required parameters');

@@ -36,6 +36,24 @@ describe('StructuralWorkflowService', () => {
         expect(built.diff).toContain('+const renamed = 1;');
     });
 
+    test('rejects structural diff files that escape through symlinks', async () => {
+        const workspaceRoot = tempWorkspace();
+        const outsideRoot = tempWorkspace();
+        writeFileSync(join(outsideRoot, 'secret.ts'), 'const secret = 1;\n', 'utf8');
+        symlinkSync(join(outsideRoot, 'secret.ts'), join(workspaceRoot, 'linked-secret.ts'));
+        const service = new StructuralWorkflowService({ workspaceRoot: () => workspaceRoot });
+
+        await expect(
+            service.buildStructuralDiff([
+                {
+                    file: 'linked-secret.ts',
+                    replacement: 'const exposed',
+                    range: { byteOffset: { start: 0, end: 'const secret'.length } },
+                },
+            ])
+        ).rejects.toThrow('workspace');
+    });
+
     test('rejects structural paths outside the configured workspace', async () => {
         const workspaceRoot = tempWorkspace();
         await expect(normalizeStructuralPaths(['../outside'], workspaceRoot)).rejects.toThrow('structural path must stay within the workspace');

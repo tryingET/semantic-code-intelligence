@@ -282,6 +282,54 @@ describe('Nexus workflow boundary regressions', () => {
         }
     });
 
+    test('plan_rename rejects file inputs outside the configured workspace before core delegation', async () => {
+        const workspace = mkdtempSync(join(tmpdir(), 'sci-nexus-rename-ws-'));
+        const outside = mkdtempSync(join(tmpdir(), 'sci-nexus-rename-outside-'));
+        try {
+            const outsideFile = join(outside, 'outside.ts');
+            writeFileSync(outsideFile, 'export const SecretRename = 1;\n');
+            const routerCore = {
+                config: { workspaceRoot: workspace },
+                rename: async () => {
+                    throw new Error('core analyzer should not receive outside file');
+                },
+            } as unknown as ConstructorParameters<typeof ToolWorkflowRouter>[0];
+            const router = new ToolWorkflowRouter(routerCore);
+
+            await expect(
+                router.execute('plan_rename', { oldName: 'SecretRename', newName: 'RenamedSecret', file: outsideFile })
+            ).rejects.toThrow('workspace');
+        } finally {
+            rmSync(workspace, { recursive: true, force: true });
+            rmSync(outside, { recursive: true, force: true });
+        }
+    });
+
+    test('get_completions requires an in-workspace file before core delegation', async () => {
+        const workspace = mkdtempSync(join(tmpdir(), 'sci-nexus-completion-ws-'));
+        const outside = mkdtempSync(join(tmpdir(), 'sci-nexus-completion-outside-'));
+        try {
+            const outsideFile = join(outside, 'outside.ts');
+            writeFileSync(outsideFile, 'export const SecretCompletion = 1;\n');
+            const routerCore = {
+                config: { workspaceRoot: workspace },
+                initialize: async () => {},
+                getCompletions: async () => {
+                    throw new Error('core analyzer should not receive invalid completion context');
+                },
+            } as unknown as ConstructorParameters<typeof ToolWorkflowRouter>[0];
+            const router = new ToolWorkflowRouter(routerCore);
+
+            await expect(router.execute('get_completions', { position: { line: 0, character: 0 } })).rejects.toThrow('file');
+            await expect(
+                router.execute('get_completions', { file: outsideFile, position: { line: 0, character: 0 } })
+            ).rejects.toThrow('workspace');
+        } finally {
+            rmSync(workspace, { recursive: true, force: true });
+            rmSync(outside, { recursive: true, force: true });
+        }
+    });
+
     test('HTTP response cache varies on definition request semantics', async () => {
         let calls = 0;
         const file = resolve(process.cwd(), 'package.json');
