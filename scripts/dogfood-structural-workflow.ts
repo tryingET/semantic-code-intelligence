@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 const outputPath = '.test-results/structural-workflow-dogfood.json';
@@ -54,7 +54,7 @@ function compactSample(value: unknown): unknown {
 
 function callSciWorkflow(name: string, args: Record<string, unknown>, observation: string, expectedOk: boolean | null = true) {
     const started = Date.now();
-    const proc = spawnSync('sci', ['workflow', name, '--args', JSON.stringify(args), '--json'], {
+    const proc = spawnSync(process.execPath, ['bin/semantic-code-intelligence', 'workflow', name, '--args', JSON.stringify(args), '--json'], {
         encoding: 'utf8',
         env: { ...process.env, SILENT_MODE: 'true', STDIO_MODE: 'true', ALLOW_SNAPSHOT_APPLY: '' },
     });
@@ -88,18 +88,18 @@ function callSciWorkflow(name: string, args: Record<string, unknown>, observatio
 
 const before = await Bun.file(target).text();
 const hasAstGrep = commandExists('ast-grep');
-const hasSci = commandExists('sci');
+const hasLocalSci = existsSync('bin/semantic-code-intelligence') && existsSync('dist/cli/cli.js');
 
 let structuralSearch: any = null;
 let patchCheckExplicit: any = null;
 let patchCheckDefault: any = null;
 let refusedApply: any = null;
 
-if (hasAstGrep && hasSci) {
+if (hasAstGrep && hasLocalSci) {
     structuralSearch = callSciWorkflow(
         'structural_search',
         { language: 'typescript', pattern: 'workflow($NAME, $ARGS)', paths: [target], maxResults: 3 },
-        'Use installed sci CLI to find a known TypeScript workflow-call pattern inside SCI.'
+        'Use the repo-local built SCI CLI to find a known TypeScript workflow-call pattern inside SCI.'
     );
 
     patchCheckExplicit = callSciWorkflow(
@@ -147,7 +147,7 @@ if (hasAstGrep && hasSci) {
 
 const after = await Bun.file(target).text();
 const workspaceUnchanged = before === after && after.includes('const patchPlanningTarget');
-const unavailable = !hasAstGrep || !hasSci;
+const unavailable = !hasAstGrep || !hasLocalSci;
 const evidence = {
     schema: 'semantic-code-intelligence.structural_workflow_dogfood.v1',
     ok: unavailable
@@ -164,10 +164,10 @@ const evidence = {
           refusedApply?.ok === false &&
           refusedApply?.applied === false &&
           refusedApply?.applyResult?.message === 'ALLOW_SNAPSHOT_APPLY=1 required',
-    mode: 'self_hosted_structural_workflow_sci_cli',
+    mode: 'self_hosted_structural_workflow_repo_local_cli',
     targetRepo: process.cwd(),
     target,
-    prerequisites: { astGrep: hasAstGrep, sci: hasSci },
+    prerequisites: { astGrep: hasAstGrep, localSci: hasLocalSci },
     summary: calls.map(({ name, exitCode, success, elapsedMs, observation, stdoutJson, stderrClean }) => ({
         name,
         exitCode,
@@ -184,13 +184,13 @@ const evidence = {
         snapshotArtifacts: patchCheckExplicit?.snapshotArtifacts || null,
         defaultChecks: patchCheckDefault?.checks?.commands || null,
         applyGuard: refusedApply?.applyResult || null,
-        unavailableReason: unavailable ? (!hasAstGrep ? 'ast-grep unavailable' : 'sci unavailable') : null,
+        unavailableReason: unavailable ? (!hasAstGrep ? 'ast-grep unavailable' : 'repo-local built SCI CLI unavailable; run bun run build:cli') : null,
     },
     interpretation: {
         proves: unavailable
-            ? ['Structural dogfood harness reports prerequisite availability and skips mutation when ast-grep or sci is unavailable.']
+            ? ['Structural dogfood harness reports prerequisite availability and skips mutation when ast-grep or the repo-local built SCI CLI is unavailable.']
             : [
-                  'Installed sci CLI can drive ast-grep structural search against SCI itself.',
+                  'Repo-local built SCI CLI can drive ast-grep structural search against SCI itself.',
                   'structural_patch_checks produces reviewable snapshot artifacts and preserves the working tree by default.',
                   'Default structural checks use bun run typecheck, the tsgo-primary TypeScript lane.',
                   'apply:true is refused without ALLOW_SNAPSHOT_APPLY=1.',

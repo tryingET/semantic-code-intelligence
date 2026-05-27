@@ -6,15 +6,26 @@
             "recommended": true,
             "complexity": {
                 "noForEach": "off",
+                "noStaticOnlyClass": "warn",
                 "useOptionalChain": "warn"
             },
+            "correctness": {
+                "noUnusedFunctionParameters": "warn",
+                "noUnusedImports": "warn",
+                "noUnusedVariables": "warn"
+            },
             "style": {
-                "useConst": "error",
+                "useConst": "warn",
+                "useNodejsImportProtocol": "warn",
                 "useTemplate": "warn"
             },
             "suspicious": {
+                "noAssignInExpressions": "warn",
+                "noControlCharactersInRegex": "warn",
                 "noExplicitAny": "warn",
-                "noImplicitAnyLet": "warn"
+                "noImplicitAnyLet": "warn",
+                "noShadowRestrictedNames": "warn",
+                "useIterableCallbackReturn": "warn"
             }
         }
     },

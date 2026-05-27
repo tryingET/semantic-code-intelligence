@@ -21,9 +21,13 @@ export class WorkspaceQueryWorkflowService {
         return this.deps.workspaceRoot();
     }
 
+    private pathInputFromToolFile(requestedPath: string, workspaceRoot = this.workspaceRoot): string {
+        return this.deps.pathInputFromToolFile(requestedPath, workspaceRoot);
+    }
+
     private snapshotReadPath(requestedPath: string, snapshotRoot: string): string {
         const workspaceRoot = this.workspaceRoot;
-        const decodedPath = this.deps.pathInputFromToolFile(requestedPath, workspaceRoot);
+        const decodedPath = this.pathInputFromToolFile(requestedPath, workspaceRoot);
         if (!path.isAbsolute(decodedPath)) return decodedPath;
 
         const absolutePath = path.resolve(decodedPath);
@@ -57,7 +61,7 @@ export class WorkspaceQueryWorkflowService {
 
     private async resolveReadFileRoot(args: Record<string, any>, requestedPath: string): Promise<{ workspaceRoot: string; readPath: string }> {
         const snapshotRoot = await this.materializedSnapshotRoot(args);
-        if (!snapshotRoot) return { workspaceRoot: this.workspaceRoot, readPath: requestedPath };
+        if (!snapshotRoot) return { workspaceRoot: this.workspaceRoot, readPath: this.pathInputFromToolFile(requestedPath) };
         return { workspaceRoot: snapshotRoot, readPath: this.snapshotReadPath(requestedPath, snapshotRoot) };
     }
 
@@ -195,7 +199,7 @@ export class WorkspaceQueryWorkflowService {
         const depthRaw = Number(args?.depth ?? 5);
         const maxDepth = Number.isFinite(depthRaw) ? Math.max(0, Math.min(25, Math.floor(depthRaw))) : 5;
         const ignore = new Set(['.git', 'node_modules', '.ontology', 'dist']);
-        const root = await resolveWorkspacePath(requestedPath, {
+        const root = await resolveWorkspacePath(this.pathInputFromToolFile(requestedPath), {
             workspaceRoot: this.workspaceRoot,
             inputLabel: 'list_files path',
             allowRoot: true,
@@ -383,7 +387,7 @@ export class WorkspaceQueryWorkflowService {
             const snapshotRoot = await this.materializedSnapshotRoot(args);
             const workspaceRoot = snapshotRoot || this.workspaceRoot;
             const requestedPath = typeof args?.path === 'string' && args.path.trim() ? String(args.path) : '.';
-            const searchPath = snapshotRoot ? this.snapshotReadPath(requestedPath, snapshotRoot) : requestedPath;
+            const searchPath = snapshotRoot ? this.snapshotReadPath(requestedPath, snapshotRoot) : this.pathInputFromToolFile(requestedPath, workspaceRoot);
             const searchRoot = await resolveWorkspacePath(searchPath, { workspaceRoot, inputLabel: 'text_search path', allowRoot: true });
             const searchRootPath = searchRoot.realPath;
 
@@ -434,7 +438,7 @@ export class WorkspaceQueryWorkflowService {
             const snapshotRoot = await this.materializedSnapshotRoot(args);
             const workspaceRoot = snapshotRoot || this.workspaceRoot;
             const requestedPath = typeof args?.path === 'string' && args.path.trim() ? String(args.path) : '.';
-            const searchPath = snapshotRoot ? this.snapshotReadPath(requestedPath, snapshotRoot) : requestedPath;
+            const searchPath = snapshotRoot ? this.snapshotReadPath(requestedPath, snapshotRoot) : this.pathInputFromToolFile(requestedPath, workspaceRoot);
             const searchRoot = await resolveWorkspacePath(searchPath, { workspaceRoot, inputLabel: 'text_search path', allowRoot: true });
             const searchRootPath = searchRoot.realPath;
             const asyncGrep = new AsyncEnhancedGrep({ cacheSize: 500, cacheTTL: 30000 });
@@ -470,7 +474,7 @@ export class WorkspaceQueryWorkflowService {
             let opened: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
             try {
                 const workspaceRoot = this.workspaceRoot;
-                opened = await openWorkspaceFileForRead(fileHint, { workspaceRoot, inputLabel: 'symbol_search fileHint' });
+                opened = await openWorkspaceFileForRead(this.pathInputFromToolFile(fileHint, workspaceRoot), { workspaceRoot, inputLabel: 'symbol_search fileHint' });
                 const text = await opened.handle.readFile('utf8');
                 const lines = text.split(/\r?\n/);
                 out = lines
@@ -512,7 +516,9 @@ export class WorkspaceQueryWorkflowService {
         try {
             const snapshotRoot = await this.materializedSnapshotRoot(args);
             const workspaceRoot = snapshotRoot || this.workspaceRoot;
-            const queryPaths = snapshotRoot && paths ? paths.map((item) => this.snapshotReadPath(String(item), snapshotRoot)) : paths;
+            const queryPaths = paths?.map((item) =>
+                snapshotRoot ? this.snapshotReadPath(String(item), snapshotRoot) : this.pathInputFromToolFile(String(item), workspaceRoot)
+            );
             const { runAstQuery } = await import('../ast-query.js');
             const out = await runAstQuery({ language: language as any, query, paths: queryPaths, glob, limit, workspaceRoot });
             return { payload: out, isError: false };

@@ -26,26 +26,28 @@ export function pathToUri(filePath: string): string {
 export function uriToPath(uri: string): string {
     const WORKSPACE_PREFIX = 'file://workspace';
     const getWorkspaceRoot = () => process.env.SEMANTIC_CODE_WORKSPACE || process.env.WORKSPACE_ROOT || process.cwd();
-    if (uri.startsWith(WORKSPACE_PREFIX)) {
+    if (uri === WORKSPACE_PREFIX || uri.startsWith(`${WORKSPACE_PREFIX}/`)) {
         const ws = getWorkspaceRoot();
         const sub = uri.length > WORKSPACE_PREFIX.length ? uri.substring(WORKSPACE_PREFIX.length) : '';
-        const rel = sub.replace(/^\/+/, '');
+        let rel = sub.replace(/^\/+/, '');
+        try {
+            rel = decodeURIComponent(rel);
+        } catch {}
         const p = rel ? nodePath.join(ws, rel) : ws;
         return nodePath.resolve(p);
     }
     if (uri.startsWith('file://')) {
-        try {
-            return fileURLToPath(uri);
-        } catch {
-            const body = uri.replace(/^file:\/\//, '');
-            return nodePath.isAbsolute(body) ? body : nodePath.resolve('/', body);
-        }
+        return fileURLToPath(uri);
     }
     return nodePath.isAbsolute(uri) ? uri : nodePath.resolve(process.cwd(), uri);
 }
 
 export function normalizeUri(uri: string): string {
-    return pathToUri(uriToPath(uri));
+    try {
+        return pathToUri(uriToPath(uri));
+    } catch {
+        return uri.startsWith('file://') ? uri : '';
+    }
 }
 
 export function createPosition(line: number, character: number): Position {

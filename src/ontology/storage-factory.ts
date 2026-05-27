@@ -1,4 +1,6 @@
 import type { Layer4Config } from '../core/types';
+import { PostgresStorageAdapter } from './adapters/postgres-adapter';
+import { TripleStoreStorageAdapter } from './adapters/triple-adapter';
 import { InstrumentedStoragePort } from './instrumented-storage';
 import { SemanticGraphStorage as SQLiteStorageAdapter } from './storage';
 import type { StorageAdapterKind, StoragePort } from './storage-port';
@@ -12,14 +14,10 @@ export function createStorageAdapter(config: Layer4Config | undefined): StorageP
             const dbPath = config?.dbPath || '.semantic-graph/semantic-graph.db';
             return new InstrumentedStoragePort(new SQLiteStorageAdapter(dbPath));
         }
-        case 'postgres': {
-            const { PostgresStorageAdapter } = require('./adapters/postgres-adapter');
+        case 'postgres':
             return new InstrumentedStoragePort(new PostgresStorageAdapter());
-        }
-        case 'triplestore': {
-            const { TripleStoreStorageAdapter } = require('./adapters/triple-adapter');
+        case 'triplestore':
             return new InstrumentedStoragePort(new TripleStoreStorageAdapter());
-        }
         default: {
             throw new Error(`Unsupported Layer 4 storage adapter: ${String(config?.adapter || adapter)}`);
         }

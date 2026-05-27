@@ -13,7 +13,6 @@
 
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type {
     CompletionItem,
     CompletionParams,
@@ -28,6 +27,7 @@ import type {
 } from 'vscode-languageserver';
 import { ResponseError, TextDocumentSyncKind } from 'vscode-languageserver';
 import { CoreError } from '../core/errors.js';
+import { normalizeWorkspaceInputUri, workspaceInputToPath } from '../core/workspace-input.js';
 import { openWorkspaceFileForRead } from '../core/workspace-path.js';
 
 // Minimal core analyzer surface required by the LSP adapter
@@ -104,7 +104,7 @@ export class LSPAdapter {
         try {
             await (this.coreAnalyzer as any)?.initialize?.();
         } catch {}
-        const uri = normalizeUri(file || 'file://workspace');
+        const uri = this.normalizeLspInputUri(file || 'file://workspace');
         const containedUri = await this.containedLspUriOrNull(uri);
         if (!containedUri) return [];
         const pos = normalizePosition({ line: input.line ?? 0, character: input.character ?? 0 } as any);
@@ -128,7 +128,7 @@ export class LSPAdapter {
         try {
             await (this.coreAnalyzer as any)?.initialize?.();
         } catch {}
-        const uri = normalizeUri(file || 'file://workspace');
+        const uri = this.normalizeLspInputUri(file || 'file://workspace');
         const containedUri = await this.containedLspUriOrNull(uri);
         if (!containedUri) return [];
         const request = buildFindReferencesRequest({
@@ -150,7 +150,7 @@ export class LSPAdapter {
         try {
             await (this.coreAnalyzer as any)?.initialize?.();
         } catch {}
-        const uri = normalizeUri(file || 'file://workspace');
+        const uri = this.normalizeLspInputUri(file || 'file://workspace');
         const containedUri = await this.containedLspUriOrNull(uri);
         if (!containedUri) return { changes: {} } as WorkspaceEdit;
         const identifier = await this.extractIdentifierAtPosition(containedUri, position);
@@ -482,7 +482,7 @@ export class LSPAdapter {
         try {
             const cachedText = this.documentTextByUri.get(uri);
             if (cachedText !== undefined) return this.wordAtPosition(cachedText, position) || fallback;
-            const fsPath = uri.startsWith('file://') ? fileURLToPath(uri) : uri;
+            const fsPath = workspaceInputToPath(uri, this.getWorkspaceRoot());
             opened = await openWorkspaceFileForRead(fsPath, {
                 workspaceRoot: this.getWorkspaceRoot(),
                 inputLabel: 'LSP document uri',
@@ -539,14 +539,14 @@ export class LSPAdapter {
     private rememberDocumentText(uri: string, text: string): void {
         this.documentTextByUri.set(uri, text);
         try {
-            this.documentTextByUri.set(normalizeUri(uri), text);
+            this.documentTextByUri.set(this.normalizeLspInputUri(uri), text);
         } catch {}
     }
 
     private forgetDocumentText(uri: string): void {
         this.documentTextByUri.delete(uri);
         try {
-            this.documentTextByUri.delete(normalizeUri(uri));
+            this.documentTextByUri.delete(this.normalizeLspInputUri(uri));
         } catch {}
     }
 
@@ -555,9 +555,14 @@ export class LSPAdapter {
         return path.resolve(typeof configured === 'string' && configured.trim() ? configured : process.cwd());
     }
 
+    private normalizeLspInputUri(uri: string): string {
+        return normalizeWorkspaceInputUri(uri, this.getWorkspaceRoot());
+    }
+
     private async containedLspUriOrNull(uri: string): Promise<string | null> {
         let opened: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
-        const fsPath = uri.startsWith('file://') ? fileURLToPath(uri) : uri;
+        const fsPath = this.lspInputPathOrNull(uri);
+        if (!fsPath) return null;
         try {
             opened = await openWorkspaceFileForRead(fsPath, {
                 workspaceRoot: this.getWorkspaceRoot(),
@@ -582,6 +587,14 @@ export class LSPAdapter {
             }
         } finally {
             await opened?.handle.close().catch(() => undefined);
+        }
+    }
+
+    private lspInputPathOrNull(uri: string): string | null {
+        try {
+            return workspaceInputToPath(uri, this.getWorkspaceRoot());
+        } catch {
+            return null;
         }
     }
 

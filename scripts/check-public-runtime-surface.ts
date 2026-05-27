@@ -48,6 +48,7 @@ function checkPackageEntrypoints(): void {
   }
 
   const requiredScripts: Record<string, string> = {
+    'build:all': 'rimraf dist && bun run build:core && bun run build:lsp && bun run build:mcp-stdio && bun run build:mcp-http && bun run build:mcp-enhanced && bun run build:http && bun run build:cli',
     'build:core': 'bun run scripts/build-server.ts core',
     'public-surface:check': 'bun run build:all && bun run scripts/check-public-runtime-surface.ts',
     prepack: 'bun run public-surface:check',

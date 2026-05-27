@@ -1,6 +1,7 @@
 import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { CoreError } from '../errors.js';
+import { workspaceInputToPath } from '../workspace-input.js';
 import { resolveWorkspacePath } from '../workspace-path.js';
 import { CodeAnalysisWorkflowService } from './code-analysis-workflow.js';
 import { GraphExpandWorkflowService } from './graph-expand-workflow.js';
@@ -240,14 +241,7 @@ export class ToolWorkflowRouter {
     }
 
     private pathInputFromToolFile(value: string, workspaceRoot: string): string {
-        const raw = String(value || '').trim();
-        const workspacePrefix = 'file://workspace';
-        if (raw.startsWith(workspacePrefix)) {
-            const suffix = raw.slice(workspacePrefix.length).replace(/^\/+/, '');
-            return suffix ? path.join(workspaceRoot, decodeURIComponent(suffix)) : workspaceRoot;
-        }
-        if (raw.startsWith('file://')) return fileURLToPath(raw);
-        return raw;
+        return workspaceInputToPath(value, workspaceRoot);
     }
 
     private async resolveToolWorkspaceFile(value: string, inputLabel: string): Promise<WorkspaceFileContext> {

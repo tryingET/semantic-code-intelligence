@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { LSPAdapter } from '../src/adapters/lsp-adapter.js';
+import { uriToPath } from '../src/adapters/utils.js';
 import { expandNeighbors } from '../src/core/code-graph.js';
+import { workspaceInputToPath } from '../src/core/workspace-input.js';
+import { WorkspaceQueryWorkflowService } from '../src/core/workflows/workspace-query-workflow.js';
 import { AsyncEnhancedGrep } from '../src/layers/enhanced-search-tools-async.js';
 import { TreeSitterLayer } from '../src/layers/tree-sitter.js';
 import { IgnoreFileManager } from '../src/utils/ignore-file.js';
@@ -75,6 +78,102 @@ describe('nexus boundary regressions', () => {
     const imports = result.neighbors.imports.map((entry: any) => entry.text);
     expect(imports).toContain('b');
     expect(imports).toContain('c');
+  });
+
+  test('workflow path inputs normalize file URIs through the shared workspace boundary', async () => {
+    const workspace = tempWorkspace();
+    const srcDir = join(workspace, 'src');
+    mkdirSync(srcDir);
+    writeFileSync(join(workspace, 'sample.ts'), 'const needle = 1;\n', 'utf8');
+    writeFileSync(join(srcDir, 'placeholder'), '', 'utf8');
+    const service = new WorkspaceQueryWorkflowService({
+      workspaceRoot: () => workspace,
+      coreAnalyzer: {
+        async initialize() {},
+        async textSearch() {
+          return { count: 0, results: [] };
+        },
+        async buildSymbolMap() {
+          return { declarations: [] };
+        },
+      },
+      pathInputFromToolFile: (value, root) => workspaceInputToPath(value, root),
+    });
+
+    const fileUri = pathToFileURL(join(workspace, 'sample.ts')).href;
+    const read = await service.readFile({ path: fileUri, range: { startLine: 1, endLine: 1 } });
+    expect((read as any).payload.path).toBe('sample.ts');
+    expect((read as any).payload.content).toBe('const needle = 1;');
+
+    const listed = await service.listFiles({ path: pathToFileURL(srcDir).href, maxFiles: 1 });
+    expect((listed as any).payload.path).toBe('src');
+  });
+
+  test('LSP completion treats workspace placeholder URIs as contained-boundary misses, not internal errors', async () => {
+    const workspace = tempWorkspace();
+    const adapter = new LSPAdapter({
+      prepareRename: async () => ({ data: null }),
+      rename: async () => ({ data: { changes: {} } }),
+      getCompletions: async () => ({ data: [] }),
+      trackFileChange: async () => undefined,
+      getDiagnostics: () => [],
+    }, { workspaceRoot: workspace });
+
+    const result = await adapter.handleCompletion({ textDocument: { uri: 'file://workspace' }, position: { line: 0, character: 0 } } as any);
+    expect(result).toEqual([]);
+  });
+
+  test('LSP virtual workspace URIs preserve unsaved document text under non-cwd workspace roots', async () => {
+    const workspace = tempWorkspace();
+    const file = join(workspace, 'live.ts');
+    writeFileSync(file, 'const diskName = 1;\n', 'utf8');
+    let definitionRequest: any;
+    const adapter = new LSPAdapter({
+      findDefinitionAsync: async (request: any) => {
+        definitionRequest = request;
+        return { data: [], performance: {} };
+      },
+      prepareRename: async () => ({ data: null }),
+      rename: async () => ({ data: { changes: {} } }),
+      getCompletions: async () => ({ data: [] }),
+      trackFileChange: async () => undefined,
+      getDiagnostics: () => [],
+    }, { workspaceRoot: workspace });
+
+    await adapter.handleDidOpenTextDocument({ textDocument: { uri: 'file://workspace/live.ts', text: 'const liveName = 1;\n' } } as any);
+    await adapter.handleDefinition({ textDocument: { uri: 'file://workspace/live.ts' }, position: { line: 0, character: 7 } } as any);
+
+    expect(definitionRequest?.identifier).toBe('liveName');
+    expect(definitionRequest?.uri).toBe(pathToFileURL(file).href);
+  });
+
+  test('LSP convenience methods resolve workspace placeholder URIs against configured roots', async () => {
+    const workspace = tempWorkspace();
+    const file = join(workspace, 'definition.ts');
+    writeFileSync(file, 'const target = 1;\n', 'utf8');
+    let definitionRequest: any;
+    const adapter = new LSPAdapter({
+      initialize: async () => undefined,
+      findDefinitionAsync: async (request: any) => {
+        definitionRequest = request;
+        return { data: [], performance: {} };
+      },
+      prepareRename: async () => ({ data: null }),
+      rename: async () => ({ data: { changes: {} } }),
+      getCompletions: async () => ({ data: [] }),
+      trackFileChange: async () => undefined,
+      getDiagnostics: () => [],
+    }, { workspaceRoot: workspace });
+
+    await adapter.findDefinition('file://workspace/definition.ts', { line: 0, character: 7 });
+
+    expect(definitionRequest?.uri).toBe(pathToFileURL(file).href);
+    expect(definitionRequest?.identifier).toBe('target');
+  });
+
+  test('workspace URI normalization rejects workspace-like file hosts instead of localizing them', () => {
+    expect(() => workspaceInputToPath('file://workspace-evil/a', tempWorkspace())).toThrow();
+    expect(() => uriToPath('file://workspace-evil/a')).toThrow();
   });
 
   test('LSP rename requests are preview-pure dry runs', async () => {

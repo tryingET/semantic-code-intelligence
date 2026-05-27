@@ -80,6 +80,14 @@ describe('build command surface', () => {
         expect(packageJson.scripts?.['test:raw']).toBe('bun test');
         expect(packageJson.scripts?.['test:coverage']).toBe('scripts/run-coverage-tests.sh');
         expect(packageJson.scripts?.['command-surface:check']).toBe('bun run scripts/check-command-surface.ts');
+        expect(packageJson.scripts?.lint).toBe(
+            'bunx @biomejs/biome lint --diagnostic-level=error --files-ignore-unknown=true src tests scripts package.json biome.json'
+        );
+        expect(packageJson.scripts?.['lint:warnings']).toBe(
+            'bunx @biomejs/biome lint --files-ignore-unknown=true src tests scripts package.json biome.json'
+        );
+        expect(packageJson.scripts?.lint).not.toContain('--write');
+        expect(packageJson.scripts?.['lint:fix']).toContain('--write');
         expect(runner).toContain('bin/test-slicer.sh');
         expect(runner).toContain('BATCH_SIZE=${BATCH_SIZE:-1}');
         expect(runner).toContain('BUN_JOBS=${BUN_JOBS:-1}');

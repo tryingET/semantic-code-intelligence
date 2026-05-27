@@ -26,12 +26,6 @@ const PERFORMANCE_THRESHOLDS = {
     p95Target: 0.95, // 95% of requests should be under target
 } as const;
 
-interface PerformanceWindow {
-    measurements: number[];
-    maxSize: number;
-    target: number;
-}
-
 interface ValidationResult {
     layer: string;
     target: number;

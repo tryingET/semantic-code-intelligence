@@ -25,7 +25,7 @@ describe('WorkspaceQueryWorkflowService', () => {
         const service = new WorkspaceQueryWorkflowService({
             workspaceRoot: () => workspaceRoot,
             coreAnalyzer: {},
-            pathInputFromMcpFile: (value) => value,
+            pathInputFromToolFile: (value) => value,
         });
 
         const out = payload(await service.readFile({ path: 'sample.ts', range: { startLine: 2, endLine: 3 } }));
@@ -86,7 +86,7 @@ describe('WorkspaceQueryWorkflowService', () => {
                     return { count: 1, results: [{ file: 'sample.ts', line: 1, text: 'needle' }] };
                 },
             },
-            pathInputFromMcpFile: (value) => value,
+            pathInputFromToolFile: (value) => value,
         });
 
         const out = payload(await service.textSearch({ query: 'needle', path: '.', kind: 'literal' }));

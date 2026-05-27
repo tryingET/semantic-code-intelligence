@@ -2,19 +2,19 @@ import type { Concept, Relation, Symbol, Thing, ThingConceptLink, ThingSymbolLin
 import type { StoragePort } from '../storage-port';
 
 // Postgres adapter implementing the Layer 4 StoragePort.
-// Env: ONTOLOGY_PG_URL | DATABASE_URL | PG_URL (postgres connection string)
+// Env: ONTOLOGY_PG_URL | DATABASE_URL | PG_URL | PGURL (postgres connection string)
 export class PostgresStorageAdapter implements StoragePort {
     private client: any | null = null;
     private connected = false;
     private url: string | null;
 
     constructor() {
-        this.url = process.env.ONTOLOGY_PG_URL || process.env.DATABASE_URL || process.env.PG_URL || null;
+        this.url = process.env.ONTOLOGY_PG_URL || process.env.DATABASE_URL || process.env.PG_URL || process.env.PGURL || null;
     }
 
     private async getClient(): Promise<any> {
         if (!this.url) {
-            throw new Error('PG_ADAPTER_NOT_CONFIGURED: Missing ONTOLOGY_PG_URL / DATABASE_URL');
+            throw new Error('PG_ADAPTER_NOT_CONFIGURED: Missing ONTOLOGY_PG_URL / DATABASE_URL / PG_URL / PGURL');
         }
         if (this.client) return this.client;
         const mod = await import('pg');
@@ -213,7 +213,7 @@ export class PostgresStorageAdapter implements StoragePort {
 
     async loadAllConcepts(): Promise<Concept[]> {
         this.ensureReady();
-        const rows = await this.client
+        const rows: any[] = await this.client
             .query('SELECT * FROM concepts ORDER BY updated_at DESC')
             .then((r: any) => r.rows as any[]);
         const ids = rows.map((r) => r.id);
@@ -237,7 +237,7 @@ export class PostgresStorageAdapter implements StoragePort {
 
     async loadAllSymbols(): Promise<Symbol[]> {
         this.ensureReady();
-        const rows = await this.client.query('SELECT * FROM symbols').then((r: any) => r.rows as any[]);
+        const rows: any[] = await this.client.query('SELECT * FROM symbols').then((r: any) => r.rows as any[]);
         return rows.map((r) => ({
             id: r.id,
             text: r.text,
@@ -282,7 +282,7 @@ export class PostgresStorageAdapter implements StoragePort {
 
     async loadAllThings(): Promise<Thing[]> {
         this.ensureReady();
-        const rows = await this.client.query('SELECT * FROM things').then((r: any) => r.rows as any[]);
+        const rows: any[] = await this.client.query('SELECT * FROM things').then((r: any) => r.rows as any[]);
         return rows.map((r) => ({
             id: r.id,
             kind: r.kind,
@@ -319,13 +319,13 @@ export class PostgresStorageAdapter implements StoragePort {
 
     async loadAllThingSymbols(): Promise<ThingSymbolLink[]> {
         this.ensureReady();
-        const rows = await this.client.query('SELECT * FROM thing_symbols').then((r: any) => r.rows as any[]);
+        const rows: any[] = await this.client.query('SELECT * FROM thing_symbols').then((r: any) => r.rows as any[]);
         return rows.map((r) => ({ thingId: r.thing_id, symbolId: r.symbol_id, role: r.role }));
     }
 
     async loadAllThingConcepts(): Promise<ThingConceptLink[]> {
         this.ensureReady();
-        const rows = await this.client.query('SELECT * FROM thing_concepts').then((r: any) => r.rows as any[]);
+        const rows: any[] = await this.client.query('SELECT * FROM thing_concepts').then((r: any) => r.rows as any[]);
         return rows.map((r) => ({
             thingId: r.thing_id,
             conceptId: r.concept_id,
@@ -336,7 +336,7 @@ export class PostgresStorageAdapter implements StoragePort {
 
     async findConceptsByName(name: string): Promise<Concept[]> {
         this.ensureReady();
-        const rows = await this.client
+        const rows: any[] = await this.client
             .query('SELECT * FROM concepts WHERE canonical_name ILIKE $1 ORDER BY updated_at DESC', ['%' + name + '%'])
             .then((r: any) => r.rows as any[]);
         const ids = rows.map((r) => r.id);

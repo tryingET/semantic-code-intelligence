@@ -399,7 +399,7 @@ export class FastSearchLayer implements Layer<SearchQuery, EnhancedMatches> {
             }),
         }));
 
-        const promise = new Promise<void>(async (resolve) => {
+        const promise = new Promise<void>((resolve) => {
             // Collect first non-empty and cancel others
             for (const { s, ctrl } of controllers) {
                 ctrl.promise
