@@ -230,6 +230,15 @@ export class OverlayStore {
         return timestamp?.[1]?.trim() || raw;
     }
 
+    private rejectUnsafePatchFileModes(diff: string): string | null {
+        for (const line of diff.split(/\r?\n/)) {
+            if (/^(?:new file mode|old mode|new mode|deleted file mode)\s+120000\b/.test(line)) {
+                return 'invalid_patch: symlink file modes are not allowed in snapshot patches';
+            }
+        }
+        return null;
+    }
+
     private normalizePatchRelativePath(rawPath: string, inputLabel = 'patch path'): string | null {
         const raw = this.stripUnifiedHeaderMetadata(rawPath);
         if (!raw || raw === '/dev/null') return null;
@@ -696,6 +705,8 @@ export class OverlayStore {
         if (!/^@@\s/m.test(normalizedDiff)) {
             return { accepted: false, message: 'invalid_patch: no patch hunks found in diff' };
         }
+        const unsafeMode = this.rejectUnsafePatchFileModes(normalizedDiff);
+        if (unsafeMode) return { accepted: false, message: unsafeMode };
         const snap = this.ensureSnapshot(snapshotId);
         const validation = this.validatePatchAppliesAgainstSnapshot(normalizedDiff, snap);
         if (!validation.ok) return { accepted: false, message: validation.message };
@@ -850,12 +861,40 @@ export class OverlayStore {
         return /^(BUN_JOBS|TIMEOUT|CI|FORCE_COLOR|NO_COLOR|LANG|LC_[A-Z_]+)$/.test(key);
     }
 
-    private checkCommandPathBoundaryViolation(words: string[], env: Record<string, string>): string | null {
+    private checkCommandPathBoundaryViolation(words: string[], env: Record<string, string>, cwd?: string): string | null {
         for (const [key, value] of Object.entries(env)) {
             if (this.valueMentionsAbsolutePath(value)) return `validation environment variable ${key} must not reference absolute paths`;
         }
         for (const word of words.slice(1)) {
             if (this.valueMentionsAbsolutePath(word)) return `validation command argument must use workspace-relative paths: ${word}`;
+            if (cwd) {
+                const violation = this.existingCommandPathBoundaryViolation(word, cwd);
+                if (violation) return violation;
+            }
+        }
+        return null;
+    }
+
+    private existingCommandPathBoundaryViolation(word: string, cwd: string): string | null {
+        const raw = String(word || '');
+        if (!raw || raw.startsWith('-') || raw.includes('\0')) return null;
+        const candidate = path.resolve(cwd, raw);
+        try {
+            fs.lstatSync(candidate);
+        } catch {
+            return null;
+        }
+        let realCwd: string;
+        let realCandidate: string;
+        try {
+            realCwd = fs.realpathSync(cwd);
+            realCandidate = fs.realpathSync(candidate);
+        } catch {
+            return `validation command argument must resolve within the check workspace: ${word}`;
+        }
+        const relative = path.relative(realCwd, realCandidate);
+        if (relative.startsWith('..') || path.isAbsolute(relative)) {
+            return `validation command argument must resolve within the check workspace: ${word}`;
         }
         return null;
     }
@@ -915,6 +954,14 @@ export class OverlayStore {
             const subcommand = words[1] || '';
             if (!['status', 'diff', 'apply', 'ls-files', 'rev-parse'].includes(subcommand)) {
                 return { ok: false, message: `unsupported git validation subcommand: ${subcommand || '<missing>'}` };
+            }
+            if (subcommand === 'apply') {
+                if (words.includes('--unsafe-paths')) {
+                    return { ok: false, message: 'unsupported git apply option: --unsafe-paths' };
+                }
+                if (!words.includes('--check')) {
+                    return { ok: false, message: 'git apply validation commands must include --check' };
+                }
             }
         }
         const pathBoundaryViolation = this.checkCommandPathBoundaryViolation(words, env);
@@ -1059,6 +1106,8 @@ export class OverlayStore {
                 await this.logProgress(snapshotId, `apply:diffs ${snap.diffs.length}`);
                 const overlayText = snap.diffs.join('\n');
                 this.parseTouchedFilesFromPatch(overlayText);
+                const unsafeMode = this.rejectUnsafePatchFileModes(overlayText);
+                if (unsafeMode) throw new Error(unsafeMode);
                 const diffFile = path.join(tempDir, 'overlay.diff');
                 await fsp.writeFile(diffFile, overlayText, 'utf8');
                 const diffText = await fsp.readFile(diffFile, 'utf8').catch(() => '');
@@ -1225,6 +1274,15 @@ export class OverlayStore {
         }
         // Build command list
         let cmdList = commands && commands.length ? [...commands] : ['bun run typecheck', 'bun run build'];
+        const maxCommands = 20;
+        if (cmdList.length > maxCommands) {
+            return {
+                ok: false,
+                output: `Rejected check command list: at most ${maxCommands} commands are allowed\n`,
+                elapsedMs: Date.now() - start,
+                commands: [],
+            };
+        }
         const onlyTouched = !!opts.onlyTouched || (process.env.FAST_STDIO_CHECKS || '').toLowerCase() === 'touched';
         try {
             const snap = this.ensureSnapshot(snapshotId);
@@ -1237,22 +1295,36 @@ export class OverlayStore {
                     .map((f) => this.shellQuote(f))
                     .join(' ');
                 const quick = `bunx tsgo --noEmit --pretty false ${limited}`;
-                // Prepend quick check if no explicit commands were provided
+                // Prepend quick check if no explicit commands were provided, or if it fits within the command cap.
                 if (!(commands && commands.length)) {
                     cmdList = [quick];
-                } else {
+                } else if (cmdList.length < maxCommands) {
                     cmdList.unshift(quick);
                 }
             }
         } catch {}
+        if (cmdList.length > maxCommands) {
+            return {
+                ok: false,
+                output: `Rejected check command list: at most ${maxCommands} commands are allowed\n`,
+                elapsedMs: Date.now() - start,
+                commands: [],
+            };
+        }
         // Enforce a global safety clamp for per-command timeout seconds across all adapters.
         // Rationale: values >600s lead to excessively long CI/dev runs and can hang pipelines.
         // HTTP already clamps to 600; this keeps MCP/CLI parity and centralizes the guard.
         const perCommandTimeoutSec = Math.max(1, Math.min(600, Math.floor(Number(timeoutSec) || 120)));
+        const maxCommandLength = 8192;
         const commandResults: CheckCommandReceipt[] = [];
 
         for (const rawCmd of cmdList) {
             const cmd = String(rawCmd);
+            if (cmd.length > maxCommandLength) {
+                appendOutput(`Rejected check command: command length must be at most ${maxCommandLength} characters\n`);
+                commandResults.push({ command: cmd.slice(0, maxCommandLength), ok: false, elapsedMs: 0, exitCode: null, timedOut: false });
+                return { ok: false, output: output.join(''), elapsedMs: Date.now() - start, commands: commandResults };
+            }
             await this.logProgress(snapshotId, `run:${cmd}:start`);
             appendOutput(`$ ${cmd}\n`);
             const allowUnsafeShell = process.env.SCI_ALLOW_UNSAFE_CHECK_COMMANDS === '1';
@@ -1275,6 +1347,15 @@ export class OverlayStore {
                 const runnerTouched = touched.some((file) => file === 'package.json' || file === 'justfile' || file === 'Justfile');
                 if (runnerTouched && this.isMutableRunnerCommand(resolvedCommand.words) && process.env.SCI_ALLOW_MUTATED_CHECK_RUNNERS !== '1') {
                     const message = 'Rejected check command: package/just runner commands are disabled when the patch changes their runner definitions; use direct tool commands or set SCI_ALLOW_MUTATED_CHECK_RUNNERS=1\n';
+                    appendOutput(message);
+                    commandResults.push({ command: cmd, ok: false, elapsedMs: 0, exitCode: null, timedOut: false });
+                    return { ok: false, output: output.join(''), elapsedMs: Date.now() - start, commands: commandResults };
+                }
+            }
+            if (resolvedCommand?.ok) {
+                const pathBoundaryViolation = this.checkCommandPathBoundaryViolation(resolvedCommand.words, resolvedCommand.env, cwd);
+                if (pathBoundaryViolation) {
+                    const message = `Rejected check command: ${pathBoundaryViolation}\n`;
                     appendOutput(message);
                     commandResults.push({ command: cmd, ok: false, elapsedMs: 0, exitCode: null, timedOut: false });
                     return { ok: false, output: output.join(''), elapsedMs: Date.now() - start, commands: commandResults };

@@ -1,4 +1,5 @@
 import { CoreError } from '../errors.js';
+import { parseBoundedInteger } from '../input-validation.js';
 import { normalizeWorkspaceUri } from './request-semantics.js';
 import type { SnapshotWorkflowResult } from './snapshot-patch-workflow.js';
 
@@ -32,7 +33,7 @@ export class CodeAnalysisWorkflowService {
         const request = buildCompletionRequest({
             uri: file.uri,
             position: normalizePosition(args.position),
-            maxResults: Math.min(Number(args.maxResults || 20), 200),
+            maxResults: parseBoundedInteger(args.maxResults, 'maxResults', { defaultValue: 20, min: 1, max: 200 }),
         });
         const result = await this.deps.coreAnalyzer.getCompletions(request);
         const items = Array.isArray(result.data)
@@ -67,7 +68,7 @@ export class CodeAnalysisWorkflowService {
         const result = await this.deps.coreAnalyzer.buildSymbolMap({
             identifier: args.symbol,
             uri,
-            maxFiles: Math.min(Number(args.maxFiles || 20), 100),
+            maxFiles: parseBoundedInteger(args.maxFiles, 'maxFiles', { defaultValue: 20, min: 1, max: 100 }),
             astOnly: !!args.astOnly,
         });
         return { payload: { schemaVersion: 2, ...result }, isError: false };
@@ -89,7 +90,9 @@ export class CodeAnalysisWorkflowService {
 
     async exploreCodebase(args: Record<string, any>): Promise<SnapshotWorkflowResult> {
         validateRequired(args, ['symbol']);
-        const maxResults = typeof args.maxResults === 'number' ? args.maxResults : this.deps.maxResults();
+        const defaultMaxResultsRaw = this.deps.maxResults();
+        const defaultMaxResults = Number.isFinite(defaultMaxResultsRaw) ? Math.max(1, Math.min(1000, Math.floor(defaultMaxResultsRaw))) : 100;
+        const maxResults = parseBoundedInteger(args.maxResults, 'maxResults', { defaultValue: defaultMaxResults, min: 1, max: 1000 });
         const includeDeclaration = args.includeDeclaration ?? true;
         const uri = args.file
             ? (await this.deps.resolveWorkspaceFile(args.file, 'explore_codebase file')).uri

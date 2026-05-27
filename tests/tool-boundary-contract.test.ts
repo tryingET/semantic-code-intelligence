@@ -93,6 +93,64 @@ describe('tool boundary contract', () => {
         expect(npmConfigResult.output).toContain('unsupported validation environment variable: npm_config_userconfig');
     });
 
+    test('snapshot patches and checks reject symlink escapes and unsafe git apply', async () => {
+        const root = tempRoot();
+        writeFileSync(join(root, 'package.json'), '{"type":"module"}\n', 'utf8');
+        const store = new OverlayStore();
+        const snap = store.createSnapshot(false, { workspaceRoot: root });
+
+        const symlinkDiff = `diff --git a/leak b/leak\nnew file mode 120000\nindex 0000000..39cd576\n--- /dev/null\n+++ b/leak\n@@ -0,0 +1 @@\n+/etc/passwd\n\\ No newline at end of file\n`;
+        const stagedSymlink = store.stagePatch(snap.id, symlinkDiff);
+        expect(stagedSymlink.accepted).toBe(false);
+        expect(stagedSymlink.message).toContain('symlink file modes');
+
+        const evilDiff = `diff --git a/evil.diff b/evil.diff\nnew file mode 100644\nindex 0000000..1111111\n--- /dev/null\n+++ b/evil.diff\n@@ -0,0 +1,4 @@\n+--- /dev/null\n++++ ../../pwned-sci-unsafe\n+@@ -0,0 +1 @@\n++PWNED\n`;
+        expect(store.stagePatch(snap.id, evilDiff).accepted).toBe(true);
+        const unsafeApply = await store.runChecks(snap.id, ['git apply --unsafe-paths evil.diff'], 5, { workspaceRoot: root });
+        expect(unsafeApply.ok).toBe(false);
+        expect(unsafeApply.output).toContain('unsupported git apply option: --unsafe-paths');
+
+        const mutatingApply = await store.runChecks(snap.id, ['git apply evil.diff'], 5, { workspaceRoot: root });
+        expect(mutatingApply.ok).toBe(false);
+        expect(mutatingApply.output).toContain('git apply validation commands must include --check');
+    });
+
+    test('run_checks rejects oversized command lists before execution', async () => {
+        const root = tempRoot();
+        writeFileSync(join(root, 'package.json'), '{"type":"module"}\n', 'utf8');
+        const store = new OverlayStore();
+        const snap = store.createSnapshot(false, { workspaceRoot: root });
+
+        const result = await store.runChecks(snap.id, Array.from({ length: 21 }, () => 'true'), 5, { workspaceRoot: root });
+        expect(result.ok).toBe(false);
+        expect(result.output).toContain('at most 20 commands');
+        expect(result.commands).toEqual([]);
+    });
+
+    test('run_checks command cap does not reject exactly twenty explicit commands when touched quick check is enabled', async () => {
+        const root = tempRoot();
+        writeFileSync(join(root, 'package.json'), '{"type":"module"}\n', 'utf8');
+        const store = new OverlayStore();
+        const snap = store.createSnapshot(false, { workspaceRoot: root });
+        const diff = `diff --git a/sample.ts b/sample.ts\nnew file mode 100644\nindex 0000000..1111111\n--- /dev/null\n+++ b/sample.ts\n@@ -0,0 +1 @@\n+export const sample = 1;\n`;
+        expect(store.stagePatch(snap.id, diff).accepted).toBe(true);
+
+        const result = await store.runChecks(snap.id, Array.from({ length: 20 }, () => 'true'), 5, { workspaceRoot: root, onlyTouched: true });
+        expect(result.ok).toBe(true);
+        expect(result.commands).toHaveLength(20);
+    });
+
+    test('run_checks rejects oversized individual command strings before execution', async () => {
+        const root = tempRoot();
+        writeFileSync(join(root, 'package.json'), '{"type":"module"}\n', 'utf8');
+        const store = new OverlayStore();
+        const snap = store.createSnapshot(false, { workspaceRoot: root });
+
+        const result = await store.runChecks(snap.id, [`true ${'x'.repeat(9000)}`], 5, { workspaceRoot: root });
+        expect(result.ok).toBe(false);
+        expect(result.output).toContain('command length must be at most 8192 characters');
+    });
+
     test('snapshot artifacts fail closed when .ontology is a symlink', async () => {
         const root = tempRoot();
         const outside = tempRoot();

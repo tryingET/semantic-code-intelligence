@@ -217,7 +217,8 @@ describe('Nexus workflow boundary regressions', () => {
         );
         expect(proc.status).not.toBe(0);
         const body = JSON.parse(proc.stdout || '{}');
-        expect(body.isError).toBe(true);
+        expect(body.success).toBe(false);
+        expect(body.error?.message).toContain('Invalid snapshot');
     });
 
     test('OverlayStore list can be scoped to a configured workspace after memory is cleared', () => {

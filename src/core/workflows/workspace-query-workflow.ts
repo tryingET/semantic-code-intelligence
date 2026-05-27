@@ -1,6 +1,7 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { CoreError } from '../errors.js';
+import { parseBoundedInteger } from '../input-validation.js';
 import { overlayStore } from '../overlay-store.js';
 import { openWorkspaceFileForRead, resolveWorkspacePath } from '../workspace-path.js';
 import { AsyncEnhancedGrep } from '../../layers/enhanced-search-tools-async.js';
@@ -371,14 +372,14 @@ export class WorkspaceQueryWorkflowService {
 
     async textSearch(args: Record<string, any>): Promise<SnapshotWorkflowResult> {
         const query = String(args?.query || '').trim();
-        if (!query) return { text: 'query required', isError: true };
+        if (!query) throw new CoreError('InvalidParams', 'Missing required parameter: query', { field: 'query' });
+        const maxResults = parseBoundedInteger(args?.maxResults, 'maxResults', { defaultValue: 200, min: 1, max: 1000 });
 
         try {
             await this.deps.coreAnalyzer?.initialize?.();
 
             const kind = (args?.kind as string) || 'literal';
             const caseInsensitive = !!args?.caseInsensitive;
-            const maxResults = Math.min(Number(args?.maxResults || 200), 1000);
             const snapshotRoot = await this.materializedSnapshotRoot(args);
             const workspaceRoot = snapshotRoot || this.workspaceRoot;
             const requestedPath = typeof args?.path === 'string' && args.path.trim() ? String(args.path) : '.';
@@ -430,7 +431,6 @@ export class WorkspaceQueryWorkflowService {
             if (error instanceof CoreError) throw error;
             const kind = (args?.kind as string) || 'literal';
             const caseInsensitive = !!args?.caseInsensitive;
-            const maxResults = Math.min(Number(args?.maxResults || 200), 1000);
             const snapshotRoot = await this.materializedSnapshotRoot(args);
             const workspaceRoot = snapshotRoot || this.workspaceRoot;
             const requestedPath = typeof args?.path === 'string' && args.path.trim() ? String(args.path) : '.';
@@ -454,8 +454,8 @@ export class WorkspaceQueryWorkflowService {
 
     async symbolSearch(args: Record<string, any>): Promise<SnapshotWorkflowResult> {
         const query = String(args?.query || '').trim();
-        if (!query) return { text: 'query required', isError: true };
-        const maxResults = Math.min(Number(args?.maxResults || 50), 200);
+        if (!query) throw new CoreError('InvalidParams', 'Missing required parameter: query', { field: 'query' });
+        const maxResults = parseBoundedInteger(args?.maxResults, 'maxResults', { defaultValue: 50, min: 1, max: 200 });
         const fileHint = typeof args?.fileHint === 'string' ? args.fileHint : '';
         const res = await this.deps.coreAnalyzer.buildSymbolMap({
             identifier: query,
@@ -502,10 +502,13 @@ export class WorkspaceQueryWorkflowService {
     async astQuery(args: Record<string, any>): Promise<SnapshotWorkflowResult> {
         const language = String(args?.language || '').trim();
         const query = String(args?.query || '').trim();
-        if (!language || !query) return { text: 'language and query required', isError: true };
+        if (!language) throw new CoreError('InvalidParams', 'Missing required parameter: language', { field: 'language' });
+        if (!query) throw new CoreError('InvalidParams', 'Missing required parameter: query', { field: 'query' });
         const paths = Array.isArray(args?.paths) ? (args.paths as string[]) : undefined;
         const glob = typeof args?.glob === 'string' ? (args.glob as string) : undefined;
-        const limit = typeof args?.limit === 'number' ? args.limit : undefined;
+        const limit = args?.limit === undefined || args?.limit === null || args?.limit === ''
+            ? undefined
+            : parseBoundedInteger(args?.limit, 'limit', { defaultValue: 100, min: 1, max: 1000 });
         try {
             const snapshotRoot = await this.materializedSnapshotRoot(args);
             const workspaceRoot = snapshotRoot || this.workspaceRoot;

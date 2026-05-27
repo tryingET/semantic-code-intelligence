@@ -25,6 +25,23 @@ describe('CodeAnalysisWorkflowService', () => {
         expect(result.completions[0]).toMatchObject({ label: 'alpha', kind: 3, detail: 'demo', confidence: 0.8 });
     });
 
+    test('rejects invalid completion and symbol-map caps', async () => {
+        const service = new CodeAnalysisWorkflowService({
+            maxResults: () => 50,
+            resolveWorkspaceFile: async () => ({ path: '', uri: '', relativePath: '' }),
+            resolveWorkspaceLexicalPath: () => ({ path: '', relativePath: '' }),
+            filterWorkspaceItemsByUri: async (items) => items,
+            coreAnalyzer: {
+                getCompletions: async () => ({ data: [] }),
+                buildSymbolMap: async () => ({}),
+            },
+        });
+
+        await expect(service.getCompletions({ file: 'target.ts', position: { line: 0, character: 0 }, maxResults: -1 })).rejects.toThrow('maxResults must be an integer from 1 to 200');
+        await expect(service.buildSymbolMap({ symbol: 'Target', maxFiles: -1 })).rejects.toThrow('maxFiles must be an integer from 1 to 100');
+        await expect(service.exploreCodebase({ symbol: 'Target', maxResults: -1 })).rejects.toThrow('maxResults must be an integer from 1 to 1000');
+    });
+
     test('builds symbol map and generate-tests payloads without adapter formatting', async () => {
         const service = new CodeAnalysisWorkflowService({
             maxResults: () => 50,

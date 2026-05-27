@@ -58,6 +58,21 @@ describe('WorkspaceQueryWorkflowService', () => {
         expect(JSON.stringify(out)).toContain('regex acb');
     });
 
+    test('rejects invalid query and result caps as InvalidParams', async () => {
+        const workspaceRoot = tempWorkspace();
+        const service = new WorkspaceQueryWorkflowService({
+            workspaceRoot: () => workspaceRoot,
+            coreAnalyzer: { async initialize() {}, async textSearch() { return { count: 0, results: [] }; }, async buildSymbolMap() { return { declarations: [] }; } },
+            pathInputFromToolFile: (value) => value,
+        });
+
+        await expect(service.textSearch({ query: '' })).rejects.toThrow('Missing required parameter: query');
+        await expect(service.textSearch({ query: 'x', maxResults: -1 })).rejects.toThrow('maxResults must be an integer from 1 to 1000');
+        await expect(service.symbolSearch({ query: 'x', maxResults: -1 })).rejects.toThrow('maxResults must be an integer from 1 to 200');
+        await expect(service.astQuery({ language: 'typescript', query: '' })).rejects.toThrow('Missing required parameter: query');
+        await expect(service.astQuery({ language: 'typescript', query: 'function $A() {}', limit: -1 })).rejects.toThrow('limit must be an integer from 1 to 1000');
+    });
+
     test('delegates text search to the configured analyzer with bounded path resolution', async () => {
         const workspaceRoot = tempWorkspace();
         writeFileSync(join(workspaceRoot, 'sample.ts'), 'needle\n', 'utf8');

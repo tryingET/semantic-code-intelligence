@@ -350,8 +350,9 @@ describe('Error envelope parity (edge cases)', () => {
             });
             expect(res.status).toBe(200);
             const body = await parseMcpBody(res);
-            expect(body?.id).toBe(70);
-            expect(body?.result?.tools?.length).toBeGreaterThan(0);
+            const response = Array.isArray(body) ? body[0] : body;
+            expect(response?.id).toBe(70);
+            expect(response?.result?.tools?.length).toBeGreaterThan(0);
         });
 
         test('missing JSON-RPC params maps to InvalidParams (-32602)', async () => {

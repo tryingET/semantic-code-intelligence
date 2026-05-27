@@ -121,6 +121,12 @@ export class ToolWorkflowRouter {
             case 'workflow_locate_confirm_definition':
             case 'locate_confirm_definition':
                 return this.symbolWorkflows.locateConfirmDefinition(args);
+            case 'diagnostics':
+                return this.diagnostics();
+            case 'knowledge_insights':
+                return this.knowledgeInsights();
+            case 'cache_controls':
+                return this.cacheControls(args);
             case 'pattern_stats':
                 return this.learningWorkflows.patternStats();
             case 'get_snapshot':
@@ -172,6 +178,52 @@ export class ToolWorkflowRouter {
             default:
                 throw new CoreError('UnknownTool', `Unknown tool: ${name}`, { tool: name });
         }
+    }
+
+    private async diagnostics(): Promise<SnapshotWorkflowResult> {
+        const analyzer = this.coreAnalyzer as any;
+        const diagnostics = typeof analyzer?.getDiagnostics === 'function'
+            ? await analyzer.getDiagnostics()
+            : typeof analyzer?.getStats === 'function'
+              ? await analyzer.getStats()
+              : { available: false };
+        return {
+            payload: {
+                schemaVersion: 1,
+                tool: 'diagnostics',
+                workspaceRoot: this.getWorkspaceRoot(),
+                diagnostics,
+            },
+            isError: false,
+        };
+    }
+
+    private async knowledgeInsights(): Promise<SnapshotWorkflowResult> {
+        const analyzer = this.coreAnalyzer as any;
+        const insights = typeof analyzer?.getKnowledgeInsights === 'function'
+            ? await analyzer.getKnowledgeInsights()
+            : typeof analyzer?.learningOrchestrator?.getStats === 'function'
+              ? await analyzer.learningOrchestrator.getStats()
+              : { available: false };
+        return { payload: { schemaVersion: 1, tool: 'knowledge_insights', insights }, isError: false };
+    }
+
+    private async cacheControls(args: Record<string, any>): Promise<SnapshotWorkflowResult> {
+        const action = String(args?.action || '').trim();
+        if (!['warm', 'clear'].includes(action)) throw new CoreError('InvalidParams', 'Missing or invalid required parameter: action', { action });
+        const analyzer = this.coreAnalyzer as any;
+        if (action === 'clear') {
+            const handlers = [
+                { fn: analyzer?.clearCache, thisArg: analyzer },
+                { fn: analyzer?.cache?.clear, thisArg: analyzer?.cache },
+            ].filter((handler) => typeof handler.fn === 'function');
+            if (!handlers.length) throw new CoreError('InvalidParams', 'cache clear is not supported by the current analyzer');
+            for (const handler of handlers) await handler.fn.call(handler.thisArg);
+        } else {
+            if (typeof analyzer?.warmCache !== 'function') throw new CoreError('InvalidParams', 'cache warm is not supported by the current analyzer');
+            await analyzer.warmCache();
+        }
+        return { payload: { schemaVersion: 1, tool: 'cache_controls', action, ok: true }, isError: false };
     }
 
     private getMaxResults(): number {

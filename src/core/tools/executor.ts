@@ -31,6 +31,22 @@ function validateArgs(args: Record<string, any>, spec: ToolSpec): void {
             throw new CoreError('InvalidParams', 'Arguments do not satisfy any required shape');
         }
     }
+    const properties = schema.properties && typeof schema.properties === 'object' ? schema.properties : {};
+    for (const [key, property] of Object.entries(properties) as Array<[string, any]>) {
+        const value = args?.[key];
+        if (value === undefined || value === null) continue;
+        if (property?.type === 'array') {
+            if (!Array.isArray(value)) throw new CoreError('InvalidParams', `${key} must be an array`, { field: key });
+            if (typeof property.maxItems === 'number' && value.length > property.maxItems) {
+                throw new CoreError('InvalidParams', `${key} must contain at most ${property.maxItems} items`, { field: key, maxItems: property.maxItems });
+            }
+            if (property.items?.type === 'string') {
+                value.forEach((item, index) => {
+                    if (typeof item !== 'string') throw new CoreError('InvalidParams', `${key}[${index}] must be a string`, { field: key, index });
+                });
+            }
+        }
+    }
 }
 
 export class ToolExecutor {

@@ -779,6 +779,9 @@ class CLI {
 
     private printToolResult(res: any, rawJson: boolean): string {
         try {
+            if (rawJson && this.isToolResultError(res)) {
+                return JSON.stringify({ success: false, error: this.toolResultErrorPayload(res) }, null, 2);
+            }
             const printable = this.formatWorkflowResultForCli(res);
             if (rawJson) {
                 return JSON.stringify(printable, null, 2);
@@ -793,6 +796,29 @@ class CLI {
                 return '';
             }
         }
+    }
+
+    private toolResultErrorPayload(res: any): { code: string; message: string; data?: any } {
+        if (res?.error && typeof res.error === 'object') {
+            return {
+                code: String(res.error.code || 'Internal'),
+                message: String(res.error.message || 'Tool execution failed'),
+                data: res.error.data,
+            };
+        }
+        if (res && typeof res === 'object' && 'payload' in res && res.payload && typeof res.payload === 'object') {
+            const payload = res.payload as any;
+            if (payload.error && typeof payload.error === 'object') {
+                return {
+                    code: String(payload.error.code || 'Internal'),
+                    message: String(payload.error.message || 'Tool execution failed'),
+                    data: payload.error.data,
+                };
+            }
+            return { code: String(payload.code || 'Internal'), message: String(payload.message || 'Tool execution failed'), data: payload };
+        }
+        const message = res && typeof res === 'object' && 'text' in res ? String(res.text) : 'Tool execution failed';
+        return { code: 'Internal', message };
     }
 
     private formatWorkflowResultForCli(res: any): any {
