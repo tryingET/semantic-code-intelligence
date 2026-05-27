@@ -115,16 +115,44 @@ export class RenameWorkflowService {
         const timeoutSec = typeof args?.timeoutSec === 'number' ? args.timeoutSec : 240;
         const runChecksFlag: boolean = args?.runChecks !== false;
 
-        const plan = this.deps.planRename
-            ? await this.deps.planRename({ oldName, newName, file })
-            : await this.computePlanRename({ oldName, newName, file });
+        let plan: any;
+        try {
+            plan = this.deps.planRename
+                ? await this.deps.planRename({ oldName, newName, file })
+                : await this.computePlanRename({ oldName, newName, file });
+        } catch (error) {
+            const root = this.deps.workspaceRoot();
+            const snap = overlayStore.createSnapshot(true, { workspaceRoot: root });
+            return {
+                payload: {
+                    workflow: 'rename_safely',
+                    ok: false,
+                    snapshot: snap.id,
+                    reason: 'plan_failed',
+                    message: error instanceof Error ? error.message : String(error),
+                    next_actions: ['Confirm the symbol can be AST-validated before retrying'],
+                },
+                isError: false,
+            };
+        }
         const changes = plan?.changes || {};
         const files = Object.keys(changes);
-        if (!files.length) {
-            return { payload: { ok: false, reason: 'no_changes', message: 'Rename produced no changes' }, isError: false };
-        }
 
         const root = this.deps.workspaceRoot();
+        if (!files.length) {
+            const snap = overlayStore.createSnapshot(true, { workspaceRoot: root });
+            return {
+                payload: {
+                    workflow: 'rename_safely',
+                    ok: false,
+                    snapshot: snap.id,
+                    reason: 'no_changes',
+                    message: 'Rename produced no changes',
+                    next_actions: ['Confirm the symbol can be AST-validated before retrying'],
+                },
+                isError: false,
+            };
+        }
         const invalidPlanPaths: string[] = [];
         const snap = overlayStore.createSnapshot(true, { workspaceRoot: root });
         const tmpRootBase = runChecksFlag

@@ -913,12 +913,15 @@ export class TreeSitterLayer implements Layer<EnhancedMatches, TreeSitterResult>
     private detectFactoryPattern(nodes: ASTNode[]): DesignPattern | null {
         // Look for functions that create and return new objects
         const factoryNodes = nodes.filter((node) => {
+            const functionName =
+                node.metadata.functionName ||
+                (Array.isArray(node.metadata.exports) ? node.metadata.exports[0]?.name : undefined);
             return (
                 node.type === 'function_declaration' &&
-                node.metadata.functionName &&
-                (node.metadata.functionName.toLowerCase().includes('create') ||
-                    node.metadata.functionName.toLowerCase().includes('make') ||
-                    node.metadata.functionName.toLowerCase().includes('factory')) &&
+                functionName &&
+                (functionName.toLowerCase().includes('create') ||
+                    functionName.toLowerCase().includes('make') ||
+                    functionName.toLowerCase().includes('factory')) &&
                 node.text.includes('new ') &&
                 node.text.includes('return')
             );

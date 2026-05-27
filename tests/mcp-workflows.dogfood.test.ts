@@ -56,7 +56,7 @@ describe('Dogfooding MCP workflows (fast)', () => {
         expect(onParsed.symbol).toBeDefined();
     }, 30000);
 
-    test('plan_rename preview (TestFunction -> TestFunctionX)', async () => {
+    test('plan_rename rejects when the test harness has no AST-safe rename evidence', async () => {
         const plan = await mcp.handleToolCall('plan_rename', {
             oldName: 'TestFunction',
             newName: 'TestFunctionX',
@@ -64,9 +64,9 @@ describe('Dogfooding MCP workflows (fast)', () => {
             dryRun: true,
         });
         const planParsed = await parseContent(plan);
-        expect(planParsed).toBeDefined();
-        // Plan returns a WorkspaceEdit-like { changes }
-        expect(planParsed.changes).toBeDefined();
+        expect(plan.isError).toBe(true);
+        expect(plan.error?.code).toBe('RENAME_ERROR');
+        expect(String(plan.error?.message || planParsed)).toContain('AST-validated rename targets');
     }, 30000);
 
     test('graph_expand via MCP (file + symbol)', async () => {

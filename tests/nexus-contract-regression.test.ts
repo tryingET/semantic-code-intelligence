@@ -9,8 +9,14 @@ import { HTTPAdapter } from '../src/adapters/http-adapter';
 import { MCPAdapter } from '../src/adapters/mcp-adapter';
 import { createDefaultCoreConfig } from '../src/adapters/utils';
 import { LSPAdapter } from '../src/adapters/lsp-adapter';
+import { HTTPServer } from '../src/servers/http';
 import { createCodeAnalyzer } from '../src/core/index';
 import { normalizeStructuralPaths } from '../src/core/workflows/structural-workflow';
+import { FastSearchLayer } from '../src/layers/layer1-fast-search';
+import { TreeSitterLayer } from '../src/layers/tree-sitter';
+import { OntologyStorage } from '../src/ontology/storage';
+import { PatternStorage } from '../src/patterns/pattern-storage';
+import { ThingKind } from '../src/types/core';
 
 const roots: string[] = [];
 
@@ -42,6 +48,218 @@ async function withMcp<T>(workspaceRoot: string, fn: (mcp: MCPAdapter) => Promis
 }
 
 describe('nexus contract regressions', () => {
+    test('negative search bloom cache is scoped by path and file type', async () => {
+        const workspaceRoot = tempWorkspace();
+        mkdirSync(join(workspaceRoot, 'a'));
+        mkdirSync(join(workspaceRoot, 'b'));
+        writeFileSync(join(workspaceRoot, 'a', 'no-hit.ts'), 'export const Other = 1;\n', 'utf8');
+        writeFileSync(join(workspaceRoot, 'b', 'hit.ts'), 'export const Target = 1;\n', 'utf8');
+        const layer = new FastSearchLayer({
+            grep: { defaultTimeout: 1000, maxResults: 20, caseSensitive: true, includeContext: false, contextLines: 0 },
+            glob: { defaultTimeout: 1000, maxFiles: 100, ignorePatterns: [] },
+            ls: { defaultTimeout: 1000, maxDepth: 5, followSymlinks: false, includeDotfiles: false },
+            optimization: { parallelSearch: false, bloomFilter: true, maxConcurrency: 1 } as any,
+            caching: { enabled: true, ttl: 60, maxEntries: 100 },
+        });
+
+        const first = await layer.process({ identifier: 'Target', searchPath: join(workspaceRoot, 'a'), fileTypes: ['ts'] });
+        const second = await layer.process({ identifier: 'Target', searchPath: join(workspaceRoot, 'b'), fileTypes: ['ts'] });
+
+        expect(first.exact).toHaveLength(0);
+        expect(second.toolsUsed).not.toContain('bloomFilter');
+        expect(second.exact.length).toBeGreaterThan(0);
+        expect([...second.files].some((file) => file.endsWith('hit.ts'))).toBe(true);
+    });
+
+    test('fast search without explicit fileTypes does not silently narrow to TypeScript only', async () => {
+        const workspaceRoot = tempWorkspace();
+        writeFileSync(join(workspaceRoot, 'hit.js'), 'function JsOnlyTarget() { return 1; }\n', 'utf8');
+        const layer = new FastSearchLayer({
+            grep: { defaultTimeout: 1000, maxResults: 20, caseSensitive: true, includeContext: false, contextLines: 0 },
+            glob: { defaultTimeout: 1000, maxFiles: 100, ignorePatterns: [] },
+            ls: { defaultTimeout: 1000, maxDepth: 5, followSymlinks: false, includeDotfiles: false },
+            optimization: { parallelSearch: false, bloomFilter: false, maxConcurrency: 1 } as any,
+            caching: { enabled: false, ttl: 60, maxEntries: 100 },
+        });
+
+        const result = await layer.process({ identifier: 'JsOnlyTarget', searchPath: workspaceRoot });
+
+        expect(result.exact.length).toBeGreaterThan(0);
+        expect([...result.files].some((file) => file.endsWith('hit.js'))).toBe(true);
+    });
+
+    test('rename rejects missing symbols and does not edit comment-only text hits', async () => {
+        const workspaceRoot = tempWorkspace();
+        const target = join(workspaceRoot, 'sample.ts');
+        writeFileSync(target, '// oldName only in comment\nexport const Other = 1;\n', 'utf8');
+        const analyzer = await createCodeAnalyzer({ ...createDefaultCoreConfig(), workspaceRoot });
+        await analyzer.initialize();
+        try {
+            const uri = pathToFileURL(target).href;
+            await expect(
+                analyzer.prepareRename({ uri, position: { line: 0, character: 3 }, identifier: 'DefinitelyMissingXYZ' })
+            ).rejects.toThrow("Symbol 'DefinitelyMissingXYZ' not found");
+            await expect(
+                analyzer.prepareRename({ uri, position: { line: 0, character: 3 }, identifier: 'oldName' })
+            ).rejects.toThrow("Symbol 'oldName' not found");
+
+            await expect(
+                analyzer.rename({ uri, position: { line: 0, character: 3 }, identifier: 'oldName', newName: 'newName' })
+            ).rejects.toThrow('text-only matches are unsafe to rename');
+        } finally {
+            await analyzer.dispose?.();
+        }
+    });
+
+    test('pattern storage enables SQLite foreign keys, cascades deletes, and preserves metrics on save', async () => {
+        const workspaceRoot = tempWorkspace();
+        const store = new PatternStorage(join(workspaceRoot, 'patterns.db')) as any;
+        await store.initialize();
+        const pattern = {
+            id: 'p1',
+            from: [{ type: 'literal', value: 'a' }],
+            to: [{ type: 'literal', value: 'b' }],
+            confidence: 0.8,
+            occurrences: 1,
+            examples: [{ oldName: 'a', newName: 'b', confidence: 0.9, context: { file: 'x.ts', surroundingSymbols: [], timestamp: new Date() } }],
+            lastApplied: new Date(),
+            category: 'rename',
+        };
+        await store.savePattern(pattern);
+        store.db.query('UPDATE pattern_metrics SET total_applications = 7 WHERE pattern_id = ?').run('p1');
+        await store.savePattern({ ...pattern, confidence: 0.9 });
+        expect(store.db.query('select total_applications from pattern_metrics where pattern_id = ?').get('p1').total_applications).toBe(7);
+
+        await store.deletePattern('p1');
+
+        expect(store.db.query('PRAGMA foreign_keys').get().foreign_keys).toBe(1);
+        expect(store.db.query('select count(*) as c from pattern_examples').get().c).toBe(0);
+        expect(store.db.query('select count(*) as c from pattern_metrics').get().c).toBe(0);
+    });
+
+    test('ontology storage non-deleting upserts preserve links and handle symbol uniqueness', async () => {
+        const workspaceRoot = tempWorkspace();
+        const storage = new OntologyStorage(join(workspaceRoot, 'ontology.db'));
+        await storage.initialize();
+        await storage.upsertSymbol({ id: 's1', text: 'SharedName', language: 'ts', confidence: 0.5 });
+        await storage.upsertSymbol({ id: 's2', text: 'SharedName', language: 'ts', confidence: 0.9 });
+        const symbols = await storage.loadAllSymbols();
+        expect(symbols.filter((symbol) => symbol.text === 'SharedName' && symbol.language === 'ts')).toHaveLength(1);
+        expect(symbols.find((symbol) => symbol.text === 'SharedName')?.confidence).toBe(0.9);
+
+        await storage.upsertConcept({
+            id: 'c1',
+            canonicalName: 'ConceptOne',
+            relations: new Map(),
+            signature: { parameters: [], sideEffects: [], complexity: 1, fingerprint: 'c1' },
+            evolution: [],
+            metadata: { tags: [] },
+            confidence: 0.8,
+        });
+        const thing = {
+            id: 't1',
+            kind: ThingKind.Function,
+            location: { uri: 'file:///workspace/a.ts', range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } } },
+            confidence: 0.5,
+        };
+        await storage.upsertThing(thing);
+        await storage.upsertThingSymbol({ thingId: 't1', symbolId: 's1', role: 'declaration' });
+        await storage.upsertThingConcept({ thingId: 't1', conceptId: 'c1', confidence: 0.8, evidence: [] });
+        await storage.upsertThing({ ...thing, confidence: 0.95, occurrences: 2 });
+
+        expect(await storage.loadAllThingSymbols()).toHaveLength(1);
+        expect(await storage.loadAllThingConcepts()).toHaveLength(1);
+        await storage.close();
+    });
+
+    test('direct HTTPAdapter routes advertised tools/call endpoint with bounded capability filtering', async () => {
+        const workspaceRoot = tempWorkspace();
+        writeFileSync(join(workspaceRoot, 'sample.ts'), 'export const value = 1;\n', 'utf8');
+        const analyzer = await createCodeAnalyzer({ ...createDefaultCoreConfig(), workspaceRoot });
+        await analyzer.initialize();
+        try {
+            const adapter = new HTTPAdapter(analyzer as any, { enableCors: false, enableOpenAPI: false });
+            const response = await adapter.handleRequest({
+                method: 'POST',
+                url: '/api/v1/tools/call',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ name: 'read_file', arguments: { path: 'sample.ts', startLine: 1, endLine: 1 } }),
+            });
+
+            expect(response.status).toBe(200);
+            const body = JSON.parse(response.body);
+            expect(body.success).toBe(true);
+            expect(JSON.stringify(body.result)).toContain('export const value = 1');
+
+            const deniedApply = await adapter.handleRequest({
+                method: 'POST',
+                url: '/api/v1/tools/call',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ name: 'apply_snapshot', arguments: { snapshot: 'not-a-snapshot' } }),
+            });
+            expect(deniedApply.status).toBe(400);
+            expect(JSON.parse(deniedApply.body).error.code).toBe('InvalidParams');
+
+            const deniedSafeWriteApply = await adapter.handleRequest({
+                method: 'POST',
+                url: '/api/v1/tools/call',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ name: 'safe_write', arguments: { apply: true } }),
+            });
+            expect(deniedSafeWriteApply.status).toBe(400);
+            expect(JSON.parse(deniedSafeWriteApply.body).error.message).toContain('safe_write apply');
+        } finally {
+            await analyzer.dispose?.();
+        }
+    });
+
+    test('HTTPServer tools/call applies the same mutation capability guard as the adapter', async () => {
+        const workspaceRoot = tempWorkspace();
+        const port = 7157;
+        const previousPort = process.env.HTTP_API_PORT;
+        const previousApply = process.env.ALLOW_SNAPSHOT_APPLY;
+        delete process.env.ALLOW_SNAPSHOT_APPLY;
+        process.env.HTTP_API_PORT = String(port);
+        const server = new HTTPServer({ host: '127.0.0.1', port, workspaceRoot, enableOpenAPI: false });
+        await server.start();
+        try {
+            const response = await fetch(`http://127.0.0.1:${port}/api/v1/tools/call`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ name: 'apply_snapshot', arguments: { snapshot: 'not-a-snapshot' } }),
+            });
+            const body = await response.json();
+            expect(response.status).toBe(400);
+            expect(body.success).toBe(false);
+            expect(body.error.code).toBe('InvalidParams');
+        } finally {
+            await server.stop();
+            if (previousPort === undefined) delete process.env.HTTP_API_PORT;
+            else process.env.HTTP_API_PORT = previousPort;
+            if (previousApply === undefined) delete process.env.ALLOW_SNAPSHOT_APPLY;
+            else process.env.ALLOW_SNAPSHOT_APPLY = previousApply;
+        }
+    });
+
+    test('tree-sitter factory detection recognizes exported factory declarations', async () => {
+        const workspaceRoot = tempWorkspace();
+        const target = join(workspaceRoot, 'factory.ts');
+        writeFileSync(target, 'export function createUser() {\n  return new User();\n}\nclass User {}\n', 'utf8');
+        const layer = new TreeSitterLayer({ enabled: true, timeout: 1000, languages: ['typescript'], maxFileSize: '1MB', projectPath: workspaceRoot });
+
+        const result = await layer.process({
+            exact: [{ file: target, line: 1, column: 1, text: 'createUser', match: 'createUser', confidence: 1, context: { before: [], after: [] }, category: 'exact' }],
+            fuzzy: [],
+            conceptual: [],
+            files: new Set([target]),
+            searchTime: 0,
+            toolsUsed: [],
+            confidence: 1,
+        } as any);
+
+        expect(result.patterns.some((pattern) => pattern.type === 'factory')).toBe(true);
+    });
+
     test('advertised list_files routes to a bounded workspace listing', async () => {
         const workspaceRoot = tempWorkspace();
         writeFileSync(join(workspaceRoot, 'sample.ts'), 'export const value = 1;\n', 'utf8');

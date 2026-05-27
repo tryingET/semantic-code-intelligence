@@ -219,7 +219,7 @@ export class FastSearchLayer implements Layer<SearchQuery, EnhancedMatches> {
         // Check bloom filter for negative results (only for queries we've searched before)
         // Note: Don't early return on empty bloom filter - that prevents first-time searches
         const bloomFilterHit =
-            this.config.optimization.bloomFilter && this.bloomFilter.has(query.identifier + ':negative');
+            this.config.optimization.bloomFilter && this.bloomFilter.has(this.getBloomFilterKey(query, 'negative'));
         if (bloomFilterHit) {
             // We've searched for this before and found nothing
             return {
@@ -377,6 +377,7 @@ export class FastSearchLayer implements Layer<SearchQuery, EnhancedMatches> {
             confidence: 0,
         };
         const escapedId = this.escapeRegex(query.identifier);
+        const exactWordRegex = new RegExp(`\\b${escapedId}\\b`);
         const strategies = [
             { name: 'exact', pattern: `\\b${escapedId}\\b`, timeout: 700, maxResults: 20, confidence: 1.0 },
             { name: 'prefix', pattern: `\\b${escapedId}\\w*`, timeout: 280, maxResults: 15, confidence: 0.95 },
@@ -418,12 +419,12 @@ export class FastSearchLayer implements Layer<SearchQuery, EnhancedMatches> {
                                     categoryConfidence: cat.confidence,
                                 };
                             });
-                            // Classify: only 'exact' strategy contributes to exact; others to fuzzy
-                            if (s.name === 'exact') {
-                                matches.exact.push(...converted);
-                            } else {
-                                matches.fuzzy.push(...converted);
-                            }
+                            // Prefix/suffix searches can win the race with the same whole-word hit;
+                            // keep those as exact rather than making result shape timing-dependent.
+                            const exactMatches = converted.filter((m) => s.name === 'exact' || exactWordRegex.test(m.text));
+                            const fuzzyMatches = converted.filter((m) => !exactMatches.includes(m));
+                            matches.exact.push(...exactMatches);
+                            matches.fuzzy.push(...fuzzyMatches);
                             converted.forEach((m) => matches.files.add(m.file));
                             // Cancel others
                             controllers.forEach((c) => c.ctrl.cancel());
@@ -1415,9 +1416,9 @@ export class FastSearchLayer implements Layer<SearchQuery, EnhancedMatches> {
         return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
-    private getFileTypeForGrep(fileTypes?: string[]): string {
+    private getFileTypeForGrep(fileTypes?: string[]): string | undefined {
         if (!fileTypes || fileTypes.length === 0) {
-            return 'ts'; // Default to TypeScript
+            return undefined; // Search all supported text/code files when no caller scope is supplied.
         }
         return fileTypes[0];
     }
@@ -1442,6 +1443,10 @@ export class FastSearchLayer implements Layer<SearchQuery, EnhancedMatches> {
 
     private getCacheKey(query: SearchQuery): string {
         return `${query.identifier}:${query.searchPath || ''}:${query.fileTypes?.join(',') || ''}`;
+    }
+
+    private getBloomFilterKey(query: SearchQuery, polarity: 'positive' | 'negative'): string {
+        return `${this.getCacheKey(query)}:${polarity}`;
     }
 
     private getFromCache(key: string): EnhancedMatches | null {
@@ -1489,9 +1494,9 @@ export class FastSearchLayer implements Layer<SearchQuery, EnhancedMatches> {
         if (this.config.optimization.bloomFilter) {
             // Treat only true exact hits as positive; fuzzy/conceptual can be noisy
             if (matches.exact.length > 0) {
-                this.bloomFilter.add(query.identifier + ':positive');
+                this.bloomFilter.add(this.getBloomFilterKey(query, 'positive'));
             } else {
-                this.bloomFilter.add(query.identifier + ':negative');
+                this.bloomFilter.add(this.getBloomFilterKey(query, 'negative'));
             }
         }
     }
@@ -1598,7 +1603,7 @@ export class FastSearchLayer implements Layer<SearchQuery, EnhancedMatches> {
         const root = query.searchPath || 'src';
         const queue: string[] = [root];
         const seen = new Set<string>();
-        const exts = new Set((query.fileTypes || ['ts']).map((e) => e.toLowerCase()));
+        const exts = new Set((query.fileTypes || ['ts', 'tsx', 'js', 'jsx', 'py', 'rs', 'go']).map((e) => e.toLowerCase()));
         const id = query.identifier;
         let scanned = 0;
         while (queue.length && scanned < maxFiles) {

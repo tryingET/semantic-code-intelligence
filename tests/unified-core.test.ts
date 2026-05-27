@@ -6,6 +6,9 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { LayerManager } from '../src/core/layer-manager.js';
 import { SharedServices } from '../src/core/services/index.js';
 import {
@@ -276,44 +279,32 @@ describe('Unified Core Architecture', () => {
     });
 
     describe('Rename Operations', () => {
-        test('should prepare rename with validation', async () => {
+        test('should reject prepare rename when AST validation is unavailable', async () => {
+            mkdirSync(context.config.workspaceRoot, { recursive: true });
+            const renameFixture = join(context.config.workspaceRoot, 'rename-fixture.ts');
+            writeFileSync(renameFixture, 'export function TestFunction() { return 1; }\n', 'utf8');
             const request: PrepareRenameRequest = {
                 identifier: testSymbol,
-                uri: testUri,
-                position: testPosition,
+                uri: pathToFileURL(renameFixture).href,
+                position: { line: 0, character: 16 },
             };
 
-            const result = await context.codeAnalyzer.prepareRename(request);
-
-            expect(result.requestId).toBeDefined();
-            expect(result.data).toBeDefined();
-            enforceBudget('prepareRename reported total', result.performance.total, 100, 'UNIFIED_CORE_PREPARE_RENAME_REPORTED_BUDGET_MS');
+            await expect(context.codeAnalyzer.prepareRename(request)).rejects.toThrow('not found or cannot be renamed');
         });
 
-        test('should execute rename with learning and propagation', async () => {
+        test('should reject rename when AST validation is unavailable instead of returning a false no-op', async () => {
+            mkdirSync(context.config.workspaceRoot, { recursive: true });
+            const renameFixture = join(context.config.workspaceRoot, 'rename-execute-fixture.ts');
+            writeFileSync(renameFixture, 'export const ExecuteRenameSymbol = 1;\nconsole.log(ExecuteRenameSymbol);\n', 'utf8');
             const request: RenameRequest = {
-                identifier: testSymbol,
+                identifier: 'ExecuteRenameSymbol',
                 newName: 'RenamedFunction',
-                uri: testUri,
-                position: testPosition,
-                dryRun: true, // Don't actually modify files in tests
+                uri: pathToFileURL(renameFixture).href,
+                position: { line: 0, character: 14 },
+                dryRun: true,
             };
 
-            const startTime = Date.now();
-            const result = await context.codeAnalyzer.rename(request);
-            const duration = Date.now() - startTime;
-
-            // Verify performance shape; enforce wall-clock targets only in explicit performance runs.
-            enforceBudget('rename duration', duration, 200, 'UNIFIED_CORE_RENAME_BUDGET_MS');
-            enforceBudget('rename reported total', result.performance.total, 200, 'UNIFIED_CORE_RENAME_REPORTED_BUDGET_MS');
-
-            // Verify result structure
-            expect(result.requestId).toBeDefined();
-            expect(result.data).toBeDefined();
-            expect(result.data.changes).toBeDefined();
-
-            // Should have learning component involved (Layer 4)
-            expect(result.performance.layer4).toBeGreaterThanOrEqual(0);
+            await expect(context.codeAnalyzer.rename(request)).rejects.toThrow('text-only matches are unsafe to rename');
         });
 
         test('should reject invalid rename requests', async () => {

@@ -69,6 +69,7 @@ export class PatternStorage {
         }
 
         this.db = new Database(dbPath);
+        this.db.exec('PRAGMA foreign_keys = ON');
         this.db.exec('PRAGMA journal_mode = WAL');
     }
 
@@ -156,9 +157,17 @@ export class PatternStorage {
         const transaction = this.db.transaction(() => {
             // Insert or update pattern
             const patternStmt = this.db.prepare(`
-                INSERT OR REPLACE INTO patterns 
+                INSERT INTO patterns
                 (id, from_pattern, to_pattern, confidence, occurrences, category, last_applied, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO UPDATE SET
+                    from_pattern = excluded.from_pattern,
+                    to_pattern = excluded.to_pattern,
+                    confidence = excluded.confidence,
+                    occurrences = excluded.occurrences,
+                    category = excluded.category,
+                    last_applied = excluded.last_applied,
+                    updated_at = excluded.updated_at
             `);
 
             patternStmt.run(

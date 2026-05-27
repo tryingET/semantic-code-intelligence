@@ -504,7 +504,7 @@ describe('Protocol Adapters Integration', () => {
             expect(Array.isArray(responseBody.data)).toBe(true);
         });
 
-        test('should handle POST /api/rename requests correctly', async () => {
+        test('should reject POST /api/rename when mock layers cannot provide AST-safe rename evidence', async () => {
             const httpRequest = {
                 method: 'POST',
                 url: '/api/v1/rename',
@@ -520,10 +520,10 @@ describe('Protocol Adapters Integration', () => {
 
             const response = await context.adapters.http.handleRequest(httpRequest);
 
-            expect(response.status).toBe(200);
+            expect(response.status).toBe(500);
             const responseBody = JSON.parse(response.body);
-            expect(responseBody).toHaveProperty('data');
-            expect(responseBody.data).toHaveProperty('changes');
+            expect(responseBody.success).toBe(false);
+            expect(responseBody.error).toBe('Rename failed');
         });
 
         test('should handle GET /api/completions requests correctly', async () => {

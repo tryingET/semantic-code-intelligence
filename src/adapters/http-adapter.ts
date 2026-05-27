@@ -17,7 +17,10 @@ import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { CodeAnalyzer } from '../core/unified-analyzer.js';
 import type { SearchStream } from '../layers/enhanced-search-tools-async.js';
-import { CoreError } from '../core/errors.js';
+import { CoreError, isCoreError } from '../core/errors.js';
+import { ToolExecutor } from '../core/tools/executor.js';
+import type { SnapshotWorkflowResult } from '../core/workflows/snapshot-patch-workflow.js';
+import { ToolWorkflowRouter } from '../core/workflows/tool-workflow-router.js';
 import { resolveWorkspacePath } from '../core/workspace-path.js';
 import {
     buildCompletionRequest,
@@ -42,6 +45,7 @@ export interface HTTPAdapterConfig {
     enableOpenAPI?: boolean;
     apiVersion?: string;
     allowLegacyCwdFallback?: boolean;
+    allowedToolNames?: string[];
 }
 
 export interface HTTPRequest {
@@ -65,6 +69,8 @@ export class HTTPAdapter {
     private coreAnalyzer: CodeAnalyzer;
     private config: HTTPAdapterConfig;
     private responseCache = new Map<string, { response: string; timestamp: number }>();
+    private toolRouter?: ToolWorkflowRouter;
+    private toolExecutor?: ToolExecutor;
     private static readonly RESPONSE_CACHE_TTL = 30000; // 30 seconds
     private static readonly RESPONSE_CACHE_SIZE = 500; // Smaller cache for better performance
 
@@ -257,6 +263,8 @@ export class HTTPAdapter {
                     return method === 'GET' ? this.handleLearningStats() : this.methodNotAllowed();
                 case '/monitoring':
                     return method === 'GET' ? this.handleMonitoring(request) : this.methodNotAllowed();
+                case '/tools/call':
+                    return method === 'POST' ? this.handleToolsCall(request) : this.methodNotAllowed();
                 // New streaming endpoints
                 case '/stream/search':
                     return method === 'POST' ? this.handleStreamSearch(request) : this.methodNotAllowed();
@@ -2511,6 +2519,200 @@ export class HTTPAdapter {
             return null;
         }
         return cached.response;
+    }
+
+    private getToolRouter(): ToolWorkflowRouter {
+        if (!this.toolRouter) {
+            this.toolRouter = new ToolWorkflowRouter(this.coreAnalyzer as any, { maxResults: () => this.config.maxResults ?? 100 });
+        }
+        return this.toolRouter;
+    }
+
+    private getToolExecutor(): ToolExecutor {
+        if (!this.toolExecutor) this.toolExecutor = new ToolExecutor();
+        return this.toolExecutor;
+    }
+
+    private async executeToolWorkflow(name: string, args: Record<string, any>): Promise<SnapshotWorkflowResult> {
+        return this.getToolExecutor().execute(this.getToolRouter(), name, args);
+    }
+
+    private allowedHttpToolNames(): Set<string> {
+        return new Set(
+            this.config.allowedToolNames || [
+                'get_snapshot',
+                'read_file',
+                'text_search',
+                'symbol_search',
+                'ast_query',
+                'find_definition',
+                'find_references',
+                'locate_confirm_definition',
+                'graph_expand',
+                'recommend_checks',
+                'plan_rename',
+                'rename_safely',
+                'propose_patch',
+                'patch_checks_in_snapshot',
+                'run_checks',
+                'structural_search',
+                'structural_patch_checks',
+                'safe_write',
+            ]
+        );
+    }
+
+    private knownWorkflowToolNames(): Set<string> {
+        return new Set([
+            'list_pipelines',
+            'run_pipeline',
+            'list_pipeline_runs',
+            'pipeline_status',
+            'list_symbols',
+            'execute_intent',
+            'extract_snapshot_artifacts',
+            'apply_after_checks',
+            'safe_write',
+            'workflow_explore_symbol',
+            'explore_symbol_impact',
+            'workflow_quick_patch_checks',
+            'patch_checks_in_snapshot',
+            'workflow_safe_rename',
+            'rename_safely',
+            'workflow_locate_confirm_definition',
+            'locate_confirm_definition',
+            'diagnostics',
+            'knowledge_insights',
+            'cache_controls',
+            'pattern_stats',
+            'get_snapshot',
+            'read_file',
+            'list_files',
+            'propose_patch',
+            'run_checks',
+            'apply_snapshot',
+            'text_search',
+            'symbol_search',
+            'structural_search',
+            'structural_patch_checks',
+            'ast_query',
+            'graph_expand',
+            'recommend_checks',
+            'find_definition',
+            'find_references',
+            'get_completions',
+            'rename_symbol',
+            'plan_rename',
+            'apply_rename',
+            'build_symbol_map',
+            'generate_tests',
+            'suggest_refactoring',
+            'explore_codebase',
+        ]);
+    }
+
+    private assertHttpToolAllowed(name: string, args: Record<string, any>): void {
+        if (!this.allowedHttpToolNames().has(name)) {
+            if (!this.knownWorkflowToolNames().has(name)) {
+                throw new CoreError('UnknownTool', `Unknown tool: ${name}`, { tool: name });
+            }
+            throw new CoreError('InvalidParams', `Tool '${name}' is not available through this HTTP adapter surface`);
+        }
+        if (name === 'safe_write' && args?.apply === true) {
+            throw new CoreError('InvalidParams', 'safe_write apply is not available through this HTTP adapter surface');
+        }
+    }
+
+    private toolWorkflowPayload(result: SnapshotWorkflowResult, fallback: any = {}): any {
+        try {
+            if (result && 'payload' in result) return result.payload;
+            if (result && 'text' in result) {
+                try {
+                    return JSON.parse(result.text);
+                } catch {
+                    return fallback;
+                }
+            }
+        } catch {}
+        return fallback;
+    }
+
+    private toolWorkflowErrorPayload(result: SnapshotWorkflowResult, fallbackMessage: string) {
+        const payload = this.toolWorkflowPayload(result, undefined);
+        if (payload && typeof payload === 'object' && 'error' in payload && payload.error) return payload.error;
+        if (payload && typeof payload === 'object') {
+            return { code: (payload as any).code || 'Internal', message: (payload as any).message || fallbackMessage, data: payload };
+        }
+        const message = result && 'text' in result && result.text ? result.text.slice(0, 2000) : fallbackMessage;
+        const lower = message.toLowerCase();
+        const code = lower.includes('invalid') || lower.includes('missing') || lower.includes('unknown snapshot') || lower.includes('not available')
+            ? 'InvalidParams'
+            : 'Internal';
+        return { code, message };
+    }
+
+    private normalizeToolWorkflowResultForHttp(result: SnapshotWorkflowResult): any {
+        try {
+            if (result?.isError) return { ok: false, error: this.toolWorkflowErrorPayload(result, 'Tool execution failed') };
+            if (result && 'payload' in result) return result.payload;
+            if (result && 'text' in result) {
+                try {
+                    return JSON.parse(result.text);
+                } catch {
+                    return { ok: true, content: result.text };
+                }
+            }
+            return { ok: true, value: result };
+        } catch {
+            return { ok: false, error: { code: 'Internal', message: 'Failed to normalize tool result' } };
+        }
+    }
+
+    private statusForCoreErrorCode(code: unknown, fallback = 500): number {
+        if (code === 'InvalidParams') return 400;
+        if (code === 'UnknownTool') return 404;
+        if (code === 'Internal') return 500;
+        return fallback;
+    }
+
+    private statusForThrownError(err: unknown): number {
+        return isCoreError(err) ? this.statusForCoreErrorCode(err.code) : 500;
+    }
+
+    private envelopeForThrownError(err: unknown): { code: string; message: string; data?: any } {
+        if (isCoreError(err)) return { code: err.code, message: err.message, data: err.data };
+        const message = err instanceof Error ? err.message : String(err || 'Internal server error');
+        return { code: 'Internal', message };
+    }
+
+    private async handleToolsCall(request: HTTPRequest): Promise<HTTPResponse> {
+        try {
+            const body: any = strictJsonParse(request.body || '{}');
+            const name = String(body?.name || '').trim();
+            const hasArguments = Object.hasOwn(body || {}, 'arguments');
+            if (hasArguments && (!body?.arguments || typeof body.arguments !== 'object' || Array.isArray(body.arguments))) {
+                throw new CoreError('InvalidParams', 'Tool arguments must be an object');
+            }
+            const args = hasArguments ? (body.arguments as Record<string, any>) : {};
+            if (!name) throw new CoreError('InvalidParams', 'Missing tool name');
+            this.assertHttpToolAllowed(name, args);
+
+            const toolResult = await this.executeToolWorkflow(name, args);
+            const normalized = this.normalizeToolWorkflowResultForHttp(toolResult);
+            const isError = !!toolResult?.isError;
+            const errCode = isError ? (normalized as any)?.error?.code : undefined;
+            return {
+                status: isError ? this.statusForCoreErrorCode(errCode, 400) : 200,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ success: !isError, result: isError ? undefined : normalized, error: isError ? normalized.error : undefined }),
+            };
+        } catch (err) {
+            return {
+                status: this.statusForThrownError(err),
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ success: false, error: this.envelopeForThrownError(err) }),
+            };
+        }
     }
 
     private createErrorResponse(status: number, message: string, cause?: any): HTTPResponse {

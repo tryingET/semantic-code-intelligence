@@ -935,12 +935,6 @@ export class CodeAnalyzer {
                 }
                 finalRefs = preferredR;
             }
-            // Fallback: if AST-only requested and nothing remains, keep the best L1 item
-            if ((astOnly2 || preciseRequested2) && finalRefs.length === 0 && references.length > 0) {
-                const bestR = [...references].sort((a, b) => (b.confidence || 0) - (a.confidence || 0))[0];
-                finalRefs = [bestR];
-            }
-
             const performance: LayerPerformance = {
                 layer1: layer1Time,
                 layer2: layer2Time,
@@ -1324,10 +1318,11 @@ export class CodeAnalyzer {
                 includeDeclaration: true,
                 precise: true,
             } as any);
+            const def = defRes.data?.[0];
             const found =
-                defRes.data && defRes.data[0]
+                def && ((def as any).astValidated || (def as any).metadata?.astValidated || (def as any).layer === 'layer2')
                     ? {
-                          range: defRes.data[0].range,
+                          range: def.range,
                           placeholder: request.identifier,
                       }
                     : await this.validateSymbolForRename(request);
@@ -1427,6 +1422,12 @@ export class CodeAnalyzer {
                 const plan = await this.findRenamePlan(request, requestMetadata);
                 instances = plan.instances;
                 edits = plan.edit;
+                if (Object.keys(edits.changes || {}).length === 0) {
+                    throw new InvalidRequestError(
+                        `Symbol '${(request as any).identifier || (request as any).oldName || ''}' has no AST-validated rename targets; text-only matches are unsafe to rename`,
+                        requestId
+                    );
+                }
                 return instances;
             });
             layerTimes.layer3 = Date.now() - l3Start;
@@ -1923,9 +1924,6 @@ export class CodeAnalyzer {
     private async validateSymbolForRename(
         request: PrepareRenameRequest
     ): Promise<{ range: any; placeholder: string } | null> {
-        if (request.identifier === 'NonExistentSymbol') {
-            return null;
-        }
         // If no hits in async fast path, return null
         const res = await this.findDefinitionAsync({
             uri: request.uri,
@@ -1935,17 +1933,8 @@ export class CodeAnalyzer {
             precise: true,
         } as any);
         const def = res.data[0];
-        if (!def) {
-            return {
-                range: {
-                    start: { line: request.position.line, character: request.position.character },
-                    end: {
-                        line: request.position.line,
-                        character: request.position.character + Math.max(1, request.identifier.length),
-                    },
-                },
-                placeholder: request.identifier,
-            };
+        if (!def || !((def as any).astValidated || (def as any).metadata?.astValidated || (def as any).layer === 'layer2')) {
+            return null;
         }
         return { range: def.range, placeholder: request.identifier };
     }
@@ -1968,8 +1957,8 @@ export class CodeAnalyzer {
 
         // Prefer AST-validated references when available
         const refsData = refsRes.data || [];
-        const astValidated = refsData.filter((r: any) => r && (r.astValidated || r.layer === 'layer2'));
-        const chosen = astValidated.length > 0 ? astValidated : refsData;
+        const astValidated = refsData.filter((r: any) => r && (r.astValidated || r.metadata?.astValidated || r.layer === 'layer2'));
+        const chosen = astValidated;
 
         const editsByFile: Record<string, any[]> = {};
         for (const r of chosen) {
@@ -1992,7 +1981,7 @@ export class CodeAnalyzer {
             precise: true,
         } as any);
         const def = defRes.data[0];
-        if (def) {
+        if (def && ((def as any).astValidated || (def as any).metadata?.astValidated || (def as any).layer === 'layer2')) {
             const file = def.uri;
             editsByFile[file] = editsByFile[file] || [];
             editsByFile[file].push({ range: def.range, newText: newName });
@@ -2359,6 +2348,8 @@ export class CodeAnalyzer {
                 : null,
             maxResults: request.maxResults,
             includeDeclaration: request.includeDeclaration,
+            precise: request.precise === true,
+            astOnly: request.astOnly === true,
             // Only include properties that affect the result
             ...(request.newName && { newName: request.newName }),
             ...(request.dryRun !== undefined && { dryRun: request.dryRun }),

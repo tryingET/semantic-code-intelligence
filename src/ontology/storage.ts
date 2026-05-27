@@ -91,6 +91,7 @@ export class SemanticGraphStorage implements StoragePort {
         }
 
         this.db = new Database(dbPath);
+        this.db.exec('PRAGMA foreign_keys = ON');
         this.db.exec('PRAGMA journal_mode = WAL');
 
         const autoMigrate = (process.env.L4_AUTO_MIGRATE ?? '1') !== '0';
@@ -230,8 +231,15 @@ export class SemanticGraphStorage implements StoragePort {
     async upsertConcept(concept: Concept): Promise<void> {
         const tx = this.db.transaction(() => {
             const conceptStmt = this.db.prepare(`
-        INSERT OR REPLACE INTO concepts (id, canonical_name, semantic_type, confidence, signature_json, metadata_json, updated_at)
+        INSERT INTO concepts (id, canonical_name, semantic_type, confidence, signature_json, metadata_json, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, strftime('%s', 'now'))
+        ON CONFLICT(id) DO UPDATE SET
+          canonical_name = excluded.canonical_name,
+          semantic_type = excluded.semantic_type,
+          confidence = excluded.confidence,
+          signature_json = excluded.signature_json,
+          metadata_json = excluded.metadata_json,
+          updated_at = excluded.updated_at
       `);
 
             conceptStmt.run(
@@ -315,8 +323,16 @@ export class SemanticGraphStorage implements StoragePort {
 
     async upsertSymbol(symbol: Symbol): Promise<void> {
         const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO symbols (id, text, language, confidence, updated_at)
+      INSERT INTO symbols (id, text, language, confidence, updated_at)
       VALUES (?, ?, ?, ?, strftime('%s', 'now'))
+      ON CONFLICT(id) DO UPDATE SET
+        text = excluded.text,
+        language = excluded.language,
+        confidence = excluded.confidence,
+        updated_at = excluded.updated_at
+      ON CONFLICT(text, language) DO UPDATE SET
+        confidence = excluded.confidence,
+        updated_at = excluded.updated_at
     `);
         stmt.run(symbol.id, symbol.text, symbol.language ?? null, symbol.confidence ?? 0);
     }
@@ -345,9 +361,21 @@ export class SemanticGraphStorage implements StoragePort {
         const occurrences = typeof thing.occurrences === 'number' ? Math.max(1, thing.occurrences) : 1;
 
         const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO things
+      INSERT INTO things
         (id, kind, location_uri, location_range, signature, type_info_json, confidence, first_seen, last_seen, occurrences, context, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%s', 'now'))
+      ON CONFLICT(id) DO UPDATE SET
+        kind = excluded.kind,
+        location_uri = excluded.location_uri,
+        location_range = excluded.location_range,
+        signature = excluded.signature,
+        type_info_json = excluded.type_info_json,
+        confidence = excluded.confidence,
+        first_seen = COALESCE(things.first_seen, excluded.first_seen),
+        last_seen = excluded.last_seen,
+        occurrences = excluded.occurrences,
+        context = excluded.context,
+        updated_at = excluded.updated_at
     `);
 
         stmt.run(
