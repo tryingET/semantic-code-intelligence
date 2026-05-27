@@ -44,11 +44,11 @@ function scanTextSurface(file: string): void {
     const surface = raw.replace(/^-\s+/, '').trim();
     const command = surface.replace(/^run:\s*/, '').trim();
 
-    if (/^bun\s+test$/.test(command)) {
+    if (/^(?:bun|\{\{bun\}\})\s+test(?:\s+tests\/?|\s+tests\/)?$/.test(command)) {
       add(file, lineNo, 'no-broad-raw-bun-test', line, 'Use `bun run test` for the normal suite, or a focused `bun test tests/<file>.test.ts` command.');
     }
 
-    if (/^bun\s+test\s+--coverage\b/.test(command)) {
+    if (/^(?:bun|\{\{bun\}\})\s+test\b.*\b--coverage\b/.test(command)) {
       add(file, lineNo, 'no-ad-hoc-raw-coverage', line, 'Use `bun run test:coverage` so coverage semantics stay centralized.');
     }
 
@@ -108,7 +108,7 @@ function main(): void {
   checkPackageScripts();
 
   for (const file of workflowFiles()) scanTextSurface(file);
-  for (const file of ['.github/pull_request_template.md', 'README.md', 'TESTING_STRATEGY.md']) scanTextSurface(file);
+  for (const file of ['.github/pull_request_template.md', 'README.md', 'TESTING_STRATEGY.md', 'tests/README.md', 'justfile']) scanTextSurface(file);
 
   const report = { ok: violations.length === 0, violations };
   if (json) {

@@ -112,7 +112,7 @@ export class HTTPServer {
         }
 
         // Determine port: prefer config port if explicitly set, else HTTP_API_PORT env, else 7000
-        const listenPort = Number(this.config.port || process.env.HTTP_API_PORT || 7000);
+        const listenPort = Number(this.config.port ?? process.env.HTTP_API_PORT ?? 7000);
 
         this.server = serve({
             hostname: this.config.host,
@@ -1047,6 +1047,7 @@ export class HTTPServer {
         });
 
         const actual = this.server?.port ?? listenPort;
+        this.config.port = actual;
         if (!process.env.SILENT_MODE) {
             console.log(`[HTTP Server] Started at http://${this.config.host}:${actual}`);
             console.log(`[HTTP Server] OpenAPI spec: http://${this.config.host}:${actual}/openapi.json`);

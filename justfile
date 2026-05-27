@@ -483,7 +483,7 @@ test-perf:
 
 # Run tests with coverage
 test-coverage:
-    {{bun}} test --coverage tests/
+    {{bun}} run test:coverage
 
 # Run tests in watch mode
 test-watch:

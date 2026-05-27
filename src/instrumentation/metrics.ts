@@ -226,6 +226,21 @@ export const recordError = (adapter: string, code: string) => metricsRegistry.re
 export const recordLayerLatency = (adapter: string, layer: string, durationMs: number) =>
     metricsRegistry.recordLayerLatency(adapter, layer, durationMs);
 
+export function buildPushgatewayUrl(url: string, job: string, instance?: string): string {
+    const baseUrl = url.replace(/\/+$/, '');
+    let pushUrl = `${baseUrl}/metrics/job/${encodeURIComponent(job)}`;
+    if (instance) {
+        pushUrl += `/instance/${encodeURIComponent(instance)}`;
+    }
+    return pushUrl;
+}
+
+function pushgatewayTimeoutSignal(): AbortSignal | undefined {
+    const timeoutMs = Number(process.env.PUSHGATEWAY_TIMEOUT_MS ?? 5000);
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return undefined;
+    return AbortSignal.timeout(timeoutMs);
+}
+
 /**
  * Push metrics to a Prometheus Pushgateway.
  *
@@ -252,11 +267,7 @@ export async function pushToGateway(
         }
 
         // Build Pushgateway URL: /metrics/job/{job}[/instance/{instance}]
-        const baseUrl = url.replace(/\/+$/, ''); // Remove trailing slashes
-        let pushUrl = `${baseUrl}/metrics/job/${encodeURIComponent(job)}`;
-        if (instance) {
-            pushUrl += `/instance/${encodeURIComponent(instance)}`;
-        }
+        const pushUrl = buildPushgatewayUrl(url, job, instance);
 
         const response = await fetch(pushUrl, {
             method: 'POST',
@@ -264,6 +275,7 @@ export async function pushToGateway(
                 'Content-Type': 'text/plain; version=0.0.4',
             },
             body: metrics,
+            signal: pushgatewayTimeoutSignal(),
         });
 
         if (response.ok) {

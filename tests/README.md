@@ -108,10 +108,10 @@ bun install
 ### Run All Tests
 ```bash
 # Run the complete test suite
-bun test tests/
+bun run test
 
 # Run with coverage
-bun test --coverage tests/
+bun run test:coverage
 
 # Run with performance timing
 time bun test tests/
@@ -292,8 +292,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: oven-sh/setup-bun@v1
-      - run: bun install
-      - run: bun test tests/ --coverage
+      - run: bun install --frozen-lockfile
+      - run: bun run test:coverage
       - run: bun test tests/performance.test.ts --timeout 180000
 ```
 

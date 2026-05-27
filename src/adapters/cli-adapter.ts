@@ -471,7 +471,11 @@ export class CLIAdapter {
             // Ensure analyzer is initialized
             await (this.coreAnalyzer as any)?.initialize?.();
             const kind = options.kind || 'literal';
-            const maxResults = Math.min(options.maxResults || this.config.maxResults || 200, 1000);
+            const maxResults = parseIntegerOption(options.maxResults, 'maxResults', {
+                defaultValue: this.config.maxResults || 200,
+                min: 1,
+                max: 1000,
+            });
             const searchPath = await this.workspacePathForSearch(options.path, 'CLI text-search path');
 
             const searchViaAsyncGrep = async (pattern: string, useRegex: boolean) => {
@@ -515,7 +519,11 @@ export class CLIAdapter {
             if (error instanceof CoreError) return this.formatError(`Text search failed: ${handleAdapterError(error, 'cli')}`);
             const kind = options.kind || 'literal';
             const caseInsensitive = !!options.caseInsensitive;
-            const maxResults = Math.min(options.maxResults || this.config.maxResults || 200, 1000);
+            const maxResults = parseIntegerOption(options.maxResults, 'maxResults', {
+                defaultValue: this.config.maxResults || 200,
+                min: 1,
+                max: 1000,
+            });
             const path = await this.workspacePathForSearch(options.path, 'CLI text-search path');
             const asyncGrep = new AsyncEnhancedGrep({ cacheSize: 500, cacheTTL: 30000 });
             const pattern = kind === 'word' ? `\\b${escapeRegex(query)}\\b` : query;
@@ -536,7 +544,7 @@ export class CLIAdapter {
      * Symbol search using L3 buildSymbolMap (AST-only)
      */
     async handleSymbolSearch(query: string, options: { maxResults?: number; json?: boolean }): Promise<string> {
-        const maxResults = Math.min(options.maxResults || 50, 200);
+        const maxResults = parseIntegerOption(options.maxResults, 'maxResults', { defaultValue: 50, min: 1, max: 200 });
         const res = await (this.coreAnalyzer as any).buildSymbolMap({
             identifier: query,
             maxFiles: maxResults,
@@ -793,7 +801,11 @@ export class CLIAdapter {
                 uri,
                 identifier,
                 includeDeclaration: options.includeDeclaration ?? true,
-                maxResults: options.maxResults || this.config.maxResults,
+                maxResults: parseIntegerOption(options.maxResults, 'maxResults', {
+                    defaultValue: this.config.maxResults || 100,
+                    min: 1,
+                    max: 1000,
+                }),
                 precise: options.precise,
                 conceptual: !!options.conceptual,
             });

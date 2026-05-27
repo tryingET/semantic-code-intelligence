@@ -42,20 +42,20 @@ describe('Layer Validation - L1→L5 Working Paths', () => {
         console.log(`L2 ast_query took ${elapsed}ms`);
     }, 10000);
 
-    test.skip('L2: symbol-search should find symbols', async () => {
-        // Skip for now - command having issues with JSON output
-        const { stdout } = await execAsync(`${CLI} symbol-search "Layer" -n 5 -j`);
+    test('L2: symbol-search should find symbols', async () => {
+        const { stdout } = await execAsync(`${CLI} symbol-search "HTTPServer" -n 5 -j`);
         const result = JSON.parse(stdout);
         expect(result.count).toBeGreaterThan(0);
+        expect(result.symbols.some((symbol: { name?: string }) => symbol.name === 'HTTPServer')).toBe(true);
     }, 10000);
 
     // L3 Planner
-    test.skip('L3: plan-rename should generate a preview', async () => {
-        // Skip for now - taking too long
+    test('L3: plan-rename should generate a preview', async () => {
         const { stdout } = await execAsync(`${CLI} plan-rename "EventEmitter" "EventDispatcher" -j`);
         const result = JSON.parse(stdout);
-        expect(result).toHaveProperty('changeCount');
-        expect(result.changeCount).toBeGreaterThanOrEqual(0);
+        expect(result.preview).toBe(true);
+        expect(result).toHaveProperty('totalEdits');
+        expect(result.totalEdits).toBeGreaterThanOrEqual(0);
     }, 30000);
 
     // L4 Ontology

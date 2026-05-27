@@ -6,8 +6,9 @@
  * - Pushgateway push function works correctly
  * - Environment variable configuration is respected
  */
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
+    buildPushgatewayUrl,
     getPushgatewayUrl,
     metricsRegistry,
     pushToGateway,
@@ -127,55 +128,71 @@ describe('CLI Metrics Pushgateway', () => {
             expect(typeof result.success).toBe('boolean');
         });
 
-        // Skip network tests in CI - they timeout waiting for unreachable hosts
-        // These are validated manually with a real Pushgateway
-        test.skip('returns error when Pushgateway is unreachable', async () => {
-            // Record some metrics first
+        test('returns error when Pushgateway is unreachable', async () => {
             recordToolStart('cli');
             recordToolEnd('cli', 'test_command', 100, true);
 
-            // Try to push to a non-existent server
-            const result = await pushToGateway('http://127.0.0.1:19999', 'test_job');
+            const temporary = Bun.serve({
+                hostname: '127.0.0.1',
+                port: 0,
+                fetch: () => new Response('ok'),
+            });
+            const port = temporary.port;
+            temporary.stop(true);
 
-            // Should fail with network error
-            expect(result.success).toBe(false);
-            expect(result.error).toBeDefined();
+            const previousTimeout = process.env.PUSHGATEWAY_TIMEOUT_MS;
+            process.env.PUSHGATEWAY_TIMEOUT_MS = '250';
+            try {
+                const result = await pushToGateway(`http://127.0.0.1:${port}`, 'test_job');
+                expect(result.success).toBe(false);
+                expect(result.error).toBeDefined();
+            } finally {
+                if (previousTimeout === undefined) delete process.env.PUSHGATEWAY_TIMEOUT_MS;
+                else process.env.PUSHGATEWAY_TIMEOUT_MS = previousTimeout;
+            }
         });
 
         test('handles URL construction correctly', () => {
-            // Test URL construction logic without making network calls
-            // The actual pushToGateway function builds URLs like:
-            // {baseUrl}/metrics/job/{job}[/instance/{instance}]
-
-            // Verify the function signature accepts all expected parameters
             expect(typeof pushToGateway).toBe('function');
             expect(pushToGateway.length).toBe(3); // url, job, instance (optional)
+            expect(buildPushgatewayUrl('http://localhost:9091/', 'ontology_cli')).toBe(
+                'http://localhost:9091/metrics/job/ontology_cli'
+            );
+            expect(buildPushgatewayUrl('http://localhost:9091', 'ontology_cli', 'instance1')).toBe(
+                'http://localhost:9091/metrics/job/ontology_cli/instance/instance1'
+            );
         });
 
-        test.skip('builds correct URL with job name', async () => {
-            // Skipped: requires network access
-            // Record metrics
+        test('pushes to the expected URL with job name', async () => {
             recordToolStart('cli');
             recordToolEnd('cli', 'url_test', 50, true);
 
-            const result1 = await pushToGateway('http://localhost:9091', 'ontology_cli');
-            const result2 = await pushToGateway('http://localhost:9091/', 'ontology_cli');
-            const result3 = await pushToGateway('http://localhost:9091', 'ontology_cli', 'instance1');
+            let observedPath = '';
+            let observedBody = '';
+            const server = Bun.serve({
+                hostname: '127.0.0.1',
+                port: 0,
+                fetch: async (request) => {
+                    observedPath = new URL(request.url).pathname;
+                    observedBody = await request.text();
+                    return new Response('ok', { status: 202 });
+                },
+            });
 
-            expect(result1.success).toBe(false);
-            expect(result2.success).toBe(false);
-            expect(result3.success).toBe(false);
+            try {
+                const result = await pushToGateway(`http://127.0.0.1:${server.port}/`, 'ontology_cli', 'instance1');
+                expect(result).toEqual({ success: true, statusCode: 202 });
+                expect(observedPath).toBe('/metrics/job/ontology_cli/instance/instance1');
+                expect(observedBody).toContain('tool_calls_total');
+            } finally {
+                server.stop(true);
+            }
         });
 
-        test.skip('handles special characters in job name', async () => {
-            // Skipped: requires network access
-            recordToolStart('cli');
-            recordToolEnd('cli', 'special_test', 50, true);
-
-            const result = await pushToGateway('http://localhost:9091', 'job/with/slashes');
-
-            expect(result.success).toBe(false);
-            expect(result.error).toBeDefined();
+        test('encodes special characters in job name', () => {
+            expect(buildPushgatewayUrl('http://localhost:9091', 'job/with/slashes')).toBe(
+                'http://localhost:9091/metrics/job/job%2Fwith%2Fslashes'
+            );
         });
     });
 

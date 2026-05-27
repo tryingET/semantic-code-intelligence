@@ -200,8 +200,10 @@ describe('build command surface', () => {
     });
 
     test('package build delegates to the canonical all-adapter build', () => {
-        const packageJson = JSON.parse(readText('package.json')) as { scripts?: Record<string, string> };
+        const packageJson = JSON.parse(readText('package.json')) as { main?: string; scripts?: Record<string, string> };
+        expect(packageJson.main).toBe('dist/core/index.js');
         expect(packageJson.scripts?.build).toBe('bun run build:all');
+        expect(packageJson.scripts?.['build:all']).toContain('bun run build:core');
         expect(packageJson.scripts?.['build:all']).toContain('bun run build:lsp');
         expect(packageJson.scripts?.['build:all']).toContain('bun run build:mcp-stdio');
         expect(packageJson.scripts?.['build:all']).toContain('bun run build:mcp-http');
@@ -210,10 +212,13 @@ describe('build command surface', () => {
         expect(packageJson.scripts?.['build:all']).toContain('bun run build:cli');
         expect(packageJson.scripts?.['build:lsp']).toBe('bun run scripts/build-server.ts lsp');
         expect(packageJson.scripts?.['build:http']).toBe('bun run scripts/build-server.ts http');
+        expect(packageJson.scripts?.['build:core']).toBe('bun run scripts/build-server.ts core');
         expect(packageJson.scripts?.['build:cli']).toBe('bun run scripts/build-server.ts cli');
         expect(packageJson.scripts?.['build:mcp-stdio']).toBe('bun run scripts/build-server.ts mcp-stdio');
         expect(packageJson.scripts?.['build:mcp-http']).toBe('bun run scripts/build-server.ts mcp-http');
         expect(packageJson.scripts?.['build:mcp-enhanced']).toBe('bun run scripts/build-server.ts mcp-enhanced');
+        expect(packageJson.scripts?.['public-surface:check']).toBe('bun run build:all && bun run scripts/check-public-runtime-surface.ts');
+        expect(packageJson.scripts?.prepack).toBe('bun run public-surface:check');
     });
 
     test('Just build delegates to the package build instead of hand-rolling divergent artifacts', () => {
@@ -230,10 +235,11 @@ describe('build command surface', () => {
         const packageJson = JSON.parse(readText('package.json')) as { scripts?: Record<string, string> };
         const helper = readText('scripts/build-server.ts');
 
-        for (const script of ['build:lsp', 'build:mcp-stdio', 'build:mcp-http', 'build:mcp-enhanced', 'build:http', 'build:cli']) {
+        for (const script of ['build:core', 'build:lsp', 'build:mcp-stdio', 'build:mcp-http', 'build:mcp-enhanced', 'build:http', 'build:cli']) {
             expect(packageJson.scripts?.[script]).toStartWith('bun run scripts/build-server.ts ');
             expect(packageJson.scripts?.[script]).not.toContain('--external');
         }
+        expect(helper).toContain("core: { entry: './src/core/index.ts', outdir: 'dist/core' }");
         expect(helper).toContain("'tree-sitter-rust'");
         expect(helper).toContain("'bun:sqlite'");
         expect(helper).toContain('mcp-enhanced');

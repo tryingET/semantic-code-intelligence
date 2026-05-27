@@ -274,7 +274,7 @@ class CLI {
                 await this.ensureInitialized(options);
                 const result = await this.cliAdapter.handlePlanRename(identifier, newName, {
                     json: !!options.json,
-                    limit: parseInt(options.limit),
+                    limit: parseIntegerOption(options.limit, 'limit', { defaultValue: 10, min: 1, max: 1000 }),
                 });
                 await this.exitIfAdapterError(result, !!options.json);
                 console.log(result);
@@ -299,7 +299,7 @@ class CLI {
                         kind: options.kind,
                         caseInsensitive: !!options.ignoreCase,
                         path: options.path,
-                        maxResults: parseInt(options.maxResults),
+                        maxResults: parseIntegerOption(options.maxResults, 'max-results', { defaultValue: 200, min: 1, max: 1000 }),
                         json: !!options.json,
                     });
                     await this.exitIfAdapterError(out, !!options.json);
@@ -321,7 +321,7 @@ class CLI {
             .action(async (query, options) => {
                 await this.ensureInitialized(options);
                 const out = await this.cliAdapter.handleSymbolSearch(query, {
-                    maxResults: parseInt(options.maxResults),
+                    maxResults: parseIntegerOption(options.maxResults, 'max-results', { defaultValue: 50, min: 1, max: 200 }),
                     json: !!options.json,
                 });
                 await this.exitIfAdapterError(out, !!options.json);
@@ -514,9 +514,9 @@ class CLI {
                     await this.ensureInitialized(options);
                     let output = await this.cliAdapter.handleExplore(identifier, {
                         file: options.file,
-                        maxResults: parseInt(options.maxResults),
+                        maxResults: parseIntegerOption(options.maxResults, 'max-results', { defaultValue: 100, min: 1, max: 1000 }),
                         includeDeclaration: !!options.includeDeclaration,
-                        limit: parseInt(options.limit),
+                        limit: parseIntegerOption(options.limit, 'limit', { defaultValue: 10, min: 1, max: 1000 }),
                         summary: !!options.summary,
                         precise: !!options.precise,
                         conceptual: !!options.conceptual,
@@ -526,7 +526,7 @@ class CLI {
                     await this.exitIfAdapterError(output, !!options.json);
                     if (options.tree && !options.json) {
                         const target = options.file ? options.file : this.workspaceRoot;
-                        const depth = parseInt(options.treeDepth) || 2;
+                        const depth = parseIntegerOption(options.treeDepth, 'tree-depth', { defaultValue: 3, min: 1, max: 10 });
                         const tree = this.renderTree(target, depth);
                         if (tree) {
                             output += `\n\n` + tree;
@@ -668,7 +668,7 @@ class CLI {
                     language: String(language),
                     pattern: String(pattern),
                     paths: options.paths,
-                    maxResults: parseInt(String(options.maxResults) || '50', 10),
+                    maxResults: parseIntegerOption(options.maxResults, 'max-results', { defaultValue: 50, min: 1, max: 1000 }),
                 };
                 await this.printToolWorkflowAndExit('structural_search', args, !!options.json);
             });

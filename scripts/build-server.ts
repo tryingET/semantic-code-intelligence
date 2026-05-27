@@ -8,6 +8,7 @@ type BuildTarget = {
 };
 
 const targets: Record<string, BuildTarget> = {
+    core: { entry: './src/core/index.ts', outdir: 'dist/core' },
     lsp: { entry: './src/servers/lsp.ts', outdir: 'dist/lsp' },
     'mcp-stdio': { entry: './src/servers/mcp.ts', outdir: 'dist/mcp' },
     'mcp-http': { entry: './src/servers/mcp-http.ts', outdir: 'dist/mcp-http' },

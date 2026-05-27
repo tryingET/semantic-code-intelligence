@@ -42,6 +42,7 @@ export class LSPServer {
     private coreAnalyzer!: CodeAnalyzer;
     private lspAdapter!: LSPAdapter;
     private initialized = false;
+    private metricsServer: ReturnType<typeof serve> | null = null;
 
     constructor() {
         this.setupConnection();
@@ -121,22 +122,24 @@ export class LSPServer {
             // Start metrics endpoint for LSP on loopback
             try {
                 const port = Number(process.env.LSP_PROM_PORT || 9467);
-                serve({
-                    hostname: '127.0.0.1',
-                    port,
-                    fetch: async (req) => {
-                        const url = new URL(req.url);
-                        if (url.pathname === '/metrics' && req.method === 'GET') {
-                            const text = metricsRegistry.renderPrometheusText();
-                            return new Response(text, {
-                                status: 200,
-                                headers: { 'Content-Type': 'text/plain; version=0.0.4', 'Cache-Control': 'no-cache' },
-                            });
-                        }
-                        return new Response('Not found', { status: 404 });
-                    },
-                });
-                log(`[LSP] Metrics on http://127.0.0.1:${port}/metrics`);
+                if (!this.metricsServer) {
+                    this.metricsServer = serve({
+                        hostname: '127.0.0.1',
+                        port,
+                        fetch: async (req) => {
+                            const url = new URL(req.url);
+                            if (url.pathname === '/metrics' && req.method === 'GET') {
+                                const text = metricsRegistry.renderPrometheusText();
+                                return new Response(text, {
+                                    status: 200,
+                                    headers: { 'Content-Type': 'text/plain; version=0.0.4', 'Cache-Control': 'no-cache' },
+                                });
+                            }
+                            return new Response('Not found', { status: 404 });
+                        },
+                    });
+                    log(`[LSP] Metrics on http://127.0.0.1:${port}/metrics`);
+                }
             } catch (err) {
                 log('[LSP] Metrics server failed to start:', (err as Error)?.message || String(err));
             }
@@ -558,6 +561,10 @@ export class LSPServer {
      * Shutdown the server
      */
     async shutdown(): Promise<void> {
+        if (this.metricsServer) {
+            this.metricsServer.stop();
+            this.metricsServer = null;
+        }
         if (this.coreAnalyzer) {
             await this.coreAnalyzer.dispose();
         }
