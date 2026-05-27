@@ -56,7 +56,6 @@ export class MCPServer {
 
     constructor() {
         this.workspaceRoot = resolveConfiguredWorkspaceRoot();
-        const supportsPrompts = typeof (Server.prototype as any).registerPrompt === 'function';
         this.server = new Server(
             {
                 name: 'semantic-code-intelligence',
@@ -66,12 +65,12 @@ export class MCPServer {
                 capabilities: {
                     tools: {},
                     resources: {},
-                    ...(supportsPrompts ? { prompts: {} } : {}),
+                    prompts: {},
                 },
             }
         );
 
-        if (supportsPrompts) registerCommonPrompts(this.server);
+        registerCommonPrompts(this.server);
         registerCommonResources(this.server, { workspaceRoot: this.workspaceRoot });
         this.setupHandlers();
     }

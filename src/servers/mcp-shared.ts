@@ -4,158 +4,273 @@ import {
     ListResourcesRequestSchema,
     ListResourceTemplatesRequestSchema,
     ReadResourceRequestSchema,
+    ListPromptsRequestSchema,
+    GetPromptRequestSchema,
     ErrorCode,
     McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 
+type PromptArgumentSpec = { name: string; description?: string; required?: boolean };
+type PromptRenderResult = {
+    description: string;
+    messages: Array<{ role: 'user' | 'assistant'; content: { type: 'text'; text: string } }>;
+};
+type PromptSpec = {
+    name: string;
+    title: string;
+    description: string;
+    arguments: PromptArgumentSpec[];
+    argsSchema: z.ZodTypeAny;
+    render: (args: Record<string, unknown>) => PromptRenderResult;
+};
+
+const suggestSymbols = (value: string) =>
+    ['HTTPServer', 'TestClass', 'CodeAnalyzer', 'TestFunction'].filter((s) =>
+        s.toLowerCase().startsWith((value || '').toLowerCase())
+    );
+const suggestFiles = (value: string) =>
+    ['src/servers/http.ts', 'tests/fixtures/example.ts', 'src/core/unified-analyzer.ts'].filter((p) =>
+        p.toLowerCase().includes((value || '').toLowerCase())
+    );
+const suggestCommands = (value: string) =>
+    ['bun run build:all', 'bun test -q', 'bun run typecheck'].filter((c) =>
+        c.toLowerCase().startsWith((value || '').toLowerCase())
+    );
+
+function stringArg(args: Record<string, unknown>, name: string, fallback: string): string {
+    const value = args[name];
+    return typeof value === 'string' && value.length > 0 ? value : fallback;
+}
+
+function booleanArg(args: Record<string, unknown>, name: string, fallback: boolean): boolean {
+    const value = args[name];
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') {
+        if (value.toLowerCase() === 'true') return true;
+        if (value.toLowerCase() === 'false') return false;
+    }
+    return fallback;
+}
+
+function numberArg(args: Record<string, unknown>, name: string, fallback: number): number {
+    const value = Number(args[name]);
+    return Number.isFinite(value) ? value : fallback;
+}
+
+function inlineJson(value: unknown): string {
+    return JSON.stringify(value);
+}
+
+const COMMON_PROMPTS: PromptSpec[] = [
+    {
+        name: 'plan-safe-rename',
+        title: 'Plan Safe Rename',
+        description: 'Plan a safe rename and optionally run checks in a snapshot',
+        arguments: [
+            { name: 'oldName', description: 'Original symbol name', required: true },
+            { name: 'newName', description: 'New symbol name', required: true },
+            { name: 'file', description: 'Optional context file URI', required: false },
+            { name: 'runChecks', description: 'Whether to run checks', required: false },
+            { name: 'command', description: 'Validation command', required: false },
+        ],
+        argsSchema: z.object({
+            oldName: completable(z.string(), (v) => suggestSymbols(v || '')),
+            newName: completable(z.string(), (v) => suggestSymbols(v || '')),
+            file: completable(z.string().optional(), (v) => suggestFiles(v || '')),
+            runChecks: z.boolean().optional(),
+            command: completable(z.string().optional(), (v) => suggestCommands(v || '')),
+        }),
+        render: (args) => {
+            const oldName = stringArg(args, 'oldName', '<oldName>');
+            const newName = stringArg(args, 'newName', '<newName>');
+            const file = stringArg(args, 'file', 'file://workspace');
+            const runChecks = booleanArg(args, 'runChecks', true);
+            const command = stringArg(args, 'command', 'bun run build:all');
+            return {
+                description: 'Plan a safe rename and optionally run checks in a snapshot',
+                messages: [
+                    {
+                        role: 'assistant',
+                        content: {
+                            type: 'text',
+                            text: 'Use plan_rename first; for application use rename_safely into a snapshot. Prefer AST-validated hits.',
+                        },
+                    },
+                    {
+                        role: 'user',
+                        content: {
+                            type: 'text',
+                            text: `Intent: rename ${oldName} -> ${newName} at ${file}\nSteps:\n1) tools/call plan_rename ${inlineJson({ oldName, newName, file })}\n2) tools/call rename_safely ${inlineJson({ oldName, newName, file, runChecks, commands: [command], timeoutSec: 180 })}`,
+                        },
+                    },
+                ],
+            };
+        },
+    },
+    {
+        name: 'investigate-symbol',
+        title: 'Investigate Symbol',
+        description: 'Explore, build symbol map (AST-only), and expand graph neighbors',
+        arguments: [
+            { name: 'symbol', description: 'Symbol to investigate', required: true },
+            { name: 'file', description: 'Optional context file URI', required: false },
+            { name: 'conceptual', description: 'Whether to include conceptual hints', required: false },
+        ],
+        argsSchema: z.object({
+            symbol: completable(z.string(), (v) => suggestSymbols(v || '')),
+            file: completable(z.string().optional(), (v) => suggestFiles(v || '')),
+            conceptual: z.boolean().optional(),
+        }),
+        render: (args) => {
+            const symbol = stringArg(args, 'symbol', '<symbol>');
+            const file = stringArg(args, 'file', 'file://workspace');
+            const conceptual = booleanArg(args, 'conceptual', false);
+            return {
+                description: 'Explore, build symbol map (AST-only), and expand graph neighbors',
+                messages: [
+                    {
+                        role: 'assistant',
+                        content: {
+                            type: 'text',
+                            text: 'Start broad with explore_codebase (optionally conceptual), then build_symbol_map (astOnly), then graph_expand symbol callers/callees or file imports/exports as appropriate.',
+                        },
+                    },
+                    {
+                        role: 'user',
+                        content: {
+                            type: 'text',
+                            text: `Target: ${symbol} at ${file}\nSuggested tools:\n- tools/call explore_codebase ${inlineJson({ symbol, file, conceptual })}\n- tools/call build_symbol_map ${inlineJson({ symbol, file, maxFiles: 10, astOnly: true })}\n- tools/call graph_expand ${inlineJson({ symbol, edges: ['callers', 'callees'], depth: 1, limit: 50 })}\n- Optional: tools/call explore_symbol_impact ${inlineJson({ symbol, file, limit: 50 })}`,
+                        },
+                    },
+                ],
+            };
+        },
+    },
+    {
+        name: 'quick-patch-checks',
+        title: 'Quick Patch Checks',
+        description: 'Stage a unified diff to snapshot and run checks',
+        arguments: [
+            { name: 'command', description: 'Validation command', required: false },
+            { name: 'timeoutSec', description: 'Per-command timeout seconds', required: false },
+        ],
+        argsSchema: z.object({
+            command: completable(z.string().optional(), (v) => suggestCommands(v || '')),
+            timeoutSec: z.number().optional(),
+        }),
+        render: (args) => {
+            const command = stringArg(args, 'command', 'bun run build:all');
+            const timeoutSec = numberArg(args, 'timeoutSec', 180);
+            return {
+                description: 'Stage a unified diff to snapshot and run checks',
+                messages: [
+                    {
+                        role: 'assistant',
+                        content: { type: 'text', text: 'Use get_snapshot + propose_patch + run_checks, keeping edits isolated in snapshot.' },
+                    },
+                    {
+                        role: 'user',
+                        content: {
+                            type: 'text',
+                            text: `Suggested calls:\n- tools/call get_snapshot ${inlineJson({ preferExisting: true })}\n- tools/call propose_patch ${inlineJson({ snapshot: '<id>', patch: '<unified_diff>' })}\n- tools/call run_checks ${inlineJson({ snapshot: '<id>', commands: [command], timeoutSec })}\n- Or single call: tools/call patch_checks_in_snapshot ${inlineJson({ patch: '<unified_diff>', timeoutSec })}`,
+                        },
+                    },
+                ],
+            };
+        },
+    },
+    {
+        name: 'locate-confirm',
+        title: 'Locate & Confirm Definition',
+        description: 'Fast locate, precise retry if ambiguous; returns chosen definitions with attempts.',
+        arguments: [
+            { name: 'symbol', description: 'Symbol name to locate', required: true },
+            { name: 'file', description: 'Optional context file URI', required: false },
+        ],
+        argsSchema: z.object({
+            symbol: completable(z.string(), (v) => suggestSymbols(v || '')),
+            file: completable(z.string().optional(), (v) => suggestFiles(v || '')),
+        }),
+        render: (args) => {
+            const symbol = stringArg(args, 'symbol', '<symbol>');
+            const file = stringArg(args, 'file', 'file://workspace');
+            return {
+                description: 'Fast locate, precise retry if ambiguous; returns chosen definitions with attempts.',
+                messages: [
+                    {
+                        role: 'assistant',
+                        content: { type: 'text', text: 'Prefer precise confirmation only when fast pass is ambiguous.' },
+                    },
+                    {
+                        role: 'user',
+                        content: {
+                            type: 'text',
+                            text: `Target: ${symbol} at ${file}\nSuggested tool:\n- tools/call locate_confirm_definition ${inlineJson({ symbol, file })}`,
+                        },
+                    },
+                ],
+            };
+        },
+    },
+];
+
 // Register common prompts available to both HTTP and stdio servers.
 export function registerCommonPrompts(server: Server): void {
-    const suggestSymbols = (value: string) =>
-        ['HTTPServer', 'TestClass', 'CodeAnalyzer', 'TestFunction'].filter((s) =>
-            s.toLowerCase().startsWith((value || '').toLowerCase())
+    if (typeof (server as any).registerPrompt !== 'function') {
+        registerCommonPromptHandlers(server);
+        return;
+    }
+
+    for (const prompt of COMMON_PROMPTS) {
+        (server as any).registerPrompt(
+            prompt.name,
+            {
+                title: prompt.title,
+                description: prompt.description,
+                argsSchema: prompt.argsSchema,
+            },
+            (args: Record<string, unknown>) => prompt.render(args || {})
         );
-    const suggestFiles = (value: string) =>
-        ['src/servers/http.ts', 'tests/fixtures/example.ts', 'src/core/unified-analyzer.ts'].filter((p) =>
-            p.toLowerCase().includes((value || '').toLowerCase())
-        );
-    const suggestCommands = (value: string) =>
-        ['bun run build:all', 'bun test -q', 'bun run typecheck'].filter((c) =>
-            c.toLowerCase().startsWith((value || '').toLowerCase())
-        );
+    }
+}
 
-    // Plan safe rename → workflow
-    server.registerPrompt(
-        'plan-safe-rename',
-        {
-            title: 'Plan Safe Rename',
-            description: 'Plan a safe rename and optionally run checks in a snapshot',
-            argsSchema: z.object({
-                oldName: completable(z.string(), (v) => suggestSymbols(v || '')),
-                newName: completable(z.string(), (v) => suggestSymbols(v || '')),
-                file: completable(z.string().optional(), (v) => suggestFiles(v || '')),
-                runChecks: z.boolean().optional(),
-                command: completable(z.string().optional(), (v) => suggestCommands(v || '')),
-            }),
-        },
-        ({ oldName, newName, file = 'file://workspace', runChecks = true, command = 'bun run build:all' }) => ({
-            messages: [
-                {
-                    role: 'system',
-                    content: {
-                        type: 'text',
-                        text: 'Use plan_rename first; for application use workflow_safe_rename into a snapshot. Prefer AST‑validated hits.',
-                    },
-                },
-                {
-                    role: 'user',
-                    content: {
-                        type: 'text',
-                        text: `Intent: rename ${oldName} -> ${newName} at ${file}\nSteps:\n1) tools/call plan_rename { oldName: "${oldName}", newName: "${newName}", file: "${file}" }\n2) tools/call rename_safely { oldName: "${oldName}", newName: "${newName}", file: "${file}", runChecks: ${runChecks}, commands: ["${command}"], timeoutSec: 180 }`,
-                    },
-                },
-            ],
-        })
-    );
+export function registerCommonPromptHandlers(server: Server): void {
+    server.setRequestHandler(ListPromptsRequestSchema, async () => ({
+        prompts: COMMON_PROMPTS.map(({ name, title, description, arguments: args }) => ({ name, title, description, arguments: args })),
+    }));
+    server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+        const prompt = COMMON_PROMPTS.find((candidate) => candidate.name === request.params.name);
+        if (!prompt) throw new McpError(ErrorCode.InvalidParams, `Prompt ${request.params.name} not found`);
+        return prompt.render(request.params.arguments || {});
+    });
+}
 
-    // Investigate symbol
-    server.registerPrompt(
-        'investigate-symbol',
-        {
-            title: 'Investigate Symbol',
-            description: 'Explore, build symbol map (AST-only), and expand graph neighbors',
-            argsSchema: z.object({
-                symbol: completable(z.string(), (v) => suggestSymbols(v || '')),
-                file: completable(z.string().optional(), (v) => suggestFiles(v || '')),
-                conceptual: z.boolean().optional(),
-            }),
-        },
-        ({ symbol, file = 'file://workspace', conceptual = false }) => ({
-            messages: [
-                {
-                    role: 'system',
-                    content: {
-                        type: 'text',
-                        text: 'Start broad with explore_codebase (optionally conceptual), then build_symbol_map (astOnly), then graph_expand symbol callers/callees or file imports/exports as appropriate.',
-                    },
-                },
-                {
-                    role: 'user',
-                    content: {
-                        type: 'text',
-                        text: `Target: ${symbol} at ${file}\nSuggested tools:\n- tools/call explore_codebase { symbol: "${symbol}", file: "${file}", conceptual: ${conceptual} }\n- tools/call build_symbol_map { symbol: "${symbol}", file: "${file}", maxFiles: 10, astOnly: true }\n- tools/call graph_expand { symbol: "${symbol}", edges: ["callers","callees"], depth: 1, limit: 50 }\n- Optional: tools/call explore_symbol_impact { symbol: "${symbol}", file: "${file}", limit: 50 }`,
-                    },
-                },
-            ],
-        })
-    );
-
-    // Quick patch checks
-    server.registerPrompt(
-        'quick-patch-checks',
-        {
-            title: 'Quick Patch Checks',
-            description: 'Stage a unified diff to snapshot and run checks',
-            argsSchema: z.object({
-                command: completable(z.string().optional(), (v) => suggestCommands(v || '')),
-                timeoutSec: z.number().optional(),
-            }),
-        },
-        ({ command = 'bun run build:all', timeoutSec = 180 }) => ({
-            messages: [
-                {
-                    role: 'system',
-                    content: {
-                        type: 'text',
-                        text: 'Use get_snapshot + propose_patch + run_checks, keeping edits isolated in snapshot.',
-                    },
-                },
-                {
-                    role: 'user',
-                    content: {
-                        type: 'text',
-                        text: `Suggested calls:\n- tools/call get_snapshot { preferExisting: true }\n- tools/call propose_patch { snapshot: <id>, patch: <unified_diff> }\n- tools/call run_checks { snapshot: <id>, commands: ["${command}"], timeoutSec: ${timeoutSec} }\n- Or single call: tools/call patch_checks_in_snapshot { patch: <unified_diff>, timeoutSec: ${timeoutSec} }`,
-                    },
-                },
-            ],
-        })
-    );
-
-    // Locate & Confirm Definition
-    server.registerPrompt(
-        'locate-confirm',
-        {
-            title: 'Locate & Confirm Definition',
-            description: 'Fast locate, precise retry if ambiguous; returns chosen definitions with attempts.',
-            argsSchema: z.object({
-                symbol: completable(z.string(), (v) =>
-                    ['HTTPServer', 'TestClass', 'CodeAnalyzer'].filter((s) =>
-                        s.toLowerCase().startsWith((v || '').toLowerCase())
-                    )
-                ),
-                file: completable(z.string().optional(), (v) =>
-                    ['src/servers/http.ts', 'tests/fixtures/example.ts'].filter((p) =>
-                        p.toLowerCase().includes((v || '').toLowerCase())
-                    )
-                ),
-            }),
-        },
-        ({ symbol, file = 'file://workspace' }) => ({
-            messages: [
-                {
-                    role: 'system',
-                    content: { type: 'text', text: 'Prefer precise confirmation only when fast pass is ambiguous.' },
-                },
-                {
-                    role: 'user',
-                    content: {
-                        type: 'text',
-                        text: `Target: ${symbol} at ${file}\nSuggested tool:\n- tools/call locate_confirm_definition { symbol: "${symbol}", file: "${file}" }`,
-                    },
-                },
-            ],
-        })
-    );
+async function readSnapshotArtifactText(dir: string | undefined, file: string, fallback: string): Promise<string> {
+    if (!dir) return fallback;
+    const fs = await import('node:fs/promises');
+    const fsSync = await import('node:fs');
+    const path = await import('node:path');
+    try {
+        const filePath = path.join(dir, file);
+        const stat = await fs.lstat(filePath);
+        if (!stat.isFile() || stat.isSymbolicLink()) return fallback;
+        const [realDir, realFile] = await Promise.all([fs.realpath(dir), fs.realpath(filePath)]);
+        const relative = path.relative(realDir, realFile);
+        if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return fallback;
+        const noFollow = typeof fsSync.constants.O_NOFOLLOW === 'number' ? fsSync.constants.O_NOFOLLOW : 0;
+        const handle = await fs.open(filePath, fsSync.constants.O_RDONLY | noFollow);
+        try {
+            const openedReal = await fs.realpath(`/proc/self/fd/${handle.fd}`).catch(() => fs.realpath(`/dev/fd/${handle.fd}`));
+            const openedRelative = path.relative(realDir, openedReal);
+            if (!openedRelative || openedRelative.startsWith('..') || path.isAbsolute(openedRelative)) return fallback;
+            return await handle.readFile('utf8');
+        } finally {
+            await handle.close().catch(() => undefined);
+        }
+    } catch {
+        return fallback;
+    }
 }
 
 // Register common resources (monitoring and snapshot artifacts).
@@ -219,18 +334,10 @@ export function registerCommonResources(server: Server, opts: { workspaceRoot?: 
                 if (!id) throw new Error('Missing snapshot id');
                 if (extra.length > 0) throw new McpError(ErrorCode.InvalidParams, `Unsupported resource ${uriStr}`);
                 if (tail === 'overlay.diff') {
-                    const fs = await import('node:fs/promises');
-                    const path = await import('node:path');
                     const { overlayStore } = await import('../core/overlay-store.js');
                     const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
                     const dir = ensure ? await ensure(id, { workspaceRoot: opts.workspaceRoot }) : undefined;
-                    const diffPath = path.join(dir || '', 'overlay.diff');
-                    let text = '';
-                    try {
-                        text = await fs.readFile(diffPath, 'utf8');
-                    } catch {
-                        text = '# No overlay.diff found in snapshot';
-                    }
+                    const text = await readSnapshotArtifactText(dir, 'overlay.diff', '# No overlay.diff found in snapshot');
                     return { contents: [{ uri: uri.href, mimeType: 'text/plain', text }] } as any;
                 }
                 if (tail === 'status') {
@@ -247,20 +354,12 @@ export function registerCommonResources(server: Server, opts: { workspaceRoot?: 
                     return { contents: [{ uri: uri.href, mimeType: 'application/json', text: body }] } as any;
                 }
                 if (tail === 'progress') {
-                    const fs = await import('node:fs/promises');
-                    const path = await import('node:path');
                     const { overlayStore } = await import('../core/overlay-store.js');
                     let snapshotDir = '';
                     try {
                         snapshotDir = (overlayStore as any).getSnapshotDirectory?.(id, { workspaceRoot: opts.workspaceRoot }) || '';
                     } catch {}
-                    const logPath = snapshotDir ? path.join(snapshotDir, 'progress.log') : '';
-                    let text = '';
-                    try {
-                        text = logPath ? await fs.readFile(logPath, 'utf8') : '# No progress.log found for snapshot';
-                    } catch {
-                        text = '# No progress.log found for snapshot';
-                    }
+                    const text = await readSnapshotArtifactText(snapshotDir, 'progress.log', '# No progress.log found for snapshot');
                     return { contents: [{ uri: uri.href, mimeType: 'text/plain', text }] } as any;
                 }
             }

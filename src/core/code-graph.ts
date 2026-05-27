@@ -418,9 +418,14 @@ export async function expandNeighbors(opts: {
                 containedSeedFiles.push(resolved.realPath);
             } catch {}
         }
-        const searchPaths: string[] = containedSeedFiles.length
+        const seedSearchPaths = containedSeedFiles.length
             ? Array.from(new Set(containedSeedFiles.map((f) => path.dirname(f))))
-            : [workspaceRoot];
+            : [];
+        const searchPaths: string[] = edges.includes('callers')
+            ? Array.from(new Set([...seedSearchPaths, workspaceRoot]))
+            : seedSearchPaths.length
+              ? seedSearchPaths
+              : [workspaceRoot];
         let accMatches: any[] = [];
         for (const p of searchPaths) {
             const perPathMax = opts.seedStrict ? max : Math.max(1, Math.floor(max / searchPaths.length));

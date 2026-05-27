@@ -165,7 +165,7 @@ export class CLIAdapter {
 
     private extractWordFromFile(uri: string, line: number, character: number): string | null {
         try {
-            const path = uri.startsWith('file://') ? uri.substring(7) : uri;
+            const path = uri.startsWith('file://') ? fileURLToPath(uri) : uri;
             if (!fs.existsSync(path)) return null;
             const text = fs.readFileSync(path, 'utf8');
             const lines = text.split(/\r?\n/);
@@ -214,7 +214,7 @@ export class CLIAdapter {
                 // If a file context is provided, return an empty structured array for consistency checks
                 if (options.file) return [];
                 // Otherwise return a concise message for CLI UX
-                return 'Find failed: identifier required';
+                return 'Error: identifier required';
             }
             const request = buildFindDefinitionRequest({
                 uri: await this.workspaceUriForFile(options.file, 'CLI find file'),
@@ -283,7 +283,7 @@ export class CLIAdapter {
             // Parity + UX: when identifier is empty
             if (!identifier || !String(identifier).trim()) {
                 if (options.file) return [];
-                return 'References search failed: identifier required';
+                return 'Error: identifier required';
             }
 
             // When no file context provided, first locate the symbol via definitions

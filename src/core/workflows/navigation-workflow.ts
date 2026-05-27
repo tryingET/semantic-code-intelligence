@@ -193,7 +193,23 @@ export class NavigationWorkflowService {
         const maxResults = typeof args.maxResults === 'number' && args.maxResults > 0 ? args.maxResults : this.deps.maxResults();
 
         if (!args.file && !args.uri) {
-            return { payload: emptyReferencesPayload(), isError: false };
+            const fallbackRefs = await fallbackScanForReferences(this.deps.workspaceRoot(), String(args.symbol), maxResults, !!args.includeDeclaration);
+            const containedFallbackRefs = await this.filterWorkspaceItemsByUri(
+                fallbackRefs,
+                'find_references fallback result uri'
+            );
+            return {
+                payload: {
+                    schemaVersion: 2,
+                    references: containedFallbackRefs.map((reference: any) => referenceToApiResponse(reference)),
+                    performance: { layer1: 0, layer2: 0, layer3: 0, layer4: 0, layer5: 0, total: 0 },
+                    requestId: undefined,
+                    count: containedFallbackRefs.length,
+                    scope: 'workspace',
+                    fallback: true,
+                },
+                isError: false,
+            };
         }
 
         const fileContext = await this.deps.resolveWorkspaceFile(String(args.file || args.uri), 'find_references file');
@@ -311,6 +327,78 @@ export async function fallbackScanForDefinition(root: string, symbol: string, ma
         }
     }
     return results;
+}
+
+export async function fallbackScanForReferences(root: string, symbol: string, maxResults: number, includeDeclaration = false, maxFiles = 500) {
+    const results: any[] = [];
+    const queue: string[] = [root];
+    const visited: Set<string> = new Set();
+    const escaped = String(symbol).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const occurrenceRe = new RegExp(`\\b${escaped}\\b`, 'g');
+    const declarationRe = new RegExp(`\\b(class|function|interface|type|const|let|var)\\s+${escaped}\\b`, 'g');
+    let filesScanned = 0;
+
+    while (queue.length && filesScanned < maxFiles && results.length < maxResults) {
+        const dir = queue.shift()!;
+        if (visited.has(dir)) continue;
+        visited.add(dir);
+        let entries: any[] = [];
+        try {
+            entries = await fs.readdir(dir, { withFileTypes: true } as any);
+        } catch {
+            continue;
+        }
+        for (const entry of entries) {
+            const candidate = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+                if (/node_modules|\.git|dist|coverage|out|build|venv|\.venv|\.ontology/.test(entry.name)) continue;
+                queue.push(candidate);
+            } else if (entry.isFile() && /\.(ts|tsx|js|jsx|py|rs|go|md)$/.test(entry.name)) {
+                filesScanned++;
+                try {
+                    const text = await fs.readFile(candidate, 'utf8');
+                    const lines = text.split(/\r?\n/);
+                    for (let index = 0; index < lines.length && results.length < maxResults; index++) {
+                        const line = lines[index];
+                        const declarationSpans = declarationSymbolSpans(line, symbol, declarationRe);
+                        occurrenceRe.lastIndex = 0;
+                        let match: RegExpExecArray | null = null;
+                        while ((match = occurrenceRe.exec(line)) && results.length < maxResults) {
+                            const column = match.index;
+                            const isDeclaration = declarationSpans.some(([start, end]) => column >= start && column < end);
+                            if (!includeDeclaration && isDeclaration) continue;
+                            results.push({
+                                identifier: symbol,
+                                uri: pathToFileURL(candidate).href,
+                                range: {
+                                    start: { line: index, character: column },
+                                    end: { line: index, character: column + String(symbol).length },
+                                },
+                                kind: isDeclaration ? 'declaration' : 'reference',
+                                name: symbol,
+                                source: 'fallback-scan',
+                                confidence: 0.5,
+                                layer: 'async-layer1',
+                            });
+                        }
+                    }
+                } catch {}
+            }
+            if (filesScanned >= maxFiles || results.length >= maxResults) break;
+        }
+    }
+    return results;
+}
+
+function declarationSymbolSpans(line: string, symbol: string, declarationRe: RegExp): Array<[number, number]> {
+    const spans: Array<[number, number]> = [];
+    declarationRe.lastIndex = 0;
+    let match: RegExpExecArray | null = null;
+    while ((match = declarationRe.exec(line))) {
+        const start = line.indexOf(symbol, match.index);
+        if (start >= 0) spans.push([start, start + symbol.length]);
+    }
+    return spans;
 }
 
 export async function scanForExplicitDeclaration(root: string, symbol: string, maxFiles = 300) {

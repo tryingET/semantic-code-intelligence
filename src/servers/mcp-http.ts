@@ -251,10 +251,9 @@ async function createMcpServer(desiredSid?: string): Promise<SessionRecord> {
 
     // Create adapter and low-level server with handlers
     const adapter = new MCPAdapter(analyzer);
-    const supportsPrompts = typeof (Server.prototype as any).registerPrompt === 'function';
     const server = new Server(
         { name: 'semantic-code-intelligence', version: '1.0.0' },
-        { capabilities: { tools: {}, resources: {}, ...(supportsPrompts ? { prompts: {} } : {}) } }
+        { capabilities: { tools: {}, resources: {}, prompts: {} } }
     );
 
     // Register request handlers
@@ -299,12 +298,9 @@ async function createMcpServer(desiredSid?: string): Promise<SessionRecord> {
     // Connect server to transport
     await server.connect(transport);
 
-    // Prompts and resources (shared module) — guard for SDKs without prompt support
+    // Prompts and resources (shared module)
     try {
-        const promptCapableServer = server as Server & { registerPrompt?: unknown };
-        if (typeof promptCapableServer.registerPrompt === 'function') {
-            registerCommonPrompts(server);
-        }
+        registerCommonPrompts(server);
     } catch (e) {
         // eslint-disable-next-line no-console
         console.warn('[MCP HTTP] Prompts registration skipped:', (e as Error)?.message || String(e));

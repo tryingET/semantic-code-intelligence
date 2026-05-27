@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { CLIAdapter } from '../src/adapters/cli-adapter';
 import { HTTPAdapter } from '../src/adapters/http-adapter';
 import { MCPAdapter } from '../src/adapters/mcp-adapter';
 import { createDefaultCoreConfig } from '../src/adapters/utils';
@@ -77,6 +79,75 @@ describe('nexus contract regressions', () => {
             const out = parseContent(res);
             expect(out.inputs.files).toEqual(['sample.ts']);
         });
+    });
+
+    test('symbol-only find_references returns bounded workspace references instead of empty success', async () => {
+        const workspaceRoot = tempWorkspace();
+        writeFileSync(join(workspaceRoot, 'def.ts'), 'export function target() { return 1; }\n', 'utf8');
+        writeFileSync(join(workspaceRoot, 'use.ts'), 'import { target } from "./def";\nexport const value = target();\n', 'utf8');
+
+        await withMcp(workspaceRoot, async (mcp) => {
+            const res = await mcp.handleToolCall('find_references', { symbol: 'target', maxResults: 10 });
+            const out = parseContent(res);
+            expect(res.isError).toBe(false);
+            expect(out.count).toBeGreaterThan(0);
+            expect(JSON.stringify(out.references)).toContain('use.ts');
+        });
+    });
+
+    test('symbol-only graph_expand finds callers outside declaration directories', async () => {
+        const workspaceRoot = tempWorkspace();
+        writeFileSync(join(workspaceRoot, 'package.json'), '{"type":"module"}\n', 'utf8');
+        writeFileSync(join(workspaceRoot, 'tsconfig.json'), '{"compilerOptions":{"module":"ESNext","target":"ES2022"}}\n', 'utf8');
+        mkdirSync(join(workspaceRoot, 'src'));
+        mkdirSync(join(workspaceRoot, 'tests'));
+        writeFileSync(join(workspaceRoot, 'src', 'def.ts'), 'export function target() { helper(); }\nfunction helper() {}\n', 'utf8');
+        writeFileSync(join(workspaceRoot, 'tests', 'use.test.ts'), 'import { target } from "../src/def";\nexport function caller() { target(); }\n', 'utf8');
+
+        await withMcp(workspaceRoot, async (mcp) => {
+            const res = await mcp.handleToolCall('graph_expand', { symbol: 'target', edges: ['callers', 'callees'], limit: 20 });
+            const out = parseContent(res);
+            expect(res.isError).toBe(false);
+            expect(JSON.stringify(out.neighbors.callers)).toContain('use.test.ts');
+            const callerEvidence = out.impactSummary.evidence.find((item: any) => item.edge === 'callers');
+            expect(callerEvidence.status).toBe('evidence');
+        });
+    });
+
+    test('recommend_checks quotes shell-unsafe test filenames and blocks leading-dash option injection', async () => {
+        const workspaceRoot = tempWorkspace();
+        await withMcp(workspaceRoot, async (mcp) => {
+            const injected = await mcp.handleToolCall('recommend_checks', { files: ['tests/foo.test.ts; echo PWNED >&2'], mode: 'minimum' });
+            const injectedOut = parseContent(injected);
+            expect(injectedOut.commands).toContain("bun test 'tests/foo.test.ts; echo PWNED >&2'");
+            expect(injectedOut.commands).not.toContain('bun test tests/foo.test.ts; echo PWNED >&2');
+
+            const leadingDash = await mcp.handleToolCall('recommend_checks', { files: ['--preload=evil.test.ts'], mode: 'minimum' });
+            const leadingDashOut = parseContent(leadingDash);
+            expect(leadingDashOut.commands).toContain("bun test -- '--preload=evil.test.ts'");
+        });
+    });
+
+    test('CLI json mode exits nonzero with JSON for empty find and references identifiers', () => {
+        for (const command of ['find', 'references']) {
+            const proc = spawnSync(process.execPath, ['run', 'src/servers/cli.ts', command, '', '--json'], {
+                cwd: process.cwd(),
+                encoding: 'utf8',
+                env: { ...process.env, SILENT_MODE: 'true' },
+            });
+            expect(proc.status).not.toBe(0);
+            const body = JSON.parse(proc.stdout || '{}');
+            expect(body.success).toBe(false);
+            expect(body.error?.message).toContain('identifier required');
+        }
+    });
+
+    test('CLI file URI word extraction decodes encoded paths', () => {
+        const workspaceRoot = tempWorkspace('sci nexus uri-');
+        const file = join(workspaceRoot, 'a file.ts');
+        writeFileSync(file, 'const Alpha = 1;\n', 'utf8');
+        const adapter = new CLIAdapter({ config: { workspaceRoot } } as any);
+        expect((adapter as any).extractWordFromFile(pathToFileURL(file).href, 0, 6)).toBe('Alpha');
     });
 
     test('structural paths reject symlink escapes before ast-grep execution', async () => {

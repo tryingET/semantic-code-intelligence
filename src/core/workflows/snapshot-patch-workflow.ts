@@ -22,6 +22,16 @@ function shellQuote(value: string): string {
   return `'${String(value).replace(/'/g, `'"'"'`)}'`;
 }
 
+function shellQuoteIfNeeded(value: string): string {
+  const raw = String(value);
+  return /^[A-Za-z0-9_./:@+-]+$/.test(raw) ? raw : shellQuote(raw);
+}
+
+function bunTestCommandForFile(file: string): string {
+  const rendered = String(file).startsWith('-') ? shellQuote(file) : shellQuoteIfNeeded(file);
+  return String(file).startsWith('-') ? `bun test -- ${rendered}` : `bun test ${rendered}`;
+}
+
 function stripUnifiedHeaderMetadata(rawPath: string): string {
   const raw = String(rawPath || '').trim();
   const tab = raw.indexOf('\t');
@@ -365,7 +375,7 @@ export function recommendChecksPayload(args: RecommendChecksArgs) {
   }
 
   for (const file of tests) {
-    const command = `bun test ${file}`;
+    const command = bunTestCommandForFile(file);
     addMinimum(command);
     rationale.push({ reason: "test_file_changed", files: [file], command });
   }

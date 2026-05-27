@@ -76,7 +76,7 @@ describe('NavigationWorkflowService', () => {
         expect(resolved.realPath).toBe(target);
     });
 
-    test('find_references keeps empty workspace-wide parity response', async () => {
+    test('find_references returns bounded fallback metadata for symbol-only workspace scans', async () => {
         const workspaceRoot = tempWorkspace();
         const service = new NavigationWorkflowService({
             workspaceRoot: () => workspaceRoot,
@@ -89,7 +89,28 @@ describe('NavigationWorkflowService', () => {
         });
 
         const result = payload(await service.findReferences({ symbol: 'Target' }));
-        expect(result).toMatchObject({ schemaVersion: 2, references: [], count: 0, requestId: 'none' });
+        expect(result).toMatchObject({ schemaVersion: 2, references: [], count: 0, scope: 'workspace', fallback: true });
+    });
+
+    test('find_references fallback keeps same-line references when declarations are excluded', async () => {
+        const workspaceRoot = tempWorkspace();
+        writeFileSync(join(workspaceRoot, 'same-line.ts'), 'const target = call(target);\n', 'utf8');
+        const service = new NavigationWorkflowService({
+            workspaceRoot: () => workspaceRoot,
+            maxResults: () => 50,
+            coreAnalyzer: {},
+            resolveWorkspaceFile: async () => {
+                throw new Error('not expected');
+            },
+            containedUriOrNull: async (uri) => uri,
+        });
+
+        const withoutDeclarations = payload(await service.findReferences({ symbol: 'target' }));
+        expect(withoutDeclarations.references).toHaveLength(1);
+        expect(withoutDeclarations.references[0].range.start.character).toBe(20);
+
+        const withDeclarations = payload(await service.findReferences({ symbol: 'target', includeDeclaration: true }));
+        expect(withDeclarations.references.map((reference: any) => reference.range.start.character)).toEqual([6, 20]);
     });
 });
 

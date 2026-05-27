@@ -1,5 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { spawn, spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { canBindTcp } from './helpers/bind-utils';
 import { initMcpHttpSession, mcpHttpHeaders } from './helpers/mcp-http';
 
@@ -129,6 +132,63 @@ bindDescribe('Alpha MVP MCP HTTP protocol', () => {
         });
         return { status: res.status, body: await parseMcpBody(res, id) };
     }
+
+    async function promptsList(id: number) {
+        const res = await fetch(base, {
+            method: 'POST',
+            headers: mcpHttpHeaders(sessionId),
+            body: JSON.stringify({ jsonrpc: '2.0', id, method: 'prompts/list', params: {} }),
+        });
+        return { status: res.status, body: await parseMcpBody(res, id) };
+    }
+
+    async function promptsGet(id: number, name: string, args: Record<string, string>) {
+        const res = await fetch(base, {
+            method: 'POST',
+            headers: mcpHttpHeaders(sessionId),
+            body: JSON.stringify({ jsonrpc: '2.0', id, method: 'prompts/get', params: { name, arguments: args } }),
+        });
+        return { status: res.status, body: await parseMcpBody(res, id) };
+    }
+
+    test('prompts/list advertises shared prompt surface', async () => {
+        const listed = await promptsList(90);
+        expect(listed.status).toBe(200);
+        const names = new Set((listed.body?.result?.prompts || []).map((prompt: any) => prompt.name));
+        expect(names.has('plan-safe-rename')).toBe(true);
+        expect(names.has('investigate-symbol')).toBe(true);
+    });
+
+    test('prompts/get renders escaped JSON-shaped tool arguments', async () => {
+        const prompt = await promptsGet(93, 'quick-patch-checks', { command: 'bun test "tests/weird test.ts"', timeoutSec: '42' });
+        expect(prompt.status).toBe(200);
+        const text = prompt.body?.result?.messages?.map((message: any) => message.content?.text).join('\n') || '';
+        expect(text).toContain('bun test \\"tests/weird test.ts\\"');
+        expect(text).toContain('"timeoutSec":42');
+        expect(text).not.toContain('commands: ["bun test "tests/weird test.ts""]');
+    });
+
+    test('snapshot progress resource refuses symlinked artifacts', async () => {
+        const snapshotCall = await toolsCall(91, 'get_snapshot', { preferExisting: false });
+        const snapshot = JSON.parse(snapshotCall.body?.result?.content?.[0]?.text || '{}');
+        const snapshotId = snapshot.id || snapshot.snapshot;
+        expect(snapshotId).toBeDefined();
+
+        const outside = mkdtempSync(join(tmpdir(), 'sci-mcp-progress-outside-'));
+        const progressPath = join(process.cwd(), '.ontology', 'snapshots', snapshotId, 'progress.log');
+        try {
+            rmSync(progressPath, { force: true });
+            symlinkSync(join(outside, 'secret.txt'), progressPath);
+            await Bun.write(join(outside, 'secret.txt'), 'progress-secret-must-not-leak\n');
+            const progressResource = await resourcesRead(92, `snapshot://${snapshotId}/progress`);
+            expect(progressResource.status).toBe(200);
+            expect(progressResource.body?.result?.contents?.[0]?.text).not.toContain('progress-secret-must-not-leak');
+            expect(progressResource.body?.result?.contents?.[0]?.text).toContain('No progress.log');
+        } finally {
+            rmSync(progressPath, { force: true });
+            rmSync(outside, { recursive: true, force: true });
+        }
+    });
 
     test('tools/list advertises the Alpha MVP tool surface', async () => {
         const requiredToolNames = [

@@ -33,7 +33,6 @@ export class EnhancedMCPServer {
     private shuttingDown = false;
 
     constructor() {
-        const supportsPrompts = typeof (Server.prototype as any).registerPrompt === 'function';
         this.server = new Server(
             {
                 name: 'semantic-code-intelligence',
@@ -43,12 +42,12 @@ export class EnhancedMCPServer {
                 capabilities: {
                     tools: {},
                     resources: {},
-                    ...(supportsPrompts ? { prompts: {} } : {}),
+                    prompts: {},
                 },
             }
         );
 
-        if (supportsPrompts) registerCommonPrompts(this.server);
+        registerCommonPrompts(this.server);
         registerCommonResources(this.server, {
             workspaceRoot: process.env.SEMANTIC_CODE_WORKSPACE || process.env.WORKSPACE_ROOT || process.cwd(),
         });
