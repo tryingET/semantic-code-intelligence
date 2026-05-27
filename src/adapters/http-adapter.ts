@@ -29,6 +29,7 @@ import {
     definitionToApiResponse,
     handleAdapterError,
     normalizePosition,
+    parseIntegerOption,
     referenceToApiResponse,
     strictJsonParse,
     validateRequired,
@@ -583,7 +584,7 @@ export class HTTPAdapter {
             const res = await (this.coreAnalyzer as any).buildSymbolMap({
                 identifier,
                 uri: await this.containedRequestUri(body.file || body.uri, 'symbol-map file', 'file://workspace'),
-                maxFiles: Math.min(Number(body.maxFiles || 20), 100),
+                maxFiles: parseIntegerOption(body.maxFiles, 'maxFiles', { defaultValue: 20, min: 1, max: 100 }),
                 astOnly: !!body.astOnly,
             });
             return { status: 200, headers: {}, body: JSON.stringify({ success: true, data: res }) };
@@ -623,7 +624,11 @@ export class HTTPAdapter {
                 uri: await this.containedRequestUri(file, 'completion file', 'file://unknown'),
                 position: normalizePosition(body.position),
                 triggerCharacter: body.triggerCharacter,
-                maxResults: body.maxResults || this.config.maxResults,
+                maxResults: parseIntegerOption(body.maxResults, 'maxResults', {
+                    defaultValue: this.config.maxResults,
+                    min: 1,
+                    max: 1000,
+                }),
             });
 
             const result = await this.coreAnalyzer.getCompletions(coreRequest);
@@ -647,9 +652,7 @@ export class HTTPAdapter {
                 body: responseBody,
             };
         } catch (error) {
-            // Temporary visibility for test stabilization
-            console.error('[HTTP Adapter] Completions failed:', error instanceof Error ? error.message : String(error));
-            return this.createErrorResponse(400, 'Bad Request', error);
+            return this.createErrorResponse(500, 'Request failed', error);
         }
     }
 
@@ -2512,11 +2515,13 @@ export class HTTPAdapter {
 
     private createErrorResponse(status: number, message: string, cause?: any): HTTPResponse {
         const normalized = handleAdapterError(cause, 'http') as any;
-        const resolvedStatus = status === 500 && typeof normalized?.status === 'number' ? normalized.status : status;
         const details =
             normalized && typeof normalized === 'object' && 'details' in normalized
                 ? (normalized as any).details
                 : normalized;
+        const hasTypedCoreStatus = details && typeof details === 'object' && (details as any).code !== undefined;
+        const resolvedStatus =
+            typeof normalized?.status === 'number' && (status === 500 || hasTypedCoreStatus) ? normalized.status : status;
         return {
             status: resolvedStatus,
             headers: {},

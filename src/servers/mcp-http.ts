@@ -251,9 +251,10 @@ async function createMcpServer(desiredSid?: string): Promise<SessionRecord> {
 
     // Create adapter and low-level server with handlers
     const adapter = new MCPAdapter(analyzer);
+    const supportsPrompts = typeof (Server.prototype as any).registerPrompt === 'function';
     const server = new Server(
         { name: 'semantic-code-intelligence', version: '1.0.0' },
-        { capabilities: { tools: {}, resources: {}, prompts: {} } }
+        { capabilities: { tools: {}, resources: {}, ...(supportsPrompts ? { prompts: {} } : {}) } }
     );
 
     // Register request handlers

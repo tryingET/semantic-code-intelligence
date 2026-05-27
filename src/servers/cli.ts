@@ -24,7 +24,7 @@ import * as fs from 'fs';
 // Note: defer heavy imports (tree-sitter, analyzer, adapter) to runtime.
 // This keeps `--help` and `init` working even if native deps are unavailable.
 import * as path from 'path';
-import { strictJsonParse } from '../adapters/utils.js';
+import { parseIntegerOption, strictJsonParse } from '../adapters/utils.js';
 import { CoreError, isCoreError } from '../core/errors.js';
 import { recordToolStart, recordToolEnd, pushToGateway, getPushgatewayUrl } from '../instrumentation/metrics.js';
 
@@ -103,8 +103,8 @@ class CLI {
                     await this.ensureInitialized(options);
                     const result = await this.cliAdapter.handleFind(identifier, {
                         file: options.file,
-                        maxResults: parseInt(options.maxResults),
-                        limit: parseInt(options.limit),
+                        maxResults: parseIntegerOption(options.maxResults, 'max-results', { defaultValue: 50, min: 1 }),
+                        limit: parseIntegerOption(options.limit, 'limit', { defaultValue: 20, min: 1 }),
                         summary: !!options.summary,
                         precise: !!options.precise,
                         astOnly: !!options.astOnly,
@@ -164,8 +164,8 @@ class CLI {
                     const result = await this.cliAdapter.handleReferences(identifier, {
                         file: options.file,
                         includeDeclaration: options.includeDeclaration,
-                        maxResults: parseInt(options.maxResults),
-                        limit: parseInt(options.limit),
+                        maxResults: parseIntegerOption(options.maxResults, 'max-results', { defaultValue: 50, min: 1 }),
+                        limit: parseIntegerOption(options.limit, 'limit', { defaultValue: 20, min: 1 }),
                         summary: !!options.summary,
                         precise: !!options.precise,
                         astOnly: !!options.astOnly,
@@ -215,7 +215,7 @@ class CLI {
                 await this.ensureInitialized(options);
                 const result = await this.cliAdapter.handleSymbolMap(identifier, {
                     file: options.file,
-                    maxFiles: parseInt(options.maxFiles),
+                    maxFiles: parseIntegerOption(options.maxFiles, 'max-files', { defaultValue: 10, min: 1, max: 100 }),
                     json: !!options.json,
                 });
                 await this.exitIfAdapterError(result, !!options.json);
@@ -236,7 +236,7 @@ class CLI {
                 await this.ensureInitialized(options);
                 const result = await (this.cliAdapter as any).handleSymbolMapGraph(identifier, {
                     file: options.file,
-                    maxFiles: parseInt(options.maxFiles),
+                    maxFiles: parseIntegerOption(options.maxFiles, 'max-files', { defaultValue: 10, min: 1, max: 100 }),
                     astOnly: options.astOnly !== false,
                 });
                 await this.exitIfAdapterError(result, false);

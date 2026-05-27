@@ -156,6 +156,9 @@ export class LSPServer {
         // Document sync
         this.documents.onDidOpen((e) => {
             log(`Document opened: ${e.document.uri}`);
+            this.lspAdapter.handleDidOpenTextDocument({
+                textDocument: { uri: e.document.uri, text: e.document.getText() },
+            });
         });
 
         this.documents.onDidChangeContent((change) => {

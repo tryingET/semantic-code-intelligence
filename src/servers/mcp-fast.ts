@@ -26,6 +26,7 @@ export class FastMCPServer {
     private initialized = false;
 
     constructor() {
+        const supportsPrompts = typeof (Server.prototype as any).registerPrompt === 'function';
         this.server = new Server(
             {
                 name: 'semantic-code-intelligence',
@@ -35,7 +36,7 @@ export class FastMCPServer {
                 capabilities: {
                     tools: {},
                     // Enable prompts/resources caps when env flags are set (to keep fast stdio minimal by default)
-                    prompts: process.env.FAST_STDIO_PROMPTS === '1' ? {} : undefined,
+                    prompts: process.env.FAST_STDIO_PROMPTS === '1' && supportsPrompts ? {} : undefined,
                     resources: process.env.FAST_STDIO_RESOURCES === '1' ? {} : undefined,
                 },
             }
@@ -59,12 +60,9 @@ export class FastMCPServer {
 
         // Optionally register prompts/resources for stdio (opt-in via env to preserve fast startup defaults)
         // Be defensive: older MCP SDKs may not support prompts/resources. Guard by feature-detection.
-        if (process.env.FAST_STDIO_PROMPTS === '1') {
+        if (process.env.FAST_STDIO_PROMPTS === '1' && supportsPrompts) {
             try {
-                // @ts-expect-error: SDK versions prior to prompts won't have registerPrompt
-                if (typeof (this.server as any).registerPrompt === 'function') {
-                    registerCommonPrompts(this.server);
-                }
+                registerCommonPrompts(this.server);
             } catch (e) {
                 // Skip prompts if not supported; never print to stdout in stdio mode
                 if (process.env.DEBUG && !process.env.STDIO_MODE) {

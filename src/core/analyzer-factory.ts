@@ -151,11 +151,12 @@ class Layer3Adapter extends LayerAdapter {
     }
 
     getOntologyEngine(): OntologyEngine {
-        if (!this.ontology && !this.lazyInit) {
-            // Fallback for eager mode
+        if (!this.ontology) {
+            // Keep the getter safe in both eager and lazy modes. Callers that need
+            // storage readiness still call ensureInitialized() on the returned engine.
             this.ontology = new OntologyEngine(this.storage);
         }
-        return this.ontology!;
+        return this.ontology;
     }
 
     async process(input: any): Promise<any> {
@@ -311,10 +312,23 @@ export class AnalyzerFactory {
     }> {
         // Merge with default config
         const base = AnalyzerFactory.createDefaultConfig();
+        const configuredLayers = ((config as any)?.layers || {}) as Record<string, any>;
+        const mergeLayer = (name: keyof CoreConfig['layers']) => ({
+            ...((base.layers as any)[name] || {}),
+            ...(configuredLayers[name as string] || {}),
+        });
         const fullConfig: CoreConfig = {
             ...base,
             ...config,
-            layers: { ...base.layers, ...(config?.layers || {}) } as any,
+            layers: {
+                ...base.layers,
+                ...configuredLayers,
+                layer1: mergeLayer('layer1'),
+                layer2: mergeLayer('layer2'),
+                layer3: mergeLayer('layer3'),
+                layer4: mergeLayer('layer4'),
+                layer5: mergeLayer('layer5'),
+            } as any,
             performance: { ...base.performance, ...(config as any)?.performance } as any,
             cache: { ...base.cache, ...(config as any)?.cache } as any,
             monitoring: { ...base.monitoring, ...(config as any)?.monitoring } as any,

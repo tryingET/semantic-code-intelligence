@@ -1,7 +1,7 @@
 // Tree-sitter AST Analysis Layer
 
-import { execSync } from 'child_process';
 import * as fs from 'fs/promises';
+import { existsSync, readdirSync, type Dirent } from 'fs';
 import * as path from 'path';
 import Parser, { Query, type SyntaxNode, type Tree } from 'tree-sitter';
 import type { OntologyEngine } from '../ontology/ontology-engine';
@@ -23,30 +23,51 @@ const loadedLanguages = new Set<string>();
 // File type detection - run ONCE at startup
 function detectProjectLanguages(projectPath: string = '.'): Set<string> {
     try {
-        // Use fast file type detection with fd or find
-        // Exclude node_modules and other common directories
-        const result = execSync(
-            `find ${projectPath} -type f \\( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.py" \\) -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/.git/*" | head -100`,
-            { encoding: 'utf8', timeout: 1000 }
-        );
-
         const languages = new Set<string>();
-        const lines = result.split('\n').filter(Boolean);
+        const root = path.resolve(projectPath);
+        const ignored = new Set(['node_modules', 'dist', '.git', 'coverage']);
+        const pending = [root];
+        let visitedFiles = 0;
+        let visitedEntries = 0;
+        const maxEntries = 5000;
 
-        for (const line of lines) {
-            if (line.endsWith('.ts') || line.endsWith('.tsx')) languages.add('typescript');
-            if (line.endsWith('.js') || line.endsWith('.jsx')) languages.add('javascript');
-            if (line.endsWith('.py')) languages.add('python');
+        while (pending.length > 0 && visitedFiles < 100 && visitedEntries < maxEntries) {
+            const dir = pending.pop()!;
+            let entries: Dirent[];
+            try {
+                entries = readdirSync(dir, { withFileTypes: true });
+            } catch {
+                continue;
+            }
+
+            for (const entry of entries) {
+                if (visitedFiles >= 100 || visitedEntries >= maxEntries) break;
+                visitedEntries += 1;
+                if (entry.isDirectory()) {
+                    if (!ignored.has(entry.name)) pending.push(path.join(dir, entry.name));
+                    continue;
+                }
+                if (!entry.isFile()) continue;
+
+                const filePath = path.join(dir, entry.name);
+                if (filePath.endsWith('.ts') || filePath.endsWith('.tsx')) {
+                    languages.add('typescript');
+                    visitedFiles += 1;
+                } else if (filePath.endsWith('.js') || filePath.endsWith('.jsx')) {
+                    languages.add('javascript');
+                    visitedFiles += 1;
+                } else if (filePath.endsWith('.py')) {
+                    languages.add('python');
+                    visitedFiles += 1;
+                }
+            }
         }
 
-        // If we're in a TypeScript project but only found JS, still include TypeScript
+        // If we're in a TypeScript project but only found JS, still include TypeScript.
+        // Check this even when the entry budget was exhausted.
         if (languages.has('javascript') && !languages.has('typescript')) {
-            // Check if there's a tsconfig.json
-            try {
-                require.resolve(path.join(projectPath, 'tsconfig.json'));
+            if (existsSync(path.join(root, 'tsconfig.json'))) {
                 languages.add('typescript');
-            } catch {
-                // No tsconfig, keep as is
             }
         }
 

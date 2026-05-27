@@ -192,6 +192,35 @@ export function strictJsonParse(jsonString: string): any {
     }
 }
 
+export function parseIntegerOption(
+    value: unknown,
+    label: string,
+    options: { defaultValue?: number; min?: number; max?: number } = {}
+): number {
+    const raw = value === undefined || value === null || value === '' ? options.defaultValue : value;
+    if (raw === undefined) {
+        throw new CoreError('InvalidParams', `${label} is required`, { label });
+    }
+
+    const parsed = typeof raw === 'number' ? raw : Number(String(raw).trim());
+    if (!Number.isInteger(parsed) || !Number.isFinite(parsed)) {
+        throw new CoreError('InvalidParams', `${label} must be an integer`, { label, value });
+    }
+
+    const min = options.min ?? Number.MIN_SAFE_INTEGER;
+    const max = options.max ?? Number.MAX_SAFE_INTEGER;
+    if (parsed < min || parsed > max) {
+        throw new CoreError('InvalidParams', `${label} must be between ${min} and ${max}`, {
+            label,
+            value,
+            min,
+            max,
+        });
+    }
+
+    return parsed;
+}
+
 export type AdapterProtocol = 'http' | 'mcp' | 'cli' | 'lsp';
 
 export type McpAdapterErrorEnvelope = {

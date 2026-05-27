@@ -374,13 +374,29 @@ export class LSPAdapter {
     }
 
     /**
+     * Handle file open notifications so true incremental changes have a base document.
+     */
+    async handleDidOpenTextDocument(params: { textDocument: { uri: string; text?: string } }): Promise<void> {
+        const text = params?.textDocument?.text;
+        if (typeof text === 'string') {
+            this.rememberDocumentText(params.textDocument.uri, text);
+            this.defMemo.clear();
+        }
+    }
+
+    /**
      * Handle file change notifications for learning
      */
     async handleDidChangeTextDocument(params: { textDocument: { uri: string }; contentChanges: any[] }): Promise<void> {
         try {
-            const after = this.extractLatestFullDocumentText(params.contentChanges);
-            if (after !== undefined) this.rememberDocumentText(params.textDocument.uri, after);
-            await this.coreAnalyzer.trackFileChange(params.textDocument.uri, 'modified', undefined, after, {
+            const after = this.applyDocumentChanges(params.textDocument.uri, params.contentChanges);
+            if (after !== undefined) {
+                this.rememberDocumentText(params.textDocument.uri, after);
+                this.defMemo.clear();
+            }
+            const containedUri = await this.containedLspUriOrNull(params.textDocument.uri);
+            if (!containedUri) return;
+            await this.coreAnalyzer.trackFileChange(containedUri, 'modified', undefined, after, {
                 timestamp: new Date().toISOString(),
                 hasInMemoryContent: after !== undefined,
             });
@@ -395,15 +411,24 @@ export class LSPAdapter {
      */
     async handleDidCloseTextDocument(params: { textDocument: { uri: string } }): Promise<void> {
         this.forgetDocumentText(params.textDocument.uri);
+        this.defMemo.clear();
     }
 
     async handleDidSaveTextDocument(params: { textDocument: { uri: string } }): Promise<void> {
         try {
+            const containedUri = await this.containedLspUriOrNull(params.textDocument.uri);
+            if (!containedUri) return;
             // Trigger any post-save processing in core
-            await this.coreAnalyzer.trackFileChange(params.textDocument.uri, 'modified', undefined, this.documentTextByUri.get(params.textDocument.uri), {
-                event: 'saved',
-                timestamp: new Date().toISOString(),
-            });
+            await this.coreAnalyzer.trackFileChange(
+                containedUri,
+                'modified',
+                undefined,
+                this.documentTextByUri.get(params.textDocument.uri) ?? this.documentTextByUri.get(containedUri),
+                {
+                    event: 'saved',
+                    timestamp: new Date().toISOString(),
+                }
+            );
         } catch (error) {
             console.warn('Failed to track file save:', error);
         }
@@ -471,15 +496,44 @@ export class LSPAdapter {
         }
     }
 
-    private extractLatestFullDocumentText(contentChanges: any[]): string | undefined {
+    private applyDocumentChanges(uri: string, contentChanges: any[]): string | undefined {
         if (!Array.isArray(contentChanges)) return undefined;
-        for (let i = contentChanges.length - 1; i >= 0; i--) {
-            const change = contentChanges[i];
-            if (change?.range || change?.rangeLength !== undefined) continue;
-            const text = change?.text;
-            if (typeof text === 'string') return text;
+        let text = this.documentTextByUri.get(uri);
+        try {
+            text = text ?? this.documentTextByUri.get(normalizeUri(uri));
+        } catch {}
+
+        for (const change of contentChanges) {
+            if (typeof change?.text !== 'string') continue;
+            if (!change.range && change.rangeLength === undefined) {
+                text = change.text;
+                continue;
+            }
+            if (text === undefined || !change.range) continue;
+            text = this.applyRangeChange(text, change.range, change.text);
         }
-        return undefined;
+
+        return text;
+    }
+
+    private applyRangeChange(text: string, range: any, replacement: string): string {
+        const start = this.positionToOffset(text, range.start);
+        const end = this.positionToOffset(text, range.end);
+        return `${text.slice(0, start)}${replacement}${text.slice(end)}`;
+    }
+
+    private positionToOffset(text: string, position: any): number {
+        const targetLine = Math.max(0, Number(position?.line ?? 0));
+        const targetCharacter = Math.max(0, Number(position?.character ?? 0));
+        let offset = 0;
+        let line = 0;
+        while (line < targetLine && offset < text.length) {
+            const next = text.indexOf('\n', offset);
+            if (next === -1) return text.length;
+            offset = next + 1;
+            line += 1;
+        }
+        return Math.min(offset + targetCharacter, text.length);
     }
 
     private rememberDocumentText(uri: string, text: string): void {

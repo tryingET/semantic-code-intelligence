@@ -46,6 +46,7 @@ import { resolveConfiguredWorkspaceRoot } from '../core/workspace-root.js';
 import { metricsRegistry, recordToolEnd, recordToolStart } from '../instrumentation/metrics.js';
 import { toMcpToolCallError } from '../mcp/tool-call-error.js';
 import { isMcpToolResultSuccess } from '../mcp/tool-result.js';
+import { registerCommonPrompts, registerCommonResources } from './mcp-shared.js';
 
 export class MCPServer {
     private server: Server;
@@ -53,6 +54,7 @@ export class MCPServer {
     private mcpAdapter!: MCPAdapter;
 
     constructor() {
+        const supportsPrompts = typeof (Server.prototype as any).registerPrompt === 'function';
         this.server = new Server(
             {
                 name: 'semantic-code-intelligence',
@@ -62,11 +64,13 @@ export class MCPServer {
                 capabilities: {
                     tools: {},
                     resources: {},
-                    prompts: {},
+                    ...(supportsPrompts ? { prompts: {} } : {}),
                 },
             }
         );
 
+        if (supportsPrompts) registerCommonPrompts(this.server);
+        registerCommonResources(this.server, { workspaceRoot: process.env.SEMANTIC_CODE_WORKSPACE || process.cwd() });
         this.setupHandlers();
     }
 

@@ -29,6 +29,7 @@ import {
     formatDefinitionForCli,
     formatReferenceForCli,
     handleAdapterError,
+    parseIntegerOption,
 } from './utils.js';
 
 export interface CLIAdapterConfig {
@@ -219,7 +220,11 @@ export class CLIAdapter {
                 uri: await this.workspaceUriForFile(options.file, 'CLI find file'),
                 position: createPosition(0, 0),
                 identifier,
-                maxResults: options.maxResults || this.config.maxResults,
+                maxResults: parseIntegerOption(options.maxResults, 'maxResults', {
+                    defaultValue: this.config.maxResults,
+                    min: 1,
+                    max: 1000,
+                }),
                 includeDeclaration: true,
                 precise: options.precise,
             });
@@ -227,7 +232,11 @@ export class CLIAdapter {
 
             // Prefer async fast-path to avoid LayerManager gating timeouts
             const result = await (this.coreAnalyzer as any).findDefinitionAsync(request);
-            const limit = options.limit ?? this.config.printLimit ?? 20;
+            const limit = parseIntegerOption(options.limit, 'limit', {
+                defaultValue: this.config.printLimit ?? 20,
+                min: 1,
+                max: 1000,
+            });
             const items = result.data.slice(0, limit);
             if (options.json) {
                 return JSON.stringify(
@@ -304,7 +313,11 @@ export class CLIAdapter {
                 uri: contextUri,
                 position: createPosition(0, 0),
                 identifier,
-                maxResults: options.maxResults || this.config.maxResults,
+                maxResults: parseIntegerOption(options.maxResults, 'maxResults', {
+                    defaultValue: this.config.maxResults,
+                    min: 1,
+                    max: 1000,
+                }),
                 includeDeclaration: options.includeDeclaration ?? false,
                 precise: options.precise,
             });
@@ -312,7 +325,11 @@ export class CLIAdapter {
 
             // Prefer async fast-path for references as well
             const result = await (this.coreAnalyzer as any).findReferencesAsync(request);
-            const limit = options.limit ?? this.config.printLimit ?? 20;
+            const limit = parseIntegerOption(options.limit, 'limit', {
+                defaultValue: this.config.printLimit ?? 20,
+                min: 1,
+                max: 1000,
+            });
             const items = result.data.slice(0, limit);
             if (options.json) {
                 return JSON.stringify(
@@ -852,7 +869,7 @@ export class CLIAdapter {
             const res = await (this.coreAnalyzer as any).buildSymbolMap({
                 identifier,
                 uri: await this.workspaceUriForFile(options.file, 'CLI symbol-map file'),
-                maxFiles: Math.min(options.maxFiles ?? 10, 100),
+                maxFiles: parseIntegerOption(options.maxFiles, 'maxFiles', { defaultValue: 10, min: 1, max: 100 }),
                 astOnly: true,
             });
             if (options.json) return JSON.stringify(res, null, 2);

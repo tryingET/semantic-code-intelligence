@@ -284,7 +284,7 @@ describe('nexus contract regressions', () => {
         expect(seen[0].identifier).toBe('MemoryName');
     });
 
-    test('LSP incremental changes do not replace full-document cache and close clears cached text', async () => {
+    test('LSP ranged incremental changes update full-document cache and close clears cached text', async () => {
         const workspaceRoot = tempWorkspace();
         const target = join(workspaceRoot, 'sample.ts');
         writeFileSync(target, 'const DiskName = 1;\n', 'utf8');
@@ -315,7 +315,7 @@ describe('nexus contract regressions', () => {
         await adapter.handleDidCloseTextDocument({ textDocument: { uri } });
         await adapter.findDefinition(target, { line: 0, character: 8 });
 
-        expect(seen[0].identifier).toBe('MemoryName');
+        expect(seen[0].identifier).toBe('Partial');
         expect(seen[1].identifier).toBe('DiskName');
     });
 

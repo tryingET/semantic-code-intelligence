@@ -21,6 +21,7 @@ import { createInternalError, type ErrorContext, globalErrorHandler, withMcpErro
 import { mcpLogger } from '../mcp/file-logger.js';
 import { toMcpToolCallError } from '../mcp/tool-call-error.js';
 import { safeMcpStringify, sanitizeMcpLogArgs } from '../mcp/tool-result.js';
+import { registerCommonPrompts, registerCommonResources } from './mcp-shared.js';
 
 export class EnhancedMCPServer {
     private server: Server;
@@ -32,6 +33,7 @@ export class EnhancedMCPServer {
     private shuttingDown = false;
 
     constructor() {
+        const supportsPrompts = typeof (Server.prototype as any).registerPrompt === 'function';
         this.server = new Server(
             {
                 name: 'semantic-code-intelligence',
@@ -41,10 +43,15 @@ export class EnhancedMCPServer {
                 capabilities: {
                     tools: {},
                     resources: {},
-                    prompts: {},
+                    ...(supportsPrompts ? { prompts: {} } : {}),
                 },
             }
         );
+
+        if (supportsPrompts) registerCommonPrompts(this.server);
+        registerCommonResources(this.server, {
+            workspaceRoot: process.env.SEMANTIC_CODE_WORKSPACE || process.env.WORKSPACE_ROOT || process.cwd(),
+        });
 
         this.connectionManager = new ConnectionManager({
             enableHeartbeat: false, // Disabled for stdio
