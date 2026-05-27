@@ -109,8 +109,78 @@ export class OverlayStore {
         return path.join(this.snapshotsRoot(workspaceRoot), id);
     }
 
-    private metadataPath(id: string, workspaceRoot?: string): string {
-        return path.join(this.snapshotDir(id, workspaceRoot), 'metadata.json');
+    private assertSafeSnapshotDirectory(id: string, workspaceRoot?: string, opts: { mustExist?: boolean } = {}): string {
+        this.assertValidId(id);
+        const root = this.snapshotsRoot(workspaceRoot);
+        const dir = path.join(root, id);
+        if (!fs.existsSync(dir)) {
+            if (opts.mustExist) throw new Error('Unknown snapshot id');
+            return dir;
+        }
+        const stat = fs.lstatSync(dir);
+        if (!stat.isDirectory() || stat.isSymbolicLink()) {
+            throw new Error('snapshot directory must be a non-symlink directory');
+        }
+        const realRoot = fs.realpathSync(root);
+        const realDir = fs.realpathSync(dir);
+        const relative = path.relative(realRoot, realDir);
+        if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+            throw new Error('snapshot directory must stay within the snapshots root');
+        }
+        return dir;
+    }
+
+    private metadataPath(id: string, workspaceRoot?: string, opts: { mustExist?: boolean } = {}): string {
+        return path.join(this.assertSafeSnapshotDirectory(id, workspaceRoot, opts), 'metadata.json');
+    }
+
+    private assertSnapshotDirectoryIdentity(id: string, workspaceRoot: string | undefined, expectedRealDir: string): void {
+        const actualRealDir = fs.realpathSync(this.assertSafeSnapshotDirectory(id, workspaceRoot, { mustExist: true }));
+        if (actualRealDir !== expectedRealDir) {
+            throw new Error('snapshot directory changed during metadata operation');
+        }
+    }
+
+    private readSnapshotMetadataSync(id: string, workspaceRoot?: string): string {
+        const dir = this.assertSafeSnapshotDirectory(id, workspaceRoot, { mustExist: true });
+        const expectedRealDir = fs.realpathSync(dir);
+        const metadata = path.join(dir, 'metadata.json');
+        const stat = fs.lstatSync(metadata);
+        if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('snapshot metadata must be a non-symlink file');
+        this.assertSnapshotDirectoryIdentity(id, workspaceRoot, expectedRealDir);
+        const noFollow = typeof fs.constants.O_NOFOLLOW === 'number' ? fs.constants.O_NOFOLLOW : 0;
+        const fd = fs.openSync(metadata, fs.constants.O_RDONLY | noFollow);
+        try {
+            this.assertSnapshotDirectoryIdentity(id, workspaceRoot, expectedRealDir);
+            return fs.readFileSync(fd, 'utf8');
+        } finally {
+            fs.closeSync(fd);
+        }
+    }
+
+    private writeSnapshotMetadataSync(snap: Snapshot): void {
+        const dir = this.assertSafeSnapshotDirectory(snap.id, snap.workspaceRoot);
+        fs.mkdirSync(dir, { recursive: true });
+        const safeDir = this.assertSafeSnapshotDirectory(snap.id, snap.workspaceRoot, { mustExist: true });
+        const expectedRealDir = fs.realpathSync(safeDir);
+        const tmp = path.join(safeDir, `.metadata.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`);
+        const noFollow = typeof fs.constants.O_NOFOLLOW === 'number' ? fs.constants.O_NOFOLLOW : 0;
+        let fd: number | null = null;
+        try {
+            this.assertSnapshotDirectoryIdentity(snap.id, snap.workspaceRoot, expectedRealDir);
+            fd = fs.openSync(tmp, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | noFollow, 0o600);
+            fs.writeFileSync(fd, JSON.stringify(this.serializeSnapshot(snap), null, 2), 'utf8');
+            fs.closeSync(fd);
+            fd = null;
+            this.assertSnapshotDirectoryIdentity(snap.id, snap.workspaceRoot, expectedRealDir);
+            fs.renameSync(tmp, path.join(safeDir, 'metadata.json'));
+            this.assertSnapshotDirectoryIdentity(snap.id, snap.workspaceRoot, expectedRealDir);
+        } finally {
+            if (fd !== null) fs.closeSync(fd);
+            try {
+                fs.rmSync(tmp, { force: true });
+            } catch {}
+        }
     }
 
     private snapshotDiffFingerprint(snap: Snapshot | null | undefined): string {
@@ -337,9 +407,7 @@ export class OverlayStore {
 
     private persistSnapshotSync(snap: Snapshot): void {
         try {
-            const dir = this.snapshotDir(snap.id, snap.workspaceRoot);
-            fs.mkdirSync(dir, { recursive: true });
-            fs.writeFileSync(this.metadataPath(snap.id, snap.workspaceRoot), JSON.stringify(this.serializeSnapshot(snap), null, 2), 'utf8');
+            this.writeSnapshotMetadataSync(snap);
         } catch {
             // Snapshot metadata is best-effort; in-memory behavior remains authoritative for current process.
         }
@@ -365,7 +433,7 @@ export class OverlayStore {
     private loadSnapshotFromDisk(id: string, workspaceRoot?: string): Snapshot | null {
         try {
             this.assertValidId(id);
-            const raw = JSON.parse(fs.readFileSync(this.metadataPath(id, workspaceRoot), 'utf8'));
+            const raw = JSON.parse(this.readSnapshotMetadataSync(id, workspaceRoot));
             const snap = this.hydrateSnapshot(raw, workspaceRoot);
             if (!snap) return null;
             this.snapshots.set(snap.id, snap);
@@ -643,9 +711,13 @@ export class OverlayStore {
     private validatePatchAppliesAgainstSnapshot(diff: string, snap: Snapshot): { ok: boolean; message?: string } {
         const root = path.resolve(snap.workspaceRoot || process.cwd());
         const materializedDir = path.join(this.snapshotsRoot(snap.workspaceRoot), snap.id);
+        if (snap.baseFingerprint && this.workspaceBaseFingerprint(snap.workspaceRoot) !== snap.baseFingerprint) {
+            return { ok: false, message: 'Workspace changed since snapshot creation; create a fresh snapshot' };
+        }
         if (snap.diffs.length === 0) {
             const materializedMarker = path.join(materializedDir, '.materialized');
-            return this.validatePatchApplies(diff, fs.existsSync(materializedMarker) ? materializedDir : root);
+            const canUseMaterialized = fs.existsSync(materializedMarker) && this.isSafeMaterializedSnapshotDir(materializedDir, snap);
+            return this.validatePatchApplies(diff, canUseMaterialized ? materializedDir : root);
         }
 
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sci-patch-base-'));
@@ -803,6 +875,16 @@ export class OverlayStore {
             .some((segment) => segment === '..');
     }
 
+    private isPackageScriptCommand(words: string[]): boolean {
+        const executable = words[0];
+        if (executable === 'bun') return words[1] === 'run';
+        return (executable === 'npm' || executable === 'pnpm' || executable === 'yarn') && words[1] === 'run';
+    }
+
+    private isMutableRunnerCommand(words: string[]): boolean {
+        return this.isPackageScriptCommand(words) || words[0] === 'just';
+    }
+
     private resolveCheckCommand(command: string): { ok: true; words: string[]; env: Record<string, string> } | { ok: false; message: string } {
         const parsed = this.parseCheckCommand(command);
         if (!parsed) return { ok: false, message: 'unsupported shell syntax' };
@@ -820,7 +902,7 @@ export class OverlayStore {
         if (!allowed.has(executable)) {
             return { ok: false, message: `unsupported validation command: ${executable}` };
         }
-        if (executable === 'bun' && !['run', 'test', 'install'].includes(words[1] || '')) {
+        if (executable === 'bun' && !['run', 'test'].includes(words[1] || '')) {
             return { ok: false, message: `unsupported bun validation subcommand: ${words[1] || '<missing>'}` };
         }
         if ((executable === 'npm' || executable === 'pnpm' || executable === 'yarn') && (words[1] || '') !== 'run') {
@@ -840,13 +922,13 @@ export class OverlayStore {
         return { ok: true, words, env };
     }
 
-    private checkCommandEnvironment(gitCeilingDirectory: string, extraEnv: Record<string, string> = {}): Record<string, string> {
+    private checkCommandEnvironment(gitCeilingDirectory: string, isolatedEnvRoot: string, extraEnv: Record<string, string> = {}): Record<string, string> {
         const env: Record<string, string> = {};
         const preserve = (key: string) => {
             const value = process.env[key];
             if (typeof value === 'string') env[key] = value;
         };
-        for (const key of ['PATH', 'HOME', 'TMPDIR', 'TMP', 'TEMP', 'CI', 'FORCE_COLOR', 'NO_COLOR', 'BUN_INSTALL', 'BUN_JOBS', 'XDG_CACHE_HOME', 'LANG']) {
+        for (const key of ['PATH', 'CI', 'FORCE_COLOR', 'NO_COLOR', 'BUN_JOBS', 'LANG']) {
             preserve(key);
         }
         for (const [key, value] of Object.entries(process.env)) {
@@ -854,6 +936,17 @@ export class OverlayStore {
                 env[key] = value;
             }
         }
+        const home = path.join(isolatedEnvRoot, 'home');
+        const tmp = path.join(isolatedEnvRoot, 'tmp');
+        const cache = path.join(isolatedEnvRoot, 'xdg-cache');
+        const bunInstall = path.join(isolatedEnvRoot, 'bun-install');
+        for (const dir of [home, tmp, cache, bunInstall]) fs.mkdirSync(dir, { recursive: true });
+        env.HOME = home;
+        env.TMPDIR = tmp;
+        env.TMP = tmp;
+        env.TEMP = tmp;
+        env.XDG_CACHE_HOME = cache;
+        env.BUN_INSTALL = bunInstall;
         Object.assign(env, extraEnv);
         env.GIT_CEILING_DIRECTORIES = gitCeilingDirectory;
         return env;
@@ -1060,6 +1153,7 @@ export class OverlayStore {
         const materializedCwd = (await this.ensureMaterialized(snapshotId)) || this.resolveWorkspaceBase(this.ensureSnapshot(snapshotId).workspaceRoot);
         const checkWorkspace = await this.createCheckWorkspace(snapshotId, materializedCwd);
         const cwd = checkWorkspace.cwd;
+        const isolatedEnvRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'sci-check-env-'));
         try {
         const output: string[] = [];
         const maxOutputBytes = 1024 * 1024;
@@ -1175,10 +1269,21 @@ export class OverlayStore {
                 commandResults.push({ command: cmd, ok: false, elapsedMs: 0, exitCode: null, timedOut: false });
                 return { ok: false, output: output.join(''), elapsedMs: Date.now() - start, commands: commandResults };
             }
+            if (resolvedCommand?.ok) {
+                const snap = this.ensureSnapshot(snapshotId);
+                const touched = Array.from(snap.touchedFiles || []);
+                const runnerTouched = touched.some((file) => file === 'package.json' || file === 'justfile' || file === 'Justfile');
+                if (runnerTouched && this.isMutableRunnerCommand(resolvedCommand.words) && process.env.SCI_ALLOW_MUTATED_CHECK_RUNNERS !== '1') {
+                    const message = 'Rejected check command: package/just runner commands are disabled when the patch changes their runner definitions; use direct tool commands or set SCI_ALLOW_MUTATED_CHECK_RUNNERS=1\n';
+                    appendOutput(message);
+                    commandResults.push({ command: cmd, ok: false, elapsedMs: 0, exitCode: null, timedOut: false });
+                    return { ok: false, output: output.join(''), elapsedMs: Date.now() - start, commands: commandResults };
+                }
+            }
             const [bin, ...args] = resolvedCommand?.ok ? resolvedCommand.words : [bashPath || 'bash', '-lc', cmd];
             const commandStart = Date.now();
             const result = await new Promise<{ ok: boolean; exitCode: number | null; timedOut: boolean }>((resolve) => {
-                const env = this.checkCommandEnvironment(this.snapshotsRoot(this.ensureSnapshot(snapshotId).workspaceRoot), resolvedCommand?.ok ? resolvedCommand.env : {});
+                const env = this.checkCommandEnvironment(this.snapshotsRoot(this.ensureSnapshot(snapshotId).workspaceRoot), isolatedEnvRoot, resolvedCommand?.ok ? resolvedCommand.env : {});
                 const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd, env, detached: true });
                 let settled = false;
                 let timer: ReturnType<typeof setTimeout>;
@@ -1221,6 +1326,7 @@ export class OverlayStore {
         return { ok: true, output: output.join(''), elapsedMs: Date.now() - start, commands: commandResults };
         } finally {
             await checkWorkspace.cleanup().catch(() => undefined);
+            await fsp.rm(isolatedEnvRoot, { recursive: true, force: true }).catch(() => undefined);
         }
     }
 

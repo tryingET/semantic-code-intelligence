@@ -337,7 +337,7 @@ export class LSPAdapter {
                 position: normalizePosition(params.position),
                 identifier,
                 newName: params.newName,
-                dryRun: false,
+                dryRun: true,
             });
 
             const result = await this.coreAnalyzer.rename(request);

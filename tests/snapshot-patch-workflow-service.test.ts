@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { overlayStore } from '../src/core/overlay-store.js';
@@ -99,6 +99,62 @@ describe('SnapshotPatchWorkflowService', () => {
             await service.extractSnapshotArtifacts({ snapshot: snap.snapshot, includeContent: true })
         );
         expect(artifacts.contents.overlayDiff.text).not.toContain('secret-from-outside');
+    });
+
+    test('snapshot metadata load rejects symlinked snapshot directories', async () => {
+        const workspaceRoot = tempWorkspace();
+        const outside = tempWorkspace();
+        const snapshot = '11111111-1111-4111-8111-111111111111';
+        mkdirSync(join(workspaceRoot, '.ontology', 'snapshots'), { recursive: true });
+        writeFileSync(join(outside, 'metadata.json'), JSON.stringify({
+            id: snapshot,
+            createdAt: Date.now(),
+            diffs: [],
+            workspaceRoot,
+            touchedFiles: [],
+        }), 'utf8');
+        symlinkSync(outside, join(workspaceRoot, '.ontology', 'snapshots', snapshot));
+
+        const service = new SnapshotPatchWorkflowService({ workspaceRoot: () => workspaceRoot });
+        const artifacts = payload(await service.extractSnapshotArtifacts({ snapshot, includeContent: true }));
+        expect(artifacts.status.exists).toBe(false);
+        expect(artifacts.status.error).toBeTruthy();
+    });
+
+    test('snapshot checks isolate HOME and reject mutated package-script runners', async () => {
+        const workspaceRoot = tempWorkspace();
+        const hostSentinel = join(process.env.HOME || tempWorkspace(), 'sci-safe-write-host-home-sentinel');
+        rmSync(hostSentinel, { force: true });
+        writeFileSync(join(workspaceRoot, 'home-write.test.ts'), "import { test, expect } from 'bun:test';\nimport { writeFileSync } from 'node:fs';\nimport { join } from 'node:path';\ntest('home is isolated', () => { writeFileSync(join(process.env.HOME!, 'sci-safe-write-host-home-sentinel'), 'isolated'); expect(true).toBe(true); });\n", 'utf8');
+        writeFileSync(join(workspaceRoot, 'package.json'), '{"scripts":{"typecheck":"echo ok"}}\n', 'utf8');
+        writeFileSync(join(workspaceRoot, 'target.ts'), 'export const value = 1;\n', 'utf8');
+        const service = new SnapshotPatchWorkflowService({ workspaceRoot: () => workspaceRoot });
+        const snap = payload(await service.getSnapshot({ preferExisting: false }));
+
+        const safePatch = `diff --git a/target.ts b/target.ts
+--- a/target.ts
++++ b/target.ts
+@@ -1 +1 @@
+-export const value = 1;
++export const value = 2;
+`;
+        expect(payload(await service.proposePatch({ snapshot: snap.snapshot, patch: safePatch })).accepted).toBe(true);
+        const checked = payload(await service.runChecks({ snapshot: snap.snapshot, commands: ['bun test home-write.test.ts'], timeoutSec: 30 }));
+        expect(checked.ok).toBe(true);
+        expect(existsSync(hostSentinel)).toBe(false);
+
+        const packagePatch = `diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -1 +1 @@
+-{"scripts":{"typecheck":"echo ok"}}
++{"scripts":{"typecheck":"echo unsafe"}}
+`;
+        const packageSnap = payload(await service.getSnapshot({ preferExisting: false }));
+        expect(payload(await service.proposePatch({ snapshot: packageSnap.snapshot, patch: packagePatch })).accepted).toBe(true);
+        const rejected = payload(await service.runChecks({ snapshot: packageSnap.snapshot, commands: ['bun run typecheck'], timeoutSec: 30 }));
+        expect(rejected.ok).toBe(false);
+        expect(rejected.output).toContain('runner commands are disabled');
     });
 
     test('snapshot progress logging does not follow replaced progress symlinks', async () => {

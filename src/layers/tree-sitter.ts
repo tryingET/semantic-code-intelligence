@@ -268,9 +268,19 @@ export class TreeSitterLayer implements Layer<EnhancedMatches, TreeSitterResult>
                     parameters: (formal_parameters) @func.params
                     body: (statement_block) @func.body)
                 
-                (arrow_function
-                    parameters: (formal_parameters) @arrow.params
-                    body: (_) @arrow.body)
+                (lexical_declaration
+                    (variable_declarator
+                        name: (identifier) @arrow.name
+                        value: (arrow_function
+                            parameters: (formal_parameters)? @arrow.params
+                            body: (_) @arrow.body)))
+
+                (variable_declaration
+                    (variable_declarator
+                        name: (identifier) @arrow.name
+                        value: (arrow_function
+                            parameters: (formal_parameters)? @arrow.params
+                            body: (_) @arrow.body)))
                 
                 (method_definition
                     name: (property_identifier) @method.name
@@ -300,7 +310,7 @@ export class TreeSitterLayer implements Layer<EnhancedMatches, TreeSitterResult>
                                 alias: (identifier)? @import.alias)*)?
                         (namespace_import
                             (identifier) @import.namespace)?
-                        (identifier)? @import.default)?)
+                        (identifier)? @import.default)?) @import.statement
             `,
 
             exports: `
@@ -351,9 +361,19 @@ export class TreeSitterLayer implements Layer<EnhancedMatches, TreeSitterResult>
                     parameters: (formal_parameters) @func.params
                     body: (statement_block) @func.body)
                 
-                (arrow_function
-                    parameters: (formal_parameters) @arrow.params
-                    body: (_) @arrow.body)
+                (lexical_declaration
+                    (variable_declarator
+                        name: (identifier) @arrow.name
+                        value: (arrow_function
+                            parameters: (formal_parameters)? @arrow.params
+                            body: (_) @arrow.body)))
+
+                (variable_declaration
+                    (variable_declarator
+                        name: (identifier) @arrow.name
+                        value: (arrow_function
+                            parameters: (formal_parameters)? @arrow.params
+                            body: (_) @arrow.body)))
                 
                 (method_definition
                     name: (property_identifier) @method.name
@@ -379,7 +399,7 @@ export class TreeSitterLayer implements Layer<EnhancedMatches, TreeSitterResult>
                                 alias: (identifier)? @import.alias)*)?
                         (namespace_import
                             (identifier) @import.namespace)?
-                        (identifier)? @import.default)?)
+                        (identifier)? @import.default)?) @import.statement
             `,
 
             exports: `
@@ -749,6 +769,7 @@ export class TreeSitterLayer implements Layer<EnhancedMatches, TreeSitterResult>
     private processImportsExports(imports: any[], exports: any[], filePath: string, result: TreeSitterResult): void {
         // Process imports
         for (const capture of imports) {
+            if (capture?.name !== 'import.statement') continue;
             const node = capture.node;
             const importInfo = this.extractImportInfo(node);
 

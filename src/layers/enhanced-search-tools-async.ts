@@ -1208,7 +1208,7 @@ function parseRipgrepLine(line: string): { file: string; lineNum: number; column
                 file: parts[0],
                 lineNum: Number.parseInt(parts[1], 10),
                 columnNum: Number.parseInt(parts[2], 10),
-                text: parts.slice(3).join(RIPGREP_FIELD_SEPARATOR).trim(),
+                text: parts.slice(3).join(RIPGREP_FIELD_SEPARATOR),
             };
         }
     }
@@ -1231,7 +1231,7 @@ function parseRipgrepLine(line: string): { file: string; lineNum: number; column
                 file,
                 lineNum: Number.parseInt(lineText, 10),
                 columnNum: Number.parseInt(columnText, 10),
-                text: line.slice(third + 1).trim(),
+                text: line.slice(third + 1),
             };
         }
     }
@@ -1246,7 +1246,7 @@ function parseRipgrepLine(line: string): { file: string; lineNum: number; column
             return {
                 file,
                 lineNum: Number.parseInt(lineText, 10),
-                text: line.slice(second + 1).trim(),
+                text: line.slice(second + 1),
             };
         }
     }

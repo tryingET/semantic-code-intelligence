@@ -149,8 +149,9 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
 
             await fs.writeFile(abs, 'workspace changed\n', 'utf8');
             const patch = `diff --git a/${rel} b/${rel}\n--- a/${rel}\n+++ b/${rel}\n@@ -1 +1 @@\n-one\n+two\n`;
-            expect(overlayStore.stagePatch(snap.id, patch).accepted).toBe(true);
-            await expect(ensure(snap.id)).rejects.toThrow('Workspace changed since snapshot creation');
+            const staged = overlayStore.stagePatch(snap.id, patch);
+            expect(staged.accepted).toBe(false);
+            expect(staged.message).toContain('Workspace changed since snapshot creation');
             expect(await fs.readFile(path.join(initialDir, rel), 'utf8')).toBe('one\n');
         } finally {
             rmSync(abs, { force: true });

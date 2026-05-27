@@ -52,8 +52,10 @@ export class MCPServer {
     private server: Server;
     private coreAnalyzer!: CodeAnalyzer;
     private mcpAdapter!: MCPAdapter;
+    private readonly workspaceRoot: string;
 
     constructor() {
+        this.workspaceRoot = resolveConfiguredWorkspaceRoot();
         const supportsPrompts = typeof (Server.prototype as any).registerPrompt === 'function';
         this.server = new Server(
             {
@@ -70,7 +72,7 @@ export class MCPServer {
         );
 
         if (supportsPrompts) registerCommonPrompts(this.server);
-        registerCommonResources(this.server, { workspaceRoot: process.env.SEMANTIC_CODE_WORKSPACE || process.cwd() });
+        registerCommonResources(this.server, { workspaceRoot: this.workspaceRoot });
         this.setupHandlers();
     }
 
@@ -121,11 +123,9 @@ export class MCPServer {
         // Initialize core analyzer
         const config = createDefaultCoreConfig();
         config.monitoring.enabled = false; // disable periodic metrics for stdio MCP
-        const workspaceRoot = resolveConfiguredWorkspaceRoot();
-
         this.coreAnalyzer = await createCodeAnalyzer({
             ...config,
-            workspaceRoot,
+            workspaceRoot: this.workspaceRoot,
         });
 
         await this.coreAnalyzer.initialize();

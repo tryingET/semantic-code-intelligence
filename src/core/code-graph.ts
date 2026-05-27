@@ -69,6 +69,7 @@ const TS_EXPORTS = `
 const PY_IMPORTS = `
   (import_statement name: (dotted_name) @import.module)
   (import_from_statement module_name: (dotted_name) @import.from name: (dotted_name) @import.name)
+  (import_from_statement module_name: (dotted_name) @import.from name: (aliased_import name: (dotted_name) @import.name alias: (identifier) @import.alias))
 `;
 
 const PY_EXPORTS = `

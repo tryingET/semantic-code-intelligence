@@ -119,29 +119,31 @@ export class LSPServer {
             }
             log('Semantic Code Intelligence Server initialized');
 
-            // Start metrics endpoint for LSP on loopback
-            try {
-                const port = Number(process.env.LSP_PROM_PORT || 9467);
-                if (!this.metricsServer) {
-                    this.metricsServer = serve({
-                        hostname: '127.0.0.1',
-                        port,
-                        fetch: async (req) => {
-                            const url = new URL(req.url);
-                            if (url.pathname === '/metrics' && req.method === 'GET') {
-                                const text = metricsRegistry.renderPrometheusText();
-                                return new Response(text, {
-                                    status: 200,
-                                    headers: { 'Content-Type': 'text/plain; version=0.0.4', 'Cache-Control': 'no-cache' },
-                                });
-                            }
-                            return new Response('Not found', { status: 404 });
-                        },
-                    });
-                    log(`[LSP] Metrics on http://127.0.0.1:${port}/metrics`);
+            // Start metrics endpoint for LSP on loopback only when explicitly requested.
+            if (process.env.LSP_PROM_PORT || process.env.SCI_LSP_ENABLE_PROM === '1') {
+                try {
+                    const port = Number(process.env.LSP_PROM_PORT || 9467);
+                    if (!this.metricsServer) {
+                        this.metricsServer = serve({
+                            hostname: '127.0.0.1',
+                            port,
+                            fetch: async (req) => {
+                                const url = new URL(req.url);
+                                if (url.pathname === '/metrics' && req.method === 'GET') {
+                                    const text = metricsRegistry.renderPrometheusText();
+                                    return new Response(text, {
+                                        status: 200,
+                                        headers: { 'Content-Type': 'text/plain; version=0.0.4', 'Cache-Control': 'no-cache' },
+                                    });
+                                }
+                                return new Response('Not found', { status: 404 });
+                            },
+                        });
+                        log(`[LSP] Metrics on http://127.0.0.1:${port}/metrics`);
+                    }
+                } catch (err) {
+                    log('[LSP] Metrics server failed to start:', (err as Error)?.message || String(err));
                 }
-            } catch (err) {
-                log('[LSP] Metrics server failed to start:', (err as Error)?.message || String(err));
             }
 
             // Bridge layer performance events to metrics histograms
@@ -342,7 +344,7 @@ export class LSPServer {
                 try {
                     recordToolEnd('lsp', 'completion', Date.now() - t0, false);
                 } catch {}
-                return [];
+                throw e;
             }
         });
 

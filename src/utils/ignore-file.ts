@@ -5,6 +5,7 @@ import * as path from 'path';
 
 export class IgnoreFileManager {
     private patterns: string[] = [];
+    private workspaceRoot: string;
     private defaultPatterns = [
         'node_modules/**',
         '.git/**',
@@ -35,18 +36,18 @@ export class IgnoreFileManager {
     ];
 
     constructor(workspaceRoot: string) {
-        this.loadIgnoreFile(workspaceRoot);
+        this.workspaceRoot = path.resolve(workspaceRoot);
+        this.loadIgnoreFile(this.workspaceRoot);
     }
 
     private loadIgnoreFile(workspaceRoot: string): void {
-        const ignoreFilePath = path.join(workspaceRoot, '.semantic-code-ignore');
+        this.workspaceRoot = path.resolve(workspaceRoot);
+        const ignoreFilePath = path.join(this.workspaceRoot, '.semantic-code-ignore');
 
         // Start with default patterns
         this.patterns = [...this.defaultPatterns];
 
         if (!fs.existsSync(ignoreFilePath)) {
-            // Create a default .semantic-code-ignore file
-            this.createDefaultIgnoreFile(ignoreFilePath);
             return;
         }
 
@@ -68,20 +69,20 @@ export class IgnoreFileManager {
                 return line && !line.startsWith('#');
             })
             .map((line) => {
-                // Handle negation patterns (!)
-                if (line.startsWith('!')) {
-                    return line;
+                const negated = line.startsWith('!');
+                const body = negated ? line.slice(1) : line;
+                let normalized = body;
+                if (body.endsWith('/')) {
+                    normalized = body.includes('/') && !body.slice(0, -1).includes('/') ? `**/${body}**` : `${body}**`;
+                } else if (!body.includes('*')) {
+                    // If it's a file name without wildcards, match it anywhere.
+                    normalized = body.includes('/') ? body : `**/${body}`;
                 }
-                // Ensure glob patterns are properly formatted
-                if (!line.includes('*') && !line.endsWith('/')) {
-                    // If it's a file name without wildcards, match it anywhere
-                    return `**/${line}`;
-                }
-                return line;
+                return negated ? `!${normalized}` : normalized;
             });
     }
 
-    private createDefaultIgnoreFile(filePath: string): void {
+    public createDefaultIgnoreFile(filePath = path.join(this.workspaceRoot, '.semantic-code-ignore')): void {
         const defaultContent = `# Semantic Code Intelligence Ignore File
 # This file specifies patterns for files and directories that should be
 # excluded from ontology analysis and indexing.
@@ -170,7 +171,8 @@ docs/api/
     }
 
     public shouldIgnore(filePath: string): boolean {
-        const relativePath = path.relative(process.cwd(), filePath);
+        const relativePath = path.relative(this.workspaceRoot, path.resolve(filePath)).split(path.sep).join('/');
+        if (relativePath === '..' || relativePath.startsWith('../') || path.isAbsolute(relativePath)) return false;
 
         for (const pattern of this.patterns) {
             if (pattern.startsWith('!')) {
