@@ -65,7 +65,7 @@ export function normalizePosition(pos: any): Position {
         if (typeof pos.line === 'number' && typeof pos.col === 'number') return createPosition(pos.line, pos.col);
         if (typeof pos.row === 'number' && typeof pos.column === 'number') return createPosition(pos.row, pos.column);
     }
-    throw new Error(`Invalid position format: ${JSON.stringify(pos)}`);
+    throw new CoreError('InvalidParams', 'Invalid position format', { value: pos });
 }
 
 export function normalizeRange(range: any): Range {
@@ -80,7 +80,7 @@ export function normalizeRange(range: any): Range {
         )
             return createRange(range.startLine, range.startChar, range.endLine, range.endChar);
     }
-    throw new Error(`Invalid range format: ${JSON.stringify(range)}`);
+    throw new CoreError('InvalidParams', 'Invalid range format', { value: range });
 }
 
 export function buildFindDefinitionRequest(params: {
@@ -279,6 +279,32 @@ function getErrorMessage(error: unknown): string {
     if (typeof error === 'string') return error;
     if (error === null || error === undefined) return String(error);
     return safeStringify(error);
+}
+
+export async function withAdapterTimeout<T>(
+    operation: Promise<T>,
+    timeoutMs: unknown,
+    operationName = 'adapter operation'
+): Promise<T> {
+    const parsed = Number(timeoutMs);
+    if (!Number.isFinite(parsed) || parsed <= 0) return operation;
+    const boundedMs = Math.max(1, Math.floor(parsed));
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<T>((_, reject) => {
+        timer = setTimeout(() => {
+            reject(
+                new CoreError('Internal', `${operationName} timed out after ${boundedMs}ms`, {
+                    operation: operationName,
+                    timeoutMs: boundedMs,
+                })
+            );
+        }, boundedMs);
+    });
+    try {
+        return await Promise.race([operation, timeout]);
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
 }
 
 export function handleAdapterError(

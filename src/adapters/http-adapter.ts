@@ -36,6 +36,7 @@ import {
     referenceToApiResponse,
     strictJsonParse,
     validateRequired,
+    withAdapterTimeout,
 } from './utils.js';
 
 export interface HTTPAdapterConfig {
@@ -335,7 +336,11 @@ export class HTTPAdapter {
                 precise: !!body.precise,
             });
 
-            const result = await this.coreAnalyzer.findDefinition(coreRequest);
+            const result = await withAdapterTimeout(
+                this.coreAnalyzer.findDefinition(coreRequest),
+                this.config.timeout,
+                'http.findDefinition'
+            );
 
             // Build and serialize response
             const responseBody = JSON.stringify({
@@ -417,7 +422,11 @@ export class HTTPAdapter {
                 precise: !!body.precise,
             });
 
-            const result = await this.coreAnalyzer.findReferences(coreRequest);
+            const result = await withAdapterTimeout(
+                this.coreAnalyzer.findReferences(coreRequest),
+                this.config.timeout,
+                'http.findReferences'
+            );
 
             // Build and serialize response
             const responseBody = JSON.stringify({
@@ -470,7 +479,7 @@ export class HTTPAdapter {
                 dryRun: body.dryRun ?? false,
             });
 
-            const result = await this.coreAnalyzer.rename(coreRequest);
+            const result = await withAdapterTimeout(this.coreAnalyzer.rename(coreRequest), this.config.timeout, 'http.rename');
 
             const changes = Object.entries(result.data.changes || {});
 
@@ -516,7 +525,7 @@ export class HTTPAdapter {
                 dryRun: true,
             });
 
-            const result = await this.coreAnalyzer.rename(coreRequest);
+            const result = await withAdapterTimeout(this.coreAnalyzer.rename(coreRequest), this.config.timeout, 'http.planRename');
             const changes = Object.entries(result.data.changes || {});
 
             // Optional: Layer 5 pattern stats
@@ -558,7 +567,10 @@ export class HTTPAdapter {
         try {
             const body = strictJsonParse(request.body || '{}');
             if (body && body.changes) {
-                throw new Error('Direct changes application is unsupported; provide identifier/newName or use snapshot apply workflows');
+                throw new CoreError(
+                    'InvalidParams',
+                    'Direct changes application is unsupported; provide identifier/newName or use snapshot apply workflows'
+                );
             }
 
             const identifier = body.identifier ?? body.oldName;
@@ -570,7 +582,7 @@ export class HTTPAdapter {
                 newName: body.newName,
                 dryRun: false,
             });
-            const result = await this.coreAnalyzer.rename(coreRequest);
+            const result = await withAdapterTimeout(this.coreAnalyzer.rename(coreRequest), this.config.timeout, 'http.applyRename');
             return {
                 status: 200,
                 headers: {},
@@ -639,7 +651,11 @@ export class HTTPAdapter {
                 }),
             });
 
-            const result = await this.coreAnalyzer.getCompletions(coreRequest);
+            const result = await withAdapterTimeout(
+                this.coreAnalyzer.getCompletions(coreRequest),
+                this.config.timeout,
+                'http.getCompletions'
+            );
 
             // Build and serialize response
             const responseBody = JSON.stringify({
@@ -2382,7 +2398,11 @@ export class HTTPAdapter {
             };
 
             // Use the new async search method from unified analyzer
-            const result = await this.coreAnalyzer.findDefinitionAsync(searchRequest);
+            const result = await withAdapterTimeout(
+                this.coreAnalyzer.findDefinitionAsync(searchRequest),
+                this.config.timeout,
+                'http.streamSearch.findDefinition'
+            );
 
             // Convert to SSE format (simplified for now)
             const sseData = this.formatAsSSE(result, 'search');
@@ -2424,7 +2444,11 @@ export class HTTPAdapter {
             };
 
             // Use the new async definition search method
-            const result = await this.coreAnalyzer.findDefinitionAsync(searchRequest);
+            const result = await withAdapterTimeout(
+                this.coreAnalyzer.findDefinitionAsync(searchRequest),
+                this.config.timeout,
+                'http.streamDefinition.findDefinition'
+            );
 
             // Convert to SSE format (simplified for now)
             const sseData = this.formatAsSSE(result, 'definition');
@@ -2721,15 +2745,19 @@ export class HTTPAdapter {
             normalized && typeof normalized === 'object' && 'details' in normalized
                 ? (normalized as any).details
                 : normalized;
+        const hasCause = cause !== undefined;
         const hasTypedCoreStatus = details && typeof details === 'object' && (details as any).code !== undefined;
         const resolvedStatus =
-            typeof normalized?.status === 'number' && (status === 500 || hasTypedCoreStatus) ? normalized.status : status;
+            typeof normalized?.status === 'number' && (hasCause || status === 500 || hasTypedCoreStatus)
+                ? normalized.status
+                : status;
+        const resolvedMessage = resolvedStatus !== status && resolvedStatus >= 500 ? 'Internal server error' : message;
         return {
             status: resolvedStatus,
             headers: {},
             body: JSON.stringify({
                 success: false,
-                error: message,
+                error: resolvedMessage,
                 details,
                 timestamp: new Date().toISOString(),
             }),

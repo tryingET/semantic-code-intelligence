@@ -1319,7 +1319,7 @@ export class SnapshotPatchWorkflowService {
           encoding: "utf8",
         },
       );
-      const workingDiff = String(workingDiffProc.stdout || "");
+      let workingDiff = String(workingDiffProc.stdout || "");
       if (workingDiffProc.status !== 0) {
         return {
           appliedDiffMatchesSnapshot: false,
@@ -1332,6 +1332,54 @@ export class SnapshotPatchWorkflowService {
             stderr: String(workingDiffProc.stderr || "").slice(-2000),
           },
         };
+      }
+
+      const untrackedAddedFiles: string[] = [];
+      for (const file of touchedFiles) {
+        const absolute = path.resolve(this.workspaceRoot, file);
+        const relative = path.relative(this.workspaceRoot, absolute);
+        if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+          return {
+            appliedDiffMatchesSnapshot: false,
+            method,
+            diagnostics: {
+              reason: "working_tree_diff_path_escape",
+              snapshot,
+              file,
+            },
+          };
+        }
+        const tracked = spawnSync("git", ["ls-files", "--error-unmatch", "--", file], {
+          cwd: this.workspaceRoot,
+          stdio: "pipe",
+          encoding: "utf8",
+        });
+        if (tracked.status === 0) continue;
+        const stat = await fs.stat(absolute).catch(() => null);
+        if (!stat?.isFile()) continue;
+        const added = spawnSync("git", ["diff", "--no-ext-diff", "--no-index", "--", "/dev/null", file], {
+          cwd: this.workspaceRoot,
+          stdio: "pipe",
+          encoding: "utf8",
+        });
+        if (added.status !== 0 && added.status !== 1) {
+          return {
+            appliedDiffMatchesSnapshot: false,
+            method,
+            diagnostics: {
+              reason: "working_tree_untracked_diff_failed",
+              snapshot,
+              file,
+              exitCode: added.status,
+              stderr: String(added.stderr || "").slice(-2000),
+            },
+          };
+        }
+        const addedDiff = String(added.stdout || "");
+        if (addedDiff) {
+          untrackedAddedFiles.push(file);
+          workingDiff += `${workingDiff.endsWith("\n") || !workingDiff ? "" : "\n"}${addedDiff}`;
+        }
       }
 
       const patchId = (diff: string) => {
@@ -1374,6 +1422,7 @@ export class SnapshotPatchWorkflowService {
           snapshot,
           diffFile,
           files: touchedFiles,
+          untrackedAddedFiles,
           reverseApplyCheckOk: reverseOk,
           overlayPatchId: overlayPatchId.id || null,
           workingPatchId: workingPatchId.id || null,

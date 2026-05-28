@@ -60,6 +60,7 @@ import {
     normalizeUri,
     referenceToLspLocation,
     workspaceEditToLsp,
+    withAdapterTimeout,
 } from './utils.js';
 
 export interface LSPAdapterConfig {
@@ -238,7 +239,11 @@ export class LSPAdapter {
                 return out;
             }
 
-            const result = await (this.coreAnalyzer as any).findDefinitionAsync(request);
+            const result = await withAdapterTimeout<{ data: any[] }>(
+                (this.coreAnalyzer as any).findDefinitionAsync(request),
+                this.config.timeout,
+                'lsp.findDefinition'
+            );
             const out = result.data.map((def: any) => definitionToLspLocation(def));
             this.defMemo.set(key, { ts: Date.now(), result: out });
             return out;
@@ -275,7 +280,11 @@ export class LSPAdapter {
                 includeDeclaration: params.context.includeDeclaration,
             });
 
-            const result = await (this.coreAnalyzer as any).findReferencesAsync(request);
+            const result = await withAdapterTimeout<{ data: any[] }>(
+                (this.coreAnalyzer as any).findReferencesAsync(request),
+                this.config.timeout,
+                'lsp.findReferences'
+            );
 
             return result.data.map((ref: any) => referenceToLspLocation(ref));
         } catch (error) {
@@ -301,7 +310,11 @@ export class LSPAdapter {
                 identifier,
             });
 
-            const result = await this.coreAnalyzer.prepareRename(request);
+            const result = await withAdapterTimeout(
+                this.coreAnalyzer.prepareRename(request),
+                this.config.timeout,
+                'lsp.prepareRename'
+            );
 
             return result.data;
         } catch (error) {
@@ -340,7 +353,7 @@ export class LSPAdapter {
                 dryRun: true,
             });
 
-            const result = await this.coreAnalyzer.rename(request);
+            const result = await withAdapterTimeout(this.coreAnalyzer.rename(request), this.config.timeout, 'lsp.rename');
 
             return workspaceEditToLsp(result.data);
         } catch (error) {
@@ -365,7 +378,11 @@ export class LSPAdapter {
                 maxResults: this.config.maxResults,
             });
 
-            const result = await this.coreAnalyzer.getCompletions(request);
+            const result = await withAdapterTimeout(
+                this.coreAnalyzer.getCompletions(request),
+                this.config.timeout,
+                'lsp.getCompletions'
+            );
 
             return result.data.map((comp: any) => completionToLspItem(comp));
         } catch (error) {
@@ -396,10 +413,14 @@ export class LSPAdapter {
             }
             const containedUri = await this.containedLspUriOrNull(params.textDocument.uri);
             if (!containedUri) return;
-            await this.coreAnalyzer.trackFileChange(containedUri, 'modified', undefined, after, {
-                timestamp: new Date().toISOString(),
-                hasInMemoryContent: after !== undefined,
-            });
+            await withAdapterTimeout(
+                this.coreAnalyzer.trackFileChange(containedUri, 'modified', undefined, after, {
+                    timestamp: new Date().toISOString(),
+                    hasInMemoryContent: after !== undefined,
+                }),
+                this.config.timeout,
+                'lsp.trackFileChange'
+            );
         } catch (error) {
             // Don't throw for tracking failures
             console.warn('Failed to track file change:', error);
@@ -419,15 +440,19 @@ export class LSPAdapter {
             const containedUri = await this.containedLspUriOrNull(params.textDocument.uri);
             if (!containedUri) return;
             // Trigger any post-save processing in core
-            await this.coreAnalyzer.trackFileChange(
-                containedUri,
-                'modified',
-                undefined,
-                this.documentTextByUri.get(params.textDocument.uri) ?? this.documentTextByUri.get(containedUri),
-                {
-                    event: 'saved',
-                    timestamp: new Date().toISOString(),
-                }
+            await withAdapterTimeout(
+                this.coreAnalyzer.trackFileChange(
+                    containedUri,
+                    'modified',
+                    undefined,
+                    this.documentTextByUri.get(params.textDocument.uri) ?? this.documentTextByUri.get(containedUri),
+                    {
+                        event: 'saved',
+                        timestamp: new Date().toISOString(),
+                    }
+                ),
+                this.config.timeout,
+                'lsp.trackFileSave'
             );
         } catch (error) {
             console.warn('Failed to track file save:', error);

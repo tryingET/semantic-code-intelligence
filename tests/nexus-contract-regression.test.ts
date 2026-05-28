@@ -11,7 +11,10 @@ import { createDefaultCoreConfig } from '../src/adapters/utils';
 import { LSPAdapter } from '../src/adapters/lsp-adapter';
 import { HTTPServer } from '../src/servers/http';
 import { createCodeAnalyzer } from '../src/core/index';
+import { workspaceInputToPath } from '../src/core/workspace-input';
+import { SnapshotPatchWorkflowService } from '../src/core/workflows/snapshot-patch-workflow';
 import { normalizeStructuralPaths } from '../src/core/workflows/structural-workflow';
+import { WorkspaceQueryWorkflowService } from '../src/core/workflows/workspace-query-workflow';
 import { FastSearchLayer } from '../src/layers/layer1-fast-search';
 import { TreeSitterLayer } from '../src/layers/tree-sitter';
 import { OntologyStorage } from '../src/ontology/storage';
@@ -34,6 +37,29 @@ function parseContent(res: any): any {
     const text = res?.content?.[0]?.text;
     if (typeof text === 'string') return JSON.parse(text);
     return res?.payload ?? res;
+}
+
+function runGit(workspaceRoot: string, args: string[]) {
+    const proc = spawnSync('git', args, {
+        cwd: workspaceRoot,
+        encoding: 'utf8',
+        env: {
+            ...process.env,
+            GIT_AUTHOR_NAME: 'sci-test',
+            GIT_AUTHOR_EMAIL: 'sci-test@example.test',
+            GIT_COMMITTER_NAME: 'sci-test',
+            GIT_COMMITTER_EMAIL: 'sci-test@example.test',
+        },
+    });
+    expect(proc.status, `git ${args.join(' ')} failed: ${proc.stderr || proc.stdout}`).toBe(0);
+}
+
+function initGitWorkspace(workspaceRoot: string, opts: { ignoreOntology?: boolean } = {}) {
+    runGit(workspaceRoot, ['init', '-q']);
+    if (opts.ignoreOntology) writeFileSync(join(workspaceRoot, '.gitignore'), '.ontology/\n', 'utf8');
+    writeFileSync(join(workspaceRoot, 'README.md'), 'base\n', 'utf8');
+    runGit(workspaceRoot, ['add', '.']);
+    runGit(workspaceRoot, ['commit', '-q', '-m', 'init']);
 }
 
 async function withMcp<T>(workspaceRoot: string, fn: (mcp: MCPAdapter) => Promise<T>): Promise<T> {
@@ -715,6 +741,131 @@ describe('nexus contract regressions', () => {
         expect(result).toEqual([]);
         expect(seen).toHaveLength(1);
         expect(seen[0].uri).toBe(uri);
+    });
+
+    test('snapshot patching ignores its own persisted artifacts in fresh target repos', async () => {
+        const workspaceRoot = tempWorkspace();
+        initGitWorkspace(workspaceRoot);
+        const service = new SnapshotPatchWorkflowService({ workspaceRoot: () => workspaceRoot });
+        const snapshot = (await service.getSnapshot({ preferExisting: false })).payload.snapshot;
+        const patch = 'diff --git a/new.txt b/new.txt\nnew file mode 100644\nindex 0000000..1269488\n--- /dev/null\n+++ b/new.txt\n@@ -0,0 +1 @@\n+hello\n';
+
+        const result = await service.proposePatch({ snapshot, patch });
+
+        expect(result.isError).not.toBe(true);
+        expect(result.payload).toMatchObject({ accepted: true, snapshot });
+    });
+
+    test('snapshot text_search defaults to the materialized snapshot root', async () => {
+        const workspaceRoot = tempWorkspace();
+        writeFileSync(join(workspaceRoot, 'a.txt'), 'needle\n', 'utf8');
+        const snapshotService = new SnapshotPatchWorkflowService({ workspaceRoot: () => workspaceRoot });
+        const snapshot = (await snapshotService.getSnapshot({ preferExisting: false })).payload.snapshot;
+        const queryService = new WorkspaceQueryWorkflowService({
+            workspaceRoot: () => workspaceRoot,
+            coreAnalyzer: { initialize: async () => {} },
+            pathInputFromToolFile: (value, root) => workspaceInputToPath(value, root),
+        });
+
+        const result = await queryService.textSearch({ query: 'needle', snapshot });
+
+        expect(result.isError).toBe(false);
+        expect(result.payload.count).toBeGreaterThan(0);
+    });
+
+    test('applied snapshot verification accounts for newly added untracked files', async () => {
+        const workspaceRoot = tempWorkspace();
+        initGitWorkspace(workspaceRoot, { ignoreOntology: true });
+        const service = new SnapshotPatchWorkflowService({ workspaceRoot: () => workspaceRoot });
+        const snapshot = (await service.getSnapshot({ preferExisting: false })).payload.snapshot;
+        const patch = 'diff --git a/new.txt b/new.txt\nnew file mode 100644\nindex 0000000..1269488\n--- /dev/null\n+++ b/new.txt\n@@ -0,0 +1 @@\n+hello\n';
+        const previousAllow = process.env.ALLOW_SNAPSHOT_APPLY;
+        process.env.ALLOW_SNAPSHOT_APPLY = '1';
+        try {
+            expect((await service.proposePatch({ snapshot, patch })).payload).toMatchObject({ accepted: true });
+            expect((await service.applySnapshot({ snapshot, check: false })).payload).toMatchObject({ ok: true });
+            const verification = await service.verifyAppliedSnapshotDiff(snapshot);
+            expect(verification.appliedDiffMatchesSnapshot).toBe(true);
+            expect(verification.diagnostics.untrackedAddedFiles).toContain('new.txt');
+        } finally {
+            if (previousAllow === undefined) delete process.env.ALLOW_SNAPSHOT_APPLY;
+            else process.env.ALLOW_SNAPSHOT_APPLY = previousAllow;
+        }
+    });
+
+    test('HTTP definition separates client position errors from untyped core failures', async () => {
+        const workspaceRoot = tempWorkspace();
+        writeFileSync(join(workspaceRoot, 'sample.ts'), 'const Target = 1;\n', 'utf8');
+        const okCore = {
+            config: { workspaceRoot },
+            findDefinition: async () => ({ data: [], performance: {}, timestamp: Date.now(), cacheHit: false }),
+            sharedServices: {},
+        } as any;
+        const badPosition = await new HTTPAdapter(okCore, { enableCors: false, enableOpenAPI: false }).handleRequest({
+            method: 'POST',
+            url: '/api/v1/definition',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ identifier: 'Target', file: 'sample.ts', position: { row: 'nope' } }),
+        });
+        expect(badPosition.status).toBe(400);
+        expect(JSON.parse(badPosition.body).details?.code).toBe('InvalidParams');
+
+        const adapter = new HTTPAdapter(
+            {
+                config: { workspaceRoot },
+                findDefinition: async () => {
+                    throw new Error('boom');
+                },
+                sharedServices: {},
+            } as any,
+            { enableCors: false, enableOpenAPI: false }
+        );
+
+        const response = await adapter.handleRequest({
+            method: 'POST',
+            url: '/api/v1/definition',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ identifier: 'Target', file: 'sample.ts', position: { line: 0, character: 6 } }),
+        });
+
+        expect(response.status).toBe(500);
+        expect(JSON.parse(response.body)).toMatchObject({ success: false, error: 'Internal server error' });
+    });
+
+    test('HTTP and LSP adapters enforce configured operation timeouts', async () => {
+        const workspaceRoot = tempWorkspace();
+        const file = join(workspaceRoot, 'sample.ts');
+        writeFileSync(file, 'const SlowName = 1;\n', 'utf8');
+        const slow = () => new Promise((resolve) => setTimeout(() => resolve({ data: [], performance: {}, timestamp: Date.now(), cacheHit: false }), 30));
+        const http = new HTTPAdapter(
+            { config: { workspaceRoot }, findDefinition: slow, sharedServices: {} } as any,
+            { enableCors: false, enableOpenAPI: false, timeout: 1 }
+        );
+
+        const httpResponse = await http.handleRequest({
+            method: 'POST',
+            url: '/api/v1/definition',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ identifier: 'SlowName', file: 'sample.ts', position: { line: 0, character: 6 } }),
+        });
+        expect(httpResponse.status).toBe(500);
+        expect(JSON.parse(httpResponse.body).details?.message).toContain('timed out');
+
+        const lsp = new LSPAdapter(
+            {
+                config: { workspaceRoot },
+                findDefinitionAsync: slow,
+                trackFileChange: async () => {},
+                getDiagnostics: () => ({}),
+            } as any,
+            { workspaceRoot, timeout: 1 }
+        );
+        await expect(
+            lsp.handleDefinition({
+                textDocument: { uri: pathToFileURL(file).href },
+                position: { line: 0, character: 7 },
+            } as any)
+        ).rejects.toThrow('timed out');
     });
 
     test('HTTP rename reports client input failures as bad requests', async () => {

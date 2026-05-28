@@ -32,12 +32,14 @@ export class WorkspaceQueryWorkflowService {
 
         const absolutePath = path.resolve(decodedPath);
         const workspaceRelative = path.relative(workspaceRoot, absolutePath);
-        if (workspaceRelative && !workspaceRelative.startsWith('..') && !path.isAbsolute(workspaceRelative)) {
+        if (!workspaceRelative) return '.';
+        if (!workspaceRelative.startsWith('..') && !path.isAbsolute(workspaceRelative)) {
             return workspaceRelative;
         }
 
         const snapshotRelative = path.relative(path.resolve(snapshotRoot), absolutePath);
-        if (snapshotRelative && !snapshotRelative.startsWith('..') && !path.isAbsolute(snapshotRelative)) {
+        if (!snapshotRelative) return '.';
+        if (!snapshotRelative.startsWith('..') && !path.isAbsolute(snapshotRelative)) {
             return snapshotRelative;
         }
 

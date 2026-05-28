@@ -361,11 +361,12 @@ export class OverlayStore {
             hash.update('\0');
             return result.status === 0 ? result.stdout.toString('utf8') : '';
         };
+        const snapshotArtifactPathspec = ':(exclude).ontology/snapshots';
         addGit(['rev-parse', 'HEAD'], 'head');
-        addGit(['status', '--porcelain=v1', '-z'], 'status');
-        addGit(['diff', '--binary'], 'diff');
-        addGit(['diff', '--cached', '--binary'], 'cached-diff');
-        const untracked = addGit(['ls-files', '--others', '--exclude-standard', '-z'], 'untracked-list')
+        addGit(['status', '--porcelain=v1', '-z', '--untracked-files=all', '--', '.', snapshotArtifactPathspec], 'status');
+        addGit(['diff', '--binary', '--', '.', snapshotArtifactPathspec], 'diff');
+        addGit(['diff', '--cached', '--binary', '--', '.', snapshotArtifactPathspec], 'cached-diff');
+        const untracked = addGit(['ls-files', '--others', '--exclude-standard', '-z', '--', '.', snapshotArtifactPathspec], 'untracked-list')
             .split('\0')
             .filter(Boolean);
         hash.update(`untracked-count:${untracked.length}\0`);
