@@ -427,6 +427,7 @@ describe('Error envelope parity (edge cases)', () => {
             });
             expect(res.status).toBe(400);
             const body = await parseMcpBody(res);
+            expect(body.id).toBe(5);
             expect(body.error?.code).toBe(-32000);
             expect(String(body.error?.message || '')).toContain('No valid session ID');
         });

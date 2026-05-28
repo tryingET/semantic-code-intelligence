@@ -559,6 +559,7 @@ export class SnapshotPatchWorkflowService {
     if (!patch) {
       return {
         payload: {
+          code: "InvalidParams",
           accepted: false,
           snapshot,
           reason: "missing_patch",
@@ -577,6 +578,7 @@ export class SnapshotPatchWorkflowService {
       const msg = e instanceof Error ? e.message : String(e);
       return {
         payload: {
+          code: "InvalidParams",
           accepted: false,
           snapshot,
           reason: "invalid_snapshot",
@@ -594,6 +596,7 @@ export class SnapshotPatchWorkflowService {
       const res = overlayStore.stagePatch(snap.id, unified);
       return {
         payload: {
+          ...(res.accepted ? {} : { code: "InvalidParams" }),
           accepted: res.accepted,
           snapshot: snap.id,
           message: res.message,
@@ -604,6 +607,7 @@ export class SnapshotPatchWorkflowService {
       const msg = e instanceof Error ? e.message : String(e);
       return {
         payload: {
+          code: "InvalidParams",
           accepted: false,
           snapshot: snap.id,
           reason: "invalid_patch",

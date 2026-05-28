@@ -55,4 +55,14 @@ describe('CLI workflow error envelopes', () => {
         expect(body.error?.code).toBe('UnknownTool');
         expect(String(body.error?.message || '')).toContain('Unknown tool');
     });
+
+    test('run-checks json mode stays machine-readable for invalid snapshots', async () => {
+        const res = await runCli(['run-checks', '--snapshot', 'not-a-real-snapshot', '--json']);
+        expect(res.code).toBe(1);
+        expect(res.stderr.trim()).toBe('');
+        const body = parseJson(res.stdout);
+        expect(body.success).toBe(false);
+        expect(body.error?.code).toBe('InvalidParams');
+        expect(String(body.error?.message || '')).toContain('Invalid snapshot id');
+    });
 });

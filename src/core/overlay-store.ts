@@ -38,6 +38,9 @@ type Snapshot = {
     applyPreExistingDirs?: string[];
 };
 
+const RESERVED_PATCH_ROOT_NAMES = new Set(['.materialized', 'metadata.json', 'overlay.diff', 'squashed-overlay.diff', 'progress.log']);
+const RESERVED_PATCH_ROOT_PREFIXES = ['.git', '.ontology'];
+
 export class OverlayStore {
     private snapshots = new Map<string, Snapshot>();
     private materializeLocks = new Map<string, Promise<void>>();
@@ -241,6 +244,13 @@ export class OverlayStore {
         const normalized = path.posix.normalize(raw);
         if (!normalized || normalized === '.' || normalized === '..' || normalized.startsWith('../')) {
             throw new Error(`${inputLabel} must stay within the workspace`);
+        }
+        const firstSegment = normalized.split('/')[0];
+        if (RESERVED_PATCH_ROOT_PREFIXES.includes(firstSegment)) {
+            throw new Error(`${inputLabel} targets reserved workspace control path: ${firstSegment}`);
+        }
+        if (!normalized.includes('/') && RESERVED_PATCH_ROOT_NAMES.has(normalized)) {
+            throw new Error(`${inputLabel} targets reserved snapshot artifact name: ${normalized}`);
         }
         return normalized;
     }

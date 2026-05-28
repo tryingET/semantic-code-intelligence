@@ -607,9 +607,13 @@ export class CLIAdapter {
     }): Promise<string> {
         const snapId = options.snapshot;
         if (!snapId) return this.formatError('snapshot required');
-        const r = await overlayStore.runChecks(snapId, options.commands || [], options.timeoutSec || 120, { workspaceRoot: this.getWorkspaceRoot() });
-        const payload = { snapshot: snapId, ok: r.ok, elapsedMs: r.elapsedMs, commands: r.commands || [], output: r.output.slice(-4000) };
-        return options.json ? JSON.stringify(payload, null, 2) : `${snapId} ${r.ok ? 'OK' : 'FAIL'} (${r.elapsedMs}ms)`;
+        try {
+            const r = await overlayStore.runChecks(snapId, options.commands || [], options.timeoutSec || 120, { workspaceRoot: this.getWorkspaceRoot() });
+            const payload = { snapshot: snapId, ok: r.ok, elapsedMs: r.elapsedMs, commands: r.commands || [], output: r.output.slice(-4000) };
+            return options.json ? JSON.stringify(payload, null, 2) : `${snapId} ${r.ok ? 'OK' : 'FAIL'} (${r.elapsedMs}ms)`;
+        } catch (error) {
+            return this.formatError(error instanceof Error ? error.message : String(error));
+        }
     }
 
     /**

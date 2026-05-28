@@ -74,10 +74,12 @@ export async function runAstQuery(inp: AstQueryInput) {
         } as any);
         matches.slice(0, 2000).forEach((m) => fileSet.add(String(m)));
     }
-    const files = Array.from(fileSet).slice(0, Math.min(inp.limit || 100, 1000));
+    const files = Array.from(fileSet).slice(0, 2000);
+    const resultLimit = Math.max(1, Math.min(inp.limit || 2000, 2000));
 
     const results: any[] = [];
     for (const requestedFile of files) {
+        if (results.length >= resultLimit) break;
         let opened: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
         try {
             opened = await openWorkspaceFileForRead(requestedFile, { workspaceRoot, inputLabel: 'ast_query path' });
@@ -85,6 +87,7 @@ export async function runAstQuery(inp: AstQueryInput) {
             const tree = parser.parse(text);
             const caps = q.captures(tree.rootNode);
             for (const c of caps) {
+                if (results.length >= resultLimit) break;
                 const n = c.node;
                 results.push({
                     file: opened.relativePath,
@@ -102,7 +105,7 @@ export async function runAstQuery(inp: AstQueryInput) {
         } finally {
             await opened?.handle.close().catch(() => undefined);
         }
-        if (results.length >= (inp.limit || 2000)) break;
+        if (results.length >= resultLimit) break;
     }
     return { count: results.length, results };
 }

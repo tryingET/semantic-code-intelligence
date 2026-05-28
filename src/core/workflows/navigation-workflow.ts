@@ -90,7 +90,7 @@ export class NavigationWorkflowService {
                             prioritized = [match, ...prioritized];
                         }
                         if (Array.isArray(prioritized) && prioritized.length) {
-                            const declRe = new RegExp(`\\b(class|function|interface|type)\\s+${args.symbol}\\b`);
+                            const declRe = new RegExp(`\\b(class|function|interface|type)\\s+${escapeRegExp(args.symbol)}\\b`);
                             for (const definition of prioritized.slice(0, 200)) {
                                 try {
                                     const filePath = filePathFromUriLike(definition.uri);
@@ -272,11 +272,28 @@ export function wordAt(text: string, pos: Position): string | null {
     return null;
 }
 
+function escapeRegExp(value: unknown): string {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function declarationRegexForSymbol(symbol: unknown, flags = ''): RegExp {
+    const escaped = escapeRegExp(symbol);
+    return new RegExp(`\\b(?:export\\s+)?(?:class|function|interface|type|const|let|var|def|fn|struct|func)\\s+${escaped}\\b`, flags);
+}
+
+function definitionKindForLine(line: string): DefinitionKind {
+    if (/\\bclass\\s+/.test(line) || /\\bstruct\\s+/.test(line)) return DefinitionKind.Class;
+    if (/\\binterface\\s+/.test(line)) return DefinitionKind.Interface;
+    if (/\\bfunction\\s+/.test(line) || /\\bdef\\s+/.test(line) || /\\bfn\\s+/.test(line) || /\\bfunc\\s+/.test(line)) return DefinitionKind.Function;
+    if (/\\btype\\s+/.test(line)) return DefinitionKind.Type;
+    return DefinitionKind.Variable;
+}
+
 export async function fallbackScanForDefinition(root: string, symbol: string, maxFiles: number) {
     const results: any[] = [];
     const queue: string[] = [root];
     const visited: Set<string> = new Set();
-    const re = new RegExp(`\\b${String(symbol).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+    const re = declarationRegexForSymbol(symbol);
     let filesScanned = 0;
 
     while (queue.length && filesScanned < maxFiles && results.length === 0) {
@@ -292,9 +309,9 @@ export async function fallbackScanForDefinition(root: string, symbol: string, ma
         for (const entry of entries) {
             const candidate = path.join(dir, entry.name);
             if (entry.isDirectory()) {
-                if (/node_modules|\.git|dist|coverage|out|build|venv|\.venv/.test(entry.name)) continue;
+                if (/node_modules|\.git|dist|coverage|out|build|venv|\.venv|\.ontology/.test(entry.name)) continue;
                 queue.push(candidate);
-            } else if (entry.isFile() && /\.(ts|tsx|js|jsx|md)$/.test(entry.name)) {
+            } else if (entry.isFile() && /\.(ts|tsx|js|jsx|py|rs|go)$/.test(entry.name)) {
                 filesScanned++;
                 try {
                     const text = await fs.readFile(candidate, 'utf8');
@@ -311,7 +328,7 @@ export async function fallbackScanForDefinition(root: string, symbol: string, ma
                                         character: Math.max(0, lines[index].indexOf(symbol)) + String(symbol).length,
                                     },
                                 },
-                                kind: DefinitionKind.Class,
+                                kind: definitionKindForLine(lines[index]),
                                 name: symbol,
                                 source: 'exact',
                                 confidence: 0.5,
@@ -404,7 +421,7 @@ function declarationSymbolSpans(line: string, symbol: string, declarationRe: Reg
 export async function scanForExplicitDeclaration(root: string, symbol: string, maxFiles = 300) {
     const queue: string[] = [root];
     const visited: Set<string> = new Set();
-    const declRe = new RegExp(`\\b(class|function|interface|type)\\s+${symbol}\\b`);
+    const declRe = declarationRegexForSymbol(symbol);
     let filesScanned = 0;
 
     while (queue.length && filesScanned < maxFiles) {
@@ -420,9 +437,9 @@ export async function scanForExplicitDeclaration(root: string, symbol: string, m
         for (const entry of entries) {
             const candidate = path.join(dir, entry.name);
             if (entry.isDirectory()) {
-                if (/node_modules|\.git|dist|coverage|out|build|venv|\.venv/.test(entry.name)) continue;
+                if (/node_modules|\.git|dist|coverage|out|build|venv|\.venv|\.ontology/.test(entry.name)) continue;
                 queue.push(candidate);
-            } else if (entry.isFile() && /\.(ts|tsx|js|jsx|md)$/.test(entry.name)) {
+            } else if (entry.isFile() && /\.(ts|tsx|js|jsx|py|rs|go)$/.test(entry.name)) {
                 filesScanned++;
                 try {
                     const text = await fs.readFile(candidate, 'utf8');
@@ -438,13 +455,7 @@ export async function scanForExplicitDeclaration(root: string, symbol: string, m
                                     start: { line: index, character: column },
                                     end: { line: index, character: column + symbol.length },
                                 },
-                                kind: /class\s+/.test(line)
-                                    ? DefinitionKind.Class
-                                    : /function\s+/.test(line)
-                                      ? DefinitionKind.Function
-                                      : /interface\s+/.test(line)
-                                        ? DefinitionKind.Interface
-                                        : DefinitionKind.Variable,
+                                kind: definitionKindForLine(line),
                                 name: symbol,
                                 source: 'exact',
                                 confidence: 0.95,

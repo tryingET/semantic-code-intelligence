@@ -53,4 +53,21 @@ bindDescribe('Patch workflow rejects non-diff input early', () => {
             expect(msg.toLowerCase()).toContain('invalid_patch');
         }
     });
+
+    test('propose_patch invalid input maps to client error instead of Internal', async () => {
+        const snapshotResp = await callTool(base, 'get_snapshot', { preferExisting: false });
+        const snapshot = snapshotResp.result?.snapshot;
+        expect(typeof snapshot).toBe('string');
+
+        const res = await fetch(`${base}/api/v1/tools/call`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ name: 'propose_patch', arguments: { snapshot, patch: 'not a diff' } }),
+        });
+        expect(res.status).toBe(400);
+        const body = await res.json();
+        expect(body.success).toBe(false);
+        expect(body.error?.code).toBe('InvalidParams');
+        expect(String(body.error?.message || '')).toContain('invalid_patch');
+    });
 });

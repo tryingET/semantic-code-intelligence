@@ -125,8 +125,17 @@ function sendSseJsonRpcError(res: express.Response, error: unknown, id: JsonRpcM
 
 const missingSessionError = { code: -32000, message: 'Bad Request: No valid session ID provided' };
 
-function sendMissingSession(res: express.Response) {
-    res.status(400).json({ jsonrpc: '2.0', error: { ...missingSessionError }, id: null });
+function requestJsonRpcId(body: unknown): JsonRpcMessageId {
+    if (Array.isArray(body)) return null;
+    if (body && typeof body === 'object') {
+        const id = (body as { id?: unknown }).id;
+        if (typeof id === 'string' || typeof id === 'number' || id === null) return id;
+    }
+    return null;
+}
+
+function sendMissingSession(res: express.Response, id: JsonRpcMessageId = null) {
+    res.status(400).json({ jsonrpc: '2.0', error: { ...missingSessionError }, id });
 }
 
 function isJsonRpcObjectOrBatch(body: unknown): body is Record<string, unknown> | Record<string, unknown>[] {
@@ -367,13 +376,13 @@ app.post('/mcp', async (req, res) => {
                 void disposeSession(initializedRecord, sid);
             };
         } else {
-            sendMissingSession(res);
+            sendMissingSession(res, requestJsonRpcId(req.body));
             return;
         }
 
         const activeRecord = record;
         if (!activeRecord) {
-            sendMissingSession(res);
+            sendMissingSession(res, requestJsonRpcId(req.body));
             return;
         }
 
