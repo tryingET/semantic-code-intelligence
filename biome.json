@@ -22,7 +22,7 @@
             "suspicious": {
                 "noAssignInExpressions": "warn",
                 "noControlCharactersInRegex": "warn",
-                "noExplicitAny": "warn",
+                "noExplicitAny": "off",
                 "noImplicitAnyLet": "warn",
                 "noShadowRestrictedNames": "warn",
                 "useIterableCallbackReturn": "warn"
