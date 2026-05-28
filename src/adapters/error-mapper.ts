@@ -5,11 +5,11 @@ export function toMcpError(err: unknown): McpError {
     if (isCoreError(err)) {
         switch (err.code) {
             case 'UnknownTool':
-                return new McpError(ErrorCode.MethodNotFound, err.message, { data: err.data });
+                return new McpError(ErrorCode.MethodNotFound, err.message, err.data);
             case 'InvalidParams':
-                return new McpError(ErrorCode.InvalidParams, err.message, { data: err.data });
+                return new McpError(ErrorCode.InvalidParams, err.message, err.data);
             default:
-                return new McpError(ErrorCode.InternalError, err.message, { data: err.data });
+                return new McpError(ErrorCode.InternalError, err.message, err.data);
         }
     }
     if (err instanceof McpError) return err;

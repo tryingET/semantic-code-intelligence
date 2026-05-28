@@ -385,15 +385,21 @@ app.post('/mcp', async (req, res) => {
         // SDK request schema validation can surface "missing params" as InternalError (-32603).
         // Normalize the most common transport-level case (tools/call with missing params) to InvalidParams (-32602).
         try {
-            const body = req.body as { method?: unknown; params?: unknown; id?: JsonRpcMessageId };
-            if (!Array.isArray(body) && body && body.method === 'tools/call') {
-                const params = body.params;
-                if (!params || typeof params !== 'object' || Array.isArray(params)) {
-                    const core = new CoreError('InvalidParams', 'Missing required parameters: params');
-                    if (/text\/event-stream/i.test(originalAccept)) sendSseJsonRpcError(res, core, body.id ?? null);
-                    else sendJsonRpcError(res, core, body.id ?? null, 400);
+            const invalidToolsCall = (body: any): body is { method?: unknown; params?: unknown; id?: JsonRpcMessageId } =>
+                !!body && body.method === 'tools/call' && (!body.params || typeof body.params !== 'object' || Array.isArray(body.params));
+            const body = req.body as { method?: unknown; params?: unknown; id?: JsonRpcMessageId } | Array<{ method?: unknown; params?: unknown; id?: JsonRpcMessageId }>;
+            const core = new CoreError('InvalidParams', 'Missing required parameters: params');
+            if (Array.isArray(body)) {
+                const invalid = body.filter(invalidToolsCall);
+                if (invalid.length > 0 && invalid.length === body.length) {
+                    const payloads = invalid.map((item) => buildJsonRpcErrorPayload(core, item.id ?? null));
+                    res.status(400).json(payloads);
                     return;
                 }
+            } else if (invalidToolsCall(body)) {
+                if (/text\/event-stream/i.test(originalAccept)) sendSseJsonRpcError(res, core, body.id ?? null);
+                else sendJsonRpcError(res, core, body.id ?? null, 400);
+                return;
             }
         } catch {}
 

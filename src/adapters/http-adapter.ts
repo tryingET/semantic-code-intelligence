@@ -19,6 +19,7 @@ import type { CodeAnalyzer } from '../core/unified-analyzer.js';
 import type { SearchStream } from '../layers/enhanced-search-tools-async.js';
 import { CoreError, isCoreError } from '../core/errors.js';
 import { ToolExecutor } from '../core/tools/executor.js';
+import { assertHttpToolAllowed as assertSharedHttpToolAllowed } from '../core/workflows/http-tool-policy.js';
 import type { SnapshotWorkflowResult } from '../core/workflows/snapshot-patch-workflow.js';
 import { ToolWorkflowRouter } from '../core/workflows/tool-workflow-router.js';
 import { resolveWorkspacePath } from '../core/workspace-path.js';
@@ -1178,90 +1179,11 @@ export class HTTPAdapter {
         return this.getToolExecutor().execute(this.getToolRouter(), name, args);
     }
 
-    private allowedHttpToolNames(): Set<string> {
-        return new Set(
-            this.config.allowedToolNames || [
-                'get_snapshot',
-                'read_file',
-                'text_search',
-                'symbol_search',
-                'ast_query',
-                'find_definition',
-                'find_references',
-                'locate_confirm_definition',
-                'graph_expand',
-                'recommend_checks',
-                'plan_rename',
-                'rename_safely',
-                'propose_patch',
-                'patch_checks_in_snapshot',
-                'run_checks',
-                'structural_search',
-                'structural_patch_checks',
-                'safe_write',
-            ]
-        );
-    }
-
-    private knownWorkflowToolNames(): Set<string> {
-        return new Set([
-            'list_pipelines',
-            'run_pipeline',
-            'list_pipeline_runs',
-            'pipeline_status',
-            'list_symbols',
-            'execute_intent',
-            'extract_snapshot_artifacts',
-            'apply_after_checks',
-            'safe_write',
-            'workflow_explore_symbol',
-            'explore_symbol_impact',
-            'workflow_quick_patch_checks',
-            'patch_checks_in_snapshot',
-            'workflow_safe_rename',
-            'rename_safely',
-            'workflow_locate_confirm_definition',
-            'locate_confirm_definition',
-            'diagnostics',
-            'knowledge_insights',
-            'cache_controls',
-            'pattern_stats',
-            'get_snapshot',
-            'read_file',
-            'list_files',
-            'propose_patch',
-            'run_checks',
-            'apply_snapshot',
-            'text_search',
-            'symbol_search',
-            'structural_search',
-            'structural_patch_checks',
-            'ast_query',
-            'graph_expand',
-            'recommend_checks',
-            'find_definition',
-            'find_references',
-            'get_completions',
-            'rename_symbol',
-            'plan_rename',
-            'apply_rename',
-            'build_symbol_map',
-            'generate_tests',
-            'suggest_refactoring',
-            'explore_codebase',
-        ]);
-    }
-
     private assertHttpToolAllowed(name: string, args: Record<string, any>): void {
-        if (!this.allowedHttpToolNames().has(name)) {
-            if (!this.knownWorkflowToolNames().has(name)) {
-                throw new CoreError('UnknownTool', `Unknown tool: ${name}`, { tool: name });
-            }
-            throw new CoreError('InvalidParams', `Tool '${name}' is not available through this HTTP adapter surface`);
-        }
-        if (name === 'safe_write' && args?.apply === true) {
-            throw new CoreError('InvalidParams', 'safe_write apply is not available through this HTTP adapter surface');
-        }
+        assertSharedHttpToolAllowed(name, args, {
+            surface: 'HTTP adapter surface',
+            allowedToolNames: this.config.allowedToolNames,
+        });
     }
 
     private toolWorkflowPayload(result: SnapshotWorkflowResult, fallback: any = {}): any {

@@ -1022,12 +1022,16 @@ export class SnapshotPatchWorkflowService {
     if (chk?.ok && process.env.ALLOW_SNAPSHOT_APPLY === "1") {
       const app = await this.applySnapshot({ snapshot, check: false, reverse });
       const appOut = asPayload(app) || {};
+      const applied = !!appOut?.ok;
       return {
         payload: {
-          ok: !!chk?.ok,
+          ok: !!chk?.ok && applied,
           snapshot,
-          applied: !!appOut?.ok,
-          output_tail: chk?.output?.slice?.(-4000) || "",
+          applied,
+          apply: appOut,
+          output_tail: [chk?.output?.slice?.(-4000) || "", appOut?.output?.slice?.(-4000) || ""]
+            .filter(Boolean)
+            .join("\n"),
         },
         isError: false,
       };
@@ -1187,7 +1191,9 @@ export class SnapshotPatchWorkflowService {
         : true);
     const rollbackArgs = JSON.stringify({ snapshot, reverse: true });
     const rollback = {
-      available: !!snapshot,
+      available: applied,
+      notNeeded: !applied && !apply,
+      status: applied ? "available_after_apply" : apply ? "unavailable_apply_failed_or_refused" : "not_needed_preview",
       strategy: "reverse_snapshot_apply",
       command: `cd ${shellQuote(this.workspaceRoot)} && ALLOW_SNAPSHOT_APPLY=1 semantic-code-intelligence workflow apply_snapshot --args ${shellQuote(rollbackArgs)} --json`,
       artifact: snapshotArtifacts.overlayDiff,
@@ -1266,7 +1272,7 @@ export class SnapshotPatchWorkflowService {
       const existingDiff = (overlayStore as any).getExistingMaterializedDiffPath?.bind(
         overlayStore,
       );
-      const diffFile = existingDiff
+      const overlayDiffFile = existingDiff
         ? existingDiff(snapshot, { workspaceRoot: this.workspaceRoot })
         : path.resolve(
             this.workspaceRoot,
@@ -1275,6 +1281,9 @@ export class SnapshotPatchWorkflowService {
             snapshot,
             "overlay.diff",
           );
+      const squashedDiffFile = path.join(path.dirname(overlayDiffFile), "squashed-overlay.diff");
+      const squashedStat = await fs.stat(squashedDiffFile).catch(() => null);
+      const diffFile = squashedStat?.isFile() ? squashedDiffFile : overlayDiffFile;
       const diffStat = await fs.stat(diffFile).catch(() => null);
       if (!diffStat?.isFile()) {
         return {
@@ -1382,6 +1391,51 @@ export class SnapshotPatchWorkflowService {
         }
       }
 
+      const materializedRoot = path.dirname(diffFile);
+      const fileMismatches: Array<{ file: string; reason: string }> = [];
+      for (const file of touchedFiles) {
+        const materializedPath = path.resolve(materializedRoot, file);
+        const workingPath = path.resolve(this.workspaceRoot, file);
+        const materializedRelative = path.relative(materializedRoot, materializedPath);
+        const workingRelative = path.relative(this.workspaceRoot, workingPath);
+        if (
+          !materializedRelative ||
+          materializedRelative.startsWith("..") ||
+          path.isAbsolute(materializedRelative) ||
+          !workingRelative ||
+          workingRelative.startsWith("..") ||
+          path.isAbsolute(workingRelative)
+        ) {
+          fileMismatches.push({ file, reason: "path_escape" });
+          continue;
+        }
+        const [materializedStat, workingStat] = await Promise.all([
+          fs.lstat(materializedPath).catch(() => null),
+          fs.lstat(workingPath).catch(() => null),
+        ]);
+        if (!materializedStat && !workingStat) continue;
+        if (!materializedStat || !workingStat) {
+          fileMismatches.push({ file, reason: "existence_mismatch" });
+          continue;
+        }
+        if (materializedStat.isSymbolicLink() || workingStat.isSymbolicLink()) {
+          if (!materializedStat.isSymbolicLink() || !workingStat.isSymbolicLink()) {
+            fileMismatches.push({ file, reason: "symlink_type_mismatch" });
+            continue;
+          }
+          const [materializedLink, workingLink] = await Promise.all([fs.readlink(materializedPath), fs.readlink(workingPath)]);
+          if (materializedLink !== workingLink) fileMismatches.push({ file, reason: "symlink_target_mismatch" });
+          continue;
+        }
+        if (!materializedStat.isFile() || !workingStat.isFile()) {
+          fileMismatches.push({ file, reason: "file_type_mismatch" });
+          continue;
+        }
+        const [materializedBytes, workingBytes] = await Promise.all([fs.readFile(materializedPath), fs.readFile(workingPath)]);
+        if (!materializedBytes.equals(workingBytes)) fileMismatches.push({ file, reason: "content_mismatch" });
+      }
+      const fileContentsMatch = fileMismatches.length === 0;
+
       const patchId = (diff: string) => {
         const proc = spawnSync("git", ["patch-id", "--stable"], {
           cwd: this.workspaceRoot,
@@ -1390,19 +1444,25 @@ export class SnapshotPatchWorkflowService {
           encoding: "utf8",
         });
         const output = `${proc.stdout || ""}${proc.stderr || ""}`;
-        const id =
-          String(proc.stdout || "")
-            .trim()
-            .split(/\s+/)[0] || null;
+        const ids = String(proc.stdout || "")
+          .trim()
+          .split(/\r?\n/)
+          .map((line) => line.trim().split(/\s+/)[0])
+          .filter(Boolean);
         return {
-          ok: proc.status === 0 && !!id,
-          id,
+          ok: proc.status === 0 && ids.length > 0,
+          ids,
           outputTail: output.slice(-2000),
         };
       };
 
       const overlayPatchId = patchId(overlayDiff);
       const workingPatchId = patchId(workingDiff);
+      const patchIdsMatch =
+        overlayPatchId.ok &&
+        workingPatchId.ok &&
+        overlayPatchId.ids.length === workingPatchId.ids.length &&
+        overlayPatchId.ids.every((id, index) => id === workingPatchId.ids[index]);
 
       const reverse = spawnSync(
         "git",
@@ -1410,13 +1470,9 @@ export class SnapshotPatchWorkflowService {
         { cwd: this.workspaceRoot, stdio: "pipe", encoding: "utf8" },
       );
       const reverseOk = reverse.status === 0;
-      const patchIdsMatch =
-        overlayPatchId.ok &&
-        workingPatchId.ok &&
-        !!overlayPatchId.id &&
-        overlayPatchId.id === workingPatchId.id;
+      const exactDiffMatches = overlayPatchId.ids.length > 1 ? fileContentsMatch : patchIdsMatch;
       return {
-        appliedDiffMatchesSnapshot: reverseOk && patchIdsMatch,
+        appliedDiffMatchesSnapshot: reverseOk && fileContentsMatch && exactDiffMatches,
         method,
         diagnostics: {
           snapshot,
@@ -1424,8 +1480,11 @@ export class SnapshotPatchWorkflowService {
           files: touchedFiles,
           untrackedAddedFiles,
           reverseApplyCheckOk: reverseOk,
-          overlayPatchId: overlayPatchId.id || null,
-          workingPatchId: workingPatchId.id || null,
+          fileContentsMatch,
+          exactDiffMatches,
+          fileMismatches,
+          overlayPatchIds: overlayPatchId.ids,
+          workingPatchIds: workingPatchId.ids,
           patchIdsMatch,
           workingDiffBytes: Buffer.byteLength(workingDiff, "utf8"),
           overlayDiffBytes: Buffer.byteLength(overlayDiff, "utf8"),

@@ -5,12 +5,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { CLIAdapter } from '../src/adapters/cli-adapter';
+import { toMcpError } from '../src/adapters/error-mapper';
 import { HTTPAdapter } from '../src/adapters/http-adapter';
 import { MCPAdapter } from '../src/adapters/mcp-adapter';
 import { createDefaultCoreConfig } from '../src/adapters/utils';
 import { LSPAdapter } from '../src/adapters/lsp-adapter';
 import { HTTPServer } from '../src/servers/http';
+import { CoreError } from '../src/core/errors';
 import { createCodeAnalyzer } from '../src/core/index';
+import { OverlayStore } from '../src/core/overlay-store';
 import { workspaceInputToPath } from '../src/core/workspace-input';
 import { SnapshotPatchWorkflowService } from '../src/core/workflows/snapshot-patch-workflow';
 import { normalizeStructuralPaths } from '../src/core/workflows/structural-workflow';
@@ -234,9 +237,24 @@ describe('nexus contract regressions', () => {
             });
             expect(deniedSafeWriteApply.status).toBe(400);
             expect(JSON.parse(deniedSafeWriteApply.body).error.message).toContain('safe_write apply');
+
+            const listed = await adapter.handleRequest({
+                method: 'POST',
+                url: '/api/v1/tools/call',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ name: 'list_files', arguments: { path: '.', maxFiles: 10, depth: 1 } }),
+            });
+            expect(listed.status).toBe(200);
+            expect(JSON.parse(listed.body).success).toBe(true);
         } finally {
             await analyzer.dispose?.();
         }
+    });
+
+    test('MCP CoreError data is exposed flat for JSON-RPC recovery', () => {
+        const error = toMcpError(new CoreError('InvalidParams', 'bad input', { tool: 'read_file' })) as any;
+        expect(error.data).toEqual({ tool: 'read_file' });
+        expect(error.data?.data).toBeUndefined();
     });
 
     test('HTTPServer tools/call applies the same mutation capability guard as the adapter', async () => {
@@ -258,6 +276,17 @@ describe('nexus contract regressions', () => {
             expect(response.status).toBe(400);
             expect(body.success).toBe(false);
             expect(body.error.code).toBe('InvalidParams');
+
+            const wrongContentType = await fetch(`http://127.0.0.1:${port}/api/v1/tools/call`, {
+                method: 'POST',
+                headers: { 'content-type': 'text/plain' },
+                body: JSON.stringify({ name: 'read_file', arguments: { path: 'README.md' } }),
+            });
+            const wrongBody = await wrongContentType.json();
+            expect(wrongContentType.status).toBe(400);
+            expect(wrongBody.success).toBe(false);
+            expect(wrongBody.error.message).toContain('Content-Type: application/json');
+            expect(wrongBody.error.message).not.toContain('Missing tool name');
         } finally {
             await server.stop();
             if (previousPort === undefined) delete process.env.HTTP_API_PORT;
@@ -756,6 +785,54 @@ describe('nexus contract regressions', () => {
         expect(result.payload).toMatchObject({ accepted: true, snapshot });
     });
 
+    test('snapshot fingerprints do not follow untracked symlink targets outside the workspace', () => {
+        const workspaceRoot = tempWorkspace();
+        const outsideRoot = tempWorkspace('sci-nexus-symlink-outside-');
+        initGitWorkspace(workspaceRoot, { ignoreOntology: true });
+        const outside = join(outsideRoot, 'secret.txt');
+        writeFileSync(outside, 'secret-v1\n', 'utf8');
+        symlinkSync(outside, join(workspaceRoot, 'link-secret'));
+
+        const store = new OverlayStore();
+        const first = store.createSnapshot(false, { workspaceRoot }).baseFingerprint;
+        writeFileSync(outside, 'secret-v2\n', 'utf8');
+        const second = store.createSnapshot(false, { workspaceRoot }).baseFingerprint;
+
+        expect(second).toBe(first);
+    });
+
+    test('run_checks rejects check workspaces containing outbound symlinks', async () => {
+        const workspaceRoot = tempWorkspace();
+        const outsideRoot = tempWorkspace('sci-nexus-check-outside-');
+        initGitWorkspace(workspaceRoot, { ignoreOntology: true });
+        writeFileSync(join(outsideRoot, 'secret.txt'), 'outside-secret\n', 'utf8');
+        symlinkSync(outsideRoot, join(workspaceRoot, 'linkout'), 'dir');
+
+        const store = new OverlayStore();
+        const snapshot = store.createSnapshot(false, { workspaceRoot });
+        const result = await store.runChecks(snapshot.id, ['true'], 5, { workspaceRoot });
+
+        expect(result.ok).toBe(false);
+        expect(result.output).toContain('symlink escape');
+        expect(result.output).not.toContain('outside-secret');
+    });
+
+    test('apply_after_checks ok reflects apply failure, not just check success', async () => {
+        const workspaceRoot = tempWorkspace();
+        initGitWorkspace(workspaceRoot, { ignoreOntology: true });
+        const service = new SnapshotPatchWorkflowService({ workspaceRoot: () => workspaceRoot });
+        const patch = 'diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-base\n+changed\n';
+        const previousAllow = process.env.ALLOW_SNAPSHOT_APPLY;
+        process.env.ALLOW_SNAPSHOT_APPLY = '1';
+        try {
+            const result = await service.applyAfterChecks({ patch, commands: ['true'], timeoutSec: 5, reverse: true });
+            expect(result.payload).toMatchObject({ ok: false, applied: false });
+        } finally {
+            if (previousAllow === undefined) delete process.env.ALLOW_SNAPSHOT_APPLY;
+            else process.env.ALLOW_SNAPSHOT_APPLY = previousAllow;
+        }
+    });
+
     test('snapshot text_search defaults to the materialized snapshot root', async () => {
         const workspaceRoot = tempWorkspace();
         writeFileSync(join(workspaceRoot, 'a.txt'), 'needle\n', 'utf8');
@@ -771,6 +848,31 @@ describe('nexus contract regressions', () => {
 
         expect(result.isError).toBe(false);
         expect(result.payload.count).toBeGreaterThan(0);
+    });
+
+    test('multi-diff same-file snapshots apply, verify, and roll back as a squashed change', async () => {
+        const workspaceRoot = tempWorkspace();
+        initGitWorkspace(workspaceRoot, { ignoreOntology: true });
+        const service = new SnapshotPatchWorkflowService({ workspaceRoot: () => workspaceRoot });
+        const snapshot = (await service.getSnapshot({ preferExisting: false })).payload.snapshot;
+        const first = 'diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-base\n+middle\n';
+        const second = 'diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-middle\n+final\n';
+        const previousAllow = process.env.ALLOW_SNAPSHOT_APPLY;
+        process.env.ALLOW_SNAPSHOT_APPLY = '1';
+        try {
+            expect((await service.proposePatch({ snapshot, patch: first })).payload).toMatchObject({ accepted: true });
+            expect((await service.proposePatch({ snapshot, patch: second })).payload).toMatchObject({ accepted: true });
+            expect((await service.applySnapshot({ snapshot, check: false })).payload).toMatchObject({ ok: true });
+            expect(await Bun.file(join(workspaceRoot, 'README.md')).text()).toBe('final\n');
+            const verification = await service.verifyAppliedSnapshotDiff(snapshot);
+            expect(verification.appliedDiffMatchesSnapshot).toBe(true);
+            expect(verification.diagnostics.fileContentsMatch).toBe(true);
+            expect((await service.applySnapshot({ snapshot, check: false, reverse: true })).payload).toMatchObject({ ok: true });
+            expect(await Bun.file(join(workspaceRoot, 'README.md')).text()).toBe('base\n');
+        } finally {
+            if (previousAllow === undefined) delete process.env.ALLOW_SNAPSHOT_APPLY;
+            else process.env.ALLOW_SNAPSHOT_APPLY = previousAllow;
+        }
     });
 
     test('applied snapshot verification accounts for newly added untracked files', async () => {

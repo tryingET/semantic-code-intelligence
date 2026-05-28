@@ -367,7 +367,11 @@ export class OverlayStore {
             const rel = untracked[i];
             try {
                 const { absolutePath, relativePath } = this.containedPath(root, rel, 'untracked file path');
-                const stat = fs.statSync(absolutePath);
+                const stat = fs.lstatSync(absolutePath);
+                if (stat.isSymbolicLink()) {
+                    hash.update(`untracked-symlink:${relativePath}:${fs.readlinkSync(absolutePath)}\0`);
+                    continue;
+                }
                 if (!stat.isFile()) continue;
                 hash.update(`untracked:${relativePath}:${stat.size}:${stat.mtimeMs}:`);
                 if (i < 1000 && stat.size <= 1024 * 1024) hash.update(fs.readFileSync(absolutePath));
@@ -1090,17 +1094,17 @@ export class OverlayStore {
                     await this.logProgress(snapshotId, `materialize:rsync ${base} -> ${tempDir}`);
                     this.spawnCheckedArgs(
                         'rsync',
-                        ['-a', '--delete', '--exclude', '.git', '--exclude', 'node_modules', '--exclude', '.ontology', '--exclude', 'dist', `${base}/`, `${tempDir}/`],
+                        ['-a', '--delete', '--exclude', '.git', '--exclude', 'node_modules', '--exclude', '.ontology', '--exclude', '.test-results', '--exclude', 'dist', `${base}/`, `${tempDir}/`],
                         'Failed to copy snapshot base with rsync'
                     );
                 } else if (this.which('tar')) {
                     await this.logProgress(snapshotId, `materialize:tar ${base} -> ${tempDir}`);
-                    const cmd = `tar -C ${this.shellQuote(base)} --exclude .git --exclude node_modules --exclude .ontology --exclude dist -cf - . | tar -C ${this.shellQuote(tempDir)} -xf -`;
+                    const cmd = `tar -C ${this.shellQuote(base)} --exclude .git --exclude node_modules --exclude .ontology --exclude .test-results --exclude dist -cf - . | tar -C ${this.shellQuote(tempDir)} -xf -`;
                     this.spawnChecked(cmd, 'Failed to copy snapshot base with tar');
                 } else {
                     const entries = await fsp.readdir(base, { withFileTypes: true });
                     for (const ent of entries) {
-                        if (['.git', '.ontology', 'node_modules', 'dist'].includes(ent.name)) continue;
+                        if (['.git', '.ontology', '.test-results', 'node_modules', 'dist'].includes(ent.name)) continue;
                         const src = path.join(base, ent.name);
                         const dest = path.join(tempDir, ent.name);
                         this.spawnCheckedArgs('cp', ['-a', src, dest], 'Failed to copy snapshot base entry');
@@ -1193,6 +1197,39 @@ export class OverlayStore {
         }
     }
 
+    private assertNoSymlinkEscapes(root: string, label: string): void {
+        const realRoot = fs.realpathSync(root);
+        const stack = [root];
+        while (stack.length) {
+            const current = stack.pop()!;
+            let entries: fs.Dirent[];
+            try {
+                entries = fs.readdirSync(current, { withFileTypes: true });
+            } catch {
+                continue;
+            }
+            for (const entry of entries) {
+                const absolutePath = path.join(current, entry.name);
+                const relativePath = path.relative(root, absolutePath) || entry.name;
+                const stat = fs.lstatSync(absolutePath);
+                if (stat.isSymbolicLink()) {
+                    let realTarget: string;
+                    try {
+                        realTarget = fs.realpathSync(absolutePath);
+                    } catch {
+                        throw new Error(`${label} contains unreadable symlink: ${relativePath}`);
+                    }
+                    const relativeTarget = path.relative(realRoot, realTarget);
+                    if (relativeTarget.startsWith('..') || path.isAbsolute(relativeTarget)) {
+                        throw new Error(`${label} contains symlink escape: ${relativePath}`);
+                    }
+                    continue;
+                }
+                if (stat.isDirectory()) stack.push(absolutePath);
+            }
+        }
+    }
+
     async runChecks(
         snapshotId: string,
         commands: string[],
@@ -1230,7 +1267,6 @@ export class OverlayStore {
             outputBytes = maxOutputBytes;
             outputTruncated = true;
         };
-
         // If running under partial materialization, ensure essential directories exist
         // for common commands like build/test which require source files or local scripts.
         try {
@@ -1239,7 +1275,11 @@ export class OverlayStore {
             const needsTest = (commands || []).some((c) => /\b(test(\b|:)|bun\s+test|just\s+test(\b|[-_]))/.test(c));
             const needsScripts = (commands || []).some((c) => /\bbun\s+run\s+|npm\s+run\s+|pnpm\s+run\s+/.test(c));
             if (preferPartial && (needsBuild || needsTest || needsScripts)) {
-                const base = this.resolveWorkspaceBase(this.ensureSnapshot(snapshotId).workspaceRoot);
+                const snap = this.ensureSnapshot(snapshotId);
+                const base = this.resolveWorkspaceBase(snap.workspaceRoot);
+                if (snap.baseFingerprint && this.workspaceBaseFingerprint(snap.workspaceRoot) !== snap.baseFingerprint) {
+                    throw new Error('Workspace changed since snapshot creation before partial check fill; create a fresh snapshot');
+                }
                 const ensureDirs = ['src', 'tests', 'scripts', 'bin'];
                 for (const d of ensureDirs) {
                     const needThis =
@@ -1274,9 +1314,19 @@ export class OverlayStore {
                         );
                     }
                 }
+                if (snap.baseFingerprint && this.workspaceBaseFingerprint(snap.workspaceRoot) !== snap.baseFingerprint) {
+                    throw new Error('Workspace changed since snapshot creation during partial check fill; create a fresh snapshot');
+                }
+                this.assertNoSymlinkEscapes(cwd, 'check workspace');
             }
-        } catch {
-            // best-effort; continue even if ensure-src fails
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error || 'partial check fill failed');
+            return {
+                ok: false,
+                output: `Rejected check workspace: ${message}\n`,
+                elapsedMs: Date.now() - start,
+                commands: [],
+            };
         }
         // Build command list
         let cmdList = commands && commands.length ? [...commands] : ['bun run typecheck', 'bun run build'];
@@ -1363,6 +1413,14 @@ export class OverlayStore {
                 if (pathBoundaryViolation) {
                     const message = `Rejected check command: ${pathBoundaryViolation}\n`;
                     appendOutput(message);
+                    commandResults.push({ command: cmd, ok: false, elapsedMs: 0, exitCode: null, timedOut: false });
+                    return { ok: false, output: output.join(''), elapsedMs: Date.now() - start, commands: commandResults };
+                }
+                try {
+                    this.assertNoSymlinkEscapes(cwd, 'check workspace');
+                } catch (error) {
+                    const message = error instanceof Error ? error.message : String(error || 'symlink validation failed');
+                    appendOutput(`Rejected check workspace: ${message}\n`);
                     commandResults.push({ command: cmd, ok: false, elapsedMs: 0, exitCode: null, timedOut: false });
                     return { ok: false, output: output.join(''), elapsedMs: Date.now() - start, commands: commandResults };
                 }
@@ -1472,6 +1530,56 @@ export class OverlayStore {
         }
     }
 
+    private rewriteNoIndexDiffForWorkspace(diff: string, rel: string, oldPath: string, newPath: string): string {
+        const normalizedRel = rel.split(path.sep).join('/');
+        return diff
+            .split(/\r?\n/)
+            .map((line) => {
+                if (line.startsWith('diff --git ')) return `diff --git a/${normalizedRel} b/${normalizedRel}`;
+                if (line.startsWith('--- ')) return oldPath === '/dev/null' ? '--- /dev/null' : `--- a/${normalizedRel}`;
+                if (line.startsWith('+++ ')) return newPath === '/dev/null' ? '+++ /dev/null' : `+++ b/${normalizedRel}`;
+                return line;
+            })
+            .join('\n');
+    }
+
+    private buildSquashedSnapshotDiff(snap: Snapshot, materializedDir: string, workspaceRoot: string): string {
+        const chunks: string[] = [];
+        const touched = Array.from(snap.touchedFiles || []);
+        for (const rel of touched) {
+            const { absolutePath: oldAbs, relativePath } = this.containedPath(workspaceRoot, rel, 'squashed snapshot source path');
+            const { absolutePath: newAbs } = this.containedPath(materializedDir, relativePath, 'squashed snapshot materialized path');
+            const oldExists = fs.existsSync(oldAbs);
+            const newExists = fs.existsSync(newAbs);
+            if (!oldExists && !newExists) continue;
+            const oldArg = oldExists ? oldAbs : '/dev/null';
+            const newArg = newExists ? newAbs : '/dev/null';
+            const diff = spawnSync('git', ['diff', '--no-ext-diff', '--no-index', '--binary', '--', oldArg, newArg], {
+                cwd: workspaceRoot,
+                stdio: 'pipe',
+                encoding: 'utf8',
+            });
+            if (diff.status !== 0 && diff.status !== 1) {
+                const output = `${diff.stdout || ''}${diff.stderr || ''}`.slice(-1000);
+                throw new Error(`Failed to build squashed snapshot diff: ${output || `exit ${diff.status}`}`);
+            }
+            const text = String(diff.stdout || '');
+            if (text.trim()) chunks.push(this.rewriteNoIndexDiffForWorkspace(text, relativePath, oldArg, newArg));
+        }
+        return this.normalizeUnifiedDiffForGitApply(chunks.join('\n'));
+    }
+
+    private async effectiveApplyDiffFile(snap: Snapshot, materializedDir: string, workspaceRoot: string, reverse: boolean): Promise<string> {
+        const overlayDiffFile = path.join(materializedDir, 'overlay.diff');
+        if ((snap.diffs || []).length <= 1) return overlayDiffFile;
+        const squashedDiffFile = path.join(materializedDir, 'squashed-overlay.diff');
+        if (reverse && fs.existsSync(squashedDiffFile)) return squashedDiffFile;
+        if (reverse && !fs.existsSync(squashedDiffFile)) return overlayDiffFile;
+        const squashed = this.buildSquashedSnapshotDiff(snap, materializedDir, workspaceRoot);
+        await fsp.writeFile(squashedDiffFile, squashed, 'utf8');
+        return squashedDiffFile;
+    }
+
     async applyToWorkingTree(
         snapshotId: string,
         { check = false, reverse = false, workspaceRoot: requestedWorkspaceRoot }: { check?: boolean; reverse?: boolean; workspaceRoot?: string } = {}
@@ -1485,7 +1593,7 @@ export class OverlayStore {
         const snap = this.ensureSnapshot(snapshotId, { workspaceRoot: requestedWorkspaceRoot });
         const workspaceRoot = this.resolveWorkspaceBase(snap.workspaceRoot);
         const dir = (await this.ensureMaterialized(snapshotId, { allowCurrentMaterializedWithWorkspaceDrift: true })) || workspaceRoot;
-        const diffFile = path.join(dir, 'overlay.diff');
+        const diffFile = await this.effectiveApplyDiffFile(snap, dir, workspaceRoot, reverse);
         let output = '';
         let applyCreatedDirs: string[] = [];
         let applyPreExistingDirs: string[] = [];
@@ -1586,6 +1694,31 @@ export class OverlayStore {
         }
         if (this.which('patch')) {
             const diffText = await fsp.readFile(diffFile, 'utf8').catch(() => '');
+            const touched = this.parseTouchedFilesFromPatch(diffText);
+            const backups = new Map<string, { existed: boolean; data?: Buffer; mode?: number }>();
+            if (!check) {
+                for (const rel of touched) {
+                    const { absolutePath } = this.containedPath(workspaceRoot, rel, 'apply_snapshot patch path');
+                    const stat = await fsp.lstat(absolutePath).catch(() => null);
+                    if (stat?.isFile() && !stat.isSymbolicLink()) {
+                        backups.set(rel, { existed: true, data: await fsp.readFile(absolutePath), mode: stat.mode });
+                    } else {
+                        backups.set(rel, { existed: false });
+                    }
+                }
+            }
+            const restoreBackups = async () => {
+                for (const [rel, backup] of backups) {
+                    const { absolutePath } = this.containedPath(workspaceRoot, rel, 'apply_snapshot patch path');
+                    if (backup.existed) {
+                        await fsp.mkdir(path.dirname(absolutePath), { recursive: true });
+                        await fsp.writeFile(absolutePath, backup.data || Buffer.alloc(0));
+                        if (typeof backup.mode === 'number') await fsp.chmod(absolutePath, backup.mode).catch(() => undefined);
+                    } else {
+                        await fsp.rm(absolutePath, { recursive: true, force: true }).catch(() => undefined);
+                    }
+                }
+            };
             const pLevel = /\ndiff --git a\//.test('\n' + diffText) ? 1 : 0;
             const patchArgs = [];
             if (check) patchArgs.push('--dry-run');
@@ -1604,7 +1737,10 @@ export class OverlayStore {
                 snap.applyCreatedDirs = [];
                 snap.applyPreExistingDirs = [];
             }
-            if (!ok && !check && !reverse) await this.removeRecordedApplyDirs(applyCreatedDirs, workspaceRoot).catch(() => undefined);
+            if (!ok && !check) {
+                await restoreBackups().catch(() => undefined);
+                if (!reverse) await this.removeRecordedApplyDirs(applyCreatedDirs, workspaceRoot).catch(() => undefined);
+            }
             this.recordLastApply(snapshotId, {
                 ok,
                 elapsedMs: Date.now() - start,
