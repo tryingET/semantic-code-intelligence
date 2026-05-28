@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { WorkspaceQueryWorkflowService } from '../src/core/workflows/workspace-query-workflow.js';
 
 const roots: string[] = [];
@@ -62,15 +62,34 @@ describe('WorkspaceQueryWorkflowService', () => {
         const workspaceRoot = tempWorkspace();
         const service = new WorkspaceQueryWorkflowService({
             workspaceRoot: () => workspaceRoot,
-            coreAnalyzer: { async initialize() {}, async textSearch() { return { count: 0, results: [] }; }, async buildSymbolMap() { return { declarations: [] }; } },
+            coreAnalyzer: {
+                async initialize() {},
+                async textSearch() {
+                    return { count: 0, results: [] };
+                },
+                async buildSymbolMap() {
+                    return { declarations: [] };
+                },
+            },
             pathInputFromToolFile: (value) => value,
         });
 
         await expect(service.textSearch({ query: '' })).rejects.toThrow('Missing required parameter: query');
-        await expect(service.textSearch({ query: 'x', maxResults: -1 })).rejects.toThrow('maxResults must be an integer from 1 to 1000');
-        await expect(service.symbolSearch({ query: 'x', maxResults: -1 })).rejects.toThrow('maxResults must be an integer from 1 to 200');
-        await expect(service.astQuery({ language: 'typescript', query: '' })).rejects.toThrow('Missing required parameter: query');
-        await expect(service.astQuery({ language: 'typescript', query: 'function $A() {}', limit: -1 })).rejects.toThrow('limit must be an integer from 1 to 1000');
+        await expect(service.textSearch({ query: 'x', maxResults: -1 })).rejects.toThrow(
+            'maxResults must be an integer from 1 to 1000'
+        );
+        await expect(service.textSearch({ query: 'x', timeoutMs: 0 })).rejects.toThrow(
+            'timeoutMs must be an integer from 50 to 60000'
+        );
+        await expect(service.symbolSearch({ query: 'x', maxResults: -1 })).rejects.toThrow(
+            'maxResults must be an integer from 1 to 200'
+        );
+        await expect(service.astQuery({ language: 'typescript', query: '' })).rejects.toThrow(
+            'Missing required parameter: query'
+        );
+        await expect(
+            service.astQuery({ language: 'typescript', query: 'function $A() {}', limit: -1 })
+        ).rejects.toThrow('limit must be an integer from 1 to 1000');
     });
 
     test('delegates text search to the configured analyzer with bounded path resolution', async () => {

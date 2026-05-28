@@ -1,10 +1,10 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { AsyncEnhancedGrep } from '../../layers/enhanced-search-tools-async.js';
 import { CoreError } from '../errors.js';
 import { parseBoundedInteger } from '../input-validation.js';
 import { overlayStore } from '../overlay-store.js';
 import { openWorkspaceFileForRead, resolveWorkspacePath } from '../workspace-path.js';
-import { AsyncEnhancedGrep } from '../../layers/enhanced-search-tools-async.js';
 import { escapeRegex, textSearchPattern } from './request-semantics.js';
 import type { SnapshotWorkflowResult } from './snapshot-patch-workflow.js';
 
@@ -53,7 +53,9 @@ export class WorkspaceQueryWorkflowService {
         try {
             overlayStore.ensureSnapshot(snapshot, { workspaceRoot: this.workspaceRoot });
             const ensureMaterialized = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
-            const snapshotRoot = ensureMaterialized ? await ensureMaterialized(snapshot, { workspaceRoot: this.workspaceRoot }) : null;
+            const snapshotRoot = ensureMaterialized
+                ? await ensureMaterialized(snapshot, { workspaceRoot: this.workspaceRoot })
+                : null;
             if (!snapshotRoot) throw new Error('Snapshot could not be materialized');
             return snapshotRoot;
         } catch (error: any) {
@@ -61,9 +63,13 @@ export class WorkspaceQueryWorkflowService {
         }
     }
 
-    private async resolveReadFileRoot(args: Record<string, any>, requestedPath: string): Promise<{ workspaceRoot: string; readPath: string }> {
+    private async resolveReadFileRoot(
+        args: Record<string, any>,
+        requestedPath: string
+    ): Promise<{ workspaceRoot: string; readPath: string }> {
         const snapshotRoot = await this.materializedSnapshotRoot(args);
-        if (!snapshotRoot) return { workspaceRoot: this.workspaceRoot, readPath: this.pathInputFromToolFile(requestedPath) };
+        if (!snapshotRoot)
+            return { workspaceRoot: this.workspaceRoot, readPath: this.pathInputFromToolFile(requestedPath) };
         return { workspaceRoot: snapshotRoot, readPath: this.snapshotReadPath(requestedPath, snapshotRoot) };
     }
 
@@ -76,10 +82,15 @@ export class WorkspaceQueryWorkflowService {
         let opened: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
         try {
             const readTarget = await this.resolveReadFileRoot(args, requestedPath);
-            opened = await openWorkspaceFileForRead(readTarget.readPath, { workspaceRoot: readTarget.workspaceRoot, inputLabel: 'read_file path' });
+            opened = await openWorkspaceFileForRead(readTarget.readPath, {
+                workspaceRoot: readTarget.workspaceRoot,
+                inputLabel: 'read_file path',
+            });
 
             const maxBytesRaw = Number(args?.maxBytes ?? 65_536);
-            const maxBytes = Number.isFinite(maxBytesRaw) ? Math.max(1, Math.min(262_144, Math.floor(maxBytesRaw))) : 65_536;
+            const maxBytes = Number.isFinite(maxBytesRaw)
+                ? Math.max(1, Math.min(262_144, Math.floor(maxBytesRaw)))
+                : 65_536;
             const range = args?.range && typeof args.range === 'object' ? args.range : null;
             const startLineRaw = Number(range?.startLine ?? 1);
             const requestedEndLineRaw = range?.endLine == null ? null : Number(range.endLine);
@@ -107,7 +118,11 @@ export class WorkspaceQueryWorkflowService {
         } catch (error) {
             throw error instanceof CoreError
                 ? error
-                : new CoreError('InvalidParams', `Failed to read workspace file: ${error instanceof Error ? error.message : String(error)}`, { path: requestedPath });
+                : new CoreError(
+                      'InvalidParams',
+                      `Failed to read workspace file: ${error instanceof Error ? error.message : String(error)}`,
+                      { path: requestedPath }
+                  );
         } finally {
             await opened?.handle.close().catch(() => undefined);
         }
@@ -216,7 +231,11 @@ export class WorkspaceQueryWorkflowService {
             }
             if (depth > maxDepth) return;
             const entries = await fs.readdir(absoluteDir, { withFileTypes: true }).catch((error) => {
-                throw new CoreError('InvalidParams', `Failed to list workspace files: ${error instanceof Error ? error.message : String(error)}`, { path: requestedPath });
+                throw new CoreError(
+                    'InvalidParams',
+                    `Failed to list workspace files: ${error instanceof Error ? error.message : String(error)}`,
+                    { path: requestedPath }
+                );
             });
             for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
                 if (files.length >= maxFiles) {
@@ -254,7 +273,9 @@ export class WorkspaceQueryWorkflowService {
         } else if (stat.isDirectory()) {
             await visit(root.realPath, root.relativePath, 0);
         } else {
-            throw new CoreError('InvalidParams', 'list_files path must be a file or directory', { path: requestedPath });
+            throw new CoreError('InvalidParams', 'list_files path must be a file or directory', {
+                path: requestedPath,
+            });
         }
 
         return { payload: { path: root.relativePath, count: files.length, capped, files }, isError: false };
@@ -266,7 +287,10 @@ export class WorkspaceQueryWorkflowService {
         let opened: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
         try {
             const workspaceRoot = this.workspaceRoot;
-            opened = await openWorkspaceFileForRead(this.pathInputFromToolFile(file, workspaceRoot), { workspaceRoot, inputLabel: 'list_symbols file' });
+            opened = await openWorkspaceFileForRead(this.pathInputFromToolFile(file, workspaceRoot), {
+                workspaceRoot,
+                inputLabel: 'list_symbols file',
+            });
             const text = await opened.handle.readFile('utf8');
             const lines = text.split(/\r?\n/);
             const out: Array<{ name: string; kind: string; line: number; character: number }> = [];
@@ -310,7 +334,13 @@ export class WorkspaceQueryWorkflowService {
                             `;
                         }
 
-                        const res = await runAstQuery({ language, query, paths: [opened.relativePath], limit: 2000, workspaceRoot });
+                        const res = await runAstQuery({
+                            language,
+                            query,
+                            paths: [opened.relativePath],
+                            limit: 2000,
+                            workspaceRoot,
+                        });
                         if (Array.isArray(res?.results)) {
                             for (const r of res.results) {
                                 if (!r || !r.start || !r.end) continue;
@@ -340,7 +370,10 @@ export class WorkspaceQueryWorkflowService {
                     }
                 } catch (e) {
                     if (process.env.DEBUG && !process.env.SILENT_MODE) {
-                        console.error('list_symbols AST path failed; falling back to regex:', e instanceof Error ? e.message : e);
+                        console.error(
+                            'list_symbols AST path failed; falling back to regex:',
+                            e instanceof Error ? e.message : e
+                        );
                     }
                 }
             }
@@ -379,7 +412,16 @@ export class WorkspaceQueryWorkflowService {
     async textSearch(args: Record<string, any>): Promise<SnapshotWorkflowResult> {
         const query = String(args?.query || '').trim();
         if (!query) throw new CoreError('InvalidParams', 'Missing required parameter: query', { field: 'query' });
-        const maxResults = parseBoundedInteger(args?.maxResults, 'maxResults', { defaultValue: 200, min: 1, max: 1000 });
+        const maxResults = parseBoundedInteger(args?.maxResults, 'maxResults', {
+            defaultValue: 200,
+            min: 1,
+            max: 1000,
+        });
+        const timeoutMs = parseBoundedInteger(args?.timeoutMs ?? args?.timeout, 'timeoutMs', {
+            defaultValue: 5000,
+            min: 50,
+            max: 60000,
+        });
 
         try {
             await this.deps.coreAnalyzer?.initialize?.();
@@ -389,8 +431,14 @@ export class WorkspaceQueryWorkflowService {
             const snapshotRoot = await this.materializedSnapshotRoot(args);
             const workspaceRoot = snapshotRoot || this.workspaceRoot;
             const requestedPath = typeof args?.path === 'string' && args.path.trim() ? String(args.path) : '.';
-            const searchPath = snapshotRoot ? this.snapshotReadPath(requestedPath, snapshotRoot) : this.pathInputFromToolFile(requestedPath, workspaceRoot);
-            const searchRoot = await resolveWorkspacePath(searchPath, { workspaceRoot, inputLabel: 'text_search path', allowRoot: true });
+            const searchPath = snapshotRoot
+                ? this.snapshotReadPath(requestedPath, snapshotRoot)
+                : this.pathInputFromToolFile(requestedPath, workspaceRoot);
+            const searchRoot = await resolveWorkspacePath(searchPath, {
+                workspaceRoot,
+                inputLabel: 'text_search path',
+                allowRoot: true,
+            });
             const searchRootPath = searchRoot.realPath;
 
             const searchSpec = textSearchPattern(query, kind);
@@ -402,7 +450,7 @@ export class WorkspaceQueryWorkflowService {
                     pattern: searchSpec.pattern,
                     path: searchRootPath,
                     maxResults,
-                    timeout: 200,
+                    timeout: timeoutMs,
                     caseInsensitive,
                     useRegex: true,
                 });
@@ -422,7 +470,7 @@ export class WorkspaceQueryWorkflowService {
                     pattern: searchSpec.pattern,
                     path: searchRootPath,
                     maxResults,
-                    timeout: 200,
+                    timeout: timeoutMs,
                     caseInsensitive,
                     useRegex: false,
                 });
@@ -440,8 +488,14 @@ export class WorkspaceQueryWorkflowService {
             const snapshotRoot = await this.materializedSnapshotRoot(args);
             const workspaceRoot = snapshotRoot || this.workspaceRoot;
             const requestedPath = typeof args?.path === 'string' && args.path.trim() ? String(args.path) : '.';
-            const searchPath = snapshotRoot ? this.snapshotReadPath(requestedPath, snapshotRoot) : this.pathInputFromToolFile(requestedPath, workspaceRoot);
-            const searchRoot = await resolveWorkspacePath(searchPath, { workspaceRoot, inputLabel: 'text_search path', allowRoot: true });
+            const searchPath = snapshotRoot
+                ? this.snapshotReadPath(requestedPath, snapshotRoot)
+                : this.pathInputFromToolFile(requestedPath, workspaceRoot);
+            const searchRoot = await resolveWorkspacePath(searchPath, {
+                workspaceRoot,
+                inputLabel: 'text_search path',
+                allowRoot: true,
+            });
             const searchRootPath = searchRoot.realPath;
             const asyncGrep = new AsyncEnhancedGrep({ cacheSize: 500, cacheTTL: 30000 });
             const searchSpec = textSearchPattern(query, kind);
@@ -449,7 +503,7 @@ export class WorkspaceQueryWorkflowService {
                 pattern: searchSpec.pattern,
                 path: searchRootPath,
                 maxResults,
-                timeout: 200,
+                timeout: timeoutMs,
                 caseInsensitive,
                 useRegex: searchSpec.useRegex,
             });
@@ -476,7 +530,10 @@ export class WorkspaceQueryWorkflowService {
             let opened: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
             try {
                 const workspaceRoot = this.workspaceRoot;
-                opened = await openWorkspaceFileForRead(this.pathInputFromToolFile(fileHint, workspaceRoot), { workspaceRoot, inputLabel: 'symbol_search fileHint' });
+                opened = await openWorkspaceFileForRead(this.pathInputFromToolFile(fileHint, workspaceRoot), {
+                    workspaceRoot,
+                    inputLabel: 'symbol_search fileHint',
+                });
                 const text = await opened.handle.readFile('utf8');
                 const lines = text.split(/\r?\n/);
                 out = lines
@@ -489,14 +546,20 @@ export class WorkspaceQueryWorkflowService {
                             start: { line: match.index, character: match.column },
                             end: { line: match.index, character: match.column + query.length },
                         },
-                        kind: /function|class|interface|const|let|var|private|public|async/.test(match.line) ? 'symbol' : 'text_match',
+                        kind: /function|class|interface|const|let|var|private|public|async/.test(match.line)
+                            ? 'symbol'
+                            : 'text_match',
                         name: query,
                         fallback: 'fileHint_text_scan',
                     }));
             } catch (error) {
                 throw error instanceof CoreError
                     ? error
-                    : new CoreError('InvalidParams', `symbol_search fileHint failed: ${error instanceof Error ? error.message : String(error)}`, { path: fileHint });
+                    : new CoreError(
+                          'InvalidParams',
+                          `symbol_search fileHint failed: ${error instanceof Error ? error.message : String(error)}`,
+                          { path: fileHint }
+                      );
             } finally {
                 await opened?.handle.close().catch(() => undefined);
             }
@@ -508,26 +571,40 @@ export class WorkspaceQueryWorkflowService {
     async astQuery(args: Record<string, any>): Promise<SnapshotWorkflowResult> {
         const language = String(args?.language || '').trim();
         const query = String(args?.query || '').trim();
-        if (!language) throw new CoreError('InvalidParams', 'Missing required parameter: language', { field: 'language' });
+        if (!language)
+            throw new CoreError('InvalidParams', 'Missing required parameter: language', { field: 'language' });
         if (!query) throw new CoreError('InvalidParams', 'Missing required parameter: query', { field: 'query' });
         const paths = Array.isArray(args?.paths) ? (args.paths as string[]) : undefined;
         const glob = typeof args?.glob === 'string' ? (args.glob as string) : undefined;
-        const limit = args?.limit === undefined || args?.limit === null || args?.limit === ''
-            ? undefined
-            : parseBoundedInteger(args?.limit, 'limit', { defaultValue: 100, min: 1, max: 1000 });
+        const limit =
+            args?.limit === undefined || args?.limit === null || args?.limit === ''
+                ? undefined
+                : parseBoundedInteger(args?.limit, 'limit', { defaultValue: 100, min: 1, max: 1000 });
         try {
             const snapshotRoot = await this.materializedSnapshotRoot(args);
             const workspaceRoot = snapshotRoot || this.workspaceRoot;
             const queryPaths = paths?.map((item) =>
-                snapshotRoot ? this.snapshotReadPath(String(item), snapshotRoot) : this.pathInputFromToolFile(String(item), workspaceRoot)
+                snapshotRoot
+                    ? this.snapshotReadPath(String(item), snapshotRoot)
+                    : this.pathInputFromToolFile(String(item), workspaceRoot)
             );
             const { runAstQuery } = await import('../ast-query.js');
-            const out = await runAstQuery({ language: language as any, query, paths: queryPaths, glob, limit, workspaceRoot });
+            const out = await runAstQuery({
+                language: language as any,
+                query,
+                paths: queryPaths,
+                glob,
+                limit,
+                workspaceRoot,
+            });
             return { payload: out, isError: false };
         } catch (error) {
             throw error instanceof CoreError
                 ? error
-                : new CoreError('InvalidParams', `ast_query failed: ${error instanceof Error ? error.message : String(error)}`);
+                : new CoreError(
+                      'InvalidParams',
+                      `ast_query failed: ${error instanceof Error ? error.message : String(error)}`
+                  );
         }
     }
 }

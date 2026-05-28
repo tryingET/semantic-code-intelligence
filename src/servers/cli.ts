@@ -29,7 +29,7 @@ import { CoreError, isCoreError } from '../core/errors.js';
 import { assertAlphaMvpToolAllowed } from '../core/tools/alpha-surface.js';
 import { workspaceInputToPath } from '../core/workspace-input.js';
 import { openWorkspaceFileForRead } from '../core/workspace-path.js';
-import { recordToolStart, recordToolEnd, pushToGateway, getPushgatewayUrl } from '../instrumentation/metrics.js';
+import { getPushgatewayUrl, pushToGateway, recordToolEnd, recordToolStart } from '../instrumentation/metrics.js';
 
 class CLI {
     private program: Command;
@@ -302,7 +302,11 @@ class CLI {
                         kind: options.kind,
                         caseInsensitive: !!options.ignoreCase,
                         path: options.path,
-                        maxResults: parseIntegerOption(options.maxResults, 'max-results', { defaultValue: 200, min: 1, max: 1000 }),
+                        maxResults: parseIntegerOption(options.maxResults, 'max-results', {
+                            defaultValue: 200,
+                            min: 1,
+                            max: 1000,
+                        }),
                         json: !!options.json,
                     });
                     await this.exitIfAdapterError(out, !!options.json);
@@ -324,7 +328,11 @@ class CLI {
             .action(async (query, options) => {
                 await this.ensureInitialized(options);
                 const out = await this.cliAdapter.handleSymbolSearch(query, {
-                    maxResults: parseIntegerOption(options.maxResults, 'max-results', { defaultValue: 50, min: 1, max: 200 }),
+                    maxResults: parseIntegerOption(options.maxResults, 'max-results', {
+                        defaultValue: 50,
+                        min: 1,
+                        max: 200,
+                    }),
                     json: !!options.json,
                 });
                 await this.exitIfAdapterError(out, !!options.json);
@@ -372,7 +380,11 @@ class CLI {
                     snapshot: options.snapshot,
                     runChecks: !!options.runChecks,
                     commands: Array.isArray(options.cmd) ? options.cmd : options.cmd ? [options.cmd] : [],
-                    timeoutSec: parseInt(options.timeout),
+                    timeoutSec: parseIntegerOption(options.timeout, 'timeout', {
+                        defaultValue: 120,
+                        min: 1,
+                        max: 3600,
+                    }),
                     json: !!options.json,
                 });
                 await this.exitIfAdapterError(out, !!options.json);
@@ -394,7 +406,11 @@ class CLI {
                 const out = await this.cliAdapter.handleRunChecks({
                     snapshot: options.snapshot,
                     commands: Array.isArray(options.cmd) ? options.cmd : options.cmd ? [options.cmd] : [],
-                    timeoutSec: parseInt(options.timeout),
+                    timeoutSec: parseIntegerOption(options.timeout, 'timeout', {
+                        defaultValue: 120,
+                        min: 1,
+                        max: 3600,
+                    }),
                     json: !!options.json,
                 });
                 await this.exitIfAdapterError(out, !!options.json);
@@ -517,7 +533,11 @@ class CLI {
                     await this.ensureInitialized(options);
                     let output = await this.cliAdapter.handleExplore(identifier, {
                         file: options.file,
-                        maxResults: parseIntegerOption(options.maxResults, 'max-results', { defaultValue: 100, min: 1, max: 1000 }),
+                        maxResults: parseIntegerOption(options.maxResults, 'max-results', {
+                            defaultValue: 100,
+                            min: 1,
+                            max: 1000,
+                        }),
                         includeDeclaration: !!options.includeDeclaration,
                         limit: parseIntegerOption(options.limit, 'limit', { defaultValue: 10, min: 1, max: 1000 }),
                         summary: !!options.summary,
@@ -529,7 +549,11 @@ class CLI {
                     await this.exitIfAdapterError(output, !!options.json);
                     if (options.tree && !options.json) {
                         const target = options.file ? options.file : this.workspaceRoot;
-                        const depth = parseIntegerOption(options.treeDepth, 'tree-depth', { defaultValue: 3, min: 1, max: 10 });
+                        const depth = parseIntegerOption(options.treeDepth, 'tree-depth', {
+                            defaultValue: 3,
+                            min: 1,
+                            max: 10,
+                        });
                         const tree = this.renderTree(target, depth);
                         if (tree) {
                             output += `\n\n` + tree;
@@ -621,7 +645,11 @@ class CLI {
                         : options.cmd
                           ? [options.cmd]
                           : ['bun run typecheck'],
-                    timeoutSec: parseInt(String(options.timeout) || '240', 10),
+                    timeoutSec: parseIntegerOption(options.timeout, 'timeout', {
+                        defaultValue: 240,
+                        min: 1,
+                        max: 3600,
+                    }),
                 };
                 await this.printToolWorkflowAndExit('rename_safely', args, !!options.json);
             });
@@ -640,7 +668,10 @@ class CLI {
                 await this.ensureInitialized(options);
                 let patch = '';
                 if (options.patchFile) {
-                    patch = await this.readWorkspaceInputFile(String(options.patchFile), 'patch-checks-in-snapshot patch-file');
+                    patch = await this.readWorkspaceInputFile(
+                        String(options.patchFile),
+                        'patch-checks-in-snapshot patch-file'
+                    );
                 } else {
                     patch = fs.readFileSync(0, 'utf8'); // stdin
                 }
@@ -652,7 +683,11 @@ class CLI {
                         : options.cmd
                           ? [options.cmd]
                           : ['bun run typecheck'],
-                    timeoutSec: parseInt(String(options.timeout) || '240', 10),
+                    timeoutSec: parseIntegerOption(options.timeout, 'timeout', {
+                        defaultValue: 240,
+                        min: 1,
+                        max: 3600,
+                    }),
                     onlyTouched: !!options.onlyTouched,
                 };
                 await this.printToolWorkflowAndExit('patch_checks_in_snapshot', args, !!options.json);
@@ -671,7 +706,11 @@ class CLI {
                     language: String(language),
                     pattern: String(pattern),
                     paths: options.paths,
-                    maxResults: parseIntegerOption(options.maxResults, 'max-results', { defaultValue: 50, min: 1, max: 1000 }),
+                    maxResults: parseIntegerOption(options.maxResults, 'max-results', {
+                        defaultValue: 50,
+                        min: 1,
+                        max: 1000,
+                    }),
                 };
                 await this.printToolWorkflowAndExit('structural_search', args, !!options.json);
             });
@@ -697,7 +736,11 @@ class CLI {
                         : options.cmd
                           ? [options.cmd]
                           : ['bun run typecheck'],
-                    timeoutSec: parseInt(String(options.timeout) || '240', 10),
+                    timeoutSec: parseIntegerOption(options.timeout, 'timeout', {
+                        defaultValue: 240,
+                        min: 1,
+                        max: 3600,
+                    }),
                     apply: !!options.apply,
                 };
                 await this.printToolWorkflowAndExit('structural_patch_checks', args, !!options.json);
@@ -738,7 +781,7 @@ class CLI {
                     'list_pipeline_runs',
                     {
                         id: String(id),
-                        limit: parseInt(String(options.limit) || '10', 10),
+                        limit: parseIntegerOption(options.limit, 'limit', { defaultValue: 10, min: 1, max: 1000 }),
                     },
                     !!options.json
                 );
@@ -818,7 +861,11 @@ class CLI {
                     data: payload.error.data,
                 };
             }
-            return { code: String(payload.code || 'Internal'), message: String(payload.message || 'Tool execution failed'), data: payload };
+            return {
+                code: String(payload.code || 'Internal'),
+                message: String(payload.message || 'Tool execution failed'),
+                data: payload,
+            };
         }
         const message = res && typeof res === 'object' && 'text' in res ? String(res.text) : 'Tool execution failed';
         return { code: 'Internal', message };
@@ -830,18 +877,23 @@ class CLI {
             return { content: [{ type: 'text', text: String(res.text) }], isError: res.isError === true };
         }
         if (res && typeof res === 'object' && 'payload' in res) {
-            return { content: [{ type: 'text', text: JSON.stringify(res.payload, null, 2) }], isError: res.isError === true };
+            return {
+                content: [{ type: 'text', text: JSON.stringify(res.payload, null, 2) }],
+                isError: res.isError === true,
+            };
         }
         return res;
     }
-
 
     private isFormattedAdapterError(value: unknown): boolean {
         return typeof value === 'string' && /^(Error:|\u001b\[1m\u001b\[31mError:)/.test(value);
     }
 
     private adapterErrorMessage(value: string): string {
-        return value.replace(/\u001b\[[0-9;]*m/g, '').replace(/^Error:\s*/, '').trim();
+        return value
+            .replace(/\u001b\[[0-9;]*m/g, '')
+            .replace(/^Error:\s*/, '')
+            .trim();
     }
 
     private async exitIfAdapterError(value: unknown, rawJson: boolean): Promise<void> {
@@ -876,7 +928,10 @@ class CLI {
 
     private async readWorkspaceInputFile(requestedPath: string, inputLabel: string): Promise<string> {
         const normalizedPath = this.resolveCliFileInput(requestedPath);
-        const opened = await openWorkspaceFileForRead(normalizedPath, { workspaceRoot: this.workspaceRoot, inputLabel });
+        const opened = await openWorkspaceFileForRead(normalizedPath, {
+            workspaceRoot: this.workspaceRoot,
+            inputLabel,
+        });
         try {
             return await opened.handle.readFile('utf8');
         } finally {
@@ -913,7 +968,10 @@ class CLI {
 
             const config = createDefaultCoreConfig();
             const workspaceRoot = this.findWorkspaceRoot();
-            if (process.env.SCI_ENABLE_CACHE_WARMUP_IN_CLI !== '1' && process.env.SCI_DISABLE_CACHE_WARMUP === undefined) {
+            if (
+                process.env.SCI_ENABLE_CACHE_WARMUP_IN_CLI !== '1' &&
+                process.env.SCI_DISABLE_CACHE_WARMUP === undefined
+            ) {
                 process.env.SCI_DISABLE_CACHE_WARMUP = '1';
             }
 
@@ -988,7 +1046,11 @@ class CLI {
 
     private writeConfigFileNoFollow(configPath: string, content: string, force: boolean): void {
         const noFollow = typeof fs.constants.O_NOFOLLOW === 'number' ? fs.constants.O_NOFOLLOW : 0;
-        const flags = fs.constants.O_WRONLY | fs.constants.O_CREAT | (force ? fs.constants.O_TRUNC : fs.constants.O_EXCL) | noFollow;
+        const flags =
+            fs.constants.O_WRONLY |
+            fs.constants.O_CREAT |
+            (force ? fs.constants.O_TRUNC : fs.constants.O_EXCL) |
+            noFollow;
         const fd = fs.openSync(configPath, flags, 0o600);
         try {
             fs.writeFileSync(fd, content, 'utf8');
