@@ -81,6 +81,25 @@ describe('CLI workspace file boundary', () => {
         expect(proposePatch.status).toBe(0);
     });
 
+    test('propose-patch accepts apply_patch format through the shared workflow conversion', () => {
+        const nested = tempWorkspaceDir('sci-cli-apply-patch-');
+        writeFileSync(
+            join(nested, 'patch.apply'),
+            `*** Begin Patch
+*** Update File: tests/fixtures/safe-write-target.md
+@@
+-This file is intentionally small and stable.
++This file is intentionally small, stable, and staged.
+*** End Patch
+`,
+            'utf8'
+        );
+
+        const result = runCli(['propose-patch', '-f', 'patch.apply', '--json'], nested);
+        expect(result.status).toBe(0);
+        expect(result.stdout).toContain('"accepted": true');
+    });
+
     test('patch-checks-in-snapshot --patch-file rejects files outside the detected workspace', () => {
         const outside = tempDir('sci-cli-patch-outside-');
         const patchFile = join(outside, 'patch.diff');

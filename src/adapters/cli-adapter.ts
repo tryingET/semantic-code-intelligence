@@ -18,6 +18,7 @@ import leven from 'leven';
 import { CoreError } from '../core/errors.js';
 import { overlayStore } from '../core/overlay-store.js';
 import type { CodeAnalyzer } from '../core/unified-analyzer.js';
+import { SnapshotPatchWorkflowService } from '../core/workflows/snapshot-patch-workflow.js';
 import { resolveWorkspacePath } from '../core/workspace-path.js';
 import { AsyncEnhancedGrep } from '../layers/enhanced-search-tools-async.js';
 import {
@@ -579,8 +580,10 @@ export class CLIAdapter {
         } catch (e) {
             return this.formatError(`invalid snapshot: ${e instanceof Error ? e.message : String(e)}`);
         }
-        const res = overlayStore.stagePatch(snap.id, patch);
-        if (!res.accepted) return this.formatError(res.message || 'Patch rejected');
+        const workflow = new SnapshotPatchWorkflowService({ workspaceRoot: () => this.getWorkspaceRoot() });
+        const proposed = await workflow.proposePatch({ snapshot: snap.id, patch });
+        const proposedPayload = (proposed as any).payload || {};
+        if (proposed.isError || proposedPayload.accepted !== true) return this.formatError(proposedPayload.message || 'Patch rejected');
         if (options.runChecks) {
             const r = await overlayStore.runChecks(snap.id, options.commands || [], options.timeoutSec || 120, { workspaceRoot: this.getWorkspaceRoot() });
             const payload = {
