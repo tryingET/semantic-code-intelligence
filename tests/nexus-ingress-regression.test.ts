@@ -107,6 +107,28 @@ bindDescribe('Nexus HTTP ingress regressions', () => {
         }
     });
 
+    test('HTTP snapshot diff refuses symlinked overlay artifacts', async () => {
+        const snap = overlayStore.createSnapshot(false, { workspaceRoot: workspace });
+        const snapshotDir = overlayStore.getSnapshotDirectory(snap.id, { workspaceRoot: workspace });
+        const outside = mkdtempSync(join(tmpdir(), 'sci-http-diff-outside-'));
+        const diffPath = join(snapshotDir, 'overlay.diff');
+        try {
+            writeFileSync(join(outside, 'secret.diff'), 'http-diff-secret-must-not-leak\n');
+            rmSync(diffPath, { force: true });
+            symlinkSync(join(outside, 'secret.diff'), diffPath);
+
+            const res = await fetch(`${base}/api/v1/snapshots/${snap.id}/diff`);
+            expect(res.status).toBe(200);
+            const body = await res.json();
+            expect(body.success).toBe(true);
+            expect(body.data.diff).toBe('');
+            expect(JSON.stringify(body)).not.toContain('http-diff-secret-must-not-leak');
+        } finally {
+            rmSync(diffPath, { force: true });
+            rmSync(outside, { recursive: true, force: true });
+        }
+    });
+
     test('enforces bounded JSON request bodies before parsing', async () => {
         const previous = process.env.SCI_HTTP_MAX_JSON_BODY_BYTES;
         process.env.SCI_HTTP_MAX_JSON_BODY_BYTES = '32';
@@ -193,7 +215,16 @@ describe('Nexus workflow boundary regressions', () => {
             writeFileSync(outsideFile, 'export const OutsideSymbolMapSecret = 1;\n');
             const proc = spawnSync(
                 process.execPath,
-                ['run', 'src/servers/cli.ts', 'symbol-map', 'OutsideSymbolMapSecret', '-f', outsideFile, '--json', '--no-color'],
+                [
+                    'run',
+                    'src/servers/cli.ts',
+                    'symbol-map',
+                    'OutsideSymbolMapSecret',
+                    '-f',
+                    outsideFile,
+                    '--json',
+                    '--no-color',
+                ],
                 { cwd: process.cwd(), encoding: 'utf8', env: { ...process.env, SILENT_MODE: 'true' } }
             );
             expect(proc.status).not.toBe(0);
@@ -211,7 +242,16 @@ describe('Nexus workflow boundary regressions', () => {
             writeFileSync(join(outside, 'outside.ts'), 'const OutsideStructuralSecret = 1;\n');
             const proc = spawnSync(
                 process.execPath,
-                ['run', 'src/servers/cli.ts', 'structural-search', 'typescript', 'const $A = $B', '--paths', outside, '--json'],
+                [
+                    'run',
+                    'src/servers/cli.ts',
+                    'structural-search',
+                    'typescript',
+                    'const $A = $B',
+                    '--paths',
+                    outside,
+                    '--json',
+                ],
                 { cwd: process.cwd(), encoding: 'utf8', env: { ...process.env, SILENT_MODE: 'true' } }
             );
             expect(proc.status).not.toBe(0);
@@ -343,7 +383,9 @@ describe('Nexus workflow boundary regressions', () => {
             } as unknown as ConstructorParameters<typeof ToolWorkflowRouter>[0];
             const router = new ToolWorkflowRouter(routerCore);
 
-            await expect(router.execute('get_completions', { position: { line: 0, character: 0 } })).rejects.toThrow('file');
+            await expect(router.execute('get_completions', { position: { line: 0, character: 0 } })).rejects.toThrow(
+                'file'
+            );
             await expect(
                 router.execute('get_completions', { file: outsideFile, position: { line: 0, character: 0 } })
             ).rejects.toThrow('workspace');

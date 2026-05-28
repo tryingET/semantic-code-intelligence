@@ -481,12 +481,19 @@ export class HTTPAdapter {
             const identifier = body.identifier ?? body.oldName;
             validateRequired({ identifier, newName: body.newName }, ['identifier', 'newName']);
 
+            if (body.dryRun === false) {
+                throw new CoreError(
+                    'InvalidParams',
+                    'Legacy /api/v1/rename is preview-only; use safe_write or snapshot apply workflows for guarded mutation'
+                );
+            }
+
             const coreRequest = buildRenameRequest({
                 uri: await this.containedRequestUri(body.file || body.uri, 'rename file', 'file://workspace'),
                 position: createPosition(0, 0),
                 identifier,
                 newName: body.newName,
-                dryRun: body.dryRun ?? false,
+                dryRun: true,
             });
 
             const result = await withAdapterTimeout(
@@ -510,7 +517,7 @@ export class HTTPAdapter {
                         },
                         performance: result.performance,
                         requestId: result.requestId,
-                        dryRun: body.dryRun ?? false,
+                        dryRun: true,
                     },
                 }),
             };
@@ -593,23 +600,10 @@ export class HTTPAdapter {
 
             const identifier = body.identifier ?? body.oldName;
             validateRequired({ identifier, newName: body.newName }, ['identifier', 'newName']);
-            const coreRequest = buildRenameRequest({
-                uri: await this.containedRequestUri(body.file || body.uri, 'apply-rename file', 'file://workspace'),
-                position: createPosition(0, 0),
-                identifier,
-                newName: body.newName,
-                dryRun: false,
-            });
-            const result = await withAdapterTimeout(
-                this.coreAnalyzer.rename(coreRequest),
-                this.config.timeout,
-                'http.applyRename'
+            throw new CoreError(
+                'InvalidParams',
+                'Legacy /api/v1/apply-rename is disabled; use safe_write or apply_snapshot with ALLOW_SNAPSHOT_APPLY=1'
             );
-            return {
-                status: 200,
-                headers: {},
-                body: JSON.stringify({ success: true, status: 'applied', changes: result.data.changes }),
-            };
         } catch (error) {
             return this.createErrorResponse(400, 'Bad Request', error);
         }

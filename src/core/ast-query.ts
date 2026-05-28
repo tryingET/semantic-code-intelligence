@@ -68,7 +68,7 @@ export async function runAstQuery(inp: AstQueryInput) {
     }
     if (inp.glob) {
         const pattern = String(inp.glob).trim();
-        if (path.isAbsolute(pattern)) {
+        if (path.isAbsolute(pattern) || pattern.split(/[\\/]+/).includes('..')) {
             throw new CoreError('InvalidParams', 'ast_query glob must stay within the workspace', { glob: inp.glob });
         }
         const matches = glob.sync(pattern, {

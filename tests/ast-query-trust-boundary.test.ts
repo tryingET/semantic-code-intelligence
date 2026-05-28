@@ -2,8 +2,8 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
-import { runAstQuery } from '../src/core/ast-query';
 import { MCPAdapter } from '../src/adapters/mcp-adapter';
+import { runAstQuery } from '../src/core/ast-query';
 import { overlayStore } from '../src/core/overlay-store';
 
 const functionQuery = '(function_declaration name: (identifier) @name)';
@@ -112,6 +112,22 @@ describe('ast_query workspace trust boundary', () => {
         expect(result.count).toBe(0);
     });
 
+    test('rejects parent traversal globs before filesystem expansion', async () => {
+        let message = '';
+        try {
+            await runAstQuery({
+                language: 'typescript',
+                query: functionQuery,
+                glob: '../**/*.ts',
+                limit: 1,
+            });
+        } catch (error) {
+            message = error instanceof Error ? error.message : String(error);
+        }
+
+        expect(message).toContain('workspace');
+    });
+
     test('MCP ast_query returns a structured error for escaping explicit paths', async () => {
         const outsideDir = track(mkdtempSync(join(tmpdir(), 'sci-ast-query-mcp-outside-')));
         const outsideFile = join(outsideDir, 'outside.ts');
@@ -140,10 +156,24 @@ describe('ast_query workspace trust boundary', () => {
 
         const mcp = new MCPAdapter(undefined as any);
         const snapshot = await freshSnapshot(mcp);
-        await mcp.handleToolCall('propose_patch', { snapshot, patch: updateOneLineDiff(relPath, liveText, snapshotText) });
+        await mcp.handleToolCall('propose_patch', {
+            snapshot,
+            patch: updateOneLineDiff(relPath, liveText, snapshotText),
+        });
 
-        const snapshotResult = await mcp.handleToolCall('ast_query', { language: 'typescript', query: functionQuery, paths: [relPath], snapshot, limit: 10 });
-        const liveResult = await mcp.handleToolCall('ast_query', { language: 'typescript', query: functionQuery, paths: [relPath], limit: 10 });
+        const snapshotResult = await mcp.handleToolCall('ast_query', {
+            language: 'typescript',
+            query: functionQuery,
+            paths: [relPath],
+            snapshot,
+            limit: 10,
+        });
+        const liveResult = await mcp.handleToolCall('ast_query', {
+            language: 'typescript',
+            query: functionQuery,
+            paths: [relPath],
+            limit: 10,
+        });
         const snapshotPayload = parseToolJson(snapshotResult);
         const livePayload = parseToolJson(liveResult);
 
@@ -163,9 +193,18 @@ describe('ast_query workspace trust boundary', () => {
 
         const mcp = new MCPAdapter(undefined as any);
         const snapshot = await freshSnapshot(mcp);
-        await mcp.handleToolCall('propose_patch', { snapshot, patch: updateOneLineDiff(relPath, liveText, snapshotText) });
+        await mcp.handleToolCall('propose_patch', {
+            snapshot,
+            patch: updateOneLineDiff(relPath, liveText, snapshotText),
+        });
 
-        const result = await mcp.handleToolCall('ast_query', { language: 'typescript', query: functionQuery, paths: [absPath], snapshot, limit: 10 });
+        const result = await mcp.handleToolCall('ast_query', {
+            language: 'typescript',
+            query: functionQuery,
+            paths: [absPath],
+            snapshot,
+            limit: 10,
+        });
         const payload = parseToolJson(result);
 
         expect(result.isError).toBe(false);
@@ -186,8 +225,20 @@ describe('ast_query workspace trust boundary', () => {
         mkdirSync(dirname(linkPath), { recursive: true });
         symlinkSync(outsideFile, linkPath);
 
-        const traversal = await mcp.handleToolCall('ast_query', { language: 'typescript', query: functionQuery, paths: ['../package.json'], snapshot, limit: 10 });
-        const symlink = await mcp.handleToolCall('ast_query', { language: 'typescript', query: functionQuery, paths: [linkRel], snapshot, limit: 10 });
+        const traversal = await mcp.handleToolCall('ast_query', {
+            language: 'typescript',
+            query: functionQuery,
+            paths: ['../package.json'],
+            snapshot,
+            limit: 10,
+        });
+        const symlink = await mcp.handleToolCall('ast_query', {
+            language: 'typescript',
+            query: functionQuery,
+            paths: [linkRel],
+            snapshot,
+            limit: 10,
+        });
         const rendered = JSON.stringify(symlink);
 
         expect(traversal.isError).toBe(true);

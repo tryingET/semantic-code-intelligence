@@ -9,10 +9,10 @@
  * All analysis work is delegated to the HTTP adapter and core analyzer.
  */
 
-import { serve } from 'bun';
 import * as fsSync from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { serve } from 'bun';
 import { HTTPAdapter, type HTTPRequest } from '../adapters/http-adapter.js';
 import { createDefaultCoreConfig, definitionToApiResponse, strictJsonParse } from '../adapters/utils.js';
 import { getEnvironmentConfig, type ServerConfig } from '../core/config/server-config.js';
@@ -49,7 +49,9 @@ async function readSnapshotArtifactText(dir: string | undefined, file: string, f
         const noFollow = typeof fsSync.constants.O_NOFOLLOW === 'number' ? fsSync.constants.O_NOFOLLOW : 0;
         const handle = await fs.open(filePath, fsSync.constants.O_RDONLY | noFollow);
         try {
-            const openedReal = await fs.realpath(`/proc/self/fd/${handle.fd}`).catch(() => fs.realpath(`/dev/fd/${handle.fd}`));
+            const openedReal = await fs
+                .realpath(`/proc/self/fd/${handle.fd}`)
+                .catch(() => fs.realpath(`/dev/fd/${handle.fd}`));
             const openedRelative = path.relative(realDir, openedReal);
             if (!openedRelative || openedRelative.startsWith('..') || path.isAbsolute(openedRelative)) return fallback;
             return await handle.readFile('utf8');
@@ -379,7 +381,9 @@ export class HTTPServer {
 
                             const t0 = Date.now();
                             recordToolStart('http');
-                            const toolResult = await this.executeToolWorkflow(name, args, { enforceHttpToolSurface: true });
+                            const toolResult = await this.executeToolWorkflow(name, args, {
+                                enforceHttpToolSurface: true,
+                            });
                             // Record tool call in monitoring (if enabled)
                             try {
                                 const mon = (this.coreAnalyzer as any)?.sharedServices?.monitoring;
@@ -441,10 +445,16 @@ export class HTTPServer {
 
                             const learningOrchestrator = (this.coreAnalyzer as any)?.learningOrchestrator;
                             if (!learningOrchestrator || typeof learningOrchestrator.startPipelineRun !== 'function') {
-                                return new Response(JSON.stringify({ success: false, error: 'learning orchestrator unavailable' }), {
-                                    status: 500,
-                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
-                                });
+                                return new Response(
+                                    JSON.stringify({ success: false, error: 'learning orchestrator unavailable' }),
+                                    {
+                                        status: 500,
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            ...corsHeadersForRequest(request),
+                                        },
+                                    }
+                                );
                             }
 
                             // Start the persisted run before constructing the stream so the
@@ -927,15 +937,7 @@ export class HTTPServer {
                                     status: 404,
                                     headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 });
-                            const diffPath = `${dir}/overlay.diff`;
-                            const file = Bun.file(diffPath);
-                            if (!(await file.exists())) {
-                                return new Response(JSON.stringify({ success: true, data: { id, diff: '' } }), {
-                                    status: 200,
-                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
-                                });
-                            }
-                            const text = await file.text();
+                            const text = await readSnapshotArtifactText(dir, 'overlay.diff', '');
                             return new Response(JSON.stringify({ success: true, data: { id, diff: text } }), {
                                 status: 200,
                                 headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },

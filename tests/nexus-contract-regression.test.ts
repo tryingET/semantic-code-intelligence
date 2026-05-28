@@ -583,6 +583,52 @@ describe('nexus contract regressions', () => {
         expect(response.body).toContain('Direct changes application is unsupported');
     });
 
+    test('HTTP legacy rename endpoints cannot bypass preview-first mutation membrane', async () => {
+        const workspaceRoot = tempWorkspace();
+        writeFileSync(join(workspaceRoot, 'sample.ts'), 'export const OldHttpName = 1;\n', 'utf8');
+        const calls: any[] = [];
+        const core: any = {
+            config: { workspaceRoot },
+            rename: async (request: any) => {
+                calls.push(request);
+                return { data: { changes: { [request.uri]: [] } }, performance: {}, requestId: 'rename-preview' };
+            },
+            sharedServices: {},
+        };
+        const adapter = new HTTPAdapter(core, { enableCors: false, enableOpenAPI: false });
+
+        const preview = await adapter.handleRequest({
+            method: 'POST',
+            url: '/api/v1/rename',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ oldName: 'OldHttpName', newName: 'NewHttpName', file: 'sample.ts' }),
+        });
+        expect(preview.status).toBe(200);
+        expect(calls).toHaveLength(1);
+        expect(calls[0].dryRun).toBe(true);
+        expect(JSON.parse(preview.body).data.dryRun).toBe(true);
+
+        const explicitMutation = await adapter.handleRequest({
+            method: 'POST',
+            url: '/api/v1/rename',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ oldName: 'OldHttpName', newName: 'NewHttpName', file: 'sample.ts', dryRun: false }),
+        });
+        expect(explicitMutation.status).toBe(400);
+        expect(calls).toHaveLength(1);
+        expect(explicitMutation.body).toContain('preview-only');
+
+        const applyRename = await adapter.handleRequest({
+            method: 'POST',
+            url: '/api/v1/apply-rename',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ oldName: 'OldHttpName', newName: 'NewHttpName', file: 'sample.ts' }),
+        });
+        expect(applyRename.status).toBe(400);
+        expect(calls).toHaveLength(1);
+        expect(applyRename.body).toContain('disabled');
+    });
+
     test('HTTP stream definition defaults omitted position to workspace origin', async () => {
         const workspaceRoot = tempWorkspace();
         const calls: any[] = [];
