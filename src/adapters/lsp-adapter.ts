@@ -11,8 +11,6 @@
  * All actual analysis work is delegated to the unified core analyzer.
  */
 
-import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
 import type {
     CompletionItem,
     CompletionParams,
@@ -25,10 +23,16 @@ import type {
     TextDocumentPositionParams,
     WorkspaceEdit,
 } from 'vscode-languageserver';
-import { ResponseError, TextDocumentSyncKind } from 'vscode-languageserver';
+import { ResponseError } from 'vscode-languageserver';
 import { CoreError } from '../core/errors.js';
-import { normalizeWorkspaceInputUri, workspaceInputToPath } from '../core/workspace-input.js';
-import { openWorkspaceFileForRead } from '../core/workspace-path.js';
+import { createLspCapabilities } from './lsp-capabilities.js';
+import { applyDocumentChanges, forgetDocumentText, rememberDocumentText } from './lsp-document-utils.js';
+import {
+    containedLspUriOrNull as resolveContainedLspUriOrNull,
+    extractIdentifierAtPosition as resolveIdentifierAtPosition,
+    normalizeLspDocumentUri,
+    resolveLspWorkspaceRoot,
+} from './lsp-workspace.js';
 
 // Minimal core analyzer surface required by the LSP adapter
 type CoreAnalyzer = {
@@ -57,7 +61,6 @@ import {
     definitionToLspLocation,
     handleAdapterError,
     normalizePosition,
-    normalizeUri,
     referenceToLspLocation,
     workspaceEditToLsp,
     withAdapterTimeout,
@@ -178,33 +181,7 @@ export class LSPAdapter {
      * Get LSP server capabilities based on core analyzer features
      */
     getCapabilities(): ServerCapabilities<any> {
-        return {
-            textDocumentSync: {
-                openClose: true,
-                change: TextDocumentSyncKind.Incremental,
-                willSave: false,
-                willSaveWaitUntil: false,
-                save: { includeText: false },
-            },
-            definitionProvider: true,
-            referencesProvider: true,
-            renameProvider: { prepareProvider: true },
-            completionProvider: {
-                triggerCharacters: ['.', ':', '(', '<'],
-                allCommitCharacters: [' ', '\t', '\n', ';', ',', ')'],
-            },
-            // Expose explore via workspace/executeCommand
-            executeCommandProvider: {
-                commands: ['ontology.explore'],
-            },
-            hoverProvider: false, // Not implemented in core yet
-            documentSymbolProvider: false, // Not implemented in core yet
-            workspaceSymbolProvider: false, // Not implemented in core yet
-            codeActionProvider: false, // Not implemented in core yet
-            codeLensProvider: this.config.enableCodeLens ? { resolveProvider: false } : undefined,
-            documentFormattingProvider: false,
-            foldingRangeProvider: this.config.enableFolding ? true : undefined,
-        };
+        return createLspCapabilities(this.config);
     }
 
     /**
@@ -406,7 +383,7 @@ export class LSPAdapter {
      */
     async handleDidChangeTextDocument(params: { textDocument: { uri: string }; contentChanges: any[] }): Promise<void> {
         try {
-            const after = this.applyDocumentChanges(params.textDocument.uri, params.contentChanges);
+            const after = applyDocumentChanges(this.documentTextByUri, params.textDocument.uri, params.contentChanges);
             if (after !== undefined) {
                 this.rememberDocumentText(params.textDocument.uri, after);
                 this.defMemo.clear();
@@ -502,144 +479,39 @@ export class LSPAdapter {
     }
 
     private async extractIdentifierAtPosition(uri: string, position: any): Promise<string> {
-        const fallback = `symbol_at_${position.line}_${position.character}`;
-        let opened: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
-        try {
-            const cachedText = this.documentTextByUri.get(uri);
-            if (cachedText !== undefined) return this.wordAtPosition(cachedText, position) || fallback;
-            const fsPath = workspaceInputToPath(uri, this.getWorkspaceRoot());
-            opened = await openWorkspaceFileForRead(fsPath, {
-                workspaceRoot: this.getWorkspaceRoot(),
-                inputLabel: 'LSP document uri',
-            });
-            const text = await opened.handle.readFile('utf8');
-            return this.wordAtPosition(text, position) || fallback;
-        } catch {
-            return fallback;
-        } finally {
-            await opened?.handle.close().catch(() => undefined);
-        }
-    }
-
-    private applyDocumentChanges(uri: string, contentChanges: any[]): string | undefined {
-        if (!Array.isArray(contentChanges)) return undefined;
-        let text = this.documentTextByUri.get(uri);
-        try {
-            text = text ?? this.documentTextByUri.get(normalizeUri(uri));
-        } catch {}
-
-        for (const change of contentChanges) {
-            if (typeof change?.text !== 'string') continue;
-            if (!change.range && change.rangeLength === undefined) {
-                text = change.text;
-                continue;
-            }
-            if (text === undefined || !change.range) continue;
-            text = this.applyRangeChange(text, change.range, change.text);
-        }
-
-        return text;
-    }
-
-    private applyRangeChange(text: string, range: any, replacement: string): string {
-        const start = this.positionToOffset(text, range.start);
-        const end = this.positionToOffset(text, range.end);
-        return `${text.slice(0, start)}${replacement}${text.slice(end)}`;
-    }
-
-    private positionToOffset(text: string, position: any): number {
-        const targetLine = Math.max(0, Number(position?.line ?? 0));
-        const targetCharacter = Math.max(0, Number(position?.character ?? 0));
-        let offset = 0;
-        let line = 0;
-        while (line < targetLine && offset < text.length) {
-            const next = text.indexOf('\n', offset);
-            if (next === -1) return text.length;
-            offset = next + 1;
-            line += 1;
-        }
-        return Math.min(offset + targetCharacter, text.length);
+        return resolveIdentifierAtPosition(uri, position, {
+            workspaceRoot: this.getWorkspaceRoot(),
+            documentTextByUri: this.documentTextByUri,
+        });
     }
 
     private rememberDocumentText(uri: string, text: string): void {
-        this.documentTextByUri.set(uri, text);
+        rememberDocumentText(this.documentTextByUri, uri, text);
         try {
-            this.documentTextByUri.set(this.normalizeLspInputUri(uri), text);
+            rememberDocumentText(this.documentTextByUri, this.normalizeLspInputUri(uri), text);
         } catch {}
     }
 
     private forgetDocumentText(uri: string): void {
-        this.documentTextByUri.delete(uri);
+        forgetDocumentText(this.documentTextByUri, uri);
         try {
-            this.documentTextByUri.delete(this.normalizeLspInputUri(uri));
+            forgetDocumentText(this.documentTextByUri, this.normalizeLspInputUri(uri));
         } catch {}
     }
 
     private getWorkspaceRoot(): string {
-        const configured = this.config.workspaceRoot || (this.coreAnalyzer as any)?.config?.workspaceRoot;
-        return path.resolve(typeof configured === 'string' && configured.trim() ? configured : process.cwd());
+        return resolveLspWorkspaceRoot(this.config, this.coreAnalyzer);
     }
 
     private normalizeLspInputUri(uri: string): string {
-        return normalizeWorkspaceInputUri(uri, this.getWorkspaceRoot());
+        return normalizeLspDocumentUri(uri, this.getWorkspaceRoot());
     }
 
     private async containedLspUriOrNull(uri: string): Promise<string | null> {
-        let opened: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
-        const fsPath = this.lspInputPathOrNull(uri);
-        if (!fsPath) return null;
-        try {
-            opened = await openWorkspaceFileForRead(fsPath, {
-                workspaceRoot: this.getWorkspaceRoot(),
-                inputLabel: 'LSP document uri',
-            });
-            return normalizeUri(opened.realPath);
-        } catch {
-            const cachedText = this.documentTextByUri.get(uri) ?? this.documentTextByUri.get(normalizeUri(fsPath));
-            if (cachedText === undefined) return null;
-
-            const root = this.getWorkspaceRoot();
-            const absPath = path.resolve(fsPath);
-            const rel = path.relative(root, absPath);
-            if (this.isOutsideWorkspaceRelative(rel)) return null;
-
-            try {
-                await fs.lstat(absPath);
-                return null;
-            } catch (error: any) {
-                if (error?.code !== 'ENOENT') return null;
-                return normalizeUri(absPath);
-            }
-        } finally {
-            await opened?.handle.close().catch(() => undefined);
-        }
-    }
-
-    private lspInputPathOrNull(uri: string): string | null {
-        try {
-            return workspaceInputToPath(uri, this.getWorkspaceRoot());
-        } catch {
-            return null;
-        }
-    }
-
-    private isOutsideWorkspaceRelative(relativePath: string): boolean {
-        return !relativePath || relativePath === '..' || relativePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativePath);
-    }
-
-    private wordAtPosition(text: string, pos: { line: number; character: number }): string | null {
-        const lines = text.split(/\r?\n/);
-        if (pos.line < 0 || pos.line >= lines.length) return null;
-        const line = lines[pos.line] || '';
-        const idx = Math.min(Math.max(pos.character, 0), line.length);
-        const re = /[A-Za-z0-9_]+/g;
-        let m: RegExpExecArray | null = null;
-        while ((m = re.exec(line))) {
-            const start = m.index;
-            const end = start + m[0].length;
-            if (idx >= start && idx <= end) return m[0];
-        }
-        return null;
+        return resolveContainedLspUriOrNull(uri, {
+            workspaceRoot: this.getWorkspaceRoot(),
+            documentTextByUri: this.documentTextByUri,
+        });
     }
 
     /**
