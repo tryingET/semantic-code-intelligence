@@ -275,7 +275,8 @@ export class LSPServer {
 
         this.connection.onRequest(PreciseReferencesRequest, async (params) => {
             if (!this.initialized) throw new Error('Server not initialized');
-            const uri = params.uri;
+            const uri = await this.lspAdapter.resolveContainedUriOrNull(params.uri);
+            if (!uri) return { locations: [], count: 0 } as any;
             const position = params.position || { line: 0, character: 0 };
             const identifier = params.symbol || (await this.lspAdapter.resolveIdentifierAtPosition(uri, position));
             const t0 = Date.now();
@@ -307,7 +308,8 @@ export class LSPServer {
 
         this.connection.onRequest(PreciseDefinitionRequest, async (params) => {
             if (!this.initialized) throw new Error('Server not initialized');
-            const uri = params.uri;
+            const uri = await this.lspAdapter.resolveContainedUriOrNull(params.uri);
+            if (!uri) return { locations: [], count: 0 } as any;
             const position = params.position || { line: 0, character: 0 };
             const identifier = params.symbol || (await this.lspAdapter.resolveIdentifierAtPosition(uri, position));
             const t0 = Date.now();

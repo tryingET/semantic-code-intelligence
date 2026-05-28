@@ -131,13 +131,23 @@ export class ConceptBuilder {
             ...context,
             identifier,
             location: {
-                uri: node.id.split(':')[0], // Extract file path from node ID
+                uri: this.extractFilePathFromNodeId(node.id),
                 range: node.range,
             },
             astNodes: [node],
         };
 
         return this.buildFromContext(identifier, buildContext);
+    }
+
+    private extractFilePathFromNodeId(nodeId: string): string {
+        const last = nodeId.lastIndexOf(':');
+        if (last <= 0) return nodeId;
+        const previous = nodeId.lastIndexOf(':', last - 1);
+        if (previous <= 0) return nodeId;
+        const line = Number.parseInt(nodeId.slice(previous + 1, last), 10);
+        const column = Number.parseInt(nodeId.slice(last + 1), 10);
+        return Number.isFinite(line) && Number.isFinite(column) ? nodeId.slice(0, previous) : nodeId;
     }
 
     private isValidIdentifier(identifier: string): boolean {

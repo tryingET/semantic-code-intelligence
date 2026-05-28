@@ -6,6 +6,7 @@
 import { EventEmitter } from 'events';
 import * as fs from 'node:fs/promises';
 import * as path from 'path';
+import { fileURLToPath } from 'node:url';
 import { v4 as uuidv4 } from 'uuid';
 import {
     AsyncEnhancedGrep,
@@ -44,6 +45,9 @@ import {
     type WorkspaceEdit,
 } from './types.js';
 import type { SearchQuery } from '../types/core.js';
+import { wordAtIdentifierPosition } from './identifier-token.js';
+import { workspaceInputToPath } from './workspace-input.js';
+import { openWorkspaceFileForRead } from './workspace-path.js';
 
 /**
  * The unified code analyzer that orchestrates all 5 layers
@@ -1385,10 +1389,13 @@ export class CodeAnalyzer {
         }
         // Legacy/E2E path
         if (typeof arg1 === 'string') {
+            const position = arg2 || { line: 0, character: 0 };
+            const identifier = await this.extractIdentifierFromFileAtPosition(arg1, position);
             const req: RenameRequest = {
                 uri: arg1,
-                position: arg2 || { line: 0, character: 0 },
-                identifier: 'symbol',
+                position,
+                oldName: identifier,
+                identifier,
                 newName: String(arg3 || ''),
                 dryRun: true,
             } as any;
@@ -2239,8 +2246,10 @@ export class CodeAnalyzer {
         const rels = (result?.relationships || []) as any[];
         for (const r of rels) {
             if (r.type !== 'imports' || !r.location) continue;
-            const [filePath, lineStr] = String(r.location).split(':');
-            const lineIdx = Math.max(1, parseInt(lineStr || '1', 10)) - 1;
+            const parsed = this.parseFileLineLocation(String(r.location));
+            if (!parsed) continue;
+            const { filePath, line } = parsed;
+            const lineIdx = Math.max(1, line) - 1;
             try {
                 const text = await fs.readFile(filePath, 'utf8');
                 const lines = text.split(/\r?\n/);
@@ -2687,7 +2696,12 @@ export class CodeAnalyzer {
 
     private fileUriToPath(uri: string): string {
         // Convert file:// URI to file path
-        return uri.startsWith('file://') ? uri.substring(7) : uri;
+        if (!uri.startsWith('file://')) return uri;
+        try {
+            return fileURLToPath(uri);
+        } catch {
+            return uri.substring(7);
+        }
     }
 
     // removed duplicate inferDefinitionKind (keep enhanced version below)
@@ -2722,9 +2736,54 @@ export class CodeAnalyzer {
     }
 
     private extractFilePathFromNodeId(nodeId: string): string {
-        // NodeId format is typically: "filePath:line:column"
-        const parts = nodeId.split(':');
-        return parts[0] || '';
+        // NodeId format is typically: "filePath:line:column"; parse from the right so paths may contain ':'.
+        const parsed = this.parseFileLineColumnLocation(nodeId);
+        return parsed?.filePath || '';
+    }
+
+    private parseFileLineLocation(value: string): { filePath: string; line: number } | null {
+        const idx = value.lastIndexOf(':');
+        if (idx <= 0) return null;
+        const filePath = value.slice(0, idx);
+        const line = Number.parseInt(value.slice(idx + 1), 10);
+        if (!filePath || !Number.isFinite(line)) return null;
+        return { filePath, line };
+    }
+
+    private parseFileLineColumnLocation(value: string): { filePath: string; line: number; column: number } | null {
+        const last = value.lastIndexOf(':');
+        if (last <= 0) return null;
+        const previous = value.lastIndexOf(':', last - 1);
+        if (previous <= 0) return null;
+        const filePath = value.slice(0, previous);
+        const line = Number.parseInt(value.slice(previous + 1, last), 10);
+        const column = Number.parseInt(value.slice(last + 1), 10);
+        if (!filePath || !Number.isFinite(line) || !Number.isFinite(column)) return null;
+        return { filePath, line, column };
+    }
+
+    private async extractIdentifierFromFileAtPosition(
+        uri: string,
+        position: { line: number; character: number }
+    ): Promise<string> {
+        try {
+            const workspaceRoot = (this.config as any)?.workspaceRoot || process.cwd();
+            const requestedPath = workspaceInputToPath(uri, workspaceRoot);
+            const opened = await openWorkspaceFileForRead(requestedPath, {
+                workspaceRoot,
+                inputLabel: 'rename file',
+            });
+            let text = '';
+            try {
+                text = await opened.handle.readFile('utf8');
+            } finally {
+                await opened.handle.close().catch(() => undefined);
+            }
+            return wordAtIdentifierPosition(text, position) || '';
+        } catch (error) {
+            if ((error as any)?.name === 'CoreError' || (error as any)?.code === 'InvalidParams') throw error;
+        }
+        return '';
     }
 
     private async directTextSearch(

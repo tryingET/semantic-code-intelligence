@@ -1,3 +1,4 @@
+import { wordAtIdentifierPosition } from '../core/identifier-token.js';
 import { normalizeUri } from './utils.js';
 
 export function rememberDocumentText(documentTextByUri: Map<string, string>, uri: string, text: string): void {
@@ -55,16 +56,5 @@ function positionToOffset(text: string, position: any): number {
 }
 
 export function wordAtPosition(text: string, pos: { line: number; character: number }): string | null {
-    const lines = text.split(/\r?\n/);
-    if (pos.line < 0 || pos.line >= lines.length) return null;
-    const line = lines[pos.line] || '';
-    const idx = Math.min(Math.max(pos.character, 0), line.length);
-    const re = /[A-Za-z0-9_]+/g;
-    let m: RegExpExecArray | null = null;
-    while ((m = re.exec(line))) {
-        const start = m.index;
-        const end = start + m[0].length;
-        if (idx >= start && idx <= end) return m[0];
-    }
-    return null;
+    return wordAtIdentifierPosition(text, pos);
 }

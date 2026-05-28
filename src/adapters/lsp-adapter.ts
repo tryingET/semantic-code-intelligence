@@ -474,6 +474,10 @@ export class LSPAdapter {
         return this.config.maxResults ?? 50;
     }
 
+    async resolveContainedUriOrNull(uri: string): Promise<string | null> {
+        return this.containedLspUriOrNull(uri);
+    }
+
     async resolveIdentifierAtPosition(uri: string, position: any): Promise<string> {
         return this.extractIdentifierAtPosition(uri, position);
     }

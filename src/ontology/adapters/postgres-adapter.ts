@@ -1,5 +1,6 @@
 import type { Concept, Relation, Symbol, Thing, ThingConceptLink, ThingSymbolLink } from '../../types/core';
 import type { StoragePort } from '../storage-port';
+import { normalizeLocation } from '../location-utils';
 
 // Postgres adapter implementing the Layer 4 StoragePort.
 // Env: ONTOLOGY_PG_URL | DATABASE_URL | PG_URL | PGURL (postgres connection string)
@@ -281,6 +282,8 @@ export class PostgresStorageAdapter implements StoragePort {
 
     async upsertThing(thing: Thing): Promise<void> {
         this.ensureReady();
+        const location = normalizeLocation((thing as any).location);
+        if (!location) return;
         await this.client.query(
             `INSERT INTO things
         (id, kind, location_uri, location_range, signature, type_info_json, confidence, first_seen, last_seen, occurrences, context, updated_at)
@@ -300,8 +303,8 @@ export class PostgresStorageAdapter implements StoragePort {
             [
                 thing.id,
                 thing.kind,
-                (thing.location as any)?.uri,
-                JSON.stringify((thing.location as any)?.range),
+                location.uri,
+                JSON.stringify(location.range),
                 thing.signature ?? null,
                 JSON.stringify((thing as any).typeInfo ?? null),
                 thing.confidence ?? 0,
@@ -316,18 +319,24 @@ export class PostgresStorageAdapter implements StoragePort {
     async loadAllThings(): Promise<Thing[]> {
         this.ensureReady();
         const rows: any[] = await this.client.query('SELECT * FROM things').then((r: any) => r.rows as any[]);
-        return rows.map((r) => ({
-            id: r.id,
-            kind: r.kind,
-            location: { uri: r.location_uri, range: r.location_range } as any,
-            signature: r.signature ?? undefined,
-            typeInfo: r.type_info_json ?? undefined,
-            confidence: r.confidence ?? 0,
-            firstSeen: new Date((Number(r.first_seen) || 0) * 1000),
-            lastSeen: new Date((Number(r.last_seen) || 0) * 1000),
-            occurrences: r.occurrences ?? 1,
-            context: r.context ?? undefined,
-        }));
+        return rows
+            .map((r) => {
+                const location = normalizeLocation({ uri: r.location_uri, range: r.location_range });
+                if (!location) return null;
+                return {
+                    id: r.id,
+                    kind: r.kind,
+                    location,
+                    signature: r.signature ?? undefined,
+                    typeInfo: r.type_info_json ?? undefined,
+                    confidence: r.confidence ?? 0,
+                    firstSeen: new Date((Number(r.first_seen) || 0) * 1000),
+                    lastSeen: new Date((Number(r.last_seen) || 0) * 1000),
+                    occurrences: r.occurrences ?? 1,
+                    context: r.context ?? undefined,
+                } as Thing;
+            })
+            .filter((thing): thing is Thing => !!thing);
     }
 
     async upsertThingSymbol(link: ThingSymbolLink): Promise<void> {

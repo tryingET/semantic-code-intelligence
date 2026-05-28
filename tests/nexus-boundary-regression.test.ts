@@ -176,6 +176,19 @@ describe('nexus boundary regressions', () => {
     expect(() => uriToPath('file://workspace-evil/a')).toThrow();
   });
 
+  test('LSP shared containment rejects outside-workspace precise request URIs', async () => {
+    const workspace = tempWorkspace();
+    const adapter = new LSPAdapter({
+      prepareRename: async () => ({ data: null }),
+      rename: async () => ({ data: { changes: {} } }),
+      getCompletions: async () => ({ data: [] }),
+      trackFileChange: async () => undefined,
+      getDiagnostics: () => [],
+    }, { workspaceRoot: workspace });
+
+    expect(await adapter.resolveContainedUriOrNull(pathToFileURL(join(tmpdir(), 'outside.ts')).href)).toBeNull();
+  });
+
   test('LSP rename requests are preview-pure dry runs', async () => {
     const workspace = tempWorkspace();
     const file = join(workspace, 'rename.ts');

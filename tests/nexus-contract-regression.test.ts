@@ -21,6 +21,8 @@ import { WorkspaceQueryWorkflowService } from '../src/core/workflows/workspace-q
 import { FastSearchLayer } from '../src/layers/layer1-fast-search';
 import { TreeSitterLayer } from '../src/layers/tree-sitter';
 import { OntologyStorage } from '../src/ontology/storage';
+import { PostgresStorageAdapter } from '../src/ontology/adapters/postgres-adapter';
+import { TripleStoreStorageAdapter } from '../src/ontology/adapters/triple-adapter';
 import { PatternStorage } from '../src/patterns/pattern-storage';
 import { ThingKind } from '../src/types/core';
 
@@ -995,6 +997,100 @@ describe('nexus contract regressions', () => {
         expect(malformed.status).toBe(400);
         expect(JSON.parse(malformed.body)).toMatchObject({ success: false, error: 'Bad Request' });
         expect(JSON.parse(malformed.body).details?.message).toBe('Invalid JSON');
+    });
+
+    test('rename file-position overload resolves the actual identifier instead of a placeholder', async () => {
+        const workspaceRoot = tempWorkspace();
+        const target = join(workspaceRoot, 'sample.ts');
+        writeFileSync(target, 'export const oldName = 1;\nconsole.log(oldName);\n', 'utf8');
+        const analyzer = await createCodeAnalyzer({ ...createDefaultCoreConfig(), workspaceRoot });
+        await analyzer.initialize();
+        try {
+            const result = await analyzer.rename(pathToFileURL(target).href, { line: 0, character: 14 }, 'newName');
+            expect(Object.keys(result.changes)).toContain(pathToFileURL(target).href);
+        } finally {
+            await analyzer.dispose?.();
+        }
+    });
+
+    test('rename file-position overload handles dollar-prefixed JavaScript identifiers', async () => {
+        const workspaceRoot = tempWorkspace();
+        const target = join(workspaceRoot, 'sample.ts');
+        writeFileSync(target, 'export const $oldName = 1;\nconsole.log($oldName);\n', 'utf8');
+        const analyzer = await createCodeAnalyzer({ ...createDefaultCoreConfig(), workspaceRoot });
+        await analyzer.initialize();
+        try {
+            const result = await analyzer.rename(pathToFileURL(target).href, { line: 0, character: 14 }, '$newName');
+            expect(Object.keys(result.changes)).toContain(pathToFileURL(target).href);
+        } finally {
+            await analyzer.dispose?.();
+        }
+    });
+
+    test('rename file-position overload rejects outside-workspace files', async () => {
+        const workspaceRoot = tempWorkspace();
+        const outsideRoot = tempWorkspace('sci-outside-');
+        const outside = join(outsideRoot, 'outside.ts');
+        writeFileSync(outside, 'export const OutsideName = 1;\n', 'utf8');
+        const analyzer = await createCodeAnalyzer({ ...createDefaultCoreConfig(), workspaceRoot });
+        await analyzer.initialize();
+        try {
+            await expect(analyzer.rename(pathToFileURL(outside).href, { line: 0, character: 14 }, 'newName')).rejects.toThrow(
+                'must stay within the workspace'
+            );
+        } finally {
+            await analyzer.dispose?.();
+        }
+    });
+
+    test('symbol map parsing preserves file paths containing colons', async () => {
+        const workspaceRoot = tempWorkspace('sci:colon-');
+        writeFileSync(join(workspaceRoot, 'a.ts'), "import { Foo } from './b';\nexport const Foo = 1;\n", 'utf8');
+        writeFileSync(join(workspaceRoot, 'b.ts'), 'export const Other = 1;\n', 'utf8');
+        const analyzer = await createCodeAnalyzer({ ...createDefaultCoreConfig(), workspaceRoot });
+        await analyzer.initialize();
+        try {
+            const result = await analyzer.buildSymbolMap({ identifier: 'Foo', uri: 'file://workspace', maxFiles: 10 });
+            expect(result.imports.some((entry: any) => entry.uri.includes('sci:colon-'))).toBe(true);
+            expect(result.imports.some((entry: any) => entry.uri.endsWith('/a.ts'))).toBe(true);
+        } finally {
+            await analyzer.dispose?.();
+        }
+    });
+
+    test('ontology storage adapters share malformed Thing location rejection', async () => {
+        const triple = new TripleStoreStorageAdapter();
+        await triple.initialize();
+        await triple.upsertThing({ id: 'bad', kind: ThingKind.Type } as any);
+        expect(await triple.loadAllThings()).toHaveLength(0);
+
+        const queries: any[] = [];
+        const pg = new PostgresStorageAdapter() as any;
+        pg.connected = true;
+        pg.client = {
+            query: async (sql: string, params?: any[]) => {
+                queries.push({ sql, params });
+                return {
+                    rows: [
+                        { id: 'bad', kind: ThingKind.Type, location_uri: null, location_range: null },
+                        {
+                            id: 'good',
+                            kind: ThingKind.Type,
+                            location_uri: pathToFileURL(join(process.cwd(), 'good.ts')).href,
+                            location_range: { start: { line: 0, character: 0 }, end: { line: 0, character: 4 } },
+                            confidence: 0.7,
+                            first_seen: 1,
+                            last_seen: 1,
+                            occurrences: 1,
+                        },
+                    ],
+                };
+            },
+        };
+        await pg.upsertThing({ id: 'bad', kind: ThingKind.Type } as any);
+        expect(queries).toHaveLength(0);
+        const loaded = await pg.loadAllThings();
+        expect(loaded.map((thing: any) => thing.id)).toEqual(['good']);
     });
 
     test('HTTP rename preserves internal failures as server errors', async () => {

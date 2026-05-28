@@ -45,8 +45,9 @@ export function normalizeUri(uri: string): string {
 
 export function sanitizeRange(range: any): LocationLike['range'] | null {
     try {
-        const s = range?.start ?? {};
-        const e = range?.end ?? {};
+        const rawRange = typeof range === 'string' ? JSON.parse(range) : range;
+        const s = rawRange?.start ?? {};
+        const e = rawRange?.end ?? {};
         const start = {
             line: toNumber(s.line),
             character: toNumber(s.character),
@@ -74,6 +75,13 @@ export function isValidLocation(loc: any): loc is LocationLike {
     if (!loc.uri || typeof loc.uri !== 'string' || loc.uri.length === 0) return false;
     const r = sanitizeRange(loc.range);
     return !!r;
+}
+
+export function normalizeLocation(loc: any): LocationLike | null {
+    const uri = normalizeUri(loc?.uri);
+    const range = sanitizeRange(loc?.range);
+    const normalized = uri && range ? { uri, range } : null;
+    return normalized && isValidLocation(normalized) ? normalized : null;
 }
 
 function toNumber(v: any): number {

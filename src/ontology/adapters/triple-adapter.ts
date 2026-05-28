@@ -1,5 +1,6 @@
 import type { Concept, Relation, Symbol, Thing, ThingConceptLink, ThingSymbolLink } from '../../types/core';
 import type { StoragePort } from '../storage-port';
+import { normalizeLocation } from '../location-utils';
 
 // Triple Store adapter (in-memory) for CRUD parity and tests.
 // No external network required; TRIPLESTORE_URL is intentionally ignored.
@@ -73,12 +74,19 @@ export class TripleStoreStorageAdapter implements StoragePort {
 
     async upsertThing(thing: Thing): Promise<void> {
         this.ensure();
-        this.things.set(thing.id, { ...thing });
+        const location = normalizeLocation((thing as any).location);
+        if (!location) return;
+        this.things.set(thing.id, { ...thing, location });
     }
 
     async loadAllThings(): Promise<Thing[]> {
         this.ensure();
-        return [...this.things.values()].map((t) => ({ ...t }));
+        return [...this.things.values()]
+            .map((t) => {
+                const location = normalizeLocation((t as any).location);
+                return location ? ({ ...t, location } as Thing) : null;
+            })
+            .filter((t): t is Thing => !!t);
     }
 
     async upsertThingSymbol(link: ThingSymbolLink): Promise<void> {

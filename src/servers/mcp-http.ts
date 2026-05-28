@@ -241,7 +241,7 @@ async function disposeSession(record: SessionRecord | undefined, sessionId?: str
     return record.disposePromise;
 }
 
-async function createMcpServer(desiredSid?: string): Promise<SessionRecord> {
+async function createMcpServer(desiredSid?: string, enableJsonResponse = false): Promise<SessionRecord> {
     // Initialize core analyzer
     const coreConfig = createDefaultCoreConfig();
     coreConfig.monitoring.enabled = false; // disable periodic metrics for MCP HTTP dogfooding
@@ -290,6 +290,7 @@ async function createMcpServer(desiredSid?: string): Promise<SessionRecord> {
     // Create transport (session id assigned on first initialize)
     const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => desiredSid || randomUUID(),
+        enableJsonResponse,
         onsessioninitialized: (_sessionId) => {
             // Attach after connect
         },
@@ -326,6 +327,7 @@ app.post('/mcp', async (req, res) => {
             return;
         }
         const sessionId = (req.headers['mcp-session-id'] as string | undefined) || undefined;
+        const originalAccept = String(req.headers.accept || '');
 
         let record: SessionRecord | undefined;
         let provisionalSessionId: string | undefined;
@@ -335,11 +337,7 @@ app.post('/mcp', async (req, res) => {
             try {
                 const preSid = randomUUID();
                 provisionalSessionId = preSid;
-                record = await createMcpServer(preSid);
-                // Expose session id on first initialize response for client convenience
-                try {
-                    res.setHeader('Mcp-Session-Id', preSid);
-                } catch {}
+                record = await createMcpServer(preSid, !/text\/event-stream/i.test(originalAccept));
             } catch (e) {
                 // Log detailed error to help diagnose 500s on initialize
                 // eslint-disable-next-line no-console
@@ -379,7 +377,6 @@ app.post('/mcp', async (req, res) => {
             return;
         }
 
-        const originalAccept = String(req.headers.accept || '');
         ensureMcpAcceptHeaders(req);
 
         // SDK request schema validation can surface "missing params" as InternalError (-32603).
@@ -405,6 +402,13 @@ app.post('/mcp', async (req, res) => {
 
         try {
             await activeRecord.transport.handleRequest(req as TransportRequest, res as TransportResponse, req.body);
+            if (provisionalSessionId && res.statusCode >= 400) {
+                try {
+                    if (!res.headersSent) res.removeHeader('Mcp-Session-Id');
+                } catch {}
+                await disposeSession(activeRecord, provisionalSessionId);
+                return;
+            }
         } catch (e) {
             // eslint-disable-next-line no-console
             console.error('[MCP HTTP] handleRequest error:', e);
@@ -431,6 +435,9 @@ app.post('/mcp', async (req, res) => {
         const sid = (activeRecord.transport as { sessionId?: string }).sessionId;
         if (sid && !sessions[sid]) {
             sessions[sid] = activeRecord;
+            try {
+                if (!res.headersSent) res.setHeader('Mcp-Session-Id', sid);
+            } catch {}
         }
     } catch (error) {
         // eslint-disable-next-line no-console
