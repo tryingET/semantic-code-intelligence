@@ -638,7 +638,6 @@ class CLI {
             .option('-t, --timeout <sec>', 'Timeout seconds for checks', '240')
             .option('-j, --json', 'Print raw JSON response')
             .action(async (oldName, newName, options) => {
-                await this.ensureInitialized(options);
                 const args: Record<string, any> = {
                     oldName: String(oldName),
                     newName: String(newName),
@@ -655,6 +654,8 @@ class CLI {
                         max: 3600,
                     }),
                 };
+                await this.assertToolWorkflowAllowedOrExit('rename_safely', args, !!options.json);
+                await this.ensureInitialized(options);
                 await this.printToolWorkflowAndExit('rename_safely', args, !!options.json);
             });
 
@@ -759,6 +760,7 @@ class CLI {
             .description('List learning pipelines (id, name, trigger, schedule, enabled)')
             .option('-j, --json', 'Print raw JSON response')
             .action(async (options) => {
+                await this.assertToolWorkflowAllowedOrExit('list_pipelines', {}, !!options.json);
                 await this.ensureInitialized(options);
                 await this.printToolWorkflowAndExit('list_pipelines', {}, !!options.json);
             });
@@ -769,8 +771,10 @@ class CLI {
             .description('Run a learning pipeline and return a run id')
             .option('-j, --json', 'Print raw JSON response')
             .action(async (id, options) => {
+                const args = { id: String(id) };
+                await this.assertToolWorkflowAllowedOrExit('run_pipeline', args, !!options.json);
                 await this.ensureInitialized(options);
-                await this.printToolWorkflowAndExit('run_pipeline', { id: String(id) }, !!options.json);
+                await this.printToolWorkflowAndExit('run_pipeline', args, !!options.json);
             });
 
         // pipelines runs <id>
@@ -780,15 +784,13 @@ class CLI {
             .option('-l, --limit <n>', 'Number of recent runs to list', '10')
             .option('-j, --json', 'Print raw JSON response')
             .action(async (id, options) => {
+                const args = {
+                    id: String(id),
+                    limit: parseIntegerOption(options.limit, 'limit', { defaultValue: 10, min: 1, max: 1000 }),
+                };
+                await this.assertToolWorkflowAllowedOrExit('list_pipeline_runs', args, !!options.json);
                 await this.ensureInitialized(options);
-                await this.printToolWorkflowAndExit(
-                    'list_pipeline_runs',
-                    {
-                        id: String(id),
-                        limit: parseIntegerOption(options.limit, 'limit', { defaultValue: 10, min: 1, max: 1000 }),
-                    },
-                    !!options.json
-                );
+                await this.printToolWorkflowAndExit('list_pipeline_runs', args, !!options.json);
             });
     }
 
@@ -799,8 +801,26 @@ class CLI {
         return this.toolExecutor.execute(this.toolRouter, name, args);
     }
 
+    private async assertToolWorkflowAllowedOrExit(
+        name: string,
+        args: Record<string, any>,
+        rawJson: boolean
+    ): Promise<void> {
+        try {
+            assertAlphaMvpToolAllowed(name, args, { surface: 'CLI workflow surface' });
+        } catch (error) {
+            this.markCommandFailed();
+            const printed = this.formatToolError(error, rawJson);
+            if (rawJson) console.log(printed);
+            else console.error(printed);
+            await this.shutdown();
+            process.exit(1);
+        }
+    }
+
     private async printToolWorkflowAndExit(name: string, args: Record<string, any>, rawJson: boolean): Promise<never> {
         try {
+            assertAlphaMvpToolAllowed(name, args, { surface: 'CLI workflow surface' });
             const result = await this.executeToolWorkflow(name, args);
             const printed = this.printToolResult(result, rawJson);
             if (this.isToolResultError(result)) {

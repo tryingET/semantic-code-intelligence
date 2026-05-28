@@ -72,7 +72,7 @@ app.use(
     cors({
         origin: CORS_ORIGIN,
         exposedHeaders: ['Mcp-Session-Id'],
-        allowedHeaders: ['Content-Type', 'mcp-session-id'],
+        allowedHeaders: ['Content-Type', 'mcp-session-id', 'mcp-protocol-version'],
     })
 );
 

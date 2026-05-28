@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { WorkspaceQueryWorkflowService } from '../src/core/workflows/workspace-query-workflow.js';
 
 const roots: string[] = [];
@@ -180,6 +181,39 @@ describe('WorkspaceQueryWorkflowService', () => {
         );
         expect(out.count).toBe(1);
         expect(out.symbols[0].uri).toContain('hash%23dir/space%20file.ts');
+    });
+
+    test('symbol_search prioritizes in-workspace fileHint paths that begin with dot-dot text', async () => {
+        const workspaceRoot = tempWorkspace();
+        writeFileSync(join(workspaceRoot, '..foo.ts'), 'export const DotDotNeedle = 1;\n', 'utf8');
+        const service = new WorkspaceQueryWorkflowService({
+            workspaceRoot: () => workspaceRoot,
+            coreAnalyzer: {
+                async buildSymbolMap() {
+                    return {
+                        declarations: [
+                            {
+                                uri: pathToFileURL(join(workspaceRoot, 'other.ts')).href,
+                                range: {},
+                                kind: 'const',
+                                name: 'DotDotNeedle',
+                            },
+                            {
+                                uri: pathToFileURL(join(workspaceRoot, '..foo.ts')).href,
+                                range: {},
+                                kind: 'const',
+                                name: 'DotDotNeedle',
+                            },
+                        ],
+                    };
+                },
+            },
+            pathInputFromToolFile: (value) => value,
+        });
+
+        const out = payload(await service.symbolSearch({ query: 'DotDotNeedle', fileHint: '..foo.ts', maxResults: 1 }));
+        expect(out.count).toBe(1);
+        expect(out.symbols[0].uri).toBe(pathToFileURL(join(workspaceRoot, '..foo.ts')).href);
     });
 
     test('delegates text search to the configured analyzer with bounded path resolution', async () => {

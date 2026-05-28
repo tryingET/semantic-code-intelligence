@@ -1,10 +1,11 @@
 import { constants } from 'node:fs';
-import * as fs from 'node:fs/promises';
 import type { FileHandle } from 'node:fs/promises';
+import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { deserializeSCIP, SymbolRole, type Index, type Occurrence } from '@c4312/scip';
+import { deserializeSCIP, type Index, type Occurrence, SymbolRole } from '@c4312/scip';
 import { CoreError } from './errors.js';
+import { isOutsideWorkspaceRelative } from './workspace-path.js';
 
 export type ScipRange = {
     start: { line: number; character: number };
@@ -66,7 +67,8 @@ export class ScipIndexReader {
 
     summary(): ScipIndexSummary {
         const languages = Array.from(new Set(this.index.documents.map((doc) => doc.language).filter(Boolean))).sort();
-        const symbolCount = this.index.documents.reduce((sum, doc) => sum + doc.symbols.length, 0) + this.index.externalSymbols.length;
+        const symbolCount =
+            this.index.documents.reduce((sum, doc) => sum + doc.symbols.length, 0) + this.index.externalSymbols.length;
         return {
             indexPath: this.indexPath,
             generatedAt: null,
@@ -88,7 +90,9 @@ export class ScipIndexReader {
     }
 
     definitions(symbol?: string): ScipOccurrenceRecord[] {
-        return this.occurrences.filter((occurrence) => occurrence.roles.definition && (!symbol || occurrence.symbol === symbol));
+        return this.occurrences.filter(
+            (occurrence) => occurrence.roles.definition && (!symbol || occurrence.symbol === symbol)
+        );
     }
 
     references(symbol: string): ScipOccurrenceRecord[] {
@@ -130,7 +134,11 @@ export async function loadScipIndex(indexPath: string, options: ScipLoadOptions 
             throw new CoreError('InvalidParams', 'scipIndexPath must point to a file', { scipIndexPath: indexPath });
         }
         if (stat.size > resolved.maxBytes) {
-            throw new CoreError('InvalidParams', 'SCIP index exceeds maximum allowed size', { scipIndexPath: indexPath, bytes: stat.size, maxBytes: resolved.maxBytes });
+            throw new CoreError('InvalidParams', 'SCIP index exceeds maximum allowed size', {
+                scipIndexPath: indexPath,
+                bytes: stat.size,
+                maxBytes: resolved.maxBytes,
+            });
         }
         const bytes = await handle.readFile();
         const index = deserializeScipBytes(bytes, indexPath);
@@ -140,7 +148,10 @@ export async function loadScipIndex(indexPath: string, options: ScipLoadOptions 
     }
 }
 
-export async function resolveScipArtifact(indexPath: string, options: ScipLoadOptions = {}): Promise<ResolvedScipArtifact> {
+export async function resolveScipArtifact(
+    indexPath: string,
+    options: ScipLoadOptions = {}
+): Promise<ResolvedScipArtifact> {
     const workspaceRoot = options.workspaceRoot ? path.resolve(options.workspaceRoot) : null;
     const candidate = path.resolve(workspaceRoot || process.cwd(), indexPath);
     const maxBytes = Math.max(1, options.maxBytes ?? DEFAULT_MAX_SCIP_BYTES);
@@ -148,47 +159,73 @@ export async function resolveScipArtifact(indexPath: string, options: ScipLoadOp
 
     if (workspaceRoot) {
         const lexicalRel = path.relative(workspaceRoot, candidate);
-        if (!lexicalRel || lexicalRel.startsWith('..') || path.isAbsolute(lexicalRel)) {
-            throw new CoreError('InvalidParams', 'scipIndexPath must stay within the workspace', { scipIndexPath: indexPath });
+        if (isOutsideWorkspaceRelative(lexicalRel)) {
+            throw new CoreError('InvalidParams', 'scipIndexPath must stay within the workspace', {
+                scipIndexPath: indexPath,
+            });
         }
     }
 
     const realCandidate = await fs.realpath(candidate).catch((error) => {
-        throw new CoreError('InvalidParams', `Failed to stat SCIP index: ${error instanceof Error ? error.message : String(error)}`, { scipIndexPath: indexPath });
+        throw new CoreError(
+            'InvalidParams',
+            `Failed to stat SCIP index: ${error instanceof Error ? error.message : String(error)}`,
+            { scipIndexPath: indexPath }
+        );
     });
 
     if (workspaceRoot) {
         realWorkspaceRoot = await fs.realpath(workspaceRoot).catch((error) => {
-            throw new CoreError('InvalidParams', `Failed to stat workspace root: ${error instanceof Error ? error.message : String(error)}`, { scipIndexPath: indexPath });
+            throw new CoreError(
+                'InvalidParams',
+                `Failed to stat workspace root: ${error instanceof Error ? error.message : String(error)}`,
+                { scipIndexPath: indexPath }
+            );
         });
         const realRel = path.relative(realWorkspaceRoot, realCandidate);
-        if (!realRel || realRel.startsWith('..') || path.isAbsolute(realRel)) {
-            throw new CoreError('InvalidParams', 'scipIndexPath must stay within the workspace', { scipIndexPath: indexPath });
+        if (isOutsideWorkspaceRelative(realRel)) {
+            throw new CoreError('InvalidParams', 'scipIndexPath must stay within the workspace', {
+                scipIndexPath: indexPath,
+            });
         }
     }
 
     const stat = await fs.stat(realCandidate).catch((error) => {
-        throw new CoreError('InvalidParams', `Failed to stat SCIP index: ${error instanceof Error ? error.message : String(error)}`, { scipIndexPath: indexPath });
+        throw new CoreError(
+            'InvalidParams',
+            `Failed to stat SCIP index: ${error instanceof Error ? error.message : String(error)}`,
+            { scipIndexPath: indexPath }
+        );
     });
     if (!stat.isFile()) {
         throw new CoreError('InvalidParams', 'scipIndexPath must point to a file', { scipIndexPath: indexPath });
     }
 
     if (stat.size > maxBytes) {
-        throw new CoreError('InvalidParams', 'SCIP index exceeds maximum allowed size', { scipIndexPath: indexPath, bytes: stat.size, maxBytes });
+        throw new CoreError('InvalidParams', 'SCIP index exceeds maximum allowed size', {
+            scipIndexPath: indexPath,
+            bytes: stat.size,
+            maxBytes,
+        });
     }
 
     return { path: realCandidate, bytes: stat.size, maxBytes, realWorkspaceRoot };
 }
 
 /** @internal exported for focused trust-boundary regression coverage. */
-export async function assertOpenedScipArtifactWithinWorkspace(handle: FileHandle, realWorkspaceRoot: string | null, indexPath: string): Promise<void> {
+export async function assertOpenedScipArtifactWithinWorkspace(
+    handle: FileHandle,
+    realWorkspaceRoot: string | null,
+    indexPath: string
+): Promise<void> {
     if (!realWorkspaceRoot) return;
 
     const openedPath = await realpathOpenFileDescriptor(handle, indexPath);
     const openedRel = path.relative(realWorkspaceRoot, openedPath);
-    if (!openedRel || openedRel.startsWith('..') || path.isAbsolute(openedRel)) {
-        throw new CoreError('InvalidParams', 'scipIndexPath must stay within the workspace', { scipIndexPath: indexPath });
+    if (isOutsideWorkspaceRelative(openedRel)) {
+        throw new CoreError('InvalidParams', 'scipIndexPath must stay within the workspace', {
+            scipIndexPath: indexPath,
+        });
     }
 }
 
@@ -202,7 +239,9 @@ async function realpathOpenFileDescriptor(handle: FileHandle, indexPath: string)
             errors.push(error instanceof Error ? error.message : String(error));
         }
     }
-    throw new CoreError('InvalidParams', `Failed to verify opened SCIP index containment: ${errors.join('; ')}`, { scipIndexPath: indexPath });
+    throw new CoreError('InvalidParams', `Failed to verify opened SCIP index containment: ${errors.join('; ')}`, {
+        scipIndexPath: indexPath,
+    });
 }
 
 function isSymlinkOpenError(error: unknown): boolean {
@@ -213,7 +252,11 @@ function deserializeScipBytes(bytes: Uint8Array, indexPath: string): Index {
     try {
         return deserializeSCIP(bytes);
     } catch (error) {
-        throw new CoreError('InvalidParams', `Failed to parse SCIP index: ${error instanceof Error ? error.message : String(error)}`, { scipIndexPath: indexPath });
+        throw new CoreError(
+            'InvalidParams',
+            `Failed to parse SCIP index: ${error instanceof Error ? error.message : String(error)}`,
+            { scipIndexPath: indexPath }
+        );
     }
 }
 
@@ -231,7 +274,7 @@ function normalizeInputFilePath(file: string, projectRoot: string | null): strin
 
     for (const root of roots) {
         const rel = path.relative(root, file);
-        if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) return normalizeRelativePath(rel);
+        if (!isOutsideWorkspaceRelative(rel)) return normalizeRelativePath(rel);
     }
     return normalizeRelativePath(file);
 }
@@ -261,7 +304,8 @@ function normalizeRange(occurrence: Occurrence): ScipRange {
 }
 
 function rolesFor(symbolRoles: number) {
-    const definition = hasRole(symbolRoles, SymbolRole.Definition) || hasRole(symbolRoles, SymbolRole.ForwardDefinition);
+    const definition =
+        hasRole(symbolRoles, SymbolRole.Definition) || hasRole(symbolRoles, SymbolRole.ForwardDefinition);
     return {
         definition,
         import: hasRole(symbolRoles, SymbolRole.Import),

@@ -5,7 +5,7 @@ import { AsyncEnhancedGrep } from '../../layers/enhanced-search-tools-async.js';
 import { CoreError } from '../errors.js';
 import { parseBoundedInteger } from '../input-validation.js';
 import { overlayStore } from '../overlay-store.js';
-import { openWorkspaceFileForRead, resolveWorkspacePath } from '../workspace-path.js';
+import { isOutsideWorkspaceRelative, openWorkspaceFileForRead, resolveWorkspacePath } from '../workspace-path.js';
 import { escapeRegex, textSearchPattern } from './request-semantics.js';
 import type { SnapshotWorkflowResult } from './snapshot-patch-workflow.js';
 
@@ -34,13 +34,13 @@ export class WorkspaceQueryWorkflowService {
         const absolutePath = path.resolve(decodedPath);
         const workspaceRelative = path.relative(workspaceRoot, absolutePath);
         if (!workspaceRelative) return '.';
-        if (!workspaceRelative.startsWith('..') && !path.isAbsolute(workspaceRelative)) {
+        if (!isOutsideWorkspaceRelative(workspaceRelative, true)) {
             return workspaceRelative;
         }
 
         const snapshotRelative = path.relative(path.resolve(snapshotRoot), absolutePath);
         if (!snapshotRelative) return '.';
-        if (!snapshotRelative.startsWith('..') && !path.isAbsolute(snapshotRelative)) {
+        if (!isOutsideWorkspaceRelative(snapshotRelative, true)) {
             return snapshotRelative;
         }
 
@@ -562,7 +562,7 @@ export class WorkspaceQueryWorkflowService {
             try {
                 const absolute = uri.startsWith('file://') ? fileURLToPath(uri) : uri;
                 const rel = path.relative(this.workspaceRoot, absolute);
-                return rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? rel.split(path.sep).join('/') : '';
+                return !isOutsideWorkspaceRelative(rel) ? rel.split(path.sep).join('/') : '';
             } catch {
                 return '';
             }

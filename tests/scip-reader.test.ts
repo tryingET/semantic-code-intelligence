@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { open, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { create } from '@bufbuild/protobuf';
 import {
     DocumentSchema,
@@ -12,9 +13,9 @@ import {
     PositionEncoding,
     ProtocolVersion,
     SymbolRole,
+    serializeSCIP,
     TextEncoding,
     ToolInfoSchema,
-    serializeSCIP,
 } from '@c4312/scip';
 import { assertOpenedScipArtifactWithinWorkspace, loadScipIndex } from '../src/core/scip-reader.js';
 
@@ -124,10 +125,47 @@ describe('SCIP reader', () => {
         expect(occurrences[0].file).toBe('pkg/foo.go');
     });
 
+    test('normalizes absolute SCIP file seeds whose basename begins with dot-dot text', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'sci-scip-dotdot-'));
+        const indexPath = join(dir, 'index.scip');
+        const index = create(IndexSchema, {
+            metadata: create(MetadataSchema, {
+                version: ProtocolVersion.UnspecifiedProtocolVersion,
+                toolInfo: create(ToolInfoSchema, { name: 'sci-test', version: '0.0.0' }),
+                projectRoot: pathToFileURL(dir).href,
+                textDocumentEncoding: TextEncoding.UTF8,
+            }),
+            documents: [
+                create(DocumentSchema, {
+                    relativePath: '..foo.go',
+                    language: 'go',
+                    positionEncoding: PositionEncoding.UTF8CodeUnitOffsetFromLineStart,
+                    occurrences: [
+                        create(OccurrenceSchema, {
+                            range: [1, 1, 4],
+                            symbol: fooSymbol,
+                            symbolRoles: SymbolRole.Definition,
+                        }),
+                    ],
+                }),
+            ],
+        });
+        writeFileSync(indexPath, serializeSCIP(index));
+
+        const reader = await loadScipIndex(indexPath, { workspaceRoot: dir });
+        const occurrences = reader.occurrencesForFile(join(dir, '..foo.go'));
+        expect(occurrences).toHaveLength(1);
+        expect(occurrences[0].file).toBe('..foo.go');
+    });
+
     test('can enforce workspace containment and max artifact size', async () => {
         const indexPath = writeSampleScipIndex();
-        await expect(loadScipIndex(indexPath, { workspaceRoot: process.cwd() })).rejects.toThrow('scipIndexPath must stay within the workspace');
-        await expect(loadScipIndex(indexPath, { maxBytes: 1 })).rejects.toThrow('SCIP index exceeds maximum allowed size');
+        await expect(loadScipIndex(indexPath, { workspaceRoot: process.cwd() })).rejects.toThrow(
+            'scipIndexPath must stay within the workspace'
+        );
+        await expect(loadScipIndex(indexPath, { maxBytes: 1 })).rejects.toThrow(
+            'SCIP index exceeds maximum allowed size'
+        );
     });
 
     test('rejects workspace-contained symlinks that resolve outside the workspace', async () => {
@@ -138,7 +176,9 @@ describe('SCIP reader', () => {
         const symlinkPath = join(nestedDir, 'index.scip');
         symlinkSync(outsideIndexPath, symlinkPath);
 
-        await expect(loadScipIndex(symlinkPath, { workspaceRoot: workspace })).rejects.toThrow('scipIndexPath must stay within the workspace');
+        await expect(loadScipIndex(symlinkPath, { workspaceRoot: workspace })).rejects.toThrow(
+            'scipIndexPath must stay within the workspace'
+        );
     });
 
     test('reports malformed SCIP bytes as invalid caller input', async () => {
@@ -146,7 +186,9 @@ describe('SCIP reader', () => {
         const malformedPath = join(workspace, 'bad.scip');
         writeFileSync(malformedPath, 'not a scip index');
 
-        await expect(loadScipIndex(malformedPath, { workspaceRoot: workspace })).rejects.toThrow('Failed to parse SCIP index');
+        await expect(loadScipIndex(malformedPath, { workspaceRoot: workspace })).rejects.toThrow(
+            'Failed to parse SCIP index'
+        );
     });
 
     test('verifies opened artifact file descriptors stay within the workspace', async () => {
@@ -160,14 +202,18 @@ describe('SCIP reader', () => {
 
         const insideHandle = await open(insidePath, 'r');
         try {
-            await expect(assertOpenedScipArtifactWithinWorkspace(insideHandle, realWorkspaceRoot, insidePath)).resolves.toBeUndefined();
+            await expect(
+                assertOpenedScipArtifactWithinWorkspace(insideHandle, realWorkspaceRoot, insidePath)
+            ).resolves.toBeUndefined();
         } finally {
             await insideHandle.close();
         }
 
         const outsideHandle = await open(outsidePath, 'r');
         try {
-            await expect(assertOpenedScipArtifactWithinWorkspace(outsideHandle, realWorkspaceRoot, outsidePath)).rejects.toThrow('scipIndexPath must stay within the workspace');
+            await expect(
+                assertOpenedScipArtifactWithinWorkspace(outsideHandle, realWorkspaceRoot, outsidePath)
+            ).rejects.toThrow('scipIndexPath must stay within the workspace');
         } finally {
             await outsideHandle.close();
         }

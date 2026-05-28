@@ -2,16 +2,16 @@ import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { CoreError } from '../errors.js';
 import { workspaceInputToPath } from '../workspace-input.js';
-import { resolveWorkspacePath } from '../workspace-path.js';
+import { isOutsideWorkspaceRelative, resolveWorkspacePath } from '../workspace-path.js';
 import { CodeAnalysisWorkflowService } from './code-analysis-workflow.js';
 import { GraphExpandWorkflowService } from './graph-expand-workflow.js';
 import { LearningWorkflowService } from './learning-workflow.js';
 import { NavigationWorkflowService } from './navigation-workflow.js';
 import { RenameWorkflowService } from './rename-workflow.js';
 import {
+    recommendChecksPayload,
     SnapshotPatchWorkflowService,
     type SnapshotWorkflowResult,
-    recommendChecksPayload,
 } from './snapshot-patch-workflow.js';
 import { StructuralWorkflowService } from './structural-workflow.js';
 import { SymbolWorkflowService } from './symbol-workflow.js';
@@ -183,11 +183,12 @@ export class ToolWorkflowRouter {
 
     private async diagnostics(): Promise<SnapshotWorkflowResult> {
         const analyzer = this.coreAnalyzer as any;
-        const diagnostics = typeof analyzer?.getDiagnostics === 'function'
-            ? await analyzer.getDiagnostics()
-            : typeof analyzer?.getStats === 'function'
-              ? await analyzer.getStats()
-              : { available: false };
+        const diagnostics =
+            typeof analyzer?.getDiagnostics === 'function'
+                ? await analyzer.getDiagnostics()
+                : typeof analyzer?.getStats === 'function'
+                  ? await analyzer.getStats()
+                  : { available: false };
         return {
             payload: {
                 schemaVersion: 1,
@@ -201,27 +202,31 @@ export class ToolWorkflowRouter {
 
     private async knowledgeInsights(): Promise<SnapshotWorkflowResult> {
         const analyzer = this.coreAnalyzer as any;
-        const insights = typeof analyzer?.getKnowledgeInsights === 'function'
-            ? await analyzer.getKnowledgeInsights()
-            : typeof analyzer?.learningOrchestrator?.getStats === 'function'
-              ? await analyzer.learningOrchestrator.getStats()
-              : { available: false };
+        const insights =
+            typeof analyzer?.getKnowledgeInsights === 'function'
+                ? await analyzer.getKnowledgeInsights()
+                : typeof analyzer?.learningOrchestrator?.getStats === 'function'
+                  ? await analyzer.learningOrchestrator.getStats()
+                  : { available: false };
         return { payload: { schemaVersion: 1, tool: 'knowledge_insights', insights }, isError: false };
     }
 
     private async cacheControls(args: Record<string, any>): Promise<SnapshotWorkflowResult> {
         const action = String(args?.action || '').trim();
-        if (!['warm', 'clear'].includes(action)) throw new CoreError('InvalidParams', 'Missing or invalid required parameter: action', { action });
+        if (!['warm', 'clear'].includes(action))
+            throw new CoreError('InvalidParams', 'Missing or invalid required parameter: action', { action });
         const analyzer = this.coreAnalyzer as any;
         if (action === 'clear') {
             const handlers = [
                 { fn: analyzer?.clearCache, thisArg: analyzer },
                 { fn: analyzer?.cache?.clear, thisArg: analyzer?.cache },
             ].filter((handler) => typeof handler.fn === 'function');
-            if (!handlers.length) throw new CoreError('InvalidParams', 'cache clear is not supported by the current analyzer');
+            if (!handlers.length)
+                throw new CoreError('InvalidParams', 'cache clear is not supported by the current analyzer');
             for (const handler of handlers) await handler.fn.call(handler.thisArg);
         } else {
-            if (typeof analyzer?.warmCache !== 'function') throw new CoreError('InvalidParams', 'cache warm is not supported by the current analyzer');
+            if (typeof analyzer?.warmCache !== 'function')
+                throw new CoreError('InvalidParams', 'cache warm is not supported by the current analyzer');
             await analyzer.warmCache();
         }
         return { payload: { schemaVersion: 1, tool: 'cache_controls', action, ok: true }, isError: false };
@@ -260,7 +265,7 @@ export class ToolWorkflowRouter {
         const requestedPath = this.pathInputFromToolFile(value, workspaceRoot);
         const candidate = path.resolve(workspaceRoot, requestedPath);
         const relativePath = path.relative(workspaceRoot, candidate);
-        if (!relativePath || relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+        if (isOutsideWorkspaceRelative(relativePath)) {
             throw new CoreError('InvalidParams', `${inputLabel} must stay within the workspace`, { path: value });
         }
         return {

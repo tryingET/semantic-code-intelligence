@@ -66,6 +66,54 @@ bindTest('MCP HTTP initialize returns 200 and sets session id', async () => {
     throw lastError ?? new Error('Failed to start MCP HTTP server after retries');
 });
 
+bindTest('MCP HTTP CORS preflight allows MCP protocol version header', async () => {
+    const host = '127.0.0.1';
+    let lastError: unknown = null;
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+        const port = pickRandomPort(7091, 7999);
+        const env = {
+            ...process.env,
+            MCP_HTTP_HOST: host,
+            MCP_HTTP_PORT: String(port),
+            HTTP_API_PORT: String(port + 9),
+        };
+        const server = spawn(
+            process.env.BUN_PATH || `${process.env.HOME}/.bun/bin/bun`,
+            ['run', 'src/servers/mcp-http.ts'],
+            { env }
+        );
+
+        try {
+            await wait(500);
+            const resp = await fetch(`http://${host}:${port}/mcp`, {
+                method: 'OPTIONS',
+                headers: {
+                    origin: 'http://localhost:3000',
+                    'access-control-request-method': 'POST',
+                    'access-control-request-headers': 'content-type,mcp-session-id,mcp-protocol-version',
+                },
+            });
+
+            if (resp.status < 500) {
+                expect(resp.status).toBe(204);
+                const allowed = String(resp.headers.get('access-control-allow-headers') || '').toLowerCase();
+                expect(allowed).toContain('content-type');
+                expect(allowed).toContain('mcp-session-id');
+                expect(allowed).toContain('mcp-protocol-version');
+                server.kill('SIGTERM');
+                return;
+            }
+        } catch (err) {
+            lastError = err;
+        } finally {
+            server.kill('SIGTERM');
+        }
+    }
+
+    throw lastError ?? new Error('Failed to start MCP HTTP server after retries');
+});
+
 bindTest('MCP HTTP failed initialize does not expose a poisoned session id', async () => {
     const host = '127.0.0.1';
     let lastError: unknown = null;

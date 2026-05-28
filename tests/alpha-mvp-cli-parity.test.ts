@@ -78,6 +78,22 @@ describe('Alpha MVP CLI fallback parity', () => {
         }
     }, 60000);
 
+    test('CLI aliases cannot bypass the Alpha workflow membrane', async () => {
+        const rename = await runCli(['rename-safely', 'A', 'B', '--no-checks', '--json']);
+        expect(rename.code).not.toBe(0);
+        const renameError = JSON.parse(rename.stdout.trim() || '{}');
+        expect(renameError.success).toBe(false);
+        expect(renameError.error?.code).toBe('InvalidParams');
+        expect(renameError.error?.message).toContain('not available');
+
+        const pipelines = await runCli(['pipelines', 'list', '--json']);
+        expect(pipelines.code).not.toBe(0);
+        const pipelinesError = JSON.parse(pipelines.stdout.trim() || '{}');
+        expect(pipelinesError.success).toBe(false);
+        expect(pipelinesError.error?.code).toBe('InvalidParams');
+        expect(pipelinesError.error?.message).toContain('not available');
+    }, 60000);
+
     test('generic workflow command executes read/navigation tools with machine-readable stdout', async () => {
         const read = await workflow('read_file', {
             path: 'docs/project/alpha-mvp-contract.md',

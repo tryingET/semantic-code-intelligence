@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
+import { isOutsideWorkspaceRelative } from './workspace-path.js';
 
 export type CheckCommandReceipt = {
     command: string;
@@ -243,9 +244,7 @@ export class OverlayStore {
         const raw = String(rawPath || '').trim();
         const tab = raw.indexOf('\t');
         if (tab >= 0) return raw.slice(0, tab).trim();
-        const timestamp = /^(.*?)\s+\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:\s+[+-]\d{4}|Z)?)?$/.exec(
-            raw
-        );
+        const timestamp = /^(.*?)\s+\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:\s+[+-]\d{4}|Z)?$/.exec(raw);
         return timestamp?.[1]?.trim() || raw;
     }
 
@@ -278,12 +277,37 @@ export class OverlayStore {
         return normalized;
     }
 
+    private normalizeUnifiedHeaderPathForGitApply(rawPath: string, prefix: 'a' | 'b'): string {
+        const raw = String(rawPath || '').trim();
+        if (!raw || raw === '/dev/null') return raw;
+        const stripped = this.stripUnifiedHeaderMetadata(rawPath);
+        if (!stripped || stripped === '/dev/null') return raw;
+        if (path.posix.isAbsolute(stripped)) return raw;
+        const hasMetadata = stripped !== raw;
+        const suffix = hasMetadata ? raw.slice(stripped.length) : /\s/.test(stripped) ? '\t' : '';
+        if (stripped.startsWith('a/') || stripped.startsWith('b/')) return `${stripped}${suffix}`;
+        return `${prefix}/${stripped}${suffix}`;
+    }
+
     private normalizeUnifiedDiffForGitApply(diff: string): string {
         const lines = diff.split(/\r?\n/);
         const out: string[] = [];
+        let insideHunk = false;
         for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
+            let line = lines[i];
+            const startsTraditionalHeaderPair =
+                /^---\s+(.+)$/.test(line) &&
+                /^\+\+\+\s+(.+)$/.test(lines[i + 1] || '') &&
+                /^@@\s/.test(lines[i + 2] || '');
+            if (insideHunk && startsTraditionalHeaderPair) insideHunk = false;
+            if (!insideHunk) {
+                const oldHeader = line.match(/^---\s+(.+)$/);
+                const newHeader = line.match(/^\+\+\+\s+(.+)$/);
+                if (oldHeader) line = `--- ${this.normalizeUnifiedHeaderPathForGitApply(oldHeader[1], 'a')}`;
+                else if (newHeader) line = `+++ ${this.normalizeUnifiedHeaderPathForGitApply(newHeader[1], 'b')}`;
+            }
             out.push(line);
+            if (/^@@\s/.test(line)) insideHunk = true;
             if (!line.startsWith('diff --git ')) continue;
 
             let hasMode = false;
@@ -312,7 +336,7 @@ export class OverlayStore {
         const absoluteRoot = path.resolve(root);
         const absolutePath = path.resolve(absoluteRoot, relativePath);
         const relativeToRoot = path.relative(absoluteRoot, absolutePath);
-        if (!relativeToRoot || relativeToRoot.startsWith('..') || path.isAbsolute(relativeToRoot)) {
+        if (isOutsideWorkspaceRelative(relativeToRoot)) {
             throw new Error(`${inputLabel} must stay within the workspace`);
         }
         return { absolutePath, relativePath: relativeToRoot.split(path.sep).join('/') };

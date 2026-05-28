@@ -1,9 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { spawnSync } from 'node:child_process';
 import { existsSync, rmSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { OverlayStore, overlayStore } from '../src/core/overlay-store.js';
+import { SnapshotPatchWorkflowService } from '../src/core/workflows/snapshot-patch-workflow.js';
 
 describe('OverlayStore applyToWorkingTree with unified diff', () => {
     const targetRel = 'tests/fixtures/example.ts';
@@ -136,6 +138,74 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
         }
     }, 30000);
 
+    test('normalizes unprefixed traditional nested paths to the recorded touched file', async () => {
+        const root = await fs.mkdtemp(path.join(tmpdir(), 'sci-overlay-traditional-nested-'));
+        try {
+            spawnSync('git', ['init', '-q'], { cwd: root });
+            const store = new OverlayStore();
+            const snap = store.createSnapshot(false, { workspaceRoot: root });
+            const staged = store.stagePatch(snap.id, '--- /dev/null\n+++ nested/file.txt\n@@ -0,0 +1 @@\n+hi\n');
+            expect(staged.accepted).toBe(true);
+            expect(Array.from(store.ensureSnapshot(snap.id, { workspaceRoot: root }).touchedFiles || [])).toEqual([
+                'nested/file.txt',
+            ]);
+
+            const applied = await store.applyToWorkingTree(snap.id, { workspaceRoot: root });
+            expect(applied.ok).toBe(true);
+            expect(await fs.readFile(path.join(root, 'nested/file.txt'), 'utf8')).toBe('hi\n');
+            expect(existsSync(path.join(root, 'file.txt'))).toBe(false);
+        } finally {
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    }, 30000);
+
+    test('safe_write verification follows normalized traditional nested paths', async () => {
+        const root = await fs.mkdtemp(path.join(tmpdir(), 'sci-safe-write-traditional-nested-'));
+        const previousAllow = process.env.ALLOW_SNAPSHOT_APPLY;
+        try {
+            spawnSync('git', ['init', '-q'], { cwd: root });
+            process.env.ALLOW_SNAPSHOT_APPLY = '1';
+            const service = new SnapshotPatchWorkflowService({ workspaceRoot: () => root } as any);
+            const result: any = await service.safeWrite({
+                patch: '--- /dev/null\n+++ nested/file.txt\n@@ -0,0 +1 @@\n+hi\n',
+                commands: ['true'],
+                timeoutSec: 5,
+                apply: true,
+            });
+
+            expect(result.payload.ok).toBe(true);
+            expect(result.payload.verification.appliedDiffMatchesSnapshot).toBe(true);
+            expect(await fs.readFile(path.join(root, 'nested/file.txt'), 'utf8')).toBe('hi\n');
+            expect(existsSync(path.join(root, 'file.txt'))).toBe(false);
+        } finally {
+            if (previousAllow === undefined) delete process.env.ALLOW_SNAPSHOT_APPLY;
+            else process.env.ALLOW_SNAPSHOT_APPLY = previousAllow;
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    }, 30000);
+
+    test('squashed multi-diff apply accepts in-workspace paths beginning with dot-dot text', async () => {
+        const root = await fs.mkdtemp(path.join(tmpdir(), 'sci-overlay-squash-dotdot-'));
+        try {
+            spawnSync('git', ['init', '-q'], { cwd: root });
+            await fs.writeFile(path.join(root, '..foo.ts'), 'one\n', 'utf8');
+            const store = new OverlayStore();
+            const snap = store.createSnapshot(false, { workspaceRoot: root });
+            expect(
+                store.stagePatch(snap.id, '--- a/..foo.ts\n+++ b/..foo.ts\n@@ -1 +1 @@\n-one\n+two\n').accepted
+            ).toBe(true);
+            expect(
+                store.stagePatch(snap.id, '--- a/..foo.ts\n+++ b/..foo.ts\n@@ -1 +1 @@\n-two\n+three\n').accepted
+            ).toBe(true);
+
+            const applied = await store.applyToWorkingTree(snap.id, { workspaceRoot: root });
+            expect(applied.ok).toBe(true);
+            expect(await fs.readFile(path.join(root, '..foo.ts'), 'utf8')).toBe('three\n');
+        } finally {
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    }, 30000);
+
     test('fails closed when refreshing a materialized snapshot after workspace changes', async () => {
         const rel = `.tmp-overlay-refresh-base-${Date.now()}-${Math.random().toString(16).slice(2)}.txt`;
         const abs = path.join(process.cwd(), rel);
@@ -234,12 +304,14 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
         }
     });
 
-    test('accepts valid git diffs whose filenames contain date-like text', async () => {
+    test('accepts valid git diffs whose filenames end with date-like text', async () => {
         const root = await fs.mkdtemp(path.join(tmpdir(), 'sci-overlay-date-name-'));
         try {
             await fs.mkdir(path.join(root, 'notes'), { recursive: true });
-            const rel = 'notes/release 2026-05-28.txt';
+            const rel = 'notes/release 2026-05-28';
+            const undatedRel = 'notes/release';
             await fs.writeFile(path.join(root, rel), 'old\n', 'utf8');
+            await fs.writeFile(path.join(root, undatedRel), 'old\n', 'utf8');
             const store = new OverlayStore();
             const snap = store.createSnapshot(false, { workspaceRoot: root });
             const staged = store.stagePatch(
@@ -251,6 +323,10 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
             expect(Array.from(store.ensureSnapshot(snap.id, { workspaceRoot: root }).touchedFiles || [])).toEqual([
                 rel,
             ]);
+            const applied = await store.applyToWorkingTree(snap.id, { workspaceRoot: root });
+            expect(applied.ok).toBe(true);
+            expect(await fs.readFile(path.join(root, rel), 'utf8')).toBe('new\n');
+            expect(await fs.readFile(path.join(root, undatedRel), 'utf8')).toBe('old\n');
         } finally {
             await fs.rm(root, { recursive: true, force: true });
         }
