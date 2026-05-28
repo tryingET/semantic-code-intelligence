@@ -9,8 +9,8 @@
  * All analysis work is delegated to the LSP adapter and core analyzer.
  */
 
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { serve } from 'bun';
-import { fileURLToPath } from 'node:url';
 import type { Location } from 'vscode-languageserver/node';
 import {
     createConnection,
@@ -91,7 +91,9 @@ export class LSPServer {
             // Initialize core analyzer
             const config = createDefaultCoreConfig();
             const rawWorkspaceRoot = params.rootPath || params.workspaceFolders?.[0]?.uri || process.cwd();
-            const workspaceRoot = rawWorkspaceRoot.startsWith('file://') ? fileURLToPath(rawWorkspaceRoot) : rawWorkspaceRoot;
+            const workspaceRoot = rawWorkspaceRoot.startsWith('file://')
+                ? fileURLToPath(rawWorkspaceRoot)
+                : rawWorkspaceRoot;
 
             this.coreAnalyzer = await createCodeAnalyzer({
                 ...config,
@@ -133,7 +135,10 @@ export class LSPServer {
                                     const text = metricsRegistry.renderPrometheusText();
                                     return new Response(text, {
                                         status: 200,
-                                        headers: { 'Content-Type': 'text/plain; version=0.0.4', 'Cache-Control': 'no-cache' },
+                                        headers: {
+                                            'Content-Type': 'text/plain; version=0.0.4',
+                                            'Cache-Control': 'no-cache',
+                                        },
                                     });
                                 }
                                 return new Response('Not found', { status: 404 });
@@ -366,8 +371,10 @@ export class LSPServer {
                         'Invalid arguments: expected { identifier: string, uri?, includeDeclaration?, maxResults? }'
                     );
                 }
+                const uri = await this.resolveCustomRequestUriOrNull(arg.uri || arg.file);
+                if (!uri) return { error: 'URI is outside the configured workspace' } as any;
                 const result = await (this.coreAnalyzer as any).exploreCodebase({
-                    uri: arg.uri || arg.file || (this.coreAnalyzer as any)?.config?.workspaceRoot || 'file://workspace',
+                    uri,
                     identifier: arg.identifier,
                     includeDeclaration: arg.includeDeclaration ?? true,
                     maxResults: arg.maxResults ?? 100,
@@ -501,9 +508,19 @@ export class LSPServer {
             void
         >('symbol/buildSymbolMap');
         this.connection.onRequest(BuildSymbolMapRequest, async (params) => {
+            const uri = await this.resolveCustomRequestUriOrNull(params.uri);
+            if (!uri)
+                return {
+                    schemaVersion: 2,
+                    files: 0,
+                    declarations: [],
+                    references: [],
+                    imports: [],
+                    exports: [],
+                } as any;
             const res = await (this.coreAnalyzer as any).buildSymbolMap({
                 identifier: params.symbol,
-                uri: params.uri,
+                uri,
                 maxFiles: params.maxFiles ?? 10,
                 astOnly: params.astOnly ?? true,
             });
@@ -513,12 +530,18 @@ export class LSPServer {
         // New: Plan Rename (preview WorkspaceEdit)
         const PlanRenameRequest = new RequestType<
             { oldName: string; newName: string; uri?: string },
-            { schemaVersion: number; changes: Record<string, any[]>; summary?: { filesAffected: number; totalEdits: number } },
+            {
+                schemaVersion: number;
+                changes: Record<string, any[]>;
+                summary?: { filesAffected: number; totalEdits: number };
+            },
             void
         >('refactor/planRename');
         this.connection.onRequest(PlanRenameRequest, async (params) => {
+            const uri = await this.resolveCustomRequestUriOrNull(params.uri);
+            if (!uri) return { schemaVersion: 2, changes: {}, summary: { filesAffected: 0, totalEdits: 0 } } as any;
             const result = await this.coreAnalyzer.rename({
-                uri: params.uri || (this.coreAnalyzer as any)?.config?.workspaceRoot || 'file://workspace',
+                uri,
                 position: { line: 0, character: 0 },
                 identifier: params.oldName,
                 newName: params.newName,
@@ -550,6 +573,18 @@ export class LSPServer {
         // Listen on documents
         this.documents.listen(this.connection);
         this.connection.listen();
+    }
+
+    private async resolveCustomRequestUriOrNull(uri?: string): Promise<string | null> {
+        const raw = typeof uri === 'string' && uri.trim() ? uri : this.workspaceRootUri();
+        return this.lspAdapter.resolveContainedUriOrNull(raw);
+    }
+
+    private workspaceRootUri(): string {
+        const configured = (this.coreAnalyzer as any)?.config?.workspaceRoot;
+        return typeof configured === 'string' && configured.trim()
+            ? pathToFileURL(configured).href
+            : 'file://workspace';
     }
 
     /**
