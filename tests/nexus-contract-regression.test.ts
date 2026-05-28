@@ -7,23 +7,23 @@ import { pathToFileURL } from 'node:url';
 import { CLIAdapter } from '../src/adapters/cli-adapter';
 import { toMcpError } from '../src/adapters/error-mapper';
 import { HTTPAdapter } from '../src/adapters/http-adapter';
+import { LSPAdapter } from '../src/adapters/lsp-adapter';
 import { MCPAdapter } from '../src/adapters/mcp-adapter';
 import { createDefaultCoreConfig } from '../src/adapters/utils';
-import { LSPAdapter } from '../src/adapters/lsp-adapter';
-import { HTTPServer } from '../src/servers/http';
 import { CoreError } from '../src/core/errors';
 import { createCodeAnalyzer } from '../src/core/index';
 import { OverlayStore } from '../src/core/overlay-store';
-import { workspaceInputToPath } from '../src/core/workspace-input';
 import { SnapshotPatchWorkflowService } from '../src/core/workflows/snapshot-patch-workflow';
 import { normalizeStructuralPaths } from '../src/core/workflows/structural-workflow';
 import { WorkspaceQueryWorkflowService } from '../src/core/workflows/workspace-query-workflow';
+import { workspaceInputToPath } from '../src/core/workspace-input';
 import { FastSearchLayer } from '../src/layers/layer1-fast-search';
 import { TreeSitterLayer } from '../src/layers/tree-sitter';
-import { OntologyStorage } from '../src/ontology/storage';
 import { PostgresStorageAdapter } from '../src/ontology/adapters/postgres-adapter';
 import { TripleStoreStorageAdapter } from '../src/ontology/adapters/triple-adapter';
+import { OntologyStorage } from '../src/ontology/storage';
 import { PatternStorage } from '../src/patterns/pattern-storage';
+import { HTTPServer } from '../src/servers/http';
 import { ThingKind } from '../src/types/core';
 
 const roots: string[] = [];
@@ -93,8 +93,16 @@ describe('nexus contract regressions', () => {
             caching: { enabled: true, ttl: 60, maxEntries: 100 },
         });
 
-        const first = await layer.process({ identifier: 'Target', searchPath: join(workspaceRoot, 'a'), fileTypes: ['ts'] });
-        const second = await layer.process({ identifier: 'Target', searchPath: join(workspaceRoot, 'b'), fileTypes: ['ts'] });
+        const first = await layer.process({
+            identifier: 'Target',
+            searchPath: join(workspaceRoot, 'a'),
+            fileTypes: ['ts'],
+        });
+        const second = await layer.process({
+            identifier: 'Target',
+            searchPath: join(workspaceRoot, 'b'),
+            fileTypes: ['ts'],
+        });
 
         expect(first.exact).toHaveLength(0);
         expect(second.toolsUsed).not.toContain('bloomFilter');
@@ -152,14 +160,24 @@ describe('nexus contract regressions', () => {
             to: [{ type: 'literal', value: 'b' }],
             confidence: 0.8,
             occurrences: 1,
-            examples: [{ oldName: 'a', newName: 'b', confidence: 0.9, context: { file: 'x.ts', surroundingSymbols: [], timestamp: new Date() } }],
+            examples: [
+                {
+                    oldName: 'a',
+                    newName: 'b',
+                    confidence: 0.9,
+                    context: { file: 'x.ts', surroundingSymbols: [], timestamp: new Date() },
+                },
+            ],
             lastApplied: new Date(),
             category: 'rename',
         };
         await store.savePattern(pattern);
         store.db.query('UPDATE pattern_metrics SET total_applications = 7 WHERE pattern_id = ?').run('p1');
         await store.savePattern({ ...pattern, confidence: 0.9 });
-        expect(store.db.query('select total_applications from pattern_metrics where pattern_id = ?').get('p1').total_applications).toBe(7);
+        expect(
+            store.db.query('select total_applications from pattern_metrics where pattern_id = ?').get('p1')
+                .total_applications
+        ).toBe(7);
 
         await store.deletePattern('p1');
 
@@ -190,7 +208,10 @@ describe('nexus contract regressions', () => {
         const thing = {
             id: 't1',
             kind: ThingKind.Function,
-            location: { uri: 'file:///workspace/a.ts', range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } } },
+            location: {
+                uri: 'file:///workspace/a.ts',
+                range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+            },
             confidence: 0.5,
         };
         await storage.upsertThing(thing);
@@ -302,10 +323,27 @@ describe('nexus contract regressions', () => {
         const workspaceRoot = tempWorkspace();
         const target = join(workspaceRoot, 'factory.ts');
         writeFileSync(target, 'export function createUser() {\n  return new User();\n}\nclass User {}\n', 'utf8');
-        const layer = new TreeSitterLayer({ enabled: true, timeout: 1000, languages: ['typescript'], maxFileSize: '1MB', projectPath: workspaceRoot });
+        const layer = new TreeSitterLayer({
+            enabled: true,
+            timeout: 1000,
+            languages: ['typescript'],
+            maxFileSize: '1MB',
+            projectPath: workspaceRoot,
+        });
 
         const result = await layer.process({
-            exact: [{ file: target, line: 1, column: 1, text: 'createUser', match: 'createUser', confidence: 1, context: { before: [], after: [] }, category: 'exact' }],
+            exact: [
+                {
+                    file: target,
+                    line: 1,
+                    column: 1,
+                    text: 'createUser',
+                    match: 'createUser',
+                    confidence: 1,
+                    context: { before: [], after: [] },
+                    category: 'exact',
+                },
+            ],
             fuzzy: [],
             conceptual: [],
             files: new Set([target]),
@@ -348,7 +386,8 @@ describe('nexus contract regressions', () => {
         writeFileSync(join(workspaceRoot, 'sample.ts'), 'export const value = 1;\n', 'utf8');
 
         await withMcp(workspaceRoot, async (mcp) => {
-            const patch = '--- a/sample.ts\t2026-05-24\n+++ b/sample.ts\t2026-05-24\n@@ -1 +1 @@\n-export const value = 1;\n+export const value = 2;\n';
+            const patch =
+                '--- a/sample.ts\t2026-05-24\n+++ b/sample.ts\t2026-05-24\n@@ -1 +1 @@\n-export const value = 1;\n+export const value = 2;\n';
             const res = await mcp.handleToolCall('recommend_checks', { patch });
             const out = parseContent(res);
             expect(out.inputs.files).toEqual(['sample.ts']);
@@ -358,7 +397,11 @@ describe('nexus contract regressions', () => {
     test('symbol-only find_references returns bounded workspace references instead of empty success', async () => {
         const workspaceRoot = tempWorkspace();
         writeFileSync(join(workspaceRoot, 'def.ts'), 'export function target() { return 1; }\n', 'utf8');
-        writeFileSync(join(workspaceRoot, 'use.ts'), 'import { target } from "./def";\nexport const value = target();\n', 'utf8');
+        writeFileSync(
+            join(workspaceRoot, 'use.ts'),
+            'import { target } from "./def";\nexport const value = target();\n',
+            'utf8'
+        );
 
         await withMcp(workspaceRoot, async (mcp) => {
             const res = await mcp.handleToolCall('find_references', { symbol: 'target', maxResults: 10 });
@@ -372,14 +415,30 @@ describe('nexus contract regressions', () => {
     test('symbol-only graph_expand finds callers outside declaration directories', async () => {
         const workspaceRoot = tempWorkspace();
         writeFileSync(join(workspaceRoot, 'package.json'), '{"type":"module"}\n', 'utf8');
-        writeFileSync(join(workspaceRoot, 'tsconfig.json'), '{"compilerOptions":{"module":"ESNext","target":"ES2022"}}\n', 'utf8');
+        writeFileSync(
+            join(workspaceRoot, 'tsconfig.json'),
+            '{"compilerOptions":{"module":"ESNext","target":"ES2022"}}\n',
+            'utf8'
+        );
         mkdirSync(join(workspaceRoot, 'src'));
         mkdirSync(join(workspaceRoot, 'tests'));
-        writeFileSync(join(workspaceRoot, 'src', 'def.ts'), 'export function target() { helper(); }\nfunction helper() {}\n', 'utf8');
-        writeFileSync(join(workspaceRoot, 'tests', 'use.test.ts'), 'import { target } from "../src/def";\nexport function caller() { target(); }\n', 'utf8');
+        writeFileSync(
+            join(workspaceRoot, 'src', 'def.ts'),
+            'export function target() { helper(); }\nfunction helper() {}\n',
+            'utf8'
+        );
+        writeFileSync(
+            join(workspaceRoot, 'tests', 'use.test.ts'),
+            'import { target } from "../src/def";\nexport function caller() { target(); }\n',
+            'utf8'
+        );
 
         await withMcp(workspaceRoot, async (mcp) => {
-            const res = await mcp.handleToolCall('graph_expand', { symbol: 'target', edges: ['callers', 'callees'], limit: 20 });
+            const res = await mcp.handleToolCall('graph_expand', {
+                symbol: 'target',
+                edges: ['callers', 'callees'],
+                limit: 20,
+            });
             const out = parseContent(res);
             expect(res.isError).toBe(false);
             expect(JSON.stringify(out.neighbors.callers)).toContain('use.test.ts');
@@ -391,12 +450,18 @@ describe('nexus contract regressions', () => {
     test('recommend_checks quotes shell-unsafe test filenames and blocks leading-dash option injection', async () => {
         const workspaceRoot = tempWorkspace();
         await withMcp(workspaceRoot, async (mcp) => {
-            const injected = await mcp.handleToolCall('recommend_checks', { files: ['tests/foo.test.ts; echo PWNED >&2'], mode: 'minimum' });
+            const injected = await mcp.handleToolCall('recommend_checks', {
+                files: ['tests/foo.test.ts; echo PWNED >&2'],
+                mode: 'minimum',
+            });
             const injectedOut = parseContent(injected);
             expect(injectedOut.commands).toContain("bun test 'tests/foo.test.ts; echo PWNED >&2'");
             expect(injectedOut.commands).not.toContain('bun test tests/foo.test.ts; echo PWNED >&2');
 
-            const leadingDash = await mcp.handleToolCall('recommend_checks', { files: ['--preload=evil.test.ts'], mode: 'minimum' });
+            const leadingDash = await mcp.handleToolCall('recommend_checks', {
+                files: ['--preload=evil.test.ts'],
+                mode: 'minimum',
+            });
             const leadingDashOut = parseContent(leadingDash);
             expect(leadingDashOut.commands).toContain("bun test -- '--preload=evil.test.ts'");
         });
@@ -430,7 +495,9 @@ describe('nexus contract regressions', () => {
         writeFileSync(join(outsideRoot, 'secret.ts'), 'function OutsideSecret() { return 1; }\n', 'utf8');
         symlinkSync(outsideRoot, join(workspaceRoot, 'out'));
 
-        await expect(normalizeStructuralPaths(['out'], workspaceRoot)).rejects.toThrow('structural path must stay within the workspace');
+        await expect(normalizeStructuralPaths(['out'], workspaceRoot)).rejects.toThrow(
+            'structural path must stay within the workspace'
+        );
     });
 
     test('HTTP legacy endpoints reject existing files outside the configured workspace by default', async () => {
@@ -449,7 +516,11 @@ describe('nexus contract regressions', () => {
             method: 'POST',
             url: '/api/v1/definition',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ identifier: 'OutsideHttpSecret', file: outsideFile, position: { line: 0, character: 6 } }),
+            body: JSON.stringify({
+                identifier: 'OutsideHttpSecret',
+                file: outsideFile,
+                position: { line: 0, character: 6 },
+            }),
         });
 
         expect(response.status).toBe(400);
@@ -574,7 +645,11 @@ describe('nexus contract regressions', () => {
             method: 'POST',
             url: '/api/v1/definition',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ identifier: 'Anything', uri: 'file://workspace', position: { line: 0, character: 0 } }),
+            body: JSON.stringify({
+                identifier: 'Anything',
+                uri: 'file://workspace',
+                position: { line: 0, character: 0 },
+            }),
         });
 
         expect(response.status).toBe(200);
@@ -587,9 +662,13 @@ describe('nexus contract regressions', () => {
 
         await withMcp(workspaceRoot, async (mcp) => {
             const snap = parseContent(await mcp.handleToolCall('get_snapshot', { preferExisting: false })).snapshot;
-            const first = 'diff --git a/sample.ts b/sample.ts\n--- a/sample.ts\n+++ b/sample.ts\n@@ -1 +1 @@\n-export const value = 1;\n+export const value = 2;\n';
-            const staleSecond = 'diff --git a/sample.ts b/sample.ts\n--- a/sample.ts\n+++ b/sample.ts\n@@ -1 +1 @@\n-export const value = 1;\n+export const value = 3;\n';
-            expect(parseContent(await mcp.handleToolCall('propose_patch', { snapshot: snap, patch: first })).accepted).toBe(true);
+            const first =
+                'diff --git a/sample.ts b/sample.ts\n--- a/sample.ts\n+++ b/sample.ts\n@@ -1 +1 @@\n-export const value = 1;\n+export const value = 2;\n';
+            const staleSecond =
+                'diff --git a/sample.ts b/sample.ts\n--- a/sample.ts\n+++ b/sample.ts\n@@ -1 +1 @@\n-export const value = 1;\n+export const value = 3;\n';
+            expect(
+                parseContent(await mcp.handleToolCall('propose_patch', { snapshot: snap, patch: first })).accepted
+            ).toBe(true);
             const res = await mcp.handleToolCall('propose_patch', { snapshot: snap, patch: staleSecond });
             const out = parseContent(res);
             expect(res.isError).toBe(true);
@@ -651,10 +730,15 @@ describe('nexus contract regressions', () => {
         const adapter = new LSPAdapter(core, { workspaceRoot });
         const uri = pathToFileURL(target).href;
 
-        await adapter.handleDidChangeTextDocument({ textDocument: { uri }, contentChanges: [{ text: 'const MemoryName = 1;\n' }] });
         await adapter.handleDidChangeTextDocument({
             textDocument: { uri },
-            contentChanges: [{ range: { start: { line: 0, character: 6 }, end: { line: 0, character: 16 } }, text: 'Partial' }],
+            contentChanges: [{ text: 'const MemoryName = 1;\n' }],
+        });
+        await adapter.handleDidChangeTextDocument({
+            textDocument: { uri },
+            contentChanges: [
+                { range: { start: { line: 0, character: 6 }, end: { line: 0, character: 16 } }, text: 'Partial' },
+            ],
         });
         await adapter.findDefinition(target, { line: 0, character: 8 });
         await adapter.handleDidCloseTextDocument({ textDocument: { uri } });
@@ -778,7 +862,8 @@ describe('nexus contract regressions', () => {
         initGitWorkspace(workspaceRoot);
         const service = new SnapshotPatchWorkflowService({ workspaceRoot: () => workspaceRoot });
         const snapshot = (await service.getSnapshot({ preferExisting: false })).payload.snapshot;
-        const patch = 'diff --git a/new.txt b/new.txt\nnew file mode 100644\nindex 0000000..1269488\n--- /dev/null\n+++ b/new.txt\n@@ -0,0 +1 @@\n+hello\n';
+        const patch =
+            'diff --git a/new.txt b/new.txt\nnew file mode 100644\nindex 0000000..1269488\n--- /dev/null\n+++ b/new.txt\n@@ -0,0 +1 @@\n+hello\n';
 
         const result = await service.proposePatch({ snapshot, patch });
 
@@ -822,7 +907,8 @@ describe('nexus contract regressions', () => {
         const workspaceRoot = tempWorkspace();
         initGitWorkspace(workspaceRoot, { ignoreOntology: true });
         const service = new SnapshotPatchWorkflowService({ workspaceRoot: () => workspaceRoot });
-        const patch = 'diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-base\n+changed\n';
+        const patch =
+            'diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-base\n+changed\n';
         const previousAllow = process.env.ALLOW_SNAPSHOT_APPLY;
         process.env.ALLOW_SNAPSHOT_APPLY = '1';
         try {
@@ -856,8 +942,10 @@ describe('nexus contract regressions', () => {
         initGitWorkspace(workspaceRoot, { ignoreOntology: true });
         const service = new SnapshotPatchWorkflowService({ workspaceRoot: () => workspaceRoot });
         const snapshot = (await service.getSnapshot({ preferExisting: false })).payload.snapshot;
-        const first = 'diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-base\n+middle\n';
-        const second = 'diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-middle\n+final\n';
+        const first =
+            'diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-base\n+middle\n';
+        const second =
+            'diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-middle\n+final\n';
         const previousAllow = process.env.ALLOW_SNAPSHOT_APPLY;
         process.env.ALLOW_SNAPSHOT_APPLY = '1';
         try {
@@ -868,7 +956,9 @@ describe('nexus contract regressions', () => {
             const verification = await service.verifyAppliedSnapshotDiff(snapshot);
             expect(verification.appliedDiffMatchesSnapshot).toBe(true);
             expect(verification.diagnostics.fileContentsMatch).toBe(true);
-            expect((await service.applySnapshot({ snapshot, check: false, reverse: true })).payload).toMatchObject({ ok: true });
+            expect((await service.applySnapshot({ snapshot, check: false, reverse: true })).payload).toMatchObject({
+                ok: true,
+            });
             expect(await Bun.file(join(workspaceRoot, 'README.md')).text()).toBe('base\n');
         } finally {
             if (previousAllow === undefined) delete process.env.ALLOW_SNAPSHOT_APPLY;
@@ -881,7 +971,8 @@ describe('nexus contract regressions', () => {
         initGitWorkspace(workspaceRoot, { ignoreOntology: true });
         const service = new SnapshotPatchWorkflowService({ workspaceRoot: () => workspaceRoot });
         const snapshot = (await service.getSnapshot({ preferExisting: false })).payload.snapshot;
-        const patch = 'diff --git a/new.txt b/new.txt\nnew file mode 100644\nindex 0000000..1269488\n--- /dev/null\n+++ b/new.txt\n@@ -0,0 +1 @@\n+hello\n';
+        const patch =
+            'diff --git a/new.txt b/new.txt\nnew file mode 100644\nindex 0000000..1269488\n--- /dev/null\n+++ b/new.txt\n@@ -0,0 +1 @@\n+hello\n';
         const previousAllow = process.env.ALLOW_SNAPSHOT_APPLY;
         process.env.ALLOW_SNAPSHOT_APPLY = '1';
         try {
@@ -935,15 +1026,55 @@ describe('nexus contract regressions', () => {
         expect(JSON.parse(response.body)).toMatchObject({ success: false, error: 'Internal server error' });
     });
 
+    test('HTTP stream search routes to text search rather than definition lookup', async () => {
+        const workspaceRoot = tempWorkspace();
+        writeFileSync(join(workspaceRoot, 'sample.ts'), 'const haystack = "needle";\n', 'utf8');
+        const calls: any[] = [];
+        const adapter = new HTTPAdapter(
+            {
+                config: { workspaceRoot },
+                textSearch: async (query: string, options: any) => {
+                    calls.push({ query, options });
+                    return {
+                        count: 1,
+                        results: [{ file: join(workspaceRoot, 'sample.ts'), line: 1, column: 20, text: 'needle' }],
+                    };
+                },
+                findDefinitionAsync: async () => {
+                    throw new Error('definition lookup should not be used for stream search');
+                },
+                sharedServices: {},
+            } as any,
+            { enableCors: false, enableOpenAPI: false }
+        );
+
+        const response = await adapter.handleRequest({
+            method: 'POST',
+            url: '/api/v1/stream/search',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ pattern: 'needle', path: '.', maxResults: 5 }),
+        });
+
+        expect(response.status).toBe(200);
+        expect(calls).toHaveLength(1);
+        expect(calls[0]).toMatchObject({ query: 'needle', options: { maxResults: 5 } });
+        expect(response.body).toContain('event: search-data');
+        expect(response.body).toContain('needle');
+    });
+
     test('HTTP and LSP adapters enforce configured operation timeouts', async () => {
         const workspaceRoot = tempWorkspace();
         const file = join(workspaceRoot, 'sample.ts');
         writeFileSync(file, 'const SlowName = 1;\n', 'utf8');
-        const slow = () => new Promise((resolve) => setTimeout(() => resolve({ data: [], performance: {}, timestamp: Date.now(), cacheHit: false }), 30));
-        const http = new HTTPAdapter(
-            { config: { workspaceRoot }, findDefinition: slow, sharedServices: {} } as any,
-            { enableCors: false, enableOpenAPI: false, timeout: 1 }
-        );
+        const slow = () =>
+            new Promise((resolve) =>
+                setTimeout(() => resolve({ data: [], performance: {}, timestamp: Date.now(), cacheHit: false }), 30)
+            );
+        const http = new HTTPAdapter({ config: { workspaceRoot }, findDefinition: slow, sharedServices: {} } as any, {
+            enableCors: false,
+            enableOpenAPI: false,
+            timeout: 1,
+        });
 
         const httpResponse = await http.handleRequest({
             method: 'POST',
@@ -1034,9 +1165,9 @@ describe('nexus contract regressions', () => {
         const analyzer = await createCodeAnalyzer({ ...createDefaultCoreConfig(), workspaceRoot });
         await analyzer.initialize();
         try {
-            await expect(analyzer.rename(pathToFileURL(outside).href, { line: 0, character: 14 }, 'newName')).rejects.toThrow(
-                'must stay within the workspace'
-            );
+            await expect(
+                analyzer.rename(pathToFileURL(outside).href, { line: 0, character: 14 }, 'newName')
+            ).rejects.toThrow('must stay within the workspace');
         } finally {
             await analyzer.dispose?.();
         }

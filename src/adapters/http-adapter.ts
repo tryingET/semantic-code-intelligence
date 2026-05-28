@@ -15,14 +15,14 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import type { CodeAnalyzer } from '../core/unified-analyzer.js';
-import type { SearchStream } from '../layers/enhanced-search-tools-async.js';
 import { CoreError, isCoreError } from '../core/errors.js';
 import { ToolExecutor } from '../core/tools/executor.js';
+import type { CodeAnalyzer } from '../core/unified-analyzer.js';
 import { assertHttpToolAllowed as assertSharedHttpToolAllowed } from '../core/workflows/http-tool-policy.js';
 import type { SnapshotWorkflowResult } from '../core/workflows/snapshot-patch-workflow.js';
 import { ToolWorkflowRouter } from '../core/workflows/tool-workflow-router.js';
 import { resolveWorkspacePath } from '../core/workspace-path.js';
+import type { SearchStream } from '../layers/enhanced-search-tools-async.js';
 import { createOpenApiResponse } from './http-openapi.js';
 import {
     buildCompletionRequest,
@@ -103,7 +103,9 @@ export class HTTPAdapter {
         try {
             requested = this.pathInputFromHttpUri(raw, workspaceRoot);
         } catch (error) {
-            throw new CoreError('InvalidParams', `${inputLabel} must be a valid file URI or workspace path`, { inputLabel });
+            throw new CoreError('InvalidParams', `${inputLabel} must be a valid file URI or workspace path`, {
+                inputLabel,
+            });
         }
         try {
             const resolved = await resolveWorkspacePath(requested, { workspaceRoot, inputLabel });
@@ -127,7 +129,12 @@ export class HTTPAdapter {
     }
 
     private isVirtualFilePlaceholder(value: string): boolean {
-        return value === 'file://workspace' || value === 'file://unknown' || value === 'file://search' || value === 'file://definition';
+        return (
+            value === 'file://workspace' ||
+            value === 'file://unknown' ||
+            value === 'file://search' ||
+            value === 'file://definition'
+        );
     }
 
     private pathInputFromHttpUri(raw: string, workspaceRoot: string): string {
@@ -290,7 +297,8 @@ export class HTTPAdapter {
             if (!body || typeof body !== 'object' || body.identifier === undefined || body.identifier === null) {
                 validateRequired(body, ['identifier']);
             }
-            const ident = typeof body.identifier === 'string' ? body.identifier.trim() : String(body.identifier || '').trim();
+            const ident =
+                typeof body.identifier === 'string' ? body.identifier.trim() : String(body.identifier || '').trim();
             if (ident.length === 0) {
                 const empty = JSON.stringify({
                     success: true,
@@ -481,7 +489,11 @@ export class HTTPAdapter {
                 dryRun: body.dryRun ?? false,
             });
 
-            const result = await withAdapterTimeout(this.coreAnalyzer.rename(coreRequest), this.config.timeout, 'http.rename');
+            const result = await withAdapterTimeout(
+                this.coreAnalyzer.rename(coreRequest),
+                this.config.timeout,
+                'http.rename'
+            );
 
             const changes = Object.entries(result.data.changes || {});
 
@@ -527,7 +539,11 @@ export class HTTPAdapter {
                 dryRun: true,
             });
 
-            const result = await withAdapterTimeout(this.coreAnalyzer.rename(coreRequest), this.config.timeout, 'http.planRename');
+            const result = await withAdapterTimeout(
+                this.coreAnalyzer.rename(coreRequest),
+                this.config.timeout,
+                'http.planRename'
+            );
             const changes = Object.entries(result.data.changes || {});
 
             // Optional: Layer 5 pattern stats
@@ -584,7 +600,11 @@ export class HTTPAdapter {
                 newName: body.newName,
                 dryRun: false,
             });
-            const result = await withAdapterTimeout(this.coreAnalyzer.rename(coreRequest), this.config.timeout, 'http.applyRename');
+            const result = await withAdapterTimeout(
+                this.coreAnalyzer.rename(coreRequest),
+                this.config.timeout,
+                'http.applyRename'
+            );
             return {
                 status: 200,
                 headers: {},
@@ -1007,19 +1027,33 @@ export class HTTPAdapter {
             const body = strictJsonParse(request.body || '{}');
             validateRequired(body, ['pattern']);
 
-            // Create async search request
-            const searchRequest = {
-                identifier: body.pattern,
-                uri: await this.containedRequestUri(body.file || body.uri, 'stream search file', 'file://search'),
-                position: createPosition(0, 0),
-                maxResults: body.maxResults || 100,
-            };
+            const workspaceRoot = this.getWorkspaceRoot();
+            const rawPath =
+                typeof (body.path || body.file || body.uri) === 'string' &&
+                String(body.path || body.file || body.uri).trim()
+                    ? String(body.path || body.file || body.uri)
+                    : '.';
+            const requestedPath = this.pathInputFromHttpUri(rawPath, workspaceRoot);
+            const searchRoot = await resolveWorkspacePath(requestedPath, {
+                workspaceRoot,
+                inputLabel: 'stream search path',
+                allowRoot: true,
+            });
+            const searchPath = searchRoot.realPath;
+            const maxResults = parseIntegerOption(body.maxResults, 'maxResults', {
+                defaultValue: 100,
+                min: 1,
+                max: 1000,
+            });
 
-            // Use the new async search method from unified analyzer
             const result = await withAdapterTimeout(
-                this.coreAnalyzer.findDefinitionAsync(searchRequest),
+                (this.coreAnalyzer as any).textSearch(String(body.pattern), {
+                    path: searchPath,
+                    maxResults,
+                    caseInsensitive: !!body.caseInsensitive,
+                }),
                 this.config.timeout,
-                'http.streamSearch.findDefinition'
+                'http.streamSearch.textSearch'
             );
 
             // Convert to SSE format (simplified for now)
@@ -1098,12 +1132,20 @@ export class HTTPAdapter {
         chunks.push(`data: {"type":"start","message":"Search started"}\n\n`);
 
         // Send results
-        result.data.forEach((item: any, index: number) => {
+        const resultItems = Array.isArray(result?.data)
+            ? result.data
+            : Array.isArray(result?.results)
+              ? result.results
+              : [];
+        resultItems.forEach((item: any, index: number) => {
             const data = {
                 type: 'result',
                 data: {
-                    uri: item.uri,
+                    uri: item.uri ?? item.file,
                     range: item.range,
+                    line: item.line,
+                    column: item.column,
+                    text: item.text,
                     kind: item.kind,
                     name: item.name,
                     confidence: item.confidence,
@@ -1117,7 +1159,7 @@ export class HTTPAdapter {
 
         // Send completion event
         chunks.push(`event: ${eventType}-end\n`);
-        chunks.push(`data: {"type":"end","message":"Search completed","totalResults":${result.data.length}}\n\n`);
+        chunks.push(`data: {"type":"end","message":"Search completed","totalResults":${resultItems.length}}\n\n`);
 
         return chunks.join('');
     }
@@ -1165,7 +1207,9 @@ export class HTTPAdapter {
 
     private getToolRouter(): ToolWorkflowRouter {
         if (!this.toolRouter) {
-            this.toolRouter = new ToolWorkflowRouter(this.coreAnalyzer as any, { maxResults: () => this.config.maxResults ?? 100 });
+            this.toolRouter = new ToolWorkflowRouter(this.coreAnalyzer as any, {
+                maxResults: () => this.config.maxResults ?? 100,
+            });
         }
         return this.toolRouter;
     }
@@ -1204,19 +1248,28 @@ export class HTTPAdapter {
         const payload = this.toolWorkflowPayload(result, undefined);
         if (payload && typeof payload === 'object' && 'error' in payload && payload.error) return payload.error;
         if (payload && typeof payload === 'object') {
-            return { code: (payload as any).code || 'Internal', message: (payload as any).message || fallbackMessage, data: payload };
+            return {
+                code: (payload as any).code || 'Internal',
+                message: (payload as any).message || fallbackMessage,
+                data: payload,
+            };
         }
         const message = result && 'text' in result && result.text ? result.text.slice(0, 2000) : fallbackMessage;
         const lower = message.toLowerCase();
-        const code = lower.includes('invalid') || lower.includes('missing') || lower.includes('unknown snapshot') || lower.includes('not available')
-            ? 'InvalidParams'
-            : 'Internal';
+        const code =
+            lower.includes('invalid') ||
+            lower.includes('missing') ||
+            lower.includes('unknown snapshot') ||
+            lower.includes('not available')
+                ? 'InvalidParams'
+                : 'Internal';
         return { code, message };
     }
 
     private normalizeToolWorkflowResultForHttp(result: SnapshotWorkflowResult): any {
         try {
-            if (result?.isError) return { ok: false, error: this.toolWorkflowErrorPayload(result, 'Tool execution failed') };
+            if (result?.isError)
+                return { ok: false, error: this.toolWorkflowErrorPayload(result, 'Tool execution failed') };
             if (result && 'payload' in result) return result.payload;
             if (result && 'text' in result) {
                 try {
@@ -1253,7 +1306,10 @@ export class HTTPAdapter {
             const body: any = strictJsonParse(request.body || '{}');
             const name = String(body?.name || '').trim();
             const hasArguments = Object.hasOwn(body || {}, 'arguments');
-            if (hasArguments && (!body?.arguments || typeof body.arguments !== 'object' || Array.isArray(body.arguments))) {
+            if (
+                hasArguments &&
+                (!body?.arguments || typeof body.arguments !== 'object' || Array.isArray(body.arguments))
+            ) {
                 throw new CoreError('InvalidParams', 'Tool arguments must be an object');
             }
             const args = hasArguments ? (body.arguments as Record<string, any>) : {};
@@ -1267,7 +1323,11 @@ export class HTTPAdapter {
             return {
                 status: isError ? this.statusForCoreErrorCode(errCode, 400) : 200,
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ success: !isError, result: isError ? undefined : normalized, error: isError ? normalized.error : undefined }),
+                body: JSON.stringify({
+                    success: !isError,
+                    result: isError ? undefined : normalized,
+                    error: isError ? normalized.error : undefined,
+                }),
             };
         } catch (err) {
             return {
