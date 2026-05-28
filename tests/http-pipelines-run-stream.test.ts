@@ -8,7 +8,7 @@ const bindDescribe = canBind ? describe : describe.skip;
 bindDescribe('HTTP pipelines run-stream (NDJSON)', () => {
     let server: HTTPServer;
     const host = '127.0.0.1';
-    const port = 7018; // dedicated test port
+    const port = 7098; // dedicated test port; avoid same-process HTTP fixture collisions
     const base = `http://${host}:${port}`;
 
     beforeAll(async () => {
@@ -28,8 +28,21 @@ bindDescribe('HTTP pipelines run-stream (NDJSON)', () => {
         });
         expect(res.status).toBe(200);
         const text = await res.text();
-        expect(text.includes('"event":"started"')).toBe(true);
+        const lines = text.trim().split('\n').map((line) => JSON.parse(line));
+        expect(lines[0]?.event).toBe('started');
         // It may be very fast; finished should appear or we time out
-        expect(text.includes('"event":"finished"') || text.includes('"event":"timeout"')).toBe(true);
+        expect(lines.some((line) => line.event === 'finished' || line.event === 'timeout')).toBe(true);
+    });
+
+    test('unknown pipeline id fails before opening a ghost stream', async () => {
+        const res = await fetch(`${base}/api/v1/pipelines/run-stream`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ id: 'not_a_pipeline' }),
+        });
+        expect(res.status).toBe(400);
+        const body = await res.json();
+        expect(body.success).toBe(false);
+        expect(body.error.data.runId).toBe('');
     });
 });

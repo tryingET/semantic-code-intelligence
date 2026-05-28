@@ -18,11 +18,15 @@ import {
 import { FeedbackEvent, FeedbackLoopSystem, type FeedbackStats, type LearningInsight } from './feedback-loop.js';
 import { KnowledgeGraph, SharedPattern, TeamInsight, TeamKnowledgeSystem, TeamMember } from './team-knowledge.js';
 
+const PIPELINE_COMPONENTS = ['pattern_learning', 'feedback_loop', 'evolution_tracking', 'team_knowledge', 'noop'] as const;
+type PipelineComponent = (typeof PIPELINE_COMPONENTS)[number];
+const PIPELINE_COMPONENT_SET = new Set<string>(PIPELINE_COMPONENTS);
+
 export interface LearningPipeline {
     id: string;
     name: string;
     description: string;
-    components: Array<'pattern_learning' | 'feedback_loop' | 'evolution_tracking' | 'team_knowledge'>;
+    components: PipelineComponent[];
     trigger: 'manual' | 'automatic' | 'scheduled' | 'event_driven';
     schedule?: string; // Cron expression for scheduled pipelines
     eventTriggers?: string[]; // Event names that trigger this pipeline
@@ -58,6 +62,15 @@ export interface LearningResult {
         totalTimeMs: number;
         componentsTime: Record<string, number>;
     };
+    errors?: string[];
+}
+
+export interface PipelineRunResult {
+    ok: boolean;
+    runId: string;
+    pipelineId: string;
+    status: 'running' | 'success' | 'failed';
+    persisted: boolean;
     errors?: string[];
 }
 
@@ -449,6 +462,12 @@ export class LearningOrchestrator {
                                 result.insights!.push(...convertedInsights);
                             }
                             break;
+
+                        case 'noop':
+                            break;
+
+                        default:
+                            throw new CoreError(`Invalid pipeline component: ${String(component)}`, 'InvalidParams');
                     }
 
                     result.performance.componentsTime[component] = Date.now() - componentStart;
@@ -482,13 +501,29 @@ export class LearningOrchestrator {
     }
 
     /**
-     * Run a pipeline with persistence to `pipeline_runs` (minimal surface for tools)
-     * Returns a run id immediately after recording start, then executes and records status/metrics.
+     * Run a pipeline with persistence to `pipeline_runs` and wait for completion.
+     * Persistence is part of the contract: callers never receive ghost run ids.
      */
-    async runPipeline(pipelineId: string, context: LearningContext): Promise<{ ok: boolean; runId: string }> {
+    async runPipeline(pipelineId: string, context: LearningContext): Promise<PipelineRunResult> {
+        const started = await this.startPipelineRun(pipelineId, context, { waitForCompletion: true });
+        return started;
+    }
+
+    /**
+     * Start a persisted pipeline run and return after the `running` row exists.
+     * By default completion is recorded asynchronously so streaming endpoints can
+     * emit a started event before the pipeline finishes.
+     */
+    async startPipelineRun(
+        pipelineId: string,
+        context: LearningContext,
+        options: { waitForCompletion?: boolean } = {}
+    ): Promise<PipelineRunResult> {
+        const validation = this.validatePipelineRunnable(pipelineId);
+        if (!validation.ok) return validation.result;
+
         const runId = uuidv4();
         const startedAt = Math.floor(Date.now() / 1000);
-        // Best-effort insert; keep tool path resilient in dev/test
         try {
             const db = (this.sharedServices as any).database;
             await db.execute(
@@ -497,50 +532,88 @@ export class LearningOrchestrator {
                 [runId, pipelineId, startedAt, JSON.stringify({})]
             );
         } catch (e) {
+            const message = e instanceof Error ? e.message : String(e);
             if (!process.env.SILENT_MODE && !process.env.STDIO_MODE) {
-                console.warn('runPipeline: failed to insert start row:', e instanceof Error ? e.message : String(e));
+                console.warn('runPipeline: failed to insert start row:', message);
             }
+            return {
+                ok: false,
+                runId: '',
+                pipelineId,
+                status: 'failed',
+                persisted: false,
+                errors: [`failed to persist pipeline run: ${message}`],
+            };
         }
 
-        // Execute without blocking caller (fire-and-forget), but record completion
-        // For tests, we still wait for completion before returning ok=true to ensure determinism
+        const completion = this.completePersistedPipelineRun(pipelineId, runId, context);
+        if (options.waitForCompletion) return completion;
+        completion.catch(() => undefined);
+        return { ok: true, runId, pipelineId, status: 'running', persisted: true };
+    }
+
+    private async completePersistedPipelineRun(
+        pipelineId: string,
+        runId: string,
+        context: LearningContext
+    ): Promise<PipelineRunResult> {
         try {
             const result = await this.executePipeline(pipelineId, context);
-            const finishedAt = Math.floor(Date.now() / 1000);
             const status = result.success ? 'success' : 'failed';
-            const metrics = {
+            const errors = result.errors ?? [];
+            await this.recordPipelineRunFinished(runId, status, {
                 totalTimeMs: result.performance?.totalTimeMs ?? 0,
                 componentsTime: result.performance?.componentsTime ?? {},
-                errors: result.errors ?? [],
-            };
-            try {
-                const db = (this.sharedServices as any).database;
-                await db.execute(`UPDATE pipeline_runs SET finished_at = ?, status = ?, metrics = ? WHERE id = ?`, [
-                    finishedAt,
-                    status,
-                    JSON.stringify(metrics),
-                    runId,
-                ]);
-            } catch (e) {
-                if (!process.env.SILENT_MODE && !process.env.STDIO_MODE) {
-                    console.warn(
-                        'runPipeline: failed to update finish row:',
-                        e instanceof Error ? e.message : String(e)
-                    );
-                }
-            }
-            return { ok: true, runId };
+                errors,
+            });
+            return { ok: result.success, runId, pipelineId, status, persisted: true, errors };
         } catch (err) {
-            const finishedAt = Math.floor(Date.now() / 1000);
-            try {
-                const db = (this.sharedServices as any).database;
-                await db.execute(
-                    `UPDATE pipeline_runs SET finished_at = ?, status = 'failed', metrics = ? WHERE id = ?`,
-                    [finishedAt, JSON.stringify({ errors: [err instanceof Error ? err.message : String(err)] }), runId]
-                );
-            } catch {}
-            return { ok: false, runId };
+            const message = err instanceof Error ? err.message : String(err);
+            await this.recordPipelineRunFinished(runId, 'failed', { errors: [message] }).catch(() => undefined);
+            return { ok: false, runId, pipelineId, status: 'failed', persisted: true, errors: [message] };
         }
+    }
+
+    private async recordPipelineRunFinished(runId: string, status: 'success' | 'failed', metrics: any): Promise<void> {
+        const finishedAt = Math.floor(Date.now() / 1000);
+        const db = (this.sharedServices as any).database;
+        await db.execute(`UPDATE pipeline_runs SET finished_at = ?, status = ?, metrics = ? WHERE id = ?`, [
+            finishedAt,
+            status,
+            JSON.stringify(metrics),
+            runId,
+        ]);
+    }
+
+    private validatePipelineRunnable(pipelineId: string): { ok: true } | { ok: false; result: PipelineRunResult } {
+        const pipeline = this.pipelines.get(pipelineId);
+        if (!pipeline) {
+            return {
+                ok: false,
+                result: {
+                    ok: false,
+                    runId: '',
+                    pipelineId,
+                    status: 'failed',
+                    persisted: false,
+                    errors: [`Pipeline ${pipelineId} not found`],
+                },
+            };
+        }
+        if (!pipeline.enabled) {
+            return {
+                ok: false,
+                result: {
+                    ok: false,
+                    runId: '',
+                    pipelineId,
+                    status: 'failed',
+                    persisted: false,
+                    errors: [`Pipeline ${pipelineId} is disabled`],
+                },
+            };
+        }
+        return { ok: true };
     }
 
     /**
@@ -626,8 +699,16 @@ export class LearningOrchestrator {
      * Register a learning pipeline
      */
     async registerPipeline(pipeline: Omit<LearningPipeline, 'stats'>): Promise<string> {
+        const invalidComponents = (pipeline.components || []).filter(
+            (component) => !PIPELINE_COMPONENT_SET.has(String(component))
+        );
+        if (invalidComponents.length > 0) {
+            throw new CoreError(`Invalid pipeline component(s): ${invalidComponents.join(', ')}`, 'InvalidParams');
+        }
+
         const fullPipeline: LearningPipeline = {
             ...pipeline,
+            components: pipeline.components as PipelineComponent[],
             stats: {
                 runsCompleted: 0,
                 runsSuccessful: 0,
@@ -1350,7 +1431,7 @@ export class LearningOrchestrator {
         const { pipelineId, context } = this.pipelineQueue.shift()!;
 
         try {
-            await this.executePipeline(pipelineId, context);
+            await this.runPipeline(pipelineId, context);
         } catch (error) {
             console.error(`Failed to execute pipeline ${pipelineId}:`, error);
         }

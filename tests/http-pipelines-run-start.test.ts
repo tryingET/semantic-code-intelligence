@@ -33,16 +33,16 @@ bindDescribe('HTTP /api/v1/pipelines/run (start)', () => {
         expect(body.success).toBe(false);
     });
 
-    test('200 with runId even for unknown id (non-fatal)', async () => {
+    test('unknown id fails without returning a ghost run id', async () => {
         const res = await fetch(`${base}/api/v1/pipelines/run`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ id: 'not_a_pipeline' }),
         });
-        expect(res.status).toBe(200);
+        expect(res.status).toBe(400);
         const body = await res.json();
-        expect(body.success).toBe(true);
-        expect(typeof body.data?.runId).toBe('string');
-        expect(typeof body.data?.ok).toBe('boolean');
+        expect(body.success).toBe(false);
+        expect(body.data?.ok).toBe(false);
+        expect(body.data?.runId).toBe('');
     });
 });

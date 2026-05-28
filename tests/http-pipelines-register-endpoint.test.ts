@@ -60,4 +60,21 @@ bindDescribe('HTTP /api/v1/pipelines (register)', () => {
         expect(body2.data?.id).toBe(id);
         expect(body2.data?.name).toBe('Dev Test Pipeline');
     });
+
+    test('400 on invalid component instead of registering a successful no-op pipeline', async () => {
+        const res = await fetch(`${base}/api/v1/pipelines`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+                id: `bad_component_${Date.now()}`,
+                name: 'Bad Component Pipeline',
+                components: ['definitely_not_a_component'],
+                trigger: 'manual',
+            }),
+        });
+        expect(res.status).toBe(400);
+        const body = await res.json();
+        expect(body.success).toBe(false);
+        expect(body.error.message).toContain('Invalid pipeline component');
+    });
 });

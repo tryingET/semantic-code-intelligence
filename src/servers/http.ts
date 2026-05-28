@@ -439,17 +439,42 @@ export class HTTPServer {
                                 });
                             }
 
-                            // Kick off the pipeline run
-                            const runRes = await this.executeToolWorkflow('run_pipeline', {
-                                id: pipelineId,
-                            });
-                            const runJson = this.toolWorkflowPayload(runRes, {});
-                            const runId = String(runJson?.runId || '').trim();
-                            if (!runId) {
-                                return new Response(JSON.stringify({ error: 'failed to start pipeline' }), {
+                            const learningOrchestrator = (this.coreAnalyzer as any)?.learningOrchestrator;
+                            if (!learningOrchestrator || typeof learningOrchestrator.startPipelineRun !== 'function') {
+                                return new Response(JSON.stringify({ success: false, error: 'learning orchestrator unavailable' }), {
                                     status: 500,
                                     headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 });
+                            }
+
+                            // Start the persisted run before constructing the stream so the
+                            // first bytes can report the accepted run instead of waiting for
+                            // pipeline completion.
+                            const runJson = await learningOrchestrator.startPipelineRun(pipelineId, {
+                                requestId: String(Date.now()),
+                                operation: 'pipeline_run_stream',
+                                timestamp: new Date(),
+                                metadata: {},
+                            });
+                            const runId = String(runJson?.runId || '').trim();
+                            if (!runJson?.ok || !runId) {
+                                return new Response(
+                                    JSON.stringify({
+                                        success: false,
+                                        error: {
+                                            code: 'InvalidParams',
+                                            message: runJson?.errors?.[0] || 'failed to start pipeline',
+                                            data: runJson,
+                                        },
+                                    }),
+                                    {
+                                        status: 400,
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            ...corsHeadersForRequest(request),
+                                        },
+                                    }
+                                );
                             }
 
                             const stream = new ReadableStream<Uint8Array>({
@@ -557,10 +582,25 @@ export class HTTPServer {
                                 runId: '',
                                 reason: 'parse_error',
                             });
-                            return new Response(JSON.stringify({ success: true, data: json }), {
-                                status: 200,
-                                headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
-                            });
+                            const ok = !!json?.ok;
+                            const status = ok || json?.runId ? 200 : 400;
+                            return new Response(
+                                JSON.stringify({
+                                    success: ok,
+                                    data: json,
+                                    error: ok
+                                        ? undefined
+                                        : {
+                                              code: 'InvalidParams',
+                                              message: json?.errors?.[0] || json?.reason || 'pipeline run failed',
+                                              data: json,
+                                          },
+                                }),
+                                {
+                                    status,
+                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
+                                }
+                            );
                         } catch (err) {
                             const status = statusForThrownError(err);
                             return new Response(

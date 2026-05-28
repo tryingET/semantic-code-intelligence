@@ -30,6 +30,8 @@ bindDescribe('HTTP OpenAPI includes contract endpoints', () => {
         expect(paths['/api/v1/pipelines/status']).toBeDefined();
         expect(paths['/api/v1/pipelines/runs']).toBeDefined();
         expect(paths['/api/v1/pipelines/run']).toBeDefined();
+        expect(paths['/api/v1/pipelines/run-stream']).toBeDefined();
+        expect(paths['/api/v1/pipelines/run-stream'].post.responses['200'].content['application/x-ndjson']).toBeDefined();
         expect(paths['/api/v1/pipelines']).toBeDefined();
         expect(paths['/api/v1/plan-rename']).toBeDefined();
         expect(paths['/api/v1/apply-rename']).toBeDefined();

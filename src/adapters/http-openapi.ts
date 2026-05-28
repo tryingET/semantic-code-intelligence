@@ -675,6 +675,38 @@ export function createOpenApiResponse(apiVersion?: string): HttpOpenApiResponse 
                         },
                     },
                 },
+                [api('/pipelines/run-stream')]: {
+                    post: {
+                        summary: 'Start a pipeline run and stream status events (NDJSON)',
+                        requestBody: {
+                            required: true,
+                            content: {
+                                'application/json': {
+                                    schema: {
+                                        type: 'object',
+                                        required: ['id'],
+                                        properties: {
+                                            id: { type: 'string' },
+                                            timeoutSec: { type: 'integer', minimum: 1, maximum: 600 },
+                                            pollMs: { type: 'integer', minimum: 100, maximum: 2000 },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                        responses: {
+                            '200': {
+                                description: 'NDJSON events: started, status, finished or timeout',
+                                content: {
+                                    'application/x-ndjson': {
+                                        schema: { type: 'string' },
+                                    },
+                                },
+                            },
+                            '400': { description: 'Bad Request' },
+                        },
+                    },
+                },
                 [api('/pipelines/run')]: {
                     get: {
                         summary: 'Get a specific pipeline run detail (poll-once)',
