@@ -17,6 +17,7 @@
     "bin/",
     "dist/",
     "README.md",
+    "CONFIG.md",
     "LICENSE"
   ],
   "scripts": {

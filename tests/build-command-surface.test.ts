@@ -207,6 +207,54 @@ describe('build command surface', () => {
         expect(workflow).not.toContain('analyze --path');
     });
 
+    test('CI integration startup uses current build artifact paths', () => {
+        const workflow = readText('.github/workflows/ci.yml');
+
+        expect(workflow).toContain('bun run dist/http/http.js --port 7000');
+        expect(workflow).toContain('bun run dist/mcp-http/mcp-http.js --port 7001');
+        expect(workflow).not.toContain('dist/api/http.js');
+        expect(workflow).not.toContain('dist/mcp-sse/mcp-sse.js');
+        expect(workflow).not.toContain('MCP SSE');
+    });
+
+    test('README quick start only advertises supported packaged commands', () => {
+        const readme = readText('README.md');
+
+        expect(readme).toContain('semantic-code-intelligence stats');
+        expect(readme).toContain('semantic-code-mcp');
+        expect(readme).not.toContain('semantic-code-intelligence start');
+        expect(readme).not.toContain('semantic-code-intelligence analyze');
+    });
+
+    test('packaged README references are included in package files allowlist', () => {
+        const packageJson = JSON.parse(readText('package.json')) as { files?: string[] };
+        const readme = readText('README.md');
+
+        expect(readme).toContain('CONFIG.md');
+        expect(packageJson.files).toContain('CONFIG.md');
+    });
+
+    test('CLI init --force refuses symlink config clobbering', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'sci-init-symlink-'));
+        const victim = join(dir, 'victim.txt');
+        const configLink = join(dir, '.semantic-code-intelligence-config.yaml');
+        try {
+            writeFileSync(victim, 'keep-me\n');
+            symlinkSync(victim, configLink);
+
+            const proc = spawnSync('bun', [join(process.cwd(), 'src/servers/cli.ts'), 'init', '--force'], {
+                cwd: dir,
+                encoding: 'utf8',
+            });
+
+            expect(proc.status).toBe(1);
+            expect(proc.stderr).toContain('Configuration path must not be a symlink');
+            expect(readFileSync(victim, 'utf8')).toBe('keep-me\n');
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     test('package build delegates to the canonical all-adapter build', () => {
         const packageJson = JSON.parse(readText('package.json')) as { main?: string; scripts?: Record<string, string> };
         expect(packageJson.main).toBe('dist/core/index.js');

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -83,6 +83,28 @@ bindDescribe('Nexus HTTP ingress regressions', () => {
         const body = await res.json();
         expect(body.success).toBe(false);
         expect(body.error?.code).toBe('InvalidParams');
+    });
+
+    test('HTTP snapshot progress refuses symlinked progress artifacts', async () => {
+        const snap = overlayStore.createSnapshot(false, { workspaceRoot: workspace });
+        const snapshotDir = overlayStore.getSnapshotDirectory(snap.id, { workspaceRoot: workspace });
+        const outside = mkdtempSync(join(tmpdir(), 'sci-http-progress-outside-'));
+        const progressPath = join(snapshotDir, 'progress.log');
+        try {
+            writeFileSync(join(outside, 'secret.txt'), 'http-progress-secret-must-not-leak\n');
+            rmSync(progressPath, { force: true });
+            symlinkSync(join(outside, 'secret.txt'), progressPath);
+
+            const res = await fetch(`${base}/api/v1/snapshots/${snap.id}/progress`);
+            expect(res.status).toBe(200);
+            const body = await res.json();
+            expect(body.success).toBe(true);
+            expect(body.data.progress).toBe('');
+            expect(JSON.stringify(body)).not.toContain('http-progress-secret-must-not-leak');
+        } finally {
+            rmSync(progressPath, { force: true });
+            rmSync(outside, { recursive: true, force: true });
+        }
     });
 
     test('enforces bounded JSON request bodies before parsing', async () => {

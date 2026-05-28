@@ -106,12 +106,11 @@ just alpha-mvp-check
 ```bash
 # Run directly without installing using bunx
 bunx semantic-code-intelligence init
-bunx semantic-code-intelligence start --stdio
-bunx semantic-code-intelligence analyze
 bunx semantic-code-intelligence stats
+bunx semantic-code-intelligence find CodeAnalyzer
 
-# Or use the shorter alias after first run
-bunx semantic-code-intelligence init
+# Start the stdio MCP server via the packaged MCP bin
+bunx semantic-code-mcp
 ```
 
 ### Global Installation
@@ -125,7 +124,8 @@ bun install -g semantic-code-intelligence
 
 # Then use directly
 semantic-code-intelligence init
-semantic-code-intelligence start
+semantic-code-intelligence stats
+semantic-code-mcp
 ```
 
 ### Manual Installation
@@ -625,7 +625,7 @@ Notes:
 Enable debug logging:
 ```bash
 export DEBUG=semantic-code-intelligence:*
-semantic-code-intelligence start --verbose
+semantic-code-mcp
 ```
 
 View internal state:

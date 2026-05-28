@@ -287,6 +287,7 @@ export class ToolRegistry {
                 properties: {
                     snapshot: { type: 'string' },
                     check: { type: 'boolean', default: false },
+                    reverse: { type: 'boolean', default: false },
                 },
                 required: ['snapshot'],
             },

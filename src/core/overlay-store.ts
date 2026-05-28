@@ -34,6 +34,8 @@ type Snapshot = {
         args: { check: boolean; reverse: boolean };
         at: number;
     };
+    applyCreatedDirs?: string[];
+    applyPreExistingDirs?: string[];
 };
 
 export class OverlayStore {
@@ -393,6 +395,8 @@ export class OverlayStore {
             workspaceRoot: snap.workspaceRoot || null,
             touchedFiles: snap.touchedFiles ? Array.from(snap.touchedFiles) : [],
             lastApply: snap.lastApply || null,
+            applyCreatedDirs: snap.applyCreatedDirs || [],
+            applyPreExistingDirs: snap.applyPreExistingDirs || [],
         };
     }
 
@@ -412,6 +416,8 @@ export class OverlayStore {
         const snap: Snapshot = { id, createdAt, diffs, baseFingerprint, workspaceRoot };
         if (touched.length) snap.touchedFiles = new Set(touched);
         if (raw?.lastApply && typeof raw.lastApply === 'object') snap.lastApply = raw.lastApply;
+        if (Array.isArray(raw?.applyCreatedDirs)) snap.applyCreatedDirs = raw.applyCreatedDirs.filter((dir: any) => typeof dir === 'string');
+        if (Array.isArray(raw?.applyPreExistingDirs)) snap.applyPreExistingDirs = raw.applyPreExistingDirs.filter((dir: any) => typeof dir === 'string');
         return snap;
     }
 
@@ -1412,8 +1418,7 @@ export class OverlayStore {
         }
     }
 
-    private async removeEmptyApplyDirs(diffFile: string, workspaceRoot?: string): Promise<void> {
-        const diffText = await fsp.readFile(diffFile, 'utf8');
+    private collectApplyTargetDirs(diffText: string): string[] {
         const dirs = new Set<string>();
         for (const line of diffText.split(/\r?\n/)) {
             const match = line.match(/^\+\+\+\s+b\/(.+)$/) || line.match(/^\*\*\*\s+Add File:\s+(.+)$/);
@@ -1423,10 +1428,48 @@ export class OverlayStore {
             const dir = path.posix.dirname(normalized);
             if (dir && dir !== '.' && dir !== '/') dirs.add(dir);
         }
-        const ordered = Array.from(dirs).sort((a, b) => b.length - a.length);
+        return Array.from(dirs).sort((a, b) => a.length - b.length);
+    }
+
+    private collectApplyDirState(dirs: string[], workspaceRoot?: string): { missing: string[]; existing: string[] } {
+        const root = this.resolveWorkspaceBase(workspaceRoot);
+        const missing = new Set<string>();
+        const existing = new Set<string>();
+        for (const dir of dirs) {
+            let current = '';
+            for (const part of dir.split('/').filter(Boolean)) {
+                current = current ? `${current}/${part}` : part;
+                const { absolutePath, relativePath } = this.containedPath(root, current, 'apply_snapshot directory');
+                if (!fs.existsSync(absolutePath)) {
+                    missing.add(relativePath);
+                    continue;
+                }
+                const stat = fs.lstatSync(absolutePath);
+                if (!stat.isDirectory() || stat.isSymbolicLink()) {
+                    throw new Error('apply_snapshot directory must be a non-symlink directory');
+                }
+                existing.add(relativePath);
+            }
+        }
+        return {
+            missing: Array.from(missing).sort((a, b) => b.length - a.length),
+            existing: Array.from(existing).sort((a, b) => a.length - b.length),
+        };
+    }
+
+    private async removeRecordedApplyDirs(dirs: string[] | undefined, workspaceRoot?: string): Promise<void> {
+        const ordered = Array.from(new Set(dirs || [])).sort((a, b) => b.length - a.length);
         for (const rel of ordered) {
             const { absolutePath } = this.containedPath(this.resolveWorkspaceBase(workspaceRoot), rel, 'apply_snapshot directory');
             await fsp.rmdir(absolutePath).catch(() => undefined);
+        }
+    }
+
+    private async recreateRecordedApplyDirs(dirs: string[] | undefined, workspaceRoot?: string): Promise<void> {
+        const ordered = Array.from(new Set(dirs || [])).sort((a, b) => a.length - b.length);
+        for (const rel of ordered) {
+            const { absolutePath } = this.containedPath(this.resolveWorkspaceBase(workspaceRoot), rel, 'apply_snapshot directory');
+            await fsp.mkdir(absolutePath, { recursive: true }).catch(() => undefined);
         }
     }
 
@@ -1445,6 +1488,8 @@ export class OverlayStore {
         const dir = (await this.ensureMaterialized(snapshotId, { allowCurrentMaterializedWithWorkspaceDrift: true })) || workspaceRoot;
         const diffFile = path.join(dir, 'overlay.diff');
         let output = '';
+        let applyCreatedDirs: string[] = [];
+        let applyPreExistingDirs: string[] = [];
         if (!reverse && snap?.baseFingerprint && this.workspaceBaseFingerprint(snap.workspaceRoot) !== snap.baseFingerprint) {
             const elapsedMs = Date.now() - start;
             const message = 'Workspace changed since snapshot creation before apply; create a fresh snapshot';
@@ -1462,20 +1507,11 @@ export class OverlayStore {
         // create workspace directories before proving preview-only behavior.
         try {
             const diffText = await fsp.readFile(diffFile, 'utf8');
-            const ensureDirs = new Set<string>();
-            for (const line of diffText.split(/\r?\n/)) {
-                let m = line.match(/^\+\+\+\s+b\/(.+)$/);
-                if (m && m[1]) {
-                    const normalized = this.normalizePatchRelativePath(m[1], 'apply_snapshot patch path');
-                    if (normalized) ensureDirs.add(path.posix.dirname(normalized));
-                }
-                m = line.match(/^\*\*\*\s+Add File:\s+(.+)$/);
-                if (m && m[1]) {
-                    const normalized = this.normalizePatchRelativePath(m[1], 'apply_snapshot patch path');
-                    if (normalized) ensureDirs.add(path.posix.dirname(normalized));
-                }
-            }
+            const ensureDirs = this.collectApplyTargetDirs(diffText);
             if (!check && !reverse) {
+                const dirState = this.collectApplyDirState(ensureDirs, workspaceRoot);
+                applyCreatedDirs = dirState.missing;
+                applyPreExistingDirs = dirState.existing;
                 for (const rel of ensureDirs) {
                     if (!rel || rel === '.' || rel === '/') continue;
                     const { absolutePath } = this.containedPath(workspaceRoot, rel, 'apply_snapshot directory');
@@ -1530,7 +1566,16 @@ export class OverlayStore {
         output += String(git.stdout || '') + String(git.stderr || '');
         const elapsed = Date.now() - start;
         if (git.status === 0) {
-            if (reverse) await this.removeEmptyApplyDirs(diffFile, workspaceRoot).catch(() => undefined);
+            if (!check && !reverse) {
+                snap.applyCreatedDirs = applyCreatedDirs;
+                snap.applyPreExistingDirs = applyPreExistingDirs;
+            }
+            if (!check && reverse) {
+                await this.removeRecordedApplyDirs(snap.applyCreatedDirs, workspaceRoot).catch(() => undefined);
+                await this.recreateRecordedApplyDirs(snap.applyPreExistingDirs, workspaceRoot).catch(() => undefined);
+                snap.applyCreatedDirs = [];
+                snap.applyPreExistingDirs = [];
+            }
             this.recordLastApply(snapshotId, {
                 ok: true,
                 elapsedMs: elapsed,
@@ -1550,7 +1595,17 @@ export class OverlayStore {
             const p = spawnSync('patch', patchArgs, { stdio: 'pipe', cwd: workspaceRoot });
             output += String(p.stdout || '') + String(p.stderr || '');
             const ok = p.status === 0;
-            if (ok && reverse) await this.removeEmptyApplyDirs(diffFile, workspaceRoot).catch(() => undefined);
+            if (ok && !check && !reverse) {
+                snap.applyCreatedDirs = applyCreatedDirs;
+                snap.applyPreExistingDirs = applyPreExistingDirs;
+            }
+            if (ok && !check && reverse) {
+                await this.removeRecordedApplyDirs(snap.applyCreatedDirs, workspaceRoot).catch(() => undefined);
+                await this.recreateRecordedApplyDirs(snap.applyPreExistingDirs, workspaceRoot).catch(() => undefined);
+                snap.applyCreatedDirs = [];
+                snap.applyPreExistingDirs = [];
+            }
+            if (!ok && !check && !reverse) await this.removeRecordedApplyDirs(applyCreatedDirs, workspaceRoot).catch(() => undefined);
             this.recordLastApply(snapshotId, {
                 ok,
                 elapsedMs: Date.now() - start,
@@ -1560,6 +1615,7 @@ export class OverlayStore {
             });
             return { ok, output, elapsedMs: Date.now() - start };
         }
+        if (!check && !reverse) await this.removeRecordedApplyDirs(applyCreatedDirs, workspaceRoot).catch(() => undefined);
         this.recordLastApply(snapshotId, {
             ok: false,
             elapsedMs: Date.now() - start,

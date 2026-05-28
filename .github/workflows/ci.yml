@@ -426,11 +426,11 @@ jobs:
           mkdir -p .ontology/pids .ontology/logs
           
           # Start HTTP API server
-          timeout 30s bun run dist/api/http.js --port 7000 > .ontology/logs/http.log 2>&1 &
+          timeout 30s bun run dist/http/http.js --port 7000 > .ontology/logs/http.log 2>&1 &
           echo $! > .ontology/pids/http.pid
           
-          # Start MCP SSE server  
-          timeout 30s bun run dist/mcp-sse/mcp-sse.js --port 7001 > .ontology/logs/mcp.log 2>&1 &
+          # Start MCP HTTP server
+          timeout 30s bun run dist/mcp-http/mcp-http.js --port 7001 > .ontology/logs/mcp.log 2>&1 &
           echo $! > .ontology/pids/mcp.pid
           
           # Wait for servers to start
@@ -444,9 +444,9 @@ jobs:
           curl -f http://localhost:7000/health --max-time 10 || exit 1
           echo "✅ HTTP API health check passed"
           
-          # Check MCP SSE server
+          # Check MCP HTTP server
           curl -f http://localhost:7001/health --max-time 10 || exit 1
-          echo "✅ MCP SSE health check passed"
+          echo "✅ MCP HTTP health check passed"
           
           # Test basic functionality
           curl -f http://localhost:7000/stats --max-time 10 | jq . || exit 1

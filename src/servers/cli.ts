@@ -984,11 +984,32 @@ class CLI {
         }
     }
 
+    private writeConfigFileNoFollow(configPath: string, content: string, force: boolean): void {
+        const noFollow = typeof fs.constants.O_NOFOLLOW === 'number' ? fs.constants.O_NOFOLLOW : 0;
+        const flags = fs.constants.O_WRONLY | fs.constants.O_CREAT | (force ? fs.constants.O_TRUNC : fs.constants.O_EXCL) | noFollow;
+        const fd = fs.openSync(configPath, flags, 0o600);
+        try {
+            fs.writeFileSync(fd, content, 'utf8');
+        } finally {
+            fs.closeSync(fd);
+        }
+    }
+
     private async handleInit(options: any): Promise<void> {
         const configPath = path.join(process.cwd(), '.semantic-code-intelligence-config.yaml');
         const dbPath = path.join(process.cwd(), '.ontology');
 
-        if (fs.existsSync(configPath) && !options.force) {
+        let existingConfig: fs.Stats | null = null;
+        try {
+            existingConfig = fs.lstatSync(configPath);
+        } catch (error: any) {
+            if (error?.code !== 'ENOENT') throw error;
+        }
+        if (existingConfig?.isSymbolicLink()) {
+            console.error('Configuration path must not be a symlink.');
+            process.exit(1);
+        }
+        if (existingConfig && !options.force) {
             console.error('Configuration already exists. Use --force to overwrite.');
             process.exit(1);
         }
@@ -1031,7 +1052,15 @@ performance:
   slowOperationThresholdMs: 1000
 `;
 
-        fs.writeFileSync(configPath, config);
+        try {
+            this.writeConfigFileNoFollow(configPath, config, !!options.force);
+        } catch (error: any) {
+            if (error?.code === 'ELOOP') {
+                console.error('Configuration path must not be a symlink.');
+                process.exit(1);
+            }
+            throw error;
+        }
 
         // Create .semantic-code-ignore if it doesn't exist
         const ignorePath = path.join(process.cwd(), '.semantic-code-ignore');

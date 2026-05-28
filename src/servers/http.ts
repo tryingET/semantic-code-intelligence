@@ -10,6 +10,9 @@
  */
 
 import { serve } from 'bun';
+import * as fsSync from 'node:fs';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 import { HTTPAdapter, type HTTPRequest } from '../adapters/http-adapter.js';
 import { createDefaultCoreConfig, definitionToApiResponse, strictJsonParse } from '../adapters/utils.js';
 import { getEnvironmentConfig, type ServerConfig } from '../core/config/server-config.js';
@@ -31,6 +34,30 @@ interface HTTPServerConfig {
     workspaceRoot?: string;
     enableCors?: boolean;
     enableOpenAPI?: boolean;
+}
+
+async function readSnapshotArtifactText(dir: string | undefined, file: string, fallback: string): Promise<string> {
+    if (!dir) return fallback;
+    try {
+        const filePath = path.join(dir, file);
+        const stat = await fs.lstat(filePath);
+        if (!stat.isFile() || stat.isSymbolicLink()) return fallback;
+        const [realDir, realFile] = await Promise.all([fs.realpath(dir), fs.realpath(filePath)]);
+        const relative = path.relative(realDir, realFile);
+        if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return fallback;
+        const noFollow = typeof fsSync.constants.O_NOFOLLOW === 'number' ? fsSync.constants.O_NOFOLLOW : 0;
+        const handle = await fs.open(filePath, fsSync.constants.O_RDONLY | noFollow);
+        try {
+            const openedReal = await fs.realpath(`/proc/self/fd/${handle.fd}`).catch(() => fs.realpath(`/dev/fd/${handle.fd}`));
+            const openedRelative = path.relative(realDir, openedReal);
+            if (!openedRelative || openedRelative.startsWith('..') || path.isAbsolute(openedRelative)) return fallback;
+            return await handle.readFile('utf8');
+        } finally {
+            await handle.close().catch(() => undefined);
+        }
+    } catch {
+        return fallback;
+    }
 }
 
 function statusForCoreErrorCode(code: unknown, fallback = 500): number {
@@ -945,14 +972,7 @@ export class HTTPServer {
                                         workspaceRoot: this.config.workspaceRoot,
                                     }) || '';
                             } catch {}
-                            const file = snapshotDir ? Bun.file(`${snapshotDir}/progress.log`) : null;
-                            if (!file || !(await file.exists())) {
-                                return new Response(JSON.stringify({ success: true, data: { id, progress: '' } }), {
-                                    status: 200,
-                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
-                                });
-                            }
-                            const text = await file.text();
+                            const text = await readSnapshotArtifactText(snapshotDir || undefined, 'progress.log', '');
                             return new Response(JSON.stringify({ success: true, data: { id, progress: text } }), {
                                 status: 200,
                                 headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },

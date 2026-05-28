@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { OverlayStore } from '../src/core/overlay-store';
@@ -48,6 +48,9 @@ describe('tool boundary contract', () => {
         expect(applyRename.required).toEqual(['oldName', 'newName']);
         expect(applyRename.properties.oldName).toBeDefined();
         expect(applyRename.properties.changes).toBeUndefined();
+
+        const applySnapshot = tool('apply_snapshot').inputSchema;
+        expect(applySnapshot.properties.reverse).toEqual({ type: 'boolean', default: false });
     });
 
     test('run_checks accepts common validation command shapes without shell execution', async () => {
@@ -149,6 +152,22 @@ describe('tool boundary contract', () => {
         const result = await store.runChecks(snap.id, [`true ${'x'.repeat(9000)}`], 5, { workspaceRoot: root });
         expect(result.ok).toBe(false);
         expect(result.output).toContain('command length must be at most 8192 characters');
+    });
+
+    test('reverse snapshot apply preserves pre-existing empty directories', async () => {
+        const root = tempRoot();
+        mkdirSync(join(root, 'keepdir'), { recursive: true });
+        writeFileSync(join(root, 'package.json'), '{"type":"module"}\n', 'utf8');
+        const store = new OverlayStore();
+        const snap = store.createSnapshot(false, { workspaceRoot: root });
+        const diff = `diff --git a/keepdir/new.txt b/keepdir/new.txt\nnew file mode 100644\n--- /dev/null\n+++ b/keepdir/new.txt\n@@ -0,0 +1 @@\n+hello\n`;
+
+        expect(store.stagePatch(snap.id, diff).accepted).toBe(true);
+        expect((await store.applyToWorkingTree(snap.id, { workspaceRoot: root })).ok).toBe(true);
+        expect((await store.applyToWorkingTree(snap.id, { workspaceRoot: root, reverse: true })).ok).toBe(true);
+
+        expect(existsSync(join(root, 'keepdir'))).toBe(true);
+        expect(existsSync(join(root, 'keepdir', 'new.txt'))).toBe(false);
     });
 
     test('snapshot artifacts fail closed when .ontology is a symlink', async () => {

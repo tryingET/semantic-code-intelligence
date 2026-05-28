@@ -130,6 +130,40 @@ describe('boundary contracts', () => {
         }
     });
 
+    test('HTTP adapter definition responses preserve OpenAPI-required confidence metadata', async () => {
+        const adapter = new HTTPAdapter(
+            fakeCore({
+                findDefinition: async () => ({
+                    data: [
+                        {
+                            uri: 'file://workspace/example.ts',
+                            range: { start: { line: 1, character: 2 }, end: { line: 1, character: 8 } },
+                            kind: 'function',
+                            name: 'example',
+                            confidence: 0.9,
+                            source: 'exact',
+                            layer: 'layer1',
+                        },
+                    ],
+                    performance: {},
+                    timestamp: 1,
+                    cacheHit: false,
+                }),
+            })
+        );
+
+        const response = await adapter.handleRequest({
+            method: 'POST',
+            url: 'http://localhost/api/v1/definition',
+            headers: {},
+            body: JSON.stringify({ identifier: 'example' }),
+        });
+        const body = JSON.parse(response.body);
+
+        expect(response.status).toBe(200);
+        expect(body.data[0]).toMatchObject({ confidence: 0.9, source: 'exact', layer: 'layer1' });
+    });
+
     test('HTTP adapter preserves internal failures as 500 and rejects NaN numeric bounds', async () => {
         const adapter = new HTTPAdapter(
             fakeCore({
