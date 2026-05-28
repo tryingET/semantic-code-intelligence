@@ -39,7 +39,7 @@ Phase 1 is accepted for these first-user uses:
 - graph impact summaries that are useful when evidence exists and explicit when fallback-shaped;
 - advisory `recommend_checks` output that does not silently mutate selected commands;
 - preview-first patch/check workflows with snapshot artifacts and compact `validationPlan` summaries;
-- guarded `safe_write` apply posture with exact applied-diff verification and rollback evidence;
+- guarded `safe_write` apply posture with applied-state verification and rollback evidence;
 - repeatable generated Alpha evidence and operator-facing evidence packets;
 - target-cwd installed/global CLI dogfood across SCI, JavaScript, mixed Python/Rust, and Clojure target contexts.
 

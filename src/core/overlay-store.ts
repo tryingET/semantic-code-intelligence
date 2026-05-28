@@ -1,8 +1,8 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
+import * as os from 'node:os';
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
-import * as os from 'node:os';
 import * as path from 'path';
 
 export type CheckCommandReceipt = {
@@ -38,7 +38,13 @@ type Snapshot = {
     applyPreExistingDirs?: string[];
 };
 
-const RESERVED_PATCH_ROOT_NAMES = new Set(['.materialized', 'metadata.json', 'overlay.diff', 'squashed-overlay.diff', 'progress.log']);
+const RESERVED_PATCH_ROOT_NAMES = new Set([
+    '.materialized',
+    'metadata.json',
+    'overlay.diff',
+    'squashed-overlay.diff',
+    'progress.log',
+]);
 const RESERVED_PATCH_ROOT_PREFIXES = ['.git', '.ontology'];
 
 export class OverlayStore {
@@ -85,7 +91,11 @@ export class OverlayStore {
             const line = `[${new Date().toISOString()}] ${msg}\n`;
             const progressPath = path.join(dir, 'progress.log');
             const noFollow = typeof fs.constants.O_NOFOLLOW === 'number' ? fs.constants.O_NOFOLLOW : 0;
-            const handle = await fsp.open(progressPath, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_APPEND | noFollow, 0o600);
+            const handle = await fsp.open(
+                progressPath,
+                fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_APPEND | noFollow,
+                0o600
+            );
             try {
                 await handle.writeFile(line, 'utf8');
             } finally {
@@ -105,7 +115,11 @@ export class OverlayStore {
         return path.join(this.snapshotsRoot(workspaceRoot), id);
     }
 
-    private assertSafeSnapshotDirectory(id: string, workspaceRoot?: string, opts: { mustExist?: boolean } = {}): string {
+    private assertSafeSnapshotDirectory(
+        id: string,
+        workspaceRoot?: string,
+        opts: { mustExist?: boolean } = {}
+    ): string {
         this.assertValidId(id);
         const root = this.snapshotsRoot(workspaceRoot);
         const dir = path.join(root, id);
@@ -130,7 +144,11 @@ export class OverlayStore {
         return path.join(this.assertSafeSnapshotDirectory(id, workspaceRoot, opts), 'metadata.json');
     }
 
-    private assertSnapshotDirectoryIdentity(id: string, workspaceRoot: string | undefined, expectedRealDir: string): void {
+    private assertSnapshotDirectoryIdentity(
+        id: string,
+        workspaceRoot: string | undefined,
+        expectedRealDir: string
+    ): void {
         const actualRealDir = fs.realpathSync(this.assertSafeSnapshotDirectory(id, workspaceRoot, { mustExist: true }));
         if (actualRealDir !== expectedRealDir) {
             throw new Error('snapshot directory changed during metadata operation');
@@ -159,7 +177,10 @@ export class OverlayStore {
         fs.mkdirSync(dir, { recursive: true });
         const safeDir = this.assertSafeSnapshotDirectory(snap.id, snap.workspaceRoot, { mustExist: true });
         const expectedRealDir = fs.realpathSync(safeDir);
-        const tmp = path.join(safeDir, `.metadata.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`);
+        const tmp = path.join(
+            safeDir,
+            `.metadata.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`
+        );
         const noFollow = typeof fs.constants.O_NOFOLLOW === 'number' ? fs.constants.O_NOFOLLOW : 0;
         let fd: number | null = null;
         try {
@@ -279,7 +300,11 @@ export class OverlayStore {
         return out.join('\n');
     }
 
-    private containedPath(root: string, relPath: string, inputLabel = 'path'): { absolutePath: string; relativePath: string } {
+    private containedPath(
+        root: string,
+        relPath: string,
+        inputLabel = 'path'
+    ): { absolutePath: string; relativePath: string } {
         const relativePath = this.normalizePatchRelativePath(relPath, inputLabel);
         if (!relativePath) throw new Error(`${inputLabel} must name a file inside the workspace`);
         const absoluteRoot = path.resolve(root);
@@ -311,10 +336,16 @@ export class OverlayStore {
         }
     }
 
-    private async withMaterializeLock<T>(snapshotId: string, workspaceRoot: string | undefined, action: () => Promise<T>): Promise<T> {
+    private async withMaterializeLock<T>(
+        snapshotId: string,
+        workspaceRoot: string | undefined,
+        action: () => Promise<T>
+    ): Promise<T> {
         const previous = this.materializeLocks.get(snapshotId) || Promise.resolve();
         let release!: () => void;
-        const current = new Promise<void>((resolve) => { release = resolve; });
+        const current = new Promise<void>((resolve) => {
+            release = resolve;
+        });
         const chained = previous.catch(() => undefined).then(() => current);
         this.materializeLocks.set(snapshotId, chained);
         await previous.catch(() => undefined);
@@ -338,8 +369,14 @@ export class OverlayStore {
                 this.assertSafeSnapshotStorageRoot(workspaceRoot);
                 await fsp.mkdir(lockDir, { recursive: false });
                 this.assertSafeSnapshotStorageRoot(workspaceRoot);
-                await fsp.writeFile(path.join(lockDir, 'owner.json'), JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() }), 'utf8');
-                return async () => { await fsp.rm(lockDir, { recursive: true, force: true }); };
+                await fsp.writeFile(
+                    path.join(lockDir, 'owner.json'),
+                    JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() }),
+                    'utf8'
+                );
+                return async () => {
+                    await fsp.rm(lockDir, { recursive: true, force: true });
+                };
             } catch (error: any) {
                 if (error?.code !== 'EEXIST') throw error;
                 try {
@@ -360,16 +397,26 @@ export class OverlayStore {
             const result = spawnSync('git', args, { cwd: root, encoding: 'buffer', stdio: ['ignore', 'pipe', 'pipe'] });
             hash.update(label);
             hash.update('\0');
-            hash.update(result.status === 0 ? result.stdout : Buffer.from(`git-failed:${result.status}:${String(result.stderr || '')}`));
+            hash.update(
+                result.status === 0
+                    ? result.stdout
+                    : Buffer.from(`git-failed:${result.status}:${String(result.stderr || '')}`)
+            );
             hash.update('\0');
             return result.status === 0 ? result.stdout.toString('utf8') : '';
         };
         const snapshotArtifactPathspec = ':(exclude).ontology/snapshots';
         addGit(['rev-parse', 'HEAD'], 'head');
-        addGit(['status', '--porcelain=v1', '-z', '--untracked-files=all', '--', '.', snapshotArtifactPathspec], 'status');
+        addGit(
+            ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--', '.', snapshotArtifactPathspec],
+            'status'
+        );
         addGit(['diff', '--binary', '--', '.', snapshotArtifactPathspec], 'diff');
         addGit(['diff', '--cached', '--binary', '--', '.', snapshotArtifactPathspec], 'cached-diff');
-        const untracked = addGit(['ls-files', '--others', '--exclude-standard', '-z', '--', '.', snapshotArtifactPathspec], 'untracked-list')
+        const untracked = addGit(
+            ['ls-files', '--others', '--exclude-standard', '-z', '--', '.', snapshotArtifactPathspec],
+            'untracked-list'
+        )
             .split('\0')
             .filter(Boolean);
         hash.update(`untracked-count:${untracked.length}\0`);
@@ -410,7 +457,9 @@ export class OverlayStore {
         if (!this.isValidSnapshotId(id)) return null;
         const createdAt = Number(raw?.createdAt || Date.now());
         const diffs = Array.isArray(raw?.diffs) ? raw.diffs.filter((d: any) => typeof d === 'string') : [];
-        const touched = Array.isArray(raw?.touchedFiles) ? raw.touchedFiles.filter((f: any) => typeof f === 'string') : [];
+        const touched = Array.isArray(raw?.touchedFiles)
+            ? raw.touchedFiles.filter((f: any) => typeof f === 'string')
+            : [];
         const baseFingerprint = typeof raw?.baseFingerprint === 'string' ? raw.baseFingerprint : undefined;
         const workspaceRoot =
             typeof raw?.workspaceRoot === 'string' && raw.workspaceRoot
@@ -421,8 +470,10 @@ export class OverlayStore {
         const snap: Snapshot = { id, createdAt, diffs, baseFingerprint, workspaceRoot };
         if (touched.length) snap.touchedFiles = new Set(touched);
         if (raw?.lastApply && typeof raw.lastApply === 'object') snap.lastApply = raw.lastApply;
-        if (Array.isArray(raw?.applyCreatedDirs)) snap.applyCreatedDirs = raw.applyCreatedDirs.filter((dir: any) => typeof dir === 'string');
-        if (Array.isArray(raw?.applyPreExistingDirs)) snap.applyPreExistingDirs = raw.applyPreExistingDirs.filter((dir: any) => typeof dir === 'string');
+        if (Array.isArray(raw?.applyCreatedDirs))
+            snap.applyCreatedDirs = raw.applyCreatedDirs.filter((dir: any) => typeof dir === 'string');
+        if (Array.isArray(raw?.applyPreExistingDirs))
+            snap.applyPreExistingDirs = raw.applyPreExistingDirs.filter((dir: any) => typeof dir === 'string');
         return snap;
     }
 
@@ -476,7 +527,10 @@ export class OverlayStore {
     }
 
     private isValidSnapshotId(id: string): boolean {
-        return typeof id === 'string' && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(id.trim());
+        return (
+            typeof id === 'string' &&
+            /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(id.trim())
+        );
     }
 
     private assertValidId(id: string): void {
@@ -500,7 +554,11 @@ export class OverlayStore {
         if (preferExisting) {
             this.loadAllSnapshotsFromDisk(workspaceRoot);
             const reusable = Array.from(this.snapshots.values())
-                .filter((candidate) => candidate.workspaceRoot === workspaceRoot && this.isReusableBaseSnapshot(candidate, baseFingerprint))
+                .filter(
+                    (candidate) =>
+                        candidate.workspaceRoot === workspaceRoot &&
+                        this.isReusableBaseSnapshot(candidate, baseFingerprint)
+                )
                 .sort((a, b) => b.createdAt - a.createdAt)[0];
             if (reusable) return reusable;
         }
@@ -551,7 +609,8 @@ export class OverlayStore {
         if (this.readMaterializedFingerprint(markerPath) !== this.snapshotDiffFingerprint(snap)) return null;
         const markerStat = fs.lstatSync(markerPath);
         const diffStat = fs.lstatSync(diffPath);
-        if (!markerStat.isFile() || !diffStat.isFile() || markerStat.isSymbolicLink() || diffStat.isSymbolicLink()) return null;
+        if (!markerStat.isFile() || !diffStat.isFile() || markerStat.isSymbolicLink() || diffStat.isSymbolicLink())
+            return null;
         return diffPath;
     }
 
@@ -639,7 +698,11 @@ export class OverlayStore {
         }
     }
 
-    async cleanup(maxKeep = 10, maxAgeMs = 3 * 24 * 60 * 60 * 1000, opts: { workspaceRoot?: string } = {}): Promise<void> {
+    async cleanup(
+        maxKeep = 10,
+        maxAgeMs = 3 * 24 * 60 * 60 * 1000,
+        opts: { workspaceRoot?: string } = {}
+    ): Promise<void> {
         const workspaceRoot = opts.workspaceRoot ? this.resolveWorkspaceBase(opts.workspaceRoot) : undefined;
         const snaps = this.list({ workspaceRoot });
         const now = Date.now();
@@ -739,7 +802,8 @@ export class OverlayStore {
         }
         if (snap.diffs.length === 0) {
             const materializedMarker = path.join(materializedDir, '.materialized');
-            const canUseMaterialized = fs.existsSync(materializedMarker) && this.isSafeMaterializedSnapshotDir(materializedDir, snap);
+            const canUseMaterialized =
+                fs.existsSync(materializedMarker) && this.isSafeMaterializedSnapshotDir(materializedDir, snap);
             return this.validatePatchApplies(diff, canUseMaterialized ? materializedDir : root);
         }
 
@@ -748,7 +812,11 @@ export class OverlayStore {
             this.copyWorkspaceForPatchValidation(root, tmpDir);
             for (const previous of snap.diffs) {
                 const applied = this.applyDiffText(previous, tmpDir, false);
-                if (!applied.ok) return { ok: false, message: `invalid_patch: existing snapshot diff failed validation: ${applied.message || ''}` };
+                if (!applied.ok)
+                    return {
+                        ok: false,
+                        message: `invalid_patch: existing snapshot diff failed validation: ${applied.message || ''}`,
+                    };
             }
             return this.validatePatchApplies(diff, tmpDir);
         } finally {
@@ -763,7 +831,10 @@ export class OverlayStore {
             fs.writeFileSync(patchFile, diff, 'utf8');
             const checked = this.applyPatchFile(patchFile, root, true);
             if (checked.ok) return { ok: true };
-            return { ok: false, message: `invalid_patch: patch validation failed${checked.message ? `: ${checked.message}` : ''}` };
+            return {
+                ok: false,
+                message: `invalid_patch: patch validation failed${checked.message ? `: ${checked.message}` : ''}`,
+            };
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }
@@ -802,7 +873,20 @@ export class OverlayStore {
         if (this.which('rsync')) {
             this.spawnCheckedArgs(
                 'rsync',
-                ['-a', '--delete', '--exclude', '.git', '--exclude', 'node_modules', '--exclude', '.ontology', '--exclude', 'dist', `${root}/`, `${dest}/`],
+                [
+                    '-a',
+                    '--delete',
+                    '--exclude',
+                    '.git',
+                    '--exclude',
+                    'node_modules',
+                    '--exclude',
+                    '.ontology',
+                    '--exclude',
+                    'dist',
+                    `${root}/`,
+                    `${dest}/`,
+                ],
                 'Failed to copy patch validation workspace'
             );
             return;
@@ -814,7 +898,11 @@ export class OverlayStore {
         }
         for (const ent of fs.readdirSync(root, { withFileTypes: true })) {
             if (['.git', '.ontology', 'node_modules', 'dist'].includes(ent.name)) continue;
-            this.spawnCheckedArgs('cp', ['-a', path.join(root, ent.name), path.join(dest, ent.name)], 'Failed to copy patch validation workspace entry');
+            this.spawnCheckedArgs(
+                'cp',
+                ['-a', path.join(root, ent.name), path.join(dest, ent.name)],
+                'Failed to copy patch validation workspace entry'
+            );
         }
     }
 
@@ -873,12 +961,18 @@ export class OverlayStore {
         return /^(BUN_JOBS|TIMEOUT|CI|FORCE_COLOR|NO_COLOR|LANG|LC_[A-Z_]+)$/.test(key);
     }
 
-    private checkCommandPathBoundaryViolation(words: string[], env: Record<string, string>, cwd?: string): string | null {
+    private checkCommandPathBoundaryViolation(
+        words: string[],
+        env: Record<string, string>,
+        cwd?: string
+    ): string | null {
         for (const [key, value] of Object.entries(env)) {
-            if (this.valueMentionsAbsolutePath(value)) return `validation environment variable ${key} must not reference absolute paths`;
+            if (this.valueMentionsAbsolutePath(value))
+                return `validation environment variable ${key} must not reference absolute paths`;
         }
         for (const word of words.slice(1)) {
-            if (this.valueMentionsAbsolutePath(word)) return `validation command argument must use workspace-relative paths: ${word}`;
+            if (this.valueMentionsAbsolutePath(word))
+                return `validation command argument must use workspace-relative paths: ${word}`;
             if (cwd) {
                 const violation = this.existingCommandPathBoundaryViolation(word, cwd);
                 if (violation) return violation;
@@ -917,13 +1011,13 @@ export class OverlayStore {
         const candidates = [raw];
         const equalsIndex = raw.indexOf('=');
         if (equalsIndex > 0) candidates.push(raw.slice(equalsIndex + 1));
-        return candidates.some((candidate) => path.isAbsolute(candidate) || this.valueMentionsParentTraversal(candidate));
+        return candidates.some(
+            (candidate) => path.isAbsolute(candidate) || this.valueMentionsParentTraversal(candidate)
+        );
     }
 
     private valueMentionsParentTraversal(value: string): boolean {
-        return value
-            .split(/[\\/]+/)
-            .some((segment) => segment === '..');
+        return value.split(/[\\/]+/).some((segment) => segment === '..');
     }
 
     private isPackageScriptCommand(words: string[]): boolean {
@@ -936,7 +1030,9 @@ export class OverlayStore {
         return this.isPackageScriptCommand(words) || words[0] === 'just';
     }
 
-    private resolveCheckCommand(command: string): { ok: true; words: string[]; env: Record<string, string> } | { ok: false; message: string } {
+    private resolveCheckCommand(
+        command: string
+    ): { ok: true; words: string[]; env: Record<string, string> } | { ok: false; message: string } {
         const parsed = this.parseCheckCommand(command);
         if (!parsed) return { ok: false, message: 'unsupported shell syntax' };
         const env: Record<string, string> = {};
@@ -945,11 +1041,27 @@ export class OverlayStore {
             const assignment = words.shift()!;
             const index = assignment.indexOf('=');
             const key = assignment.slice(0, index);
-            if (!this.isAllowedCheckEnvKey(key)) return { ok: false, message: `unsupported validation environment variable: ${key}` };
+            if (!this.isAllowedCheckEnvKey(key))
+                return { ok: false, message: `unsupported validation environment variable: ${key}` };
             env[key] = assignment.slice(index + 1);
         }
         const executable = words[0];
-        const allowed = new Set(['true', 'false', 'bun', 'bunx', 'npm', 'pnpm', 'yarn', 'just', 'tsgo', 'tsc', 'biome', 'grep', 'rg', 'git']);
+        const allowed = new Set([
+            'true',
+            'false',
+            'bun',
+            'bunx',
+            'npm',
+            'pnpm',
+            'yarn',
+            'just',
+            'tsgo',
+            'tsc',
+            'biome',
+            'grep',
+            'rg',
+            'git',
+        ]);
         if (!allowed.has(executable)) {
             return { ok: false, message: `unsupported validation command: ${executable}` };
         }
@@ -957,7 +1069,10 @@ export class OverlayStore {
             return { ok: false, message: `unsupported bun validation subcommand: ${words[1] || '<missing>'}` };
         }
         if ((executable === 'npm' || executable === 'pnpm' || executable === 'yarn') && (words[1] || '') !== 'run') {
-            return { ok: false, message: `unsupported ${executable} validation subcommand: ${words[1] || '<missing>'}` };
+            return {
+                ok: false,
+                message: `unsupported ${executable} validation subcommand: ${words[1] || '<missing>'}`,
+            };
         }
         if (executable === 'bunx' && !['tsgo', '@biomejs/biome', 'biome'].includes(words[1] || '')) {
             return { ok: false, message: `unsupported bunx validation tool: ${words[1] || '<missing>'}` };
@@ -977,19 +1092,27 @@ export class OverlayStore {
             }
         }
         if (executable === 'grep') {
-            const followsSymlinks = words.slice(1).some((word) => word === '--dereference-recursive' || /^-[^-]*R/.test(word));
-            if (followsSymlinks) return { ok: false, message: 'unsupported grep option: recursive symlink following is not allowed' };
+            const followsSymlinks = words
+                .slice(1)
+                .some((word) => word === '--dereference-recursive' || /^-[^-]*R/.test(word));
+            if (followsSymlinks)
+                return { ok: false, message: 'unsupported grep option: recursive symlink following is not allowed' };
         }
         if (executable === 'rg') {
             const followsSymlinks = words.slice(1).some((word) => word === '--follow' || /^-[^-]*L/.test(word));
-            if (followsSymlinks) return { ok: false, message: 'unsupported rg option: symlink following is not allowed' };
+            if (followsSymlinks)
+                return { ok: false, message: 'unsupported rg option: symlink following is not allowed' };
         }
         const pathBoundaryViolation = this.checkCommandPathBoundaryViolation(words, env);
         if (pathBoundaryViolation) return { ok: false, message: pathBoundaryViolation };
         return { ok: true, words, env };
     }
 
-    private checkCommandEnvironment(gitCeilingDirectory: string, isolatedEnvRoot: string, extraEnv: Record<string, string> = {}): Record<string, string> {
+    private checkCommandEnvironment(
+        gitCeilingDirectory: string,
+        isolatedEnvRoot: string,
+        extraEnv: Record<string, string> = {}
+    ): Record<string, string> {
         const env: Record<string, string> = {};
         const preserve = (key: string) => {
             const value = process.env[key];
@@ -1050,7 +1173,10 @@ export class OverlayStore {
         return path.resolve('.');
     }
 
-    private async ensureMaterialized(snapshotId: string, opts: { workspaceRoot?: string; allowCurrentMaterializedWithWorkspaceDrift?: boolean } = {}): Promise<string | null> {
+    private async ensureMaterialized(
+        snapshotId: string,
+        opts: { workspaceRoot?: string; allowCurrentMaterializedWithWorkspaceDrift?: boolean } = {}
+    ): Promise<string | null> {
         this.assertValidId(snapshotId);
         const snap = this.ensureSnapshot(snapshotId, opts);
         return this.withMaterializeLock(snapshotId, snap.workspaceRoot, () =>
@@ -1058,7 +1184,10 @@ export class OverlayStore {
         );
     }
 
-    private async ensureMaterializedUnlocked(snapshotId: string, allowCurrentMaterializedWithWorkspaceDrift = false): Promise<string | null> {
+    private async ensureMaterializedUnlocked(
+        snapshotId: string,
+        allowCurrentMaterializedWithWorkspaceDrift = false
+    ): Promise<string | null> {
         const snap = this.ensureSnapshot(snapshotId);
         let snapsRoot = this.snapshotsRoot(snap.workspaceRoot);
         const dir = path.join(snapsRoot, snapshotId);
@@ -1068,13 +1197,18 @@ export class OverlayStore {
         const preferPartial = process.env.SNAPSHOT_PARTIAL === '1';
         const base = this.resolveWorkspaceBase(snap.workspaceRoot);
         const desiredFingerprint = this.snapshotDiffFingerprint(snap);
-        const currentFingerprint = fs.existsSync(materializedMarker) ? this.readMaterializedFingerprint(materializedMarker) : null;
+        const currentFingerprint = fs.existsSync(materializedMarker)
+            ? this.readMaterializedFingerprint(materializedMarker)
+            : null;
         const touched = snap?.touchedFiles ? Array.from(snap.touchedFiles) : [];
 
-        const currentMaterializationIsSafe = currentFingerprint === desiredFingerprint && this.isSafeMaterializedSnapshotDir(dir, snap);
+        const currentMaterializationIsSafe =
+            currentFingerprint === desiredFingerprint && this.isSafeMaterializedSnapshotDir(dir, snap);
         if (currentMaterializationIsSafe && allowCurrentMaterializedWithWorkspaceDrift) return dir;
         if (snap?.baseFingerprint && this.workspaceBaseFingerprint(snap.workspaceRoot) !== snap.baseFingerprint) {
-            throw new Error('Workspace changed since snapshot creation before materialization; create a fresh snapshot');
+            throw new Error(
+                'Workspace changed since snapshot creation before materialization; create a fresh snapshot'
+            );
         }
         if (currentMaterializationIsSafe) return dir;
 
@@ -1104,7 +1238,22 @@ export class OverlayStore {
                     await this.logProgress(snapshotId, `materialize:rsync ${base} -> ${tempDir}`);
                     this.spawnCheckedArgs(
                         'rsync',
-                        ['-a', '--delete', '--exclude', '.git', '--exclude', 'node_modules', '--exclude', '.ontology', '--exclude', '.test-results', '--exclude', 'dist', `${base}/`, `${tempDir}/`],
+                        [
+                            '-a',
+                            '--delete',
+                            '--exclude',
+                            '.git',
+                            '--exclude',
+                            'node_modules',
+                            '--exclude',
+                            '.ontology',
+                            '--exclude',
+                            '.test-results',
+                            '--exclude',
+                            'dist',
+                            `${base}/`,
+                            `${tempDir}/`,
+                        ],
                         'Failed to copy snapshot base with rsync'
                     );
                 } else if (this.which('tar')) {
@@ -1135,30 +1284,39 @@ export class OverlayStore {
                 let output = '';
 
                 if (this.which('git')) {
-                    const applied = spawnSync(
-                        'git',
-                        ['-C', tempDir, 'apply', '--whitespace=nowarn', 'overlay.diff'],
-                        { stdio: 'pipe', env: { ...process.env, GIT_CEILING_DIRECTORIES: snapsRoot } }
-                    );
+                    const applied = spawnSync('git', ['-C', tempDir, 'apply', '--whitespace=nowarn', 'overlay.diff'], {
+                        stdio: 'pipe',
+                        env: { ...process.env, GIT_CEILING_DIRECTORIES: snapsRoot },
+                    });
                     ok = applied.status === 0;
                     output += `${String(applied.stdout || '')}${String(applied.stderr || '')}`;
                 }
 
                 if (!ok && this.which('patch')) {
                     const pLevel = /\ndiff --git a\//.test('\n' + diffText) ? 1 : 0;
-                    const patched = spawnSync('patch', [`-p${pLevel}`, '-i', 'overlay.diff'], { cwd: tempDir, stdio: 'pipe' });
+                    const patched = spawnSync('patch', [`-p${pLevel}`, '-i', 'overlay.diff'], {
+                        cwd: tempDir,
+                        stdio: 'pipe',
+                    });
                     ok = patched.status === 0;
                     output += `${String(patched.stdout || '')}${String(patched.stderr || '')}`;
                 }
 
                 if (!ok) {
-                    throw new Error(`Failed to materialize snapshot overlay: ${output.slice(-1000) || 'patch application failed'}`);
+                    throw new Error(
+                        `Failed to materialize snapshot overlay: ${output.slice(-1000) || 'patch application failed'}`
+                    );
                 }
                 await this.logProgress(snapshotId, 'apply:done');
             }
 
             await this.writeMaterializedMarker(path.join(tempDir, '.materialized'), snap);
-            if (snap) await fsp.writeFile(path.join(tempDir, 'metadata.json'), JSON.stringify(this.serializeSnapshot(snap), null, 2), 'utf8');
+            if (snap)
+                await fsp.writeFile(
+                    path.join(tempDir, 'metadata.json'),
+                    JSON.stringify(this.serializeSnapshot(snap), null, 2),
+                    'utf8'
+                );
 
             await fsp.rm(oldDir, { recursive: true, force: true }).catch(() => {});
             if (fs.existsSync(dir)) await fsp.rename(dir, oldDir);
@@ -1173,7 +1331,10 @@ export class OverlayStore {
         }
     }
 
-    private async createCheckWorkspace(snapshotId: string, materializedDir: string): Promise<{ cwd: string; cleanup: () => Promise<void> }> {
+    private async createCheckWorkspace(
+        snapshotId: string,
+        materializedDir: string
+    ): Promise<{ cwd: string; cleanup: () => Promise<void> }> {
         this.assertValidId(snapshotId);
         const snap = this.ensureSnapshot(snapshotId);
         const snapsRoot = this.snapshotsRoot(snap.workspaceRoot);
@@ -1200,7 +1361,12 @@ export class OverlayStore {
                     this.spawnCheckedArgs('cp', ['-a', src, dest], 'Failed to copy snapshot check workspace entry');
                 }
             }
-            return { cwd: checkDir, cleanup: async () => { await fsp.rm(checkDir, { recursive: true, force: true }); } };
+            return {
+                cwd: checkDir,
+                cleanup: async () => {
+                    await fsp.rm(checkDir, { recursive: true, force: true });
+                },
+            };
         } catch (error) {
             await fsp.rm(checkDir, { recursive: true, force: true }).catch(() => {});
             throw error;
@@ -1252,247 +1418,338 @@ export class OverlayStore {
         // Materialize snapshot into .ontology/snapshots/<id>, then run commands in a disposable copy.
         // Check commands are caller-controlled and may write files; they must not mutate the reusable
         // materialized snapshot cache used by later read/search/navigation calls.
-        const materializedCwd = (await this.ensureMaterialized(snapshotId)) || this.resolveWorkspaceBase(this.ensureSnapshot(snapshotId).workspaceRoot);
+        const materializedCwd =
+            (await this.ensureMaterialized(snapshotId)) ||
+            this.resolveWorkspaceBase(this.ensureSnapshot(snapshotId).workspaceRoot);
         const checkWorkspace = await this.createCheckWorkspace(snapshotId, materializedCwd);
         const cwd = checkWorkspace.cwd;
         const isolatedEnvRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'sci-check-env-'));
         try {
-        const output: string[] = [];
-        const maxOutputBytes = 1024 * 1024;
-        let outputBytes = 0;
-        let outputTruncated = false;
-        const appendOutput = (text: string) => {
-            if (outputTruncated) return;
-            const bytes = Buffer.byteLength(text, 'utf8');
-            if (outputBytes + bytes <= maxOutputBytes) {
-                output.push(text);
-                outputBytes += bytes;
-                return;
-            }
-            const remaining = Math.max(0, maxOutputBytes - outputBytes);
-            if (remaining > 0) {
-                output.push(Buffer.from(text, 'utf8').subarray(0, remaining).toString('utf8'));
-            }
-            output.push(`\n[output truncated at ${maxOutputBytes} bytes]\n`);
-            outputBytes = maxOutputBytes;
-            outputTruncated = true;
-        };
-        // Build command list before any partial-workspace hydration so default
-        // validation commands get the same source/test/script fill as explicit commands.
-        let cmdList = commands && commands.length ? [...commands] : ['bun run typecheck', 'bun run build'];
-        const maxCommands = 20;
-        if (cmdList.length > maxCommands) {
-            return {
-                ok: false,
-                output: `Rejected check command list: at most ${maxCommands} commands are allowed\n`,
-                elapsedMs: Date.now() - start,
-                commands: [],
+            const output: string[] = [];
+            const maxOutputBytes = 1024 * 1024;
+            let outputBytes = 0;
+            let outputTruncated = false;
+            const appendOutput = (text: string) => {
+                if (outputTruncated) return;
+                const bytes = Buffer.byteLength(text, 'utf8');
+                if (outputBytes + bytes <= maxOutputBytes) {
+                    output.push(text);
+                    outputBytes += bytes;
+                    return;
+                }
+                const remaining = Math.max(0, maxOutputBytes - outputBytes);
+                if (remaining > 0) {
+                    output.push(Buffer.from(text, 'utf8').subarray(0, remaining).toString('utf8'));
+                }
+                output.push(`\n[output truncated at ${maxOutputBytes} bytes]\n`);
+                outputBytes = maxOutputBytes;
+                outputTruncated = true;
             };
-        }
-        // If running under partial materialization, ensure essential directories exist
-        // for common commands like build/test which require source files or local scripts.
-        try {
-            const preferPartial = process.env.SNAPSHOT_PARTIAL === '1';
-            const needsBuild = cmdList.some((c) => /\b(build(:|\b)|bun\s+build|bun\s+run\s+build)/.test(c));
-            const needsTest = cmdList.some((c) => /\b(test(\b|:)|bun\s+test|just\s+test(\b|[-_]))/.test(c));
-            const needsScripts = cmdList.some((c) => /\bbun\s+run\s+|npm\s+run\s+|pnpm\s+run\s+/.test(c));
-            if (preferPartial && (needsBuild || needsTest || needsScripts)) {
-                const snap = this.ensureSnapshot(snapshotId);
-                const base = this.resolveWorkspaceBase(snap.workspaceRoot);
-                const touched = Array.from(snap.touchedFiles || []);
-                const deletedInSnapshot = touched.filter((rel) => {
-                    try {
-                        const { absolutePath } = this.containedPath(cwd, rel, 'partial snapshot touched path');
-                        return !fs.existsSync(absolutePath);
-                    } catch {
-                        return false;
-                    }
-                });
-                if (snap.baseFingerprint && this.workspaceBaseFingerprint(snap.workspaceRoot) !== snap.baseFingerprint) {
-                    throw new Error('Workspace changed since snapshot creation before partial check fill; create a fresh snapshot');
-                }
-                const ensureDirs = ['src', 'tests', 'scripts', 'bin'];
-                for (const d of ensureDirs) {
-                    const needThis =
-                        d === 'src' ? needsBuild || needsTest : d === 'tests' ? needsTest : d === 'scripts' ? needsScripts : d === 'bin' ? needsTest : false;
-                    if (!needThis) continue;
-
-                    const srcDir = path.join(base, d);
-                    const dstDir = path.join(cwd, d);
-                    if (!fs.existsSync(srcDir)) continue;
-
-                    await this.logProgress(snapshotId, `materialize:ensure-${d}`);
-
-                    // Fill in missing files without clobbering already-copied (and patched) touched files.
-                    fs.mkdirSync(dstDir, { recursive: true });
-                    if (this.which('rsync')) {
-                        this.spawnCheckedArgs(
-                            'rsync',
-                            ['-a', '--ignore-existing', `${srcDir}/`, `${dstDir}/`],
-                            'Failed to ensure partial snapshot directory'
-                        );
-                    } else if (this.which('tar')) {
-                        // tar-based copy is more reliable than cp -n for deep trees and preserves existing (patched) files.
-                        this.spawnChecked(
-                            `tar -C ${this.shellQuote(srcDir)} -cf - . | tar -C ${this.shellQuote(dstDir)} -xf - --skip-old-files`,
-                            'Failed to ensure partial snapshot directory'
-                        );
-                    } else {
-                        this.spawnCheckedArgs(
-                            'cp',
-                            ['-a', '-n', `${srcDir}/.`, `${dstDir}/`],
-                            'Failed to ensure partial snapshot directory'
-                        );
-                    }
-                }
-                for (const rel of deletedInSnapshot) {
-                    const { absolutePath } = this.containedPath(cwd, rel, 'partial snapshot deleted path');
-                    await fsp.rm(absolutePath, { recursive: true, force: true }).catch(() => undefined);
-                }
-                if (snap.baseFingerprint && this.workspaceBaseFingerprint(snap.workspaceRoot) !== snap.baseFingerprint) {
-                    throw new Error('Workspace changed since snapshot creation during partial check fill; create a fresh snapshot');
-                }
-                this.assertNoSymlinkEscapes(cwd, 'check workspace');
-            }
-        } catch (error) {
-            const message = error instanceof Error ? error.message : String(error || 'partial check fill failed');
-            return {
-                ok: false,
-                output: `Rejected check workspace: ${message}\n`,
-                elapsedMs: Date.now() - start,
-                commands: [],
-            };
-        }
-        const onlyTouched = !!opts.onlyTouched || (process.env.FAST_STDIO_CHECKS || '').toLowerCase() === 'touched';
-        try {
-            const snap = this.ensureSnapshot(snapshotId);
-            const touched = Array.from(snap.touchedFiles || []);
-            const tsFiles = touched.filter((f) => /\.(ts|tsx)$/.test(f));
-            if (onlyTouched && touched.length > 0 && tsFiles.length > 0 && this.which('bunx')) {
-                // Prefer a quick tsgo typecheck against touched TS files
-                const limited = tsFiles
-                    .slice(0, 50) // cap to avoid overly long cmdlines
-                    .map((f) => this.shellQuote(f))
-                    .join(' ');
-                const quick = `bunx tsgo --noEmit --pretty false ${limited}`;
-                // Prepend quick check if no explicit commands were provided, or if it fits within the command cap.
-                if (!(commands && commands.length)) {
-                    cmdList = [quick];
-                } else if (cmdList.length < maxCommands) {
-                    cmdList.unshift(quick);
-                }
-            }
-        } catch {}
-        if (cmdList.length > maxCommands) {
-            return {
-                ok: false,
-                output: `Rejected check command list: at most ${maxCommands} commands are allowed\n`,
-                elapsedMs: Date.now() - start,
-                commands: [],
-            };
-        }
-        // Enforce a global safety clamp for per-command timeout seconds across all adapters.
-        // Rationale: values >600s lead to excessively long CI/dev runs and can hang pipelines.
-        // HTTP already clamps to 600; this keeps MCP/CLI parity and centralizes the guard.
-        const perCommandTimeoutSec = Math.max(1, Math.min(600, Math.floor(Number(timeoutSec) || 120)));
-        const maxCommandLength = 8192;
-        const commandResults: CheckCommandReceipt[] = [];
-
-        for (const rawCmd of cmdList) {
-            const cmd = String(rawCmd);
-            if (cmd.length > maxCommandLength) {
-                appendOutput(`Rejected check command: command length must be at most ${maxCommandLength} characters\n`);
-                commandResults.push({ command: cmd.slice(0, maxCommandLength), ok: false, elapsedMs: 0, exitCode: null, timedOut: false });
-                return { ok: false, output: output.join(''), elapsedMs: Date.now() - start, commands: commandResults };
-            }
-            await this.logProgress(snapshotId, `run:${cmd}:start`);
-            appendOutput(`$ ${cmd}\n`);
-            const allowUnsafeShell = process.env.SCI_ALLOW_UNSAFE_CHECK_COMMANDS === '1';
-            const resolvedCommand = allowUnsafeShell ? null : this.resolveCheckCommand(cmd);
-            if (resolvedCommand && !resolvedCommand.ok) {
-                const message = `Rejected check command: ${resolvedCommand.message}\n`;
-                appendOutput(message);
-                commandResults.push({ command: cmd, ok: false, elapsedMs: 0, exitCode: null, timedOut: false });
-                return { ok: false, output: output.join(''), elapsedMs: Date.now() - start, commands: commandResults };
-            }
-            const bashPath = allowUnsafeShell ? this.which('bash') : null;
-            if (allowUnsafeShell && !bashPath) {
-                appendOutput('Rejected check command: unsafe shell mode requires bash\n');
-                commandResults.push({ command: cmd, ok: false, elapsedMs: 0, exitCode: null, timedOut: false });
-                return { ok: false, output: output.join(''), elapsedMs: Date.now() - start, commands: commandResults };
-            }
-            if (resolvedCommand?.ok) {
-                const snap = this.ensureSnapshot(snapshotId);
-                const touched = Array.from(snap.touchedFiles || []);
-                const runnerTouched = touched.some((file) => file === 'package.json' || file === 'justfile' || file === 'Justfile');
-                if (runnerTouched && this.isMutableRunnerCommand(resolvedCommand.words) && process.env.SCI_ALLOW_MUTATED_CHECK_RUNNERS !== '1') {
-                    const message = 'Rejected check command: package/just runner commands are disabled when the patch changes their runner definitions; use direct tool commands or set SCI_ALLOW_MUTATED_CHECK_RUNNERS=1\n';
-                    appendOutput(message);
-                    commandResults.push({ command: cmd, ok: false, elapsedMs: 0, exitCode: null, timedOut: false });
-                    return { ok: false, output: output.join(''), elapsedMs: Date.now() - start, commands: commandResults };
-                }
-            }
-            if (resolvedCommand?.ok) {
-                const pathBoundaryViolation = this.checkCommandPathBoundaryViolation(resolvedCommand.words, resolvedCommand.env, cwd);
-                if (pathBoundaryViolation) {
-                    const message = `Rejected check command: ${pathBoundaryViolation}\n`;
-                    appendOutput(message);
-                    commandResults.push({ command: cmd, ok: false, elapsedMs: 0, exitCode: null, timedOut: false });
-                    return { ok: false, output: output.join(''), elapsedMs: Date.now() - start, commands: commandResults };
-                }
-                try {
-                    this.assertNoSymlinkEscapes(cwd, 'check workspace');
-                } catch (error) {
-                    const message = error instanceof Error ? error.message : String(error || 'symlink validation failed');
-                    appendOutput(`Rejected check workspace: ${message}\n`);
-                    commandResults.push({ command: cmd, ok: false, elapsedMs: 0, exitCode: null, timedOut: false });
-                    return { ok: false, output: output.join(''), elapsedMs: Date.now() - start, commands: commandResults };
-                }
-            }
-            const [bin, ...args] = resolvedCommand?.ok ? resolvedCommand.words : [bashPath || 'bash', '-lc', cmd];
-            const commandStart = Date.now();
-            const result = await new Promise<{ ok: boolean; exitCode: number | null; timedOut: boolean }>((resolve) => {
-                const env = this.checkCommandEnvironment(this.snapshotsRoot(this.ensureSnapshot(snapshotId).workspaceRoot), isolatedEnvRoot, resolvedCommand?.ok ? resolvedCommand.env : {});
-                const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd, env, detached: true });
-                let settled = false;
-                let timer: ReturnType<typeof setTimeout>;
-                const finish = (value: { ok: boolean; exitCode: number | null; timedOut: boolean }) => {
-                    if (settled) return;
-                    settled = true;
-                    clearTimeout(timer);
-                    resolve(value);
+            // Build command list before any partial-workspace hydration so default
+            // validation commands get the same source/test/script fill as explicit commands.
+            let cmdList = commands && commands.length ? [...commands] : ['bun run typecheck', 'bun run build'];
+            const maxCommands = 20;
+            if (cmdList.length > maxCommands) {
+                return {
+                    ok: false,
+                    output: `Rejected check command list: at most ${maxCommands} commands are allowed\n`,
+                    elapsedMs: Date.now() - start,
+                    commands: [],
                 };
-                timer = setTimeout(() => {
-                    try {
-                        if (child.pid) process.kill(-child.pid, 'SIGKILL');
-                        else child.kill('SIGKILL');
-                    } catch {
-                        try {
-                            child.kill('SIGKILL');
-                        } catch {}
-                    }
-                    void this.logProgress(snapshotId, `run:${cmd}:timeout`);
-                    finish({ ok: false, exitCode: null, timedOut: true });
-                }, perCommandTimeoutSec * 1000);
-                child.stdout.on('data', (d) => appendOutput(String(d)));
-                child.stderr.on('data', (d) => appendOutput(String(d)));
-                child.on('error', (error) => {
-                    appendOutput(String(error?.message || error));
-                    void this.logProgress(snapshotId, `run:${cmd}:error`);
-                    finish({ ok: false, exitCode: null, timedOut: false });
-                });
-                child.on('close', (code) => {
-                    void this.logProgress(snapshotId, `run:${cmd}:done code=${code}`);
-                    finish({ ok: code === 0, exitCode: typeof code === 'number' ? code : null, timedOut: false });
-                });
-            });
-            commandResults.push({ command: cmd, ok: result.ok, elapsedMs: Date.now() - commandStart, exitCode: result.exitCode, timedOut: result.timedOut });
-            if (!result.ok) {
-                return { ok: false, output: output.join(''), elapsedMs: Date.now() - start, commands: commandResults };
             }
-        }
-        await this.logProgress(snapshotId, 'checks:done');
-        return { ok: true, output: output.join(''), elapsedMs: Date.now() - start, commands: commandResults };
+            // If running under partial materialization, ensure essential directories exist
+            // for common commands like build/test which require source files or local scripts.
+            try {
+                const preferPartial = process.env.SNAPSHOT_PARTIAL === '1';
+                const needsBuild = cmdList.some((c) => /\b(build(:|\b)|bun\s+build|bun\s+run\s+build)/.test(c));
+                const needsTest = cmdList.some((c) => /\b(test(\b|:)|bun\s+test|just\s+test(\b|[-_]))/.test(c));
+                const needsScripts = cmdList.some((c) => /\bbun\s+run\s+|npm\s+run\s+|pnpm\s+run\s+/.test(c));
+                if (preferPartial && (needsBuild || needsTest || needsScripts)) {
+                    const snap = this.ensureSnapshot(snapshotId);
+                    const base = this.resolveWorkspaceBase(snap.workspaceRoot);
+                    const touched = Array.from(snap.touchedFiles || []);
+                    const deletedInSnapshot = touched.filter((rel) => {
+                        try {
+                            const { absolutePath } = this.containedPath(cwd, rel, 'partial snapshot touched path');
+                            return !fs.existsSync(absolutePath);
+                        } catch {
+                            return false;
+                        }
+                    });
+                    if (
+                        snap.baseFingerprint &&
+                        this.workspaceBaseFingerprint(snap.workspaceRoot) !== snap.baseFingerprint
+                    ) {
+                        throw new Error(
+                            'Workspace changed since snapshot creation before partial check fill; create a fresh snapshot'
+                        );
+                    }
+                    const ensureDirs = ['src', 'tests', 'scripts', 'bin'];
+                    for (const d of ensureDirs) {
+                        const needThis =
+                            d === 'src'
+                                ? needsBuild || needsTest
+                                : d === 'tests'
+                                  ? needsTest
+                                  : d === 'scripts'
+                                    ? needsScripts
+                                    : d === 'bin'
+                                      ? needsTest
+                                      : false;
+                        if (!needThis) continue;
+
+                        const srcDir = path.join(base, d);
+                        const dstDir = path.join(cwd, d);
+                        if (!fs.existsSync(srcDir)) continue;
+
+                        await this.logProgress(snapshotId, `materialize:ensure-${d}`);
+
+                        // Fill in missing files without clobbering already-copied (and patched) touched files.
+                        fs.mkdirSync(dstDir, { recursive: true });
+                        if (this.which('rsync')) {
+                            this.spawnCheckedArgs(
+                                'rsync',
+                                ['-a', '--ignore-existing', `${srcDir}/`, `${dstDir}/`],
+                                'Failed to ensure partial snapshot directory'
+                            );
+                        } else if (this.which('tar')) {
+                            // tar-based copy is more reliable than cp -n for deep trees and preserves existing (patched) files.
+                            this.spawnChecked(
+                                `tar -C ${this.shellQuote(srcDir)} -cf - . | tar -C ${this.shellQuote(dstDir)} -xf - --skip-old-files`,
+                                'Failed to ensure partial snapshot directory'
+                            );
+                        } else {
+                            this.spawnCheckedArgs(
+                                'cp',
+                                ['-a', '-n', `${srcDir}/.`, `${dstDir}/`],
+                                'Failed to ensure partial snapshot directory'
+                            );
+                        }
+                    }
+                    for (const rel of deletedInSnapshot) {
+                        const { absolutePath } = this.containedPath(cwd, rel, 'partial snapshot deleted path');
+                        await fsp.rm(absolutePath, { recursive: true, force: true }).catch(() => undefined);
+                    }
+                    if (
+                        snap.baseFingerprint &&
+                        this.workspaceBaseFingerprint(snap.workspaceRoot) !== snap.baseFingerprint
+                    ) {
+                        throw new Error(
+                            'Workspace changed since snapshot creation during partial check fill; create a fresh snapshot'
+                        );
+                    }
+                    this.assertNoSymlinkEscapes(cwd, 'check workspace');
+                }
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error || 'partial check fill failed');
+                return {
+                    ok: false,
+                    output: `Rejected check workspace: ${message}\n`,
+                    elapsedMs: Date.now() - start,
+                    commands: [],
+                };
+            }
+            const onlyTouched = !!opts.onlyTouched || (process.env.FAST_STDIO_CHECKS || '').toLowerCase() === 'touched';
+            try {
+                const snap = this.ensureSnapshot(snapshotId);
+                const touched = Array.from(snap.touchedFiles || []);
+                const tsFiles = touched.filter((f) => /\.(ts|tsx)$/.test(f));
+                if (onlyTouched && touched.length > 0 && tsFiles.length > 0 && this.which('bunx')) {
+                    // Prefer a quick tsgo typecheck against touched TS files
+                    const limited = tsFiles
+                        .slice(0, 50) // cap to avoid overly long cmdlines
+                        .map((f) => this.shellQuote(f))
+                        .join(' ');
+                    const quick = `bunx tsgo --noEmit --pretty false ${limited}`;
+                    // Prepend quick check if no explicit commands were provided, or if it fits within the command cap.
+                    if (!(commands && commands.length)) {
+                        cmdList = [quick];
+                    } else if (cmdList.length < maxCommands) {
+                        cmdList.unshift(quick);
+                    }
+                }
+            } catch {}
+            if (cmdList.length > maxCommands) {
+                return {
+                    ok: false,
+                    output: `Rejected check command list: at most ${maxCommands} commands are allowed\n`,
+                    elapsedMs: Date.now() - start,
+                    commands: [],
+                };
+            }
+            // Enforce a global safety clamp for per-command timeout seconds across all adapters.
+            // Rationale: values >600s lead to excessively long CI/dev runs and can hang pipelines.
+            // HTTP already clamps to 600; this keeps MCP/CLI parity and centralizes the guard.
+            const perCommandTimeoutSec = Math.max(1, Math.min(600, Math.floor(Number(timeoutSec) || 120)));
+            const maxCommandLength = 8192;
+            const commandResults: CheckCommandReceipt[] = [];
+
+            for (const rawCmd of cmdList) {
+                const cmd = String(rawCmd);
+                if (cmd.length > maxCommandLength) {
+                    appendOutput(
+                        `Rejected check command: command length must be at most ${maxCommandLength} characters\n`
+                    );
+                    commandResults.push({
+                        command: cmd.slice(0, maxCommandLength),
+                        ok: false,
+                        elapsedMs: 0,
+                        exitCode: null,
+                        timedOut: false,
+                    });
+                    return {
+                        ok: false,
+                        output: output.join(''),
+                        elapsedMs: Date.now() - start,
+                        commands: commandResults,
+                    };
+                }
+                await this.logProgress(snapshotId, `run:${cmd}:start`);
+                appendOutput(`$ ${cmd}\n`);
+                const allowUnsafeShell = process.env.SCI_ALLOW_UNSAFE_CHECK_COMMANDS === '1';
+                const resolvedCommand = allowUnsafeShell ? null : this.resolveCheckCommand(cmd);
+                if (resolvedCommand && !resolvedCommand.ok) {
+                    const message = `Rejected check command: ${resolvedCommand.message}\n`;
+                    appendOutput(message);
+                    commandResults.push({ command: cmd, ok: false, elapsedMs: 0, exitCode: null, timedOut: false });
+                    return {
+                        ok: false,
+                        output: output.join(''),
+                        elapsedMs: Date.now() - start,
+                        commands: commandResults,
+                    };
+                }
+                const bashPath = allowUnsafeShell ? this.which('bash') : null;
+                if (allowUnsafeShell && !bashPath) {
+                    appendOutput('Rejected check command: unsafe shell mode requires bash\n');
+                    commandResults.push({ command: cmd, ok: false, elapsedMs: 0, exitCode: null, timedOut: false });
+                    return {
+                        ok: false,
+                        output: output.join(''),
+                        elapsedMs: Date.now() - start,
+                        commands: commandResults,
+                    };
+                }
+                if (resolvedCommand?.ok) {
+                    const snap = this.ensureSnapshot(snapshotId);
+                    const touched = Array.from(snap.touchedFiles || []);
+                    const runnerTouched = touched.some(
+                        (file) => file === 'package.json' || file === 'justfile' || file === 'Justfile'
+                    );
+                    if (
+                        runnerTouched &&
+                        this.isMutableRunnerCommand(resolvedCommand.words) &&
+                        process.env.SCI_ALLOW_MUTATED_CHECK_RUNNERS !== '1'
+                    ) {
+                        const message =
+                            'Rejected check command: package/just runner commands are disabled when the patch changes their runner definitions; use direct tool commands or set SCI_ALLOW_MUTATED_CHECK_RUNNERS=1\n';
+                        appendOutput(message);
+                        commandResults.push({ command: cmd, ok: false, elapsedMs: 0, exitCode: null, timedOut: false });
+                        return {
+                            ok: false,
+                            output: output.join(''),
+                            elapsedMs: Date.now() - start,
+                            commands: commandResults,
+                        };
+                    }
+                }
+                if (resolvedCommand?.ok) {
+                    const pathBoundaryViolation = this.checkCommandPathBoundaryViolation(
+                        resolvedCommand.words,
+                        resolvedCommand.env,
+                        cwd
+                    );
+                    if (pathBoundaryViolation) {
+                        const message = `Rejected check command: ${pathBoundaryViolation}\n`;
+                        appendOutput(message);
+                        commandResults.push({ command: cmd, ok: false, elapsedMs: 0, exitCode: null, timedOut: false });
+                        return {
+                            ok: false,
+                            output: output.join(''),
+                            elapsedMs: Date.now() - start,
+                            commands: commandResults,
+                        };
+                    }
+                    try {
+                        this.assertNoSymlinkEscapes(cwd, 'check workspace');
+                    } catch (error) {
+                        const message =
+                            error instanceof Error ? error.message : String(error || 'symlink validation failed');
+                        appendOutput(`Rejected check workspace: ${message}\n`);
+                        commandResults.push({ command: cmd, ok: false, elapsedMs: 0, exitCode: null, timedOut: false });
+                        return {
+                            ok: false,
+                            output: output.join(''),
+                            elapsedMs: Date.now() - start,
+                            commands: commandResults,
+                        };
+                    }
+                }
+                const [bin, ...args] = resolvedCommand?.ok ? resolvedCommand.words : [bashPath || 'bash', '-lc', cmd];
+                const commandStart = Date.now();
+                const result = await new Promise<{ ok: boolean; exitCode: number | null; timedOut: boolean }>(
+                    (resolve) => {
+                        const env = this.checkCommandEnvironment(
+                            this.snapshotsRoot(this.ensureSnapshot(snapshotId).workspaceRoot),
+                            isolatedEnvRoot,
+                            resolvedCommand?.ok ? resolvedCommand.env : {}
+                        );
+                        const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd, env, detached: true });
+                        let settled = false;
+                        let timer: ReturnType<typeof setTimeout>;
+                        const finish = (value: { ok: boolean; exitCode: number | null; timedOut: boolean }) => {
+                            if (settled) return;
+                            settled = true;
+                            clearTimeout(timer);
+                            resolve(value);
+                        };
+                        timer = setTimeout(() => {
+                            try {
+                                if (child.pid) process.kill(-child.pid, 'SIGKILL');
+                                else child.kill('SIGKILL');
+                            } catch {
+                                try {
+                                    child.kill('SIGKILL');
+                                } catch {}
+                            }
+                            void this.logProgress(snapshotId, `run:${cmd}:timeout`);
+                            finish({ ok: false, exitCode: null, timedOut: true });
+                        }, perCommandTimeoutSec * 1000);
+                        child.stdout.on('data', (d) => appendOutput(String(d)));
+                        child.stderr.on('data', (d) => appendOutput(String(d)));
+                        child.on('error', (error) => {
+                            appendOutput(String(error?.message || error));
+                            void this.logProgress(snapshotId, `run:${cmd}:error`);
+                            finish({ ok: false, exitCode: null, timedOut: false });
+                        });
+                        child.on('close', (code) => {
+                            void this.logProgress(snapshotId, `run:${cmd}:done code=${code}`);
+                            finish({
+                                ok: code === 0,
+                                exitCode: typeof code === 'number' ? code : null,
+                                timedOut: false,
+                            });
+                        });
+                    }
+                );
+                commandResults.push({
+                    command: cmd,
+                    ok: result.ok,
+                    elapsedMs: Date.now() - commandStart,
+                    exitCode: result.exitCode,
+                    timedOut: result.timedOut,
+                });
+                if (!result.ok) {
+                    return {
+                        ok: false,
+                        output: output.join(''),
+                        elapsedMs: Date.now() - start,
+                        commands: commandResults,
+                    };
+                }
+            }
+            await this.logProgress(snapshotId, 'checks:done');
+            return { ok: true, output: output.join(''), elapsedMs: Date.now() - start, commands: commandResults };
         } finally {
             await checkWorkspace.cleanup().catch(() => undefined);
             await fsp.rm(isolatedEnvRoot, { recursive: true, force: true }).catch(() => undefined);
@@ -1541,7 +1798,11 @@ export class OverlayStore {
     private async removeRecordedApplyDirs(dirs: string[] | undefined, workspaceRoot?: string): Promise<void> {
         const ordered = Array.from(new Set(dirs || [])).sort((a, b) => b.length - a.length);
         for (const rel of ordered) {
-            const { absolutePath } = this.containedPath(this.resolveWorkspaceBase(workspaceRoot), rel, 'apply_snapshot directory');
+            const { absolutePath } = this.containedPath(
+                this.resolveWorkspaceBase(workspaceRoot),
+                rel,
+                'apply_snapshot directory'
+            );
             await fsp.rmdir(absolutePath).catch(() => undefined);
         }
     }
@@ -1549,7 +1810,11 @@ export class OverlayStore {
     private async recreateRecordedApplyDirs(dirs: string[] | undefined, workspaceRoot?: string): Promise<void> {
         const ordered = Array.from(new Set(dirs || [])).sort((a, b) => a.length - b.length);
         for (const rel of ordered) {
-            const { absolutePath } = this.containedPath(this.resolveWorkspaceBase(workspaceRoot), rel, 'apply_snapshot directory');
+            const { absolutePath } = this.containedPath(
+                this.resolveWorkspaceBase(workspaceRoot),
+                rel,
+                'apply_snapshot directory'
+            );
             await fsp.mkdir(absolutePath, { recursive: true }).catch(() => undefined);
         }
     }
@@ -1560,8 +1825,10 @@ export class OverlayStore {
             .split(/\r?\n/)
             .map((line) => {
                 if (line.startsWith('diff --git ')) return `diff --git a/${normalizedRel} b/${normalizedRel}`;
-                if (line.startsWith('--- ')) return oldPath === '/dev/null' ? '--- /dev/null' : `--- a/${normalizedRel}`;
-                if (line.startsWith('+++ ')) return newPath === '/dev/null' ? '+++ /dev/null' : `+++ b/${normalizedRel}`;
+                if (line.startsWith('--- '))
+                    return oldPath === '/dev/null' ? '--- /dev/null' : `--- a/${normalizedRel}`;
+                if (line.startsWith('+++ '))
+                    return newPath === '/dev/null' ? '+++ /dev/null' : `+++ b/${normalizedRel}`;
                 return line;
             })
             .join('\n');
@@ -1571,8 +1838,16 @@ export class OverlayStore {
         const chunks: string[] = [];
         const touched = Array.from(snap.touchedFiles || []);
         for (const rel of touched) {
-            const { absolutePath: oldAbs, relativePath } = this.containedPath(workspaceRoot, rel, 'squashed snapshot source path');
-            const { absolutePath: newAbs } = this.containedPath(materializedDir, relativePath, 'squashed snapshot materialized path');
+            const { absolutePath: oldAbs, relativePath } = this.containedPath(
+                workspaceRoot,
+                rel,
+                'squashed snapshot source path'
+            );
+            const { absolutePath: newAbs } = this.containedPath(
+                materializedDir,
+                relativePath,
+                'squashed snapshot materialized path'
+            );
             const oldExists = fs.existsSync(oldAbs);
             const newExists = fs.existsSync(newAbs);
             if (!oldExists && !newExists) continue;
@@ -1593,7 +1868,12 @@ export class OverlayStore {
         return this.normalizeUnifiedDiffForGitApply(chunks.join('\n'));
     }
 
-    private async effectiveApplyDiffFile(snap: Snapshot, materializedDir: string, workspaceRoot: string, reverse: boolean): Promise<string> {
+    private async effectiveApplyDiffFile(
+        snap: Snapshot,
+        materializedDir: string,
+        workspaceRoot: string,
+        reverse: boolean
+    ): Promise<string> {
         const overlayDiffFile = path.join(materializedDir, 'overlay.diff');
         if ((snap.diffs || []).length <= 1) return overlayDiffFile;
         const squashedDiffFile = path.join(materializedDir, 'squashed-overlay.diff');
@@ -1606,7 +1886,11 @@ export class OverlayStore {
 
     async applyToWorkingTree(
         snapshotId: string,
-        { check = false, reverse = false, workspaceRoot: requestedWorkspaceRoot }: { check?: boolean; reverse?: boolean; workspaceRoot?: string } = {}
+        {
+            check = false,
+            reverse = false,
+            workspaceRoot: requestedWorkspaceRoot,
+        }: { check?: boolean; reverse?: boolean; workspaceRoot?: string } = {}
     ): Promise<{
         ok: boolean;
         output: string;
@@ -1616,12 +1900,18 @@ export class OverlayStore {
         const start = Date.now();
         const snap = this.ensureSnapshot(snapshotId, { workspaceRoot: requestedWorkspaceRoot });
         const workspaceRoot = this.resolveWorkspaceBase(snap.workspaceRoot);
-        const dir = (await this.ensureMaterialized(snapshotId, { allowCurrentMaterializedWithWorkspaceDrift: true })) || workspaceRoot;
+        const dir =
+            (await this.ensureMaterialized(snapshotId, { allowCurrentMaterializedWithWorkspaceDrift: true })) ||
+            workspaceRoot;
         const diffFile = await this.effectiveApplyDiffFile(snap, dir, workspaceRoot, reverse);
         let output = '';
         let applyCreatedDirs: string[] = [];
         let applyPreExistingDirs: string[] = [];
-        if (!reverse && snap?.baseFingerprint && this.workspaceBaseFingerprint(snap.workspaceRoot) !== snap.baseFingerprint) {
+        if (
+            !reverse &&
+            snap?.baseFingerprint &&
+            this.workspaceBaseFingerprint(snap.workspaceRoot) !== snap.baseFingerprint
+        ) {
             const elapsedMs = Date.now() - start;
             const message = 'Workspace changed since snapshot creation before apply; create a fresh snapshot';
             this.recordLastApply(snapshotId, {
@@ -1666,12 +1956,18 @@ export class OverlayStore {
             };
         }
         if (reverse && !check) {
-            const reversePreflight = spawnSync('git', ['apply', '--check', '-R', '--whitespace=nowarn', diffFile], { stdio: 'pipe', cwd: workspaceRoot });
+            const reversePreflight = spawnSync('git', ['apply', '--check', '-R', '--whitespace=nowarn', diffFile], {
+                stdio: 'pipe',
+                cwd: workspaceRoot,
+            });
             if (reversePreflight.status !== 0) {
                 const diffText = await fsp.readFile(diffFile, 'utf8').catch(() => '');
                 const pLevel = /\ndiff --git a\//.test('\n' + diffText) ? 1 : 0;
                 const patchPreflight = this.which('patch')
-                    ? spawnSync('patch', ['--dry-run', '-R', `-p${pLevel}`, '-i', diffFile], { stdio: 'pipe', cwd: workspaceRoot })
+                    ? spawnSync('patch', ['--dry-run', '-R', `-p${pLevel}`, '-i', diffFile], {
+                          stdio: 'pipe',
+                          cwd: workspaceRoot,
+                      })
                     : null;
                 if (!patchPreflight || patchPreflight.status !== 0) {
                     const elapsedMs = Date.now() - start;
@@ -1737,10 +2033,13 @@ export class OverlayStore {
                     if (backup.existed) {
                         await fsp.mkdir(path.dirname(absolutePath), { recursive: true });
                         await fsp.writeFile(absolutePath, backup.data || Buffer.alloc(0));
-                        if (typeof backup.mode === 'number') await fsp.chmod(absolutePath, backup.mode).catch(() => undefined);
+                        if (typeof backup.mode === 'number')
+                            await fsp.chmod(absolutePath, backup.mode).catch(() => undefined);
                     } else {
                         await fsp.rm(absolutePath, { recursive: true, force: true }).catch(() => undefined);
                     }
+                    await fsp.rm(`${absolutePath}.rej`, { force: true }).catch(() => undefined);
+                    await fsp.rm(`${absolutePath}.orig`, { force: true }).catch(() => undefined);
                 }
             };
             const pLevel = /\ndiff --git a\//.test('\n' + diffText) ? 1 : 0;
@@ -1763,7 +2062,8 @@ export class OverlayStore {
             }
             if (!ok && !check) {
                 await restoreBackups().catch(() => undefined);
-                if (!reverse) await this.removeRecordedApplyDirs(applyCreatedDirs, workspaceRoot).catch(() => undefined);
+                if (!reverse)
+                    await this.removeRecordedApplyDirs(applyCreatedDirs, workspaceRoot).catch(() => undefined);
             }
             this.recordLastApply(snapshotId, {
                 ok,
@@ -1774,7 +2074,8 @@ export class OverlayStore {
             });
             return { ok, output, elapsedMs: Date.now() - start };
         }
-        if (!check && !reverse) await this.removeRecordedApplyDirs(applyCreatedDirs, workspaceRoot).catch(() => undefined);
+        if (!check && !reverse)
+            await this.removeRecordedApplyDirs(applyCreatedDirs, workspaceRoot).catch(() => undefined);
         this.recordLastApply(snapshotId, {
             ok: false,
             elapsedMs: Date.now() - start,

@@ -97,7 +97,7 @@ ALLOW_SNAPSHOT_APPLY=1 sci workflow safe_write --args-file /tmp/sci-safe-write.j
 
 Use `brief:true` when the harnessed LLM only needs the risk class, snapshot id, check status, apply status, and next action. Use full output or `extract_snapshot_artifacts` only when the diff/check details are needed.
 
-The repeatable safe-write harness applies a tiny fixture patch through guarded `safe_write`, proves failed checks block apply, asserts `verification.appliedDiffMatchesSnapshot === true` for the clean guarded apply, proves a dirty touched-file mismatch returns `ok:false` with `appliedDiffMatchesSnapshot:false`, runs the returned rollback commands, and verifies the fixture content is restored exactly.
+The repeatable safe-write harness applies a tiny fixture patch through guarded `safe_write`, proves failed checks block apply, asserts `verification.appliedDiffMatchesSnapshot === true` for the clean guarded apply, proves a dirty touched-file base is preserved and verified with `ok:true` plus `appliedDiffMatchesSnapshot:true`, runs the returned rollback commands, and verifies the fixture content is restored exactly.
 
 ## Operator rule
 

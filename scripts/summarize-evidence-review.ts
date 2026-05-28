@@ -740,7 +740,7 @@ function withConceptualModel(review: any) {
     artifact('graph-impact', 'graph_impact', null, evidenceState('optional', graphObserved, false, graphApplicable), graphObserved ? 'reproducible_local' : 'ephemeral', null, 'cite limitations and regeneration command; do not infer no impact from absence'),
     artifact('snapshot-artifacts', 'snapshot_artifacts', null, evidenceState('optional', hasArtifacts, false), artifactSummary.durability, artifactSummary.uriOrPath, artifactSummary.citationRequirement),
     artifact('rollback', 'rollback', null, rollbackArtifactState, rollbackDurability, reviewWithLimitations?.rollback?.command || reviewWithLimitations?.rollback?.inversePatch || null, rollbackNotNeeded ? 'no rollback needed because this evidence is preview-only and no source mutation occurred' : 'cite concrete rollback command or materialized inverse patch; otherwise treat rollback as unavailable'),
-    artifact('apply-verification', 'apply_verification', null, verificationState, verificationObserved ? 'reproducible_local' : 'ephemeral', null, 'cite applied-diff verification evidence when source mutation is claimed; mismatch blocks apply-safety claims'),
+    artifact('apply-verification', 'apply_verification', null, verificationState, verificationObserved ? 'reproducible_local' : 'ephemeral', null, 'cite applied-state verification evidence when source mutation is claimed; mismatch blocks apply-safety claims'),
   ];
 
   const authorityBoundaries = [
@@ -784,7 +784,7 @@ function withConceptualModel(review: any) {
     verificationSemanticFailures.length
       ? `Apply verification is lifecycle-inconsistent (${verificationSemanticFailures.join(', ')}); stop or inspect before treating apply evidence as valid.`
       : verificationUnavailable
-        ? 'Applied evidence has no applied-diff verification observation; stop or inspect before treating apply evidence as valid.'
+        ? 'Applied evidence has no applied-state verification observation; stop or inspect before treating apply evidence as valid.'
         : 'Applied diff does not match the reviewed snapshot artifact; stop or inspect before treating apply evidence as valid.',
     'apply-verification',
     ['apply-verification'],

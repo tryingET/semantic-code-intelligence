@@ -13,6 +13,7 @@ const pretty = process.argv.includes('--pretty');
 
 type CallEvidence = {
   name: string;
+  scenario: string;
   args: Record<string, unknown>;
   exitCode: number | null;
   success: boolean;
@@ -31,7 +32,7 @@ function parseWorkflowStdout(stdout: string) {
   return typeof text === 'string' ? JSON.parse(text) : raw;
 }
 
-function callSafeWrite(args: Record<string, unknown>, env: Record<string, string | undefined> = {}): CallEvidence {
+function callSafeWrite(args: Record<string, unknown>, env: Record<string, string | undefined> = {}, scenario = 'unspecified'): CallEvidence {
   const started = Date.now();
   const proc = spawnSync('bun', ['run', 'src/servers/cli.ts', 'workflow', 'safe_write', '--args', JSON.stringify(args), '--json'], {
     encoding: 'utf8',
@@ -45,6 +46,7 @@ function callSafeWrite(args: Record<string, unknown>, env: Record<string, string
   }
   return {
     name: 'safe_write',
+    scenario,
     args: { ...args, patch: '<diff omitted>' },
     exitCode: proc.status,
     success: proc.status === 0,
@@ -81,17 +83,18 @@ process.on('exit', () => {
 });
 const modified = `${original.trimEnd()}\n\n${marker}\n`;
 const patch = unifiedPatch(original, modified);
-const mismatchMarker = 'Safe Write Dogfood Fixture Verified';
-const mismatchPatch = unifiedPatch(original, original.replace('Safe Write Dogfood Fixture', mismatchMarker));
+const dirtyBaseMarker = 'Safe Write Dogfood Fixture Verified';
+const dirtyBasePatch = unifiedPatch(original, original.replace('Safe Write Dogfood Fixture', dirtyBaseMarker));
 const calls: CallEvidence[] = [];
 
-const preview = callSafeWrite({ patch, commands: ['true'], timeoutSec: 30, recommendChecks: true, brief: true });
+const preview = callSafeWrite({ patch, commands: ['true'], timeoutSec: 30, recommendChecks: true, brief: true }, {}, 'preview');
 calls.push(preview);
 const afterPreview = await Bun.file(target).text();
 
 const failedApply = callSafeWrite(
   { patch, commands: ['false'], timeoutSec: 30, apply: true, brief: false },
   { ALLOW_SNAPSHOT_APPLY: '1' },
+  'failed_checks_apply',
 );
 calls.push(failedApply);
 const afterFailedApply = await Bun.file(target).text();
@@ -99,6 +102,7 @@ const afterFailedApply = await Bun.file(target).text();
 const applied = callSafeWrite(
   { patch, commands: ['true'], timeoutSec: 30, apply: true, brief: false },
   { ALLOW_SNAPSHOT_APPLY: '1' },
+  'clean_apply',
 );
 calls.push(applied);
 const afterApply = await Bun.file(target).text();
@@ -113,19 +117,20 @@ const afterRollback = await Bun.file(target).text();
 
 const dirtyOriginal = `${original.trimEnd()}\n\n${dirtyMarker}\n`;
 writeFileSync(target, dirtyOriginal);
-const mismatchApply = callSafeWrite(
-  { patch: mismatchPatch, commands: ['true'], timeoutSec: 30, apply: true, brief: false },
+const dirtyBaseApply = callSafeWrite(
+  { patch: dirtyBasePatch, commands: ['true'], timeoutSec: 30, apply: true, brief: false },
   { ALLOW_SNAPSHOT_APPLY: '1' },
+  'dirty_base_apply',
 );
-calls.push(mismatchApply);
-const afterMismatchApply = await Bun.file(target).text();
-let mismatchRollbackResult: { status: number | null; stdout: string; stderr: string } | null = null;
-const mismatchRollbackCommand = mismatchApply.payload?.rollback?.command;
-if (typeof mismatchRollbackCommand === 'string' && mismatchRollbackCommand.trim()) {
-  const proc = run(mismatchRollbackCommand);
-  mismatchRollbackResult = { status: proc.status, stdout: String(proc.stdout || ''), stderr: String(proc.stderr || '') };
+calls.push(dirtyBaseApply);
+const afterDirtyBaseApply = await Bun.file(target).text();
+let dirtyBaseRollbackResult: { status: number | null; stdout: string; stderr: string } | null = null;
+const dirtyBaseRollbackCommand = dirtyBaseApply.payload?.rollback?.command;
+if (typeof dirtyBaseRollbackCommand === 'string' && dirtyBaseRollbackCommand.trim()) {
+  const proc = run(dirtyBaseRollbackCommand);
+  dirtyBaseRollbackResult = { status: proc.status, stdout: String(proc.stdout || ''), stderr: String(proc.stderr || '') };
 }
-const afterMismatchRollback = await Bun.file(target).text();
+const afterDirtyBaseRollback = await Bun.file(target).text();
 writeFileSync(target, original);
 const afterFinalRestore = await Bun.file(target).text();
 
@@ -150,14 +155,14 @@ const evidence = {
     afterApply.includes(marker) &&
     rollbackResult?.status === 0 &&
     afterRollback === original &&
-    mismatchApply.payload?.ok === false &&
-    mismatchApply.payload?.applied === true &&
-    mismatchApply.payload?.verification?.appliedDiffMatchesSnapshot === false &&
-    mismatchApply.payload?.validationPlan?.verification?.appliedDiffMatchesSnapshot === false &&
-    afterMismatchApply.includes(mismatchMarker) &&
-    afterMismatchApply.includes(dirtyMarker) &&
-    mismatchRollbackResult?.status === 0 &&
-    afterMismatchRollback === dirtyOriginal &&
+    dirtyBaseApply.payload?.ok === true &&
+    dirtyBaseApply.payload?.applied === true &&
+    dirtyBaseApply.payload?.verification?.appliedDiffMatchesSnapshot === true &&
+    dirtyBaseApply.payload?.validationPlan?.verification?.appliedDiffMatchesSnapshot === true &&
+    afterDirtyBaseApply.includes(dirtyBaseMarker) &&
+    afterDirtyBaseApply.includes(dirtyMarker) &&
+    dirtyBaseRollbackResult?.status === 0 &&
+    afterDirtyBaseRollback === dirtyOriginal &&
     afterFinalRestore === original &&
     fixtureHasNoPostRollbackModification,
   target,
@@ -170,13 +175,15 @@ const evidence = {
     appliedDiffMatchesSnapshot: applied.payload?.verification?.appliedDiffMatchesSnapshot === true,
     validationPlanAppliedDiffMatchesSnapshot: applied.payload?.validationPlan?.verification?.appliedDiffMatchesSnapshot === true,
     rollbackRestoredExactly: afterRollback === original,
-    dirtyTouchedFileVerificationFailsClosed:
-      mismatchApply.payload?.ok === false &&
-      mismatchApply.payload?.applied === true &&
-      mismatchApply.payload?.verification?.appliedDiffMatchesSnapshot === false,
-    validationPlanDirtyTouchedFileVerificationFailsClosed:
-      mismatchApply.payload?.validationPlan?.verification?.appliedDiffMatchesSnapshot === false,
-    mismatchRollbackPreservedPreexistingDirtyChange: afterMismatchRollback === dirtyOriginal,
+    dirtyTouchedFileVerificationPreservesBase:
+      dirtyBaseApply.scenario === 'dirty_base_apply' &&
+      dirtyBaseApply.payload?.ok === true &&
+      dirtyBaseApply.payload?.applied === true &&
+      dirtyBaseApply.payload?.verification?.appliedDiffMatchesSnapshot === true,
+    validationPlanDirtyTouchedFileVerificationPreservesBase:
+      dirtyBaseApply.scenario === 'dirty_base_apply' &&
+      dirtyBaseApply.payload?.validationPlan?.verification?.appliedDiffMatchesSnapshot === true,
+    dirtyBaseRollbackPreservedPreexistingDirtyChange: afterDirtyBaseRollback === dirtyOriginal,
     finalRestoreExact: afterFinalRestore === original,
     fixtureCleanAfterRollback: fixtureHasNoPostRollbackModification,
   },
@@ -198,7 +205,7 @@ const evidence = {
     },
   })),
   rollback: rollbackResult,
-  mismatchRollback: mismatchRollbackResult,
+  dirtyBaseRollback: dirtyBaseRollbackResult,
 };
 
 mkdirSync(dirname(outputPath), { recursive: true });

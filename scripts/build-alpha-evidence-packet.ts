@@ -40,10 +40,10 @@ const gate = loaded.gate.ok ? loaded.gate.value : null;
 
 const safeWriteCalls = Array.isArray(safeWrite?.calls) ? safeWrite.calls : [];
 const cleanApply = safeWriteCalls.find(
-    (call) => call?.success === true && call?.payload?.applied === true && call?.payload?.verification?.appliedDiffMatchesSnapshot === true
+    (call) => call?.scenario === 'clean_apply' && call?.success === true && call?.payload?.applied === true && call?.payload?.ok !== false && call?.payload?.verification?.appliedDiffMatchesSnapshot === true
 );
-const mismatch = safeWriteCalls.find(
-    (call) => call?.success === true && call?.payload?.applied === true && call?.payload?.ok === false && call?.payload?.verification?.appliedDiffMatchesSnapshot === false
+const dirtyBaseApply = safeWriteCalls.find(
+    (call) => call?.scenario === 'dirty_base_apply' && call?.success === true && call?.payload?.applied === true && call?.payload?.ok !== false && call?.payload?.verification?.appliedDiffMatchesSnapshot === true
 );
 const preview = safeWriteCalls.find((call) => call?.success === true && call?.payload?.mode === 'preview_validate' && call?.payload?.applied === false);
 
@@ -66,9 +66,9 @@ const safeWritePreviewRecommendationsPresent = safeWriteCalls.some((call) => cal
 const safeWritePreviewValidationPlanPresent = safeWriteCalls.some((call) => call?.success === true && call?.payload?.mode === 'preview_validate' && call?.payload?.validationPlan?.schema === 'semantic-code-intelligence.validation_plan.v1');
 const safeWriteFixtureCleanAfterRollback = safeWrite?.assertions?.fixtureCleanAfterRollback === true;
 const cleanApplyVerified = !!cleanApply;
-const mismatchFailsClosed = !!mismatch;
+const dirtyBaseVerified = !!dirtyBaseApply;
 const rollbackRestoredExactly = safeWrite?.assertions?.rollbackRestoredExactly === true;
-const mismatchRollbackPreservedPreexistingDirtyChange = safeWrite?.assertions?.mismatchRollbackPreservedPreexistingDirtyChange === true;
+const dirtyBaseRollbackPreservedPreexistingDirtyChange = safeWrite?.assertions?.dirtyBaseRollbackPreservedPreexistingDirtyChange === true;
 const derivedClaimsOk =
     sciFirstDiscoveryOk &&
     selfHostedWorkspaceUnchanged &&
@@ -77,9 +77,9 @@ const derivedClaimsOk =
     safeWritePreviewValidationPlanPresent &&
     safeWriteFixtureCleanAfterRollback &&
     cleanApplyVerified &&
-    mismatchFailsClosed &&
+    dirtyBaseVerified &&
     rollbackRestoredExactly &&
-    mismatchRollbackPreservedPreexistingDirtyChange;
+    dirtyBaseRollbackPreservedPreexistingDirtyChange;
 
 const packet = {
     schema: 'semantic-code-intelligence.alpha_evidence_packet.v1',
@@ -151,10 +151,10 @@ const packet = {
         ok: safeWrite?.ok === true,
         cleanApplyVerified,
         cleanApplyMethod: cleanApply?.payload?.verification?.method || null,
-        mismatchFailsClosed,
-        mismatchMethod: mismatch?.payload?.verification?.method || null,
+        dirtyBaseVerified,
+        dirtyBaseMethod: dirtyBaseApply?.payload?.verification?.method || null,
         rollbackRestoredExactly,
-        mismatchRollbackPreservedPreexistingDirtyChange,
+        dirtyBaseRollbackPreservedPreexistingDirtyChange,
     },
     validationCommands: [
         'bun run typecheck',
@@ -181,7 +181,7 @@ const packet = {
             'ValidationPlan comparison flags stable-field check-plan drift while ignoring volatile snapshot/timing fields and includes remediation hints for failures.',
             'Alpha evidence history compares elapsed-time maxima against an explicit baseline while preserving coarse budgets as the fail-closed gate.',
             'Patch planning remains preview-first by default.',
-            'safe_write has clean apply exact-diff verification and dirty mismatch fail-closed evidence.',
+            'safe_write has clean apply verification and preserves pre-existing dirty touched-file bases during applied verification.',
             'Generated dogfood evidence passes the lightweight Alpha evidence gate.',
         ],
         doesNotProve: [

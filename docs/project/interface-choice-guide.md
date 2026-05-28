@@ -40,7 +40,7 @@ bounded discovery -> graph impact -> recommend checks -> preview/check -> valida
 | CI-like or deterministic cross-interface parity tests | HTTP `/api/v1/tools/call` | Simple request/response surface for repeatable tests without MCP client machinery. | Treating HTTP parity tests as a production API promise beyond alpha scope. |
 | Core adapter contract/unit coverage | Direct `MCPAdapter` tests | Exercises tool routing and result shapes without server/network noise. | Claiming direct-adapter-only coverage proves client interoperability. |
 | Previewing a patch in any interface | `patch_checks_in_snapshot` or `safe_write` preview | Produces snapshot artifacts, explicit checks, optional recommendations, and `validationPlan`. | Direct file writes before a reviewed diff/check path. |
-| Intentionally applying a patch | `safe_write` with `apply:true`, passing checks, and `ALLOW_SNAPSHOT_APPLY=1` | Preserves guarded apply and exact applied-diff verification. | Any apply path that bypasses guards or does not expose rollback evidence. |
+| Intentionally applying a patch | `safe_write` with `apply:true`, passing checks, and `ALLOW_SNAPSHOT_APPLY=1` | Preserves guarded apply and applied-state verification. | Any apply path that bypasses guards or does not expose rollback evidence. |
 
 ## Interface-specific guidance
 

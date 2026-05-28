@@ -77,7 +77,7 @@ function fromRecommendChecksEvidence(evidence: any) {
 function fromSafeWriteEvidence(evidence: any) {
   const calls = Array.isArray(evidence?.calls) ? evidence.calls : [];
   return calls
-    .map((call: any, index: number) => ({ source: `safe-write:${call?.payload?.mode || index}`, plan: call?.payload?.validationPlan }))
+    .map((call: any, index: number) => ({ source: `safe-write:${call?.scenario || call?.payload?.mode || index}`, plan: call?.payload?.validationPlan }))
     .filter(hasPlanObject);
 }
 
@@ -112,16 +112,16 @@ const failureGuidance: Record<string, { explanation: string; remediation: string
     remediation: 'Restore rollback command/artifact fields for safe_write validationPlan output.',
   },
   safe_write_verification_missing: {
-    explanation: 'safe_write validation evidence no longer exposes exact applied-diff verification posture.',
-    remediation: 'Thread safe_write verification into validationPlan.verification for preview, refused, clean apply, and mismatch cases.',
+    explanation: 'safe_write validation evidence no longer exposes applied-state verification posture.',
+    remediation: 'Thread safe_write verification into validationPlan.verification for preview, refused, clean apply, and dirty-base apply cases.',
   },
   safe_write_verification_incomplete: {
     explanation: 'safe_write validationPlan verification is present but does not preserve applied state or applied-diff match state.',
     remediation: 'Ensure validationPlan.verification.applied mirrors apply.applied and appliedDiffMatchesSnapshot is boolean only for applied states, null for non-applied preview/refusal states.',
   },
   safe_write_verification_coverage_missing: {
-    explanation: 'Generated safe_write validationPlan evidence does not include both a verified clean apply and a mismatch/fail-closed apply case.',
-    remediation: 'Restore safe_write dogfood coverage for clean guarded apply with appliedDiffMatchesSnapshot=true and dirty mismatch with appliedDiffMatchesSnapshot=false.',
+    explanation: 'Generated safe_write validationPlan evidence does not include explicitly marked clean and dirty-base verified apply cases.',
+    remediation: 'Restore safe_write dogfood coverage for scenario=clean_apply and scenario=dirty_base_apply with appliedDiffMatchesSnapshot=true.',
   },
   graph_impact_context_missing: {
     explanation: 'Generated validationPlan evidence no longer includes a graph-bearing plan, so graph review context can drift unnoticed.',
@@ -169,16 +169,16 @@ comparisons.push({
   expected: { graphContextPlanCount: '>=1' },
   actual: { graphContextPlanCount },
 });
-const cleanApplyVerificationPlanCount = normalized.filter((item) => item.workflow === 'safe_write' && item.applied === true && item.verificationApplied === true && item.verificationAppliedDiffMatchesSnapshot === true && item.verificationStateComplete).length;
-const mismatchVerificationPlanCount = normalized.filter((item) => item.workflow === 'safe_write' && item.applied === true && item.verificationApplied === true && item.verificationAppliedDiffMatchesSnapshot === false && item.verificationStateComplete).length;
-const safeWriteVerificationCoverageOk = cleanApplyVerificationPlanCount >= 1 && mismatchVerificationPlanCount >= 1;
+const cleanApplyVerificationPlanCount = normalized.filter((item) => item.source === 'safe-write:clean_apply' && item.workflow === 'safe_write' && item.applied === true && item.verificationApplied === true && item.verificationAppliedDiffMatchesSnapshot === true && item.verificationStateComplete).length;
+const dirtyBaseVerificationPlanCount = normalized.filter((item) => item.source === 'safe-write:dirty_base_apply' && item.workflow === 'safe_write' && item.applied === true && item.verificationApplied === true && item.verificationAppliedDiffMatchesSnapshot === true && item.verificationStateComplete).length;
+const safeWriteVerificationCoverageOk = cleanApplyVerificationPlanCount >= 1 && dirtyBaseVerificationPlanCount >= 1;
 comparisons.push({
   source: 'bundle:safe-write-verification-coverage',
   ok: safeWriteVerificationCoverageOk,
   failures: safeWriteVerificationCoverageOk ? [] : ['safe_write_verification_coverage_missing'],
   guidance: safeWriteVerificationCoverageOk ? [] : explainFailures(['safe_write_verification_coverage_missing']),
-  expected: { cleanApplyVerificationPlanCount: '>=1', mismatchVerificationPlanCount: '>=1' },
-  actual: { cleanApplyVerificationPlanCount, mismatchVerificationPlanCount },
+  expected: { cleanApplyVerificationPlanCount: '>=1', dirtyBaseVerificationPlanCount: '>=1' },
+  actual: { cleanApplyVerificationPlanCount, dirtyBaseVerificationPlanCount },
 });
 
 const drift = comparisons.filter((item) => !item.ok);
@@ -194,7 +194,7 @@ const evidence = {
   ok: plans.length >= 2 && graphContextPlanCount >= 1 && safeWriteVerificationCoverageOk && drift.length === 0,
   comparedPlanCount: plans.length,
   graphContextPlanCount,
-  safeWriteVerificationCoverage: { cleanApplyVerificationPlanCount, mismatchVerificationPlanCount },
+  safeWriteVerificationCoverage: { cleanApplyVerificationPlanCount, dirtyBaseVerificationPlanCount },
   stableFields: ['schema', 'workflow', 'mode', 'selectedCommands', 'recommendationsAppliedToSelected', 'checksOk', 'hasArtifacts', 'hasRollback', 'verificationPresent', 'verificationApplied', 'verificationAppliedDiffMatchesSnapshot', 'graphImpactSeed', 'graphImpactRequestedEdges', 'graphImpactEdgeEvidence', 'graphImpactLimitationsFieldPresent'],
   ignoredVolatileFields: ['snapshot', 'elapsedMs', 'artifact paths with snapshot ids', 'generatedAt'],
   comparisons,
@@ -206,7 +206,7 @@ const evidence = {
       'Current generated validationPlan evidence preserves stable safety/check-planning fields.',
       'Recommendations remain advisory and do not mutate selected commands.',
       'Preview evidence still links snapshot artifacts and safe_write rollback posture.',
-      'safe_write validationPlan evidence preserves exact apply verification posture for downstream evidence review.',
+      'safe_write validationPlan evidence preserves applied-state verification posture for downstream evidence review.',
       'At least one generated validationPlan preserves graph seed, requested edges, per-edge status, and limitations for evidence review.',
     ],
     does_not_prove: ['Historical trend analysis beyond the current generated evidence bundle.'],

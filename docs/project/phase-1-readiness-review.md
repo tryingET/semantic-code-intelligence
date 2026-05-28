@@ -42,7 +42,7 @@ Current bundle covers:
 - impact-aware check recommendations for docs-only, TS source, test-file, and graph-impact cases;
 - validationPlan summaries for preview/check workflows;
 - validation-plan stable-field comparison with remediation hints;
-- safe_write preview/check by default, guarded apply, exact applied-diff verification, dirty mismatch fail-closed proof, and rollback proof;
+- safe_write preview/check by default, guarded apply, applied-state verification, dirty-base preservation proof, and rollback proof;
 - migration hygiene for product identity/path/artifact safety.
 
 Generated evidence surfaces reviewed:
@@ -62,7 +62,7 @@ Generated evidence surfaces reviewed:
 | Area | Status | Notes |
 |---|---|---|
 | First-user fit | Ready for alpha use | The substrate directly supports harnessed LLM navigation, patch planning, check recommendation, and evidence reporting. |
-| Mutation safety | Strong alpha posture | Preview-first default, guarded apply, exact applied-diff verification, rollback artifact, and dirty mismatch fail-closed evidence are present. |
+| Mutation safety | Strong alpha posture | Preview-first default, guarded apply, applied-state verification, rollback artifact, and dirty-base preservation evidence are present. |
 | Interface coverage | Credible alpha coverage | HTTP, MCP HTTP, MCP stdio, direct adapter tests, and CLI fallback are all exercised. |
 | Evidence quality | Improved alpha posture | Evidence packet and validation-plan comparison are repeatable; IW45 adds lightweight elapsed-time history comparison, but not durable metrics storage. |
 | Graph semantics | Improved alpha posture | File-scoped graph impact is useful; IW46 adds sparse-edge limitations and best-effort caller context, but symbol caller/callee evidence can still be fallback-shaped. |
