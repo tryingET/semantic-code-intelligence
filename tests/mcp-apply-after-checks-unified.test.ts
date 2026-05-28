@@ -32,7 +32,7 @@ describe('MCP apply_after_checks with unified diff (applied=true)', () => {
 
     test('modifies existing file and reverts it', async () => {
         const before = await fs.readFile(targetAbs, 'utf8');
-        const patch = `diff --git a/${targetRel} b/${targetRel}\n--- a/${targetRel}\n+++ b/${targetRel}\n@@ -5,2 +5,3 @@\n export class TestClass {\n+${marker}\n     private value: number = 0;\n`;
+        const patch = `diff --git a/${targetRel} b/${targetRel}\n--- a/${targetRel}\n+++ b/${targetRel}\n@@ -5,3 +5,4 @@\n export class TestClass {\n // mcp unified apply_after_checks test\n+${marker}\n     private value: number = 0;\n`;
 
         const res = await mcp.handleToolCall('apply_after_checks', {
             patch,

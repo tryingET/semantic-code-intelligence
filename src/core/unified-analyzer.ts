@@ -3,10 +3,10 @@
  * This is the single source of truth for code analysis, used by all protocol adapters
  */
 
-import { EventEmitter } from 'events';
 import * as fs from 'node:fs/promises';
-import * as path from 'path';
 import { fileURLToPath } from 'node:url';
+import { EventEmitter } from 'events';
+import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import {
     AsyncEnhancedGrep,
@@ -15,6 +15,8 @@ import {
     StreamingGrepResult,
 } from '../layers/enhanced-search-tools-async.js';
 import { LearningOrchestrator } from '../learning/learning-orchestrator.js';
+import type { SearchQuery } from '../types/core.js';
+import { wordAtIdentifierPosition } from './identifier-token.js';
 import type { LayerManager } from './layer-manager.js';
 import type { SharedServices } from './services/index.js';
 import {
@@ -44,8 +46,7 @@ import {
     type RequestMetadata,
     type WorkspaceEdit,
 } from './types.js';
-import type { SearchQuery } from '../types/core.js';
-import { wordAtIdentifierPosition } from './identifier-token.js';
+import { SCI_VERSION } from './version.js';
 import { workspaceInputToPath } from './workspace-input.js';
 import { openWorkspaceFileForRead } from './workspace-path.js';
 
@@ -187,7 +188,7 @@ export class CodeAnalyzer {
 
         this.eventBus.emit('code-analyzer:initialized', {
             timestamp: Date.now(),
-            version: '1.0.0',
+            version: SCI_VERSION,
         });
     }
 
@@ -1324,7 +1325,8 @@ export class CodeAnalyzer {
             } as any);
             const def = defRes.data?.[0];
             const found =
-                def && ((def as any).astValidated || (def as any).metadata?.astValidated || (def as any).layer === 'layer2')
+                def &&
+                ((def as any).astValidated || (def as any).metadata?.astValidated || (def as any).layer === 'layer2')
                     ? {
                           range: def.range,
                           placeholder: request.identifier,
@@ -1940,13 +1942,19 @@ export class CodeAnalyzer {
             precise: true,
         } as any);
         const def = res.data[0];
-        if (!def || !((def as any).astValidated || (def as any).metadata?.astValidated || (def as any).layer === 'layer2')) {
+        if (
+            !def ||
+            !((def as any).astValidated || (def as any).metadata?.astValidated || (def as any).layer === 'layer2')
+        ) {
             return null;
         }
         return { range: def.range, placeholder: request.identifier };
     }
 
-    private async findRenamePlan(request: RenameRequest, metadata: RequestMetadata): Promise<{ instances: any[]; edit: WorkspaceEdit }> {
+    private async findRenamePlan(
+        request: RenameRequest,
+        metadata: RequestMetadata
+    ): Promise<{ instances: any[]; edit: WorkspaceEdit }> {
         const oldName = (request as any).identifier || (request as any).oldName || '';
         const newName = (request as any).newName || '';
         if (!oldName || !newName) {
@@ -1964,7 +1972,9 @@ export class CodeAnalyzer {
 
         // Prefer AST-validated references when available
         const refsData = refsRes.data || [];
-        const astValidated = refsData.filter((r: any) => r && (r.astValidated || r.metadata?.astValidated || r.layer === 'layer2'));
+        const astValidated = refsData.filter(
+            (r: any) => r && (r.astValidated || r.metadata?.astValidated || r.layer === 'layer2')
+        );
         const chosen = astValidated;
 
         const editsByFile: Record<string, any[]> = {};
@@ -1988,7 +1998,10 @@ export class CodeAnalyzer {
             precise: true,
         } as any);
         const def = defRes.data[0];
-        if (def && ((def as any).astValidated || (def as any).metadata?.astValidated || (def as any).layer === 'layer2')) {
+        if (
+            def &&
+            ((def as any).astValidated || (def as any).metadata?.astValidated || (def as any).layer === 'layer2')
+        ) {
             const file = def.uri;
             editsByFile[file] = editsByFile[file] || [];
             editsByFile[file].push({ range: def.range, newText: newName });
@@ -2841,7 +2854,10 @@ export class CodeAnalyzer {
             console.log('[textSearch] direct bounded grep first; Layer 1 fallback available:', !!layer1);
         }
 
-        let directResult: { count: number; results: Array<{ file: string; line: number; column: number; text: string }> } | null = null;
+        let directResult: {
+            count: number;
+            results: Array<{ file: string; line: number; column: number; text: string }>;
+        } | null = null;
         try {
             directResult = await this.directTextSearch(query, options);
             if (directResult.count > 0 || !layer1 || isRegexLike) return directResult;

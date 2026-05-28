@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 
 type Pending = {
     resolve: (value: any) => void;
@@ -12,9 +12,14 @@ const patchPlanningTarget = 'docs/project/alpha-mvp-contract.md';
 const patchPlanningDiff = `diff --git a/${patchPlanningTarget} b/${patchPlanningTarget}
 --- a/${patchPlanningTarget}
 +++ b/${patchPlanningTarget}
-@@ -9,1 +9,2 @@
+@@ -7,6 +7,7 @@ type: "reference"
+ ---
+${' '}
  # Alpha MVP contract — harnessed LLM coding sessions
 +${patchPlanningMarker}
+${' '}
+ ## User and job
+${' '}
 `;
 
 function parseToolContent(response: any) {
@@ -159,10 +164,14 @@ describe('Alpha MVP MCP stdio protocol', () => {
         expect(search.count).toBeGreaterThan(0);
         expect(search.results.length).toBeLessThanOrEqual(5);
 
-        const patchResponse = await send('tools/call', {
-            name: 'patch_checks_in_snapshot',
-            arguments: { patch: patchPlanningDiff, commands: ['true'], timeoutSec: 30 },
-        }, 45000);
+        const patchResponse = await send(
+            'tools/call',
+            {
+                name: 'patch_checks_in_snapshot',
+                arguments: { patch: patchPlanningDiff, commands: ['true'], timeoutSec: 30 },
+            },
+            45000
+        );
         expect(patchResponse.error).toBeUndefined();
         const patch = parseToolContent(patchResponse);
         expect(patch.workflow).toBe('patch_checks_in_snapshot');

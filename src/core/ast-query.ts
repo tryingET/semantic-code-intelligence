@@ -35,6 +35,12 @@ export type AstQueryInput = {
 };
 
 export async function runAstQuery(inp: AstQueryInput) {
+    if (!['typescript', 'javascript', 'python'].includes(inp.language)) {
+        throw new CoreError('InvalidParams', 'Unsupported ast_query language', {
+            field: 'language',
+            allowed: ['typescript', 'javascript', 'python'],
+        });
+    }
     const lang = await loadLanguage(inp.language);
     if (!lang) {
         // No language available; return empty result rather than throw to keep HTTP stable

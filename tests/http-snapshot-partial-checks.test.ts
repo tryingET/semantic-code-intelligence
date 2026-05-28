@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { canBindTcp } from './helpers/bind-utils';
 import { HTTPServer } from '../src/servers/http';
+import { canBindTcp } from './helpers/bind-utils';
 
 const canBind = await canBindTcp('127.0.0.1');
 const bindDescribe = canBind ? describe : describe.skip;
@@ -39,7 +39,7 @@ bindDescribe('Snapshot apply/checks (partial materialize)', () => {
 
     test('patch_checks_in_snapshot builds http with partial snapshot', async () => {
         // Create a tiny patch that touches only tests (common offender for partial snapshots)
-        const patch = `*** Begin Patch\n*** Update File: tests/fixtures/example.ts\n@@\n export class TestClass {\n-    private value: number = 0;\n+    // partial snapshot test noop\n+    private value: number = 0;\n*** End Patch\n`;
+        const patch = `*** Begin Patch\n*** Update File: tests/fixtures/example.ts\n@@\n export class TestClass {\n // mcp unified apply_after_checks test\n+    // partial snapshot test noop\n     private value: number = 0;\n*** End Patch\n`;
 
         // Stage + run checks: build only http (fast, externals set)
         const result = await callTool(base, 'patch_checks_in_snapshot', {

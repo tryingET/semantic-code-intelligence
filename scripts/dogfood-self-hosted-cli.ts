@@ -8,9 +8,14 @@ const marker = '<!-- self-hosted-cli-dogfood snapshot-only marker -->';
 const patch = `diff --git a/${target} b/${target}
 --- a/${target}
 +++ b/${target}
-@@ -9,1 +9,2 @@
+@@ -7,6 +7,7 @@ type: "reference"
+ ---
+${' '}
  # Product posture
 +${marker}
+${' '}
+ ## Position
+${' '}
 `;
 
 type CliCallEvidence = {

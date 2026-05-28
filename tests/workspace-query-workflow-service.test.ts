@@ -87,9 +87,99 @@ describe('WorkspaceQueryWorkflowService', () => {
         await expect(service.astQuery({ language: 'typescript', query: '' })).rejects.toThrow(
             'Missing required parameter: query'
         );
+        await expect(service.astQuery({ language: 'rust', query: '(function_item)' })).rejects.toThrow(
+            'Unsupported ast_query language'
+        );
         await expect(
             service.astQuery({ language: 'typescript', query: 'function $A() {}', limit: -1 })
         ).rejects.toThrow('limit must be an integer from 1 to 1000');
+    });
+
+    test('symbol_search prioritizes workspace-contained fileHint before maxResults slicing', async () => {
+        const workspaceRoot = tempWorkspace();
+        mkdirSync(join(workspaceRoot, 'src'));
+        writeFileSync(join(workspaceRoot, 'src', 'a.ts'), 'export const Foo = 1;\n', 'utf8');
+        writeFileSync(join(workspaceRoot, 'src', 'b.ts'), 'export function Foo() { return 2; }\n', 'utf8');
+        const service = new WorkspaceQueryWorkflowService({
+            workspaceRoot: () => workspaceRoot,
+            coreAnalyzer: {
+                async buildSymbolMap(options: any) {
+                    expect(options.maxFiles).toBeGreaterThan(1);
+                    expect(options.uri).toBe(`file://${join(workspaceRoot, 'src', 'a.ts')}`);
+                    return {
+                        declarations: [
+                            {
+                                uri: `file://${join(workspaceRoot, 'src', 'b.ts')}`,
+                                range: {},
+                                kind: 'function',
+                                name: 'Foo',
+                            },
+                            {
+                                uri: `file://${join(workspaceRoot, 'src', 'a.ts')}`,
+                                range: {},
+                                kind: 'const',
+                                name: 'Foo',
+                            },
+                        ],
+                    };
+                },
+            },
+            pathInputFromToolFile: (value) => value,
+        });
+
+        const out = payload(await service.symbolSearch({ query: 'Foo', fileHint: 'src/a.ts', maxResults: 1 }));
+        expect(out.count).toBe(1);
+        expect(out.symbols[0].uri).toContain('/src/a.ts');
+    });
+
+    test('symbol_search treats fileHint as priority, not a result filter', async () => {
+        const workspaceRoot = tempWorkspace();
+        mkdirSync(join(workspaceRoot, 'src'));
+        writeFileSync(join(workspaceRoot, 'src', 'a.ts'), 'export const Bar = 1;\n', 'utf8');
+        writeFileSync(join(workspaceRoot, 'src', 'b.ts'), 'export const Foo = 2;\n', 'utf8');
+        const service = new WorkspaceQueryWorkflowService({
+            workspaceRoot: () => workspaceRoot,
+            coreAnalyzer: {
+                async buildSymbolMap() {
+                    return {
+                        declarations: [
+                            {
+                                uri: `file://${join(workspaceRoot, 'src', 'b.ts')}`,
+                                range: {},
+                                kind: 'const',
+                                name: 'Foo',
+                            },
+                        ],
+                    };
+                },
+            },
+            pathInputFromToolFile: (value) => value,
+        });
+
+        const out = payload(await service.symbolSearch({ query: 'Foo', fileHint: 'src/a.ts', maxResults: 1 }));
+        expect(out.count).toBe(1);
+        expect(out.symbols[0].uri).toContain('/src/b.ts');
+    });
+
+    test('symbol_search encodes fileHint fallback URIs as file URLs', async () => {
+        const workspaceRoot = tempWorkspace();
+        mkdirSync(join(workspaceRoot, 'hash#dir'), { recursive: true });
+        writeFileSync(join(workspaceRoot, 'hash#dir', 'space file.ts'), 'const EncodedNeedle = 1;\n', 'utf8');
+        const service = new WorkspaceQueryWorkflowService({
+            workspaceRoot: () => workspaceRoot,
+            coreAnalyzer: {
+                async buildSymbolMap() {
+                    return { declarations: [] };
+                },
+            },
+            pathInputFromToolFile: (value) => value,
+        });
+
+        const out = payload(
+            await service.symbolSearch({ query: 'EncodedNeedle', fileHint: 'hash#dir/space file.ts', maxResults: 1 })
+        );
+        expect(out.count).toBe(1);
+        expect(out.symbols[0].uri).toContain('hash%23dir/space%20file.ts');
     });
 
     test('delegates text search to the configured analyzer with bounded path resolution', async () => {

@@ -11,9 +11,14 @@ const patchPlanningTarget = 'docs/project/alpha-mvp-contract.md';
 const patchPlanningDiff = `diff --git a/${patchPlanningTarget} b/${patchPlanningTarget}
 --- a/${patchPlanningTarget}
 +++ b/${patchPlanningTarget}
-@@ -9,1 +9,2 @@
+@@ -7,6 +7,7 @@ type: "reference"
+ ---
+${' '}
  # Alpha MVP contract — harnessed LLM coding sessions
 +${patchPlanningMarker}
+${' '}
+ ## User and job
+${' '}
 `;
 const hasAstGrep = spawnSync('bash', ['-lc', 'command -v ast-grep >/dev/null 2>&1'], { stdio: 'ignore' }).status === 0;
 const structuralTest = hasAstGrep ? test : test.skip;
@@ -89,11 +94,21 @@ describe('Alpha MVP CLI fallback parity', () => {
     test('generic workflow command inspects snapshot metadata without materializing content by default', async () => {
         const workspace = await mkdtemp(path.join(tmpdir(), 'sci-cli-snapshot-metadata-'));
         try {
-            await writeFile(path.join(workspace, 'alpha.md'), '# Alpha MVP contract — harnessed LLM coding sessions\n', 'utf8');
+            await writeFile(
+                path.join(workspace, 'alpha.md'),
+                '# Alpha MVP contract — harnessed LLM coding sessions\n',
+                'utf8'
+            );
 
             const snapshot = await workflow('get_snapshot', { preferExisting: false }, { cwd: workspace });
             expect(snapshot.payload.snapshot).toMatch(/^[0-9a-f-]{8,}$/i);
-            const materializedMarker = path.join(workspace, '.ontology', 'snapshots', snapshot.payload.snapshot, '.materialized');
+            const materializedMarker = path.join(
+                workspace,
+                '.ontology',
+                'snapshots',
+                snapshot.payload.snapshot,
+                '.materialized'
+            );
             expect(await Bun.file(materializedMarker).exists()).toBe(false);
 
             const artifacts = await workflow(
@@ -125,7 +140,7 @@ describe('Alpha MVP CLI fallback parity', () => {
 --- a/${target}
 +++ b/${target}
 @@ -1,1 +1,2 @@
-${initial.trimEnd()}
+ ${initial.trimEnd()}
 +${marker}
 `;
 
@@ -235,92 +250,108 @@ ${initial.trimEnd()}
         expect(after).not.toContain(patchPlanningMarker);
     }, 60000);
 
-    structuralTest('generic workflow command executes ast-grep structural search and preview-first structural patch checks', async () => {
-        const target = 'tests/alpha-mvp-cli-parity.test.ts';
-        const before = await Bun.file(target).text();
-        expect(before).toContain('const patchPlanningTarget');
+    structuralTest(
+        'generic workflow command executes ast-grep structural search and preview-first structural patch checks',
+        async () => {
+            const target = 'tests/alpha-mvp-cli-parity.test.ts';
+            const before = await Bun.file(target).text();
+            expect(before).toContain('const patchPlanningTarget');
 
-        const search = await workflow('structural_search', {
-            language: 'typescript',
-            pattern: 'workflow($NAME, $ARGS)',
-            paths: [target],
-            maxResults: 5,
-        });
-        expect(search.payload.ok).toBe(true);
-        expect(search.payload.backend).toBe('ast-grep');
-        expect(search.payload.matches.length).toBeGreaterThan(0);
-        expect(search.payload.matches.length).toBeLessThanOrEqual(5);
+            const search = await workflow('structural_search', {
+                language: 'typescript',
+                pattern: 'workflow($NAME, $ARGS)',
+                paths: [target],
+                maxResults: 5,
+            });
+            expect(search.payload.ok).toBe(true);
+            expect(search.payload.backend).toBe('ast-grep');
+            expect(search.payload.matches.length).toBeGreaterThan(0);
+            expect(search.payload.matches.length).toBeLessThanOrEqual(5);
 
-        const defaultPathSearch = await workflow('structural_search', {
-            language: 'typescript',
-            pattern: 'workflow($NAME, $ARGS)',
-            maxResults: 1,
-        });
-        expect(defaultPathSearch.payload.ok).toBe(true);
-        expect(defaultPathSearch.payload.paths).toEqual(['.']);
-        expect(defaultPathSearch.payload.matches.length).toBeLessThanOrEqual(1);
+            const defaultPathSearch = await workflow('structural_search', {
+                language: 'typescript',
+                pattern: 'workflow($NAME, $ARGS)',
+                maxResults: 1,
+            });
+            expect(defaultPathSearch.payload.ok).toBe(true);
+            expect(defaultPathSearch.payload.paths).toEqual(['.']);
+            expect(defaultPathSearch.payload.matches.length).toBeLessThanOrEqual(1);
 
-        const checked = await workflow('structural_patch_checks', {
-            language: 'typescript',
-            pattern: 'const patchPlanningTarget = $VALUE',
-            rewrite: 'const structuralPatchTarget = $VALUE',
-            paths: [target],
-            commands: ['true'],
-            timeoutSec: 30,
-            apply: false,
-        });
-        expect(checked.payload.workflow).toBe('structural_patch_checks');
-        expect(checked.payload.ok).toBe(true);
-        expect(checked.payload.backend).toBe('ast-grep');
-        expect(checked.payload.stage?.accepted).toBe(true);
-        expect(checked.payload.checks?.ok).toBe(true);
-        expect(checked.payload.applied).toBe(false);
-        expect(checked.payload.patch?.replacementCount).toBeGreaterThan(0);
-        expect(checked.payload.patch?.diffBytes).toBeGreaterThan(0);
-        expect(Array.isArray(checked.payload.patch?.summary)).toBe(true);
-        expect(checked.payload.snapshotArtifacts?.overlayDiff).toContain(`snapshot://${checked.payload.snapshot}/overlay.diff`);
-        expect(checked.payload.next_actions.join('\n')).toContain('snapshot://');
-        expect(checked.payload.checks?.commands?.[0]).toMatchObject({ command: 'true', ok: true, exitCode: 0, timedOut: false });
+            const checked = await workflow('structural_patch_checks', {
+                language: 'typescript',
+                pattern: 'const patchPlanningTarget = $VALUE',
+                rewrite: 'const structuralPatchTarget = $VALUE',
+                paths: [target],
+                commands: ['true'],
+                timeoutSec: 30,
+                apply: false,
+            });
+            expect(checked.payload.workflow).toBe('structural_patch_checks');
+            expect(checked.payload.ok).toBe(true);
+            expect(checked.payload.backend).toBe('ast-grep');
+            expect(checked.payload.stage?.accepted).toBe(true);
+            expect(checked.payload.checks?.ok).toBe(true);
+            expect(checked.payload.applied).toBe(false);
+            expect(checked.payload.patch?.replacementCount).toBeGreaterThan(0);
+            expect(checked.payload.patch?.diffBytes).toBeGreaterThan(0);
+            expect(Array.isArray(checked.payload.patch?.summary)).toBe(true);
+            expect(checked.payload.snapshotArtifacts?.overlayDiff).toContain(
+                `snapshot://${checked.payload.snapshot}/overlay.diff`
+            );
+            expect(checked.payload.next_actions.join('\n')).toContain('snapshot://');
+            expect(checked.payload.checks?.commands?.[0]).toMatchObject({
+                command: 'true',
+                ok: true,
+                exitCode: 0,
+                timedOut: false,
+            });
 
-        const artifacts = await workflow('extract_snapshot_artifacts', {
-            snapshot: checked.payload.snapshot,
-            includeContent: true,
-            maxBytes: 4096,
-        });
-        expect(artifacts.payload.status?.exists).toBe(true);
-        expect(artifacts.payload.status?.diffCount).toBeGreaterThan(0);
-        expect(artifacts.payload.contents?.overlayDiff?.text).toContain('structuralPatchTarget');
-        expect(artifacts.payload.links?.map((link: any) => link.uri)).toContain(
-            `snapshot://${checked.payload.snapshot}/overlay.diff`,
-        );
+            const artifacts = await workflow('extract_snapshot_artifacts', {
+                snapshot: checked.payload.snapshot,
+                includeContent: true,
+                maxBytes: 4096,
+            });
+            expect(artifacts.payload.status?.exists).toBe(true);
+            expect(artifacts.payload.status?.diffCount).toBeGreaterThan(0);
+            expect(artifacts.payload.contents?.overlayDiff?.text).toContain('structuralPatchTarget');
+            expect(artifacts.payload.links?.map((link: any) => link.uri)).toContain(
+                `snapshot://${checked.payload.snapshot}/overlay.diff`
+            );
 
-        const defaultChecks = await workflow('structural_patch_checks', {
-            language: 'typescript',
-            pattern: 'const patchPlanningTarget = $VALUE',
-            rewrite: 'const structuralPatchTarget = $VALUE',
-            paths: [target],
-            timeoutSec: 120,
-            apply: false,
-        });
-        expect(defaultChecks.payload.ok).toBe(true);
-        expect(defaultChecks.payload.checks?.commands?.[0]).toMatchObject({ command: 'bun run typecheck', ok: true, exitCode: 0, timedOut: false });
-        expect(String(defaultChecks.payload.checks?.output || '')).toContain('tsgo');
+            const defaultChecks = await workflow('structural_patch_checks', {
+                language: 'typescript',
+                pattern: 'const patchPlanningTarget = $VALUE',
+                rewrite: 'const structuralPatchTarget = $VALUE',
+                paths: [target],
+                timeoutSec: 120,
+                apply: false,
+            });
+            expect(defaultChecks.payload.ok).toBe(true);
+            expect(defaultChecks.payload.checks?.commands?.[0]).toMatchObject({
+                command: 'bun run typecheck',
+                ok: true,
+                exitCode: 0,
+                timedOut: false,
+            });
+            expect(String(defaultChecks.payload.checks?.output || '')).toContain('tsgo');
 
-        const refusedApply = await workflow('structural_patch_checks', {
-            language: 'typescript',
-            pattern: 'const patchPlanningTarget = $VALUE',
-            rewrite: 'const structuralPatchTarget = $VALUE',
-            paths: [target],
-            commands: ['true'],
-            timeoutSec: 30,
-            apply: true,
-        });
-        expect(refusedApply.payload.ok).toBe(false);
-        expect(refusedApply.payload.applied).toBe(false);
-        expect(refusedApply.payload.applyResult?.message).toBe('ALLOW_SNAPSHOT_APPLY=1 required');
+            const refusedApply = await workflow('structural_patch_checks', {
+                language: 'typescript',
+                pattern: 'const patchPlanningTarget = $VALUE',
+                rewrite: 'const structuralPatchTarget = $VALUE',
+                paths: [target],
+                commands: ['true'],
+                timeoutSec: 30,
+                apply: true,
+            });
+            expect(refusedApply.payload.ok).toBe(false);
+            expect(refusedApply.payload.applied).toBe(false);
+            expect(refusedApply.payload.applyResult?.message).toBe('ALLOW_SNAPSHOT_APPLY=1 required');
 
-        const after = await Bun.file(target).text();
-        expect(after).toBe(before);
-        expect(after).toContain('const patchPlanningTarget');
-    }, 60000);
+            const after = await Bun.file(target).text();
+            expect(after).toBe(before);
+            expect(after).toContain('const patchPlanningTarget');
+        },
+        60000
+    );
 });

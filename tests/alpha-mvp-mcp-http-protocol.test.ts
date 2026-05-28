@@ -14,9 +14,14 @@ const patchPlanningTarget = 'docs/project/alpha-mvp-contract.md';
 const patchPlanningDiff = `diff --git a/${patchPlanningTarget} b/${patchPlanningTarget}
 --- a/${patchPlanningTarget}
 +++ b/${patchPlanningTarget}
-@@ -9,1 +9,2 @@
+@@ -7,6 +7,7 @@ type: "reference"
+ ---
+${' '}
  # Alpha MVP contract — harnessed LLM coding sessions
 +${patchPlanningMarker}
+${' '}
+ ## User and job
+${' '}
 `;
 
 function wait(ms: number) {
@@ -32,7 +37,7 @@ async function parseMcpBody(res: Response, expectedId?: number) {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let text = '';
-    let fallback: any = undefined;
+    let fallback: any;
     const consider = (candidate: any) => {
         if (!candidate || typeof candidate !== 'object') return undefined;
         fallback ??= candidate;
@@ -160,7 +165,10 @@ bindDescribe('Alpha MVP MCP HTTP protocol', () => {
     });
 
     test('prompts/get renders escaped JSON-shaped tool arguments', async () => {
-        const prompt = await promptsGet(93, 'quick-patch-checks', { command: 'bun test "tests/weird test.ts"', timeoutSec: '42' });
+        const prompt = await promptsGet(93, 'quick-patch-checks', {
+            command: 'bun test "tests/weird test.ts"',
+            timeoutSec: '42',
+        });
         expect(prompt.status).toBe(200);
         const text = prompt.body?.result?.messages?.map((message: any) => message.content?.text).join('\n') || '';
         expect(text).toContain('bun test \\"tests/weird test.ts\\"');
@@ -294,16 +302,27 @@ bindDescribe('Alpha MVP MCP HTTP protocol', () => {
         const calls = [
             ['text_search', { query: 'handleToolCall', path: 'src', maxResults: 5 }],
             ['symbol_search', { query: 'handleToolCall', maxResults: 5, fileHint: 'src/adapters/mcp-adapter.ts' }],
-            ['find_definition', { symbol: 'handleToolCall', file: 'src/adapters/mcp-adapter.ts', precise: true, maxResults: 5 }],
+            [
+                'find_definition',
+                { symbol: 'handleToolCall', file: 'src/adapters/mcp-adapter.ts', precise: true, maxResults: 5 },
+            ],
             [
                 'find_references',
-                { symbol: 'handleToolCall', file: 'src/adapters/mcp-adapter.ts', includeDeclaration: true, maxResults: 5 },
+                {
+                    symbol: 'handleToolCall',
+                    file: 'src/adapters/mcp-adapter.ts',
+                    includeDeclaration: true,
+                    maxResults: 5,
+                },
             ],
             [
                 'ast_query',
                 { language: 'typescript', query: '(program) @root', paths: ['src/adapters/mcp-adapter.ts'], limit: 5 },
             ],
-            ['graph_expand', { file: 'src/adapters/mcp-adapter.ts', edges: ['imports', 'exports'], depth: 1, limit: 5 }],
+            [
+                'graph_expand',
+                { file: 'src/adapters/mcp-adapter.ts', edges: ['imports', 'exports'], depth: 1, limit: 5 },
+            ],
         ] as const;
 
         const results = new Map<string, any>();
@@ -327,24 +346,28 @@ bindDescribe('Alpha MVP MCP HTTP protocol', () => {
         expect(results.get('graph_expand')?.neighbors).toBeDefined();
     }, 30000);
 
-    structuralTest('structural_search succeeds through JSON-RPC tools/call', async () => {
-        const { status, body } = await toolsCall(29, 'structural_search', {
-            language: 'typescript',
-            pattern: 'toolsCall($ID, $NAME, $ARGS)',
-            paths: ['tests/alpha-mvp-mcp-http-protocol.test.ts'],
-            maxResults: 5,
-        });
+    structuralTest(
+        'structural_search succeeds through JSON-RPC tools/call',
+        async () => {
+            const { status, body } = await toolsCall(29, 'structural_search', {
+                language: 'typescript',
+                pattern: 'toolsCall($ID, $NAME, $ARGS)',
+                paths: ['tests/alpha-mvp-mcp-http-protocol.test.ts'],
+                maxResults: 5,
+            });
 
-        expect(status).toBe(200);
-        expect(body.error).toBeUndefined();
-        const parsed = JSON.parse(body?.result?.content?.[0]?.text || '{}');
-        expect(parsed.workflow).toBe('structural_search');
-        expect(parsed.ok).toBe(true);
-        expect(parsed.backend).toBe('ast-grep');
-        expect(parsed.paths).toEqual(['tests/alpha-mvp-mcp-http-protocol.test.ts']);
-        expect(parsed.matches.length).toBeGreaterThan(0);
-        expect(parsed.matches.length).toBeLessThanOrEqual(5);
-    }, 30000);
+            expect(status).toBe(200);
+            expect(body.error).toBeUndefined();
+            const parsed = JSON.parse(body?.result?.content?.[0]?.text || '{}');
+            expect(parsed.workflow).toBe('structural_search');
+            expect(parsed.ok).toBe(true);
+            expect(parsed.backend).toBe('ast-grep');
+            expect(parsed.paths).toEqual(['tests/alpha-mvp-mcp-http-protocol.test.ts']);
+            expect(parsed.matches.length).toBeGreaterThan(0);
+            expect(parsed.matches.length).toBeLessThanOrEqual(5);
+        },
+        30000
+    );
 
     test('patch-planning cluster succeeds through JSON-RPC tools/call without mutating workspace', async () => {
         const before = await Bun.file(patchPlanningTarget).text();
@@ -363,7 +386,11 @@ bindDescribe('Alpha MVP MCP HTTP protocol', () => {
         expect(proposed.accepted).toBe(true);
         expect(proposed.snapshot).toBe(snapshotId);
 
-        const checkedCall = await toolsCall(32, 'run_checks', { snapshot: snapshotId, commands: ['true'], timeoutSec: 30 });
+        const checkedCall = await toolsCall(32, 'run_checks', {
+            snapshot: snapshotId,
+            commands: ['true'],
+            timeoutSec: 30,
+        });
         expect(checkedCall.status).toBe(200);
         expect(checkedCall.body.error).toBeUndefined();
         const checked = JSON.parse(checkedCall.body?.result?.content?.[0]?.text || '{}');

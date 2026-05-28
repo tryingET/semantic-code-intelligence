@@ -243,7 +243,9 @@ export class OverlayStore {
         const raw = String(rawPath || '').trim();
         const tab = raw.indexOf('\t');
         if (tab >= 0) return raw.slice(0, tab).trim();
-        const timestamp = /^(.*?)\s+\d{4}-\d{2}-\d{2}(?:\s|T|$)/.exec(raw);
+        const timestamp = /^(.*?)\s+\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:\s+[+-]\d{4}|Z)?)?$/.exec(
+            raw
+        );
         return timestamp?.[1]?.trim() || raw;
     }
 
@@ -614,6 +616,12 @@ export class OverlayStore {
         return diffPath;
     }
 
+    getOverlayDiffText(snapshotId: string, opts: { workspaceRoot?: string } = {}): string | null {
+        const snap = this.ensureSnapshot(snapshotId, opts);
+        if (!snap.diffs.length) return null;
+        return snap.diffs.join('\n');
+    }
+
     private isSafeMaterializedSnapshotDir(dir: string, snap: Snapshot): boolean {
         try {
             const dirStat = fs.lstatSync(dir);
@@ -734,29 +742,74 @@ export class OverlayStore {
 
     private parseTouchedFilesFromPatch(diff: string): string[] {
         const files = new Set<string>();
+        let currentGitPaths: { oldPath: string | null; newPath: string | null } | null = null;
+        let insideHunk = false;
         const addPath = (value: string) => {
             const normalized = this.normalizePatchRelativePath(value, 'patch file path');
             if (normalized && !normalized.endsWith('/')) files.add(normalized);
+            return normalized;
+        };
+        const parseUnifiedHeaderPath = (value: string): string | null => {
+            const stripped = this.stripUnifiedHeaderMetadata(value);
+            if (stripped === '/dev/null') return null;
+            if (stripped.startsWith('a/') || stripped.startsWith('b/')) return addPath(stripped.slice(2));
+            // Do not let GNU patch interpret absolute or unprefixed header paths differently
+            // from the workspace-contained paths recorded from diff --git headers.
+            return addPath(stripped);
+        };
+        const assertHeaderMatchesGitPath = (kind: 'old' | 'new', actual: string | null, line: string) => {
+            if (!currentGitPaths || actual === null) return;
+            const expected = kind === 'old' ? currentGitPaths.oldPath : currentGitPaths.newPath;
+            if (expected !== null && actual !== expected) {
+                throw new Error(`patch ${kind} path header does not match diff --git path: ${line}`);
+            }
         };
         const lines = diff.split(/\r?\n/);
-        for (const line of lines) {
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const startsTraditionalHeaderPair =
+                /^---\s+(.+)$/.test(line) &&
+                /^\+\+\+\s+(.+)$/.test(lines[i + 1] || '') &&
+                /^@@\s/.test(lines[i + 2] || '');
+            if (insideHunk && startsTraditionalHeaderPair) {
+                currentGitPaths = null;
+                insideHunk = false;
+            }
             // apply_patch format
             let m = line.match(/^\*\*\*\s+(?:Update|Add|Delete) File:\s+(.+)$/);
             if (m) {
                 addPath(m[1]);
-                continue;
-            }
-            // git unified diff header
-            m = line.match(/^\+\+\+\s+[ab]\/(.+)$/) || line.match(/^---\s+[ab]\/(.+)$/);
-            if (m) {
-                addPath(m[1]);
+                currentGitPaths = null;
                 continue;
             }
             // diff --git a/path b/path
             m = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
             if (m) {
-                addPath(m[1]);
-                addPath(m[2]);
+                const oldPath = addPath(m[1]);
+                const newPath = addPath(m[2]);
+                currentGitPaths = { oldPath, newPath };
+                insideHunk = false;
+                continue;
+            }
+            if (/^@@\s/.test(line)) {
+                insideHunk = true;
+                continue;
+            }
+            // git unified diff headers. Parse every header path, not only a/ and b/ forms,
+            // so unsafe absolute/no-prefix paths cannot be hidden behind a safe diff --git line.
+            // Only header prologues are path-bearing; inside hunks, source lines may begin
+            // with literal "---" or "+++" and must remain ordinary patch content.
+            if (insideHunk) continue;
+            m = line.match(/^---\s+(.+)$/);
+            if (m) {
+                const actual = parseUnifiedHeaderPath(m[1]);
+                assertHeaderMatchesGitPath('old', actual, line);
+                continue;
+            }
+            m = line.match(/^\+\+\+\s+(.+)$/);
+            if (m) {
+                const actual = parseUnifiedHeaderPath(m[1]);
+                assertHeaderMatchesGitPath('new', actual, line);
             }
         }
         return Array.from(files);
@@ -858,15 +911,7 @@ export class OverlayStore {
         const git = spawnSync('git', gitArgs, { cwd: root, stdio: 'pipe', encoding: 'utf8' });
         if (git.status === 0) return { ok: true };
         const gitOutput = `${String(git.stdout || '')}${String(git.stderr || '')}`.slice(-1000).trim();
-        const diffText = fs.readFileSync(patchFile, 'utf8');
-        const pLevel = /\ndiff --git a\//.test('\n' + diffText) ? 1 : 0;
-        const patchArgs = [];
-        if (check) patchArgs.push('--dry-run');
-        patchArgs.push(`-p${pLevel}`, '-i', patchFile);
-        const patch = spawnSync('patch', patchArgs, { cwd: root, stdio: 'pipe', encoding: 'utf8' });
-        if (patch.status === 0) return { ok: true };
-        const patchOutput = `${String(patch.stdout || '')}${String(patch.stderr || '')}`.slice(-1000).trim();
-        return { ok: false, message: patchOutput || gitOutput };
+        return { ok: false, message: gitOutput };
     }
 
     private copyWorkspaceForPatchValidation(root: string, dest: string): void {
@@ -1279,7 +1324,6 @@ export class OverlayStore {
                 if (unsafeMode) throw new Error(unsafeMode);
                 const diffFile = path.join(tempDir, 'overlay.diff');
                 await fsp.writeFile(diffFile, overlayText, 'utf8');
-                const diffText = await fsp.readFile(diffFile, 'utf8').catch(() => '');
                 let ok = false;
                 let output = '';
 
@@ -1290,16 +1334,6 @@ export class OverlayStore {
                     });
                     ok = applied.status === 0;
                     output += `${String(applied.stdout || '')}${String(applied.stderr || '')}`;
-                }
-
-                if (!ok && this.which('patch')) {
-                    const pLevel = /\ndiff --git a\//.test('\n' + diffText) ? 1 : 0;
-                    const patched = spawnSync('patch', [`-p${pLevel}`, '-i', 'overlay.diff'], {
-                        cwd: tempDir,
-                        stdio: 'pipe',
-                    });
-                    ok = patched.status === 0;
-                    output += `${String(patched.stdout || '')}${String(patched.stderr || '')}`;
                 }
 
                 if (!ok) {
@@ -1961,28 +1995,18 @@ export class OverlayStore {
                 cwd: workspaceRoot,
             });
             if (reversePreflight.status !== 0) {
-                const diffText = await fsp.readFile(diffFile, 'utf8').catch(() => '');
-                const pLevel = /\ndiff --git a\//.test('\n' + diffText) ? 1 : 0;
-                const patchPreflight = this.which('patch')
-                    ? spawnSync('patch', ['--dry-run', '-R', `-p${pLevel}`, '-i', diffFile], {
-                          stdio: 'pipe',
-                          cwd: workspaceRoot,
-                      })
-                    : null;
-                if (!patchPreflight || patchPreflight.status !== 0) {
-                    const elapsedMs = Date.now() - start;
-                    const message =
-                        `${String(reversePreflight.stdout || '')}${String(reversePreflight.stderr || '')}${patchPreflight ? `${String(patchPreflight.stdout || '')}${String(patchPreflight.stderr || '')}` : ''}` ||
-                        'Reverse apply preflight failed';
-                    this.recordLastApply(snapshotId, {
-                        ok: false,
-                        elapsedMs,
-                        outputTail: message.slice(-4000),
-                        args: { check, reverse },
-                        at: Date.now(),
-                    });
-                    return { ok: false, output: message, elapsedMs };
-                }
+                const elapsedMs = Date.now() - start;
+                const message =
+                    `${String(reversePreflight.stdout || '')}${String(reversePreflight.stderr || '')}` ||
+                    'Reverse apply preflight failed';
+                this.recordLastApply(snapshotId, {
+                    ok: false,
+                    elapsedMs,
+                    outputTail: message.slice(-4000),
+                    args: { check, reverse },
+                    at: Date.now(),
+                });
+                return { ok: false, output: message, elapsedMs };
             }
         }
         const argsGit = ['apply'];
@@ -2011,68 +2035,6 @@ export class OverlayStore {
                 at: Date.now(),
             });
             return { ok: true, output, elapsedMs: elapsed };
-        }
-        if (this.which('patch')) {
-            const diffText = await fsp.readFile(diffFile, 'utf8').catch(() => '');
-            const touched = this.parseTouchedFilesFromPatch(diffText);
-            const backups = new Map<string, { existed: boolean; data?: Buffer; mode?: number }>();
-            if (!check) {
-                for (const rel of touched) {
-                    const { absolutePath } = this.containedPath(workspaceRoot, rel, 'apply_snapshot patch path');
-                    const stat = await fsp.lstat(absolutePath).catch(() => null);
-                    if (stat?.isFile() && !stat.isSymbolicLink()) {
-                        backups.set(rel, { existed: true, data: await fsp.readFile(absolutePath), mode: stat.mode });
-                    } else {
-                        backups.set(rel, { existed: false });
-                    }
-                }
-            }
-            const restoreBackups = async () => {
-                for (const [rel, backup] of backups) {
-                    const { absolutePath } = this.containedPath(workspaceRoot, rel, 'apply_snapshot patch path');
-                    if (backup.existed) {
-                        await fsp.mkdir(path.dirname(absolutePath), { recursive: true });
-                        await fsp.writeFile(absolutePath, backup.data || Buffer.alloc(0));
-                        if (typeof backup.mode === 'number')
-                            await fsp.chmod(absolutePath, backup.mode).catch(() => undefined);
-                    } else {
-                        await fsp.rm(absolutePath, { recursive: true, force: true }).catch(() => undefined);
-                    }
-                    await fsp.rm(`${absolutePath}.rej`, { force: true }).catch(() => undefined);
-                    await fsp.rm(`${absolutePath}.orig`, { force: true }).catch(() => undefined);
-                }
-            };
-            const pLevel = /\ndiff --git a\//.test('\n' + diffText) ? 1 : 0;
-            const patchArgs = [];
-            if (check) patchArgs.push('--dry-run');
-            if (reverse) patchArgs.push('-R');
-            patchArgs.push(`-p${pLevel}`, '-i', diffFile);
-            const p = spawnSync('patch', patchArgs, { stdio: 'pipe', cwd: workspaceRoot });
-            output += String(p.stdout || '') + String(p.stderr || '');
-            const ok = p.status === 0;
-            if (ok && !check && !reverse) {
-                snap.applyCreatedDirs = applyCreatedDirs;
-                snap.applyPreExistingDirs = applyPreExistingDirs;
-            }
-            if (ok && !check && reverse) {
-                await this.removeRecordedApplyDirs(snap.applyCreatedDirs, workspaceRoot).catch(() => undefined);
-                await this.recreateRecordedApplyDirs(snap.applyPreExistingDirs, workspaceRoot).catch(() => undefined);
-                snap.applyCreatedDirs = [];
-                snap.applyPreExistingDirs = [];
-            }
-            if (!ok && !check) {
-                await restoreBackups().catch(() => undefined);
-                if (!reverse)
-                    await this.removeRecordedApplyDirs(applyCreatedDirs, workspaceRoot).catch(() => undefined);
-            }
-            this.recordLastApply(snapshotId, {
-                ok,
-                elapsedMs: Date.now() - start,
-                outputTail: output.slice(-4000),
-                args: { check, reverse },
-                at: Date.now(),
-            });
-            return { ok, output, elapsedMs: Date.now() - start };
         }
         if (!check && !reverse)
             await this.removeRecordedApplyDirs(applyCreatedDirs, workspaceRoot).catch(() => undefined);

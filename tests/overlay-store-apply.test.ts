@@ -3,7 +3,7 @@ import { existsSync, rmSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import { overlayStore } from '../src/core/overlay-store.js';
+import { OverlayStore, overlayStore } from '../src/core/overlay-store.js';
 
 describe('OverlayStore applyToWorkingTree with unified diff', () => {
     const targetRel = 'tests/fixtures/example.ts';
@@ -17,7 +17,7 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
     test('adds new file and reverts via reverse apply', async () => {
         const before = await fs.readFile(targetAbs, 'utf8');
         const snap = overlayStore.createSnapshot(false);
-        const patch = `diff --git a/${targetRel} b/${targetRel}\n--- a/${targetRel}\n+++ b/${targetRel}\n@@ -5,2 +5,3 @@\n export class TestClass {\n+${marker}\n     private value: number = 0;\n`;
+        const patch = `diff --git a/${targetRel} b/${targetRel}\n--- a/${targetRel}\n+++ b/${targetRel}\n@@ -5,3 +5,4 @@\n export class TestClass {\n // mcp unified apply_after_checks test\n+${marker}\n     private value: number = 0;\n`;
         const staged = overlayStore.stagePatch(snap.id, patch);
         expect(staged.accepted).toBe(true);
 
@@ -42,7 +42,7 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
 
     test('persists dry-run apply status across snapshot reloads', async () => {
         const snap = overlayStore.createSnapshot(false);
-        const patch = `diff --git a/${targetRel} b/${targetRel}\n--- a/${targetRel}\n+++ b/${targetRel}\n@@ -5,2 +5,3 @@\n export class TestClass {\n+${marker}\n     private value: number = 0;\n`;
+        const patch = `diff --git a/${targetRel} b/${targetRel}\n--- a/${targetRel}\n+++ b/${targetRel}\n@@ -5,3 +5,4 @@\n export class TestClass {\n // mcp unified apply_after_checks test\n+${marker}\n     private value: number = 0;\n`;
         const staged = overlayStore.stagePatch(snap.id, patch);
         expect(staged.accepted).toBe(true);
 
@@ -198,8 +198,110 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
         expect(rejected.message).toContain('workspace');
     });
 
+    test('rejects mismatched absolute unified headers instead of falling back to GNU patch paths', async () => {
+        const root = await fs.mkdtemp(path.join(tmpdir(), 'sci-overlay-mismatch-'));
+        try {
+            await fs.writeFile(path.join(root, 'safe.txt'), 'old\n', 'utf8');
+            const store = new OverlayStore();
+            const snap = store.createSnapshot(false, { workspaceRoot: root });
+            const staged = store.stagePatch(
+                snap.id,
+                'diff --git a/safe.txt b/safe.txt\n--- /tmp/doesnotexist\n+++ /tmp/evil.txt\n@@ -0,0 +1 @@\n+evil\n'
+            );
+
+            expect(staged.accepted).toBe(false);
+            expect(staged.message).toContain('workspace');
+            expect(existsSync(path.join(root, 'tmp', 'evil.txt'))).toBe(false);
+        } finally {
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    });
+
+    test('accepts hunk content lines that look like file headers', async () => {
+        const root = await fs.mkdtemp(path.join(tmpdir(), 'sci-overlay-header-content-'));
+        try {
+            await fs.writeFile(path.join(root, 'options.txt'), 'alpha\n-- flag\nomega\n', 'utf8');
+            const store = new OverlayStore();
+            const snap = store.createSnapshot(false, { workspaceRoot: root });
+            const staged = store.stagePatch(
+                snap.id,
+                'diff --git a/options.txt b/options.txt\n--- a/options.txt\n+++ b/options.txt\n@@ -1,3 +1,3 @@\n alpha\n--- flag\n+++ flag\n omega\n'
+            );
+
+            expect(staged.accepted).toBe(true);
+        } finally {
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    });
+
+    test('accepts valid git diffs whose filenames contain date-like text', async () => {
+        const root = await fs.mkdtemp(path.join(tmpdir(), 'sci-overlay-date-name-'));
+        try {
+            await fs.mkdir(path.join(root, 'notes'), { recursive: true });
+            const rel = 'notes/release 2026-05-28.txt';
+            await fs.writeFile(path.join(root, rel), 'old\n', 'utf8');
+            const store = new OverlayStore();
+            const snap = store.createSnapshot(false, { workspaceRoot: root });
+            const staged = store.stagePatch(
+                snap.id,
+                `diff --git a/${rel} b/${rel}\n--- a/${rel}\n+++ b/${rel}\n@@ -1 +1 @@\n-old\n+new\n`
+            );
+
+            expect(staged.accepted).toBe(true);
+            expect(Array.from(store.ensureSnapshot(snap.id, { workspaceRoot: root }).touchedFiles || [])).toEqual([
+                rel,
+            ]);
+        } finally {
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    });
+
+    test('strips full unified-diff timestamp metadata without truncating filenames', async () => {
+        const root = await fs.mkdtemp(path.join(tmpdir(), 'sci-overlay-header-timestamp-'));
+        try {
+            await fs.writeFile(path.join(root, 'dated.txt'), 'old\n', 'utf8');
+            const store = new OverlayStore();
+            const snap = store.createSnapshot(false, { workspaceRoot: root });
+            const staged = store.stagePatch(
+                snap.id,
+                '--- dated.txt 2026-05-28 12:34:56 +0000\n+++ dated.txt 2026-05-28 12:35:00 +0000\n@@ -1 +1 @@\n-old\n+new\n'
+            );
+
+            expect(staged.accepted).toBe(true);
+            expect(Array.from(store.ensureSnapshot(snap.id, { workspaceRoot: root }).touchedFiles || [])).toEqual([
+                'dated.txt',
+            ]);
+        } finally {
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    });
+
+    test('tracks every file in traditional multi-file unified diffs', async () => {
+        const root = await fs.mkdtemp(path.join(tmpdir(), 'sci-overlay-multifile-'));
+        try {
+            await fs.writeFile(path.join(root, 'a.txt'), 'old a\n', 'utf8');
+            await fs.writeFile(path.join(root, 'b.txt'), 'old b\n', 'utf8');
+            const store = new OverlayStore();
+            const snap = store.createSnapshot(false, { workspaceRoot: root });
+            const staged = store.stagePatch(
+                snap.id,
+                '--- a.txt\n+++ a.txt\n@@ -1 +1 @@\n-old a\n+new a\n--- b.txt\n+++ b.txt\n@@ -1 +1 @@\n-old b\n+new b\n'
+            );
+
+            expect(staged.accepted).toBe(true);
+            expect(
+                Array.from(store.ensureSnapshot(snap.id, { workspaceRoot: root }).touchedFiles || []).sort()
+            ).toEqual(['a.txt', 'b.txt']);
+        } finally {
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    });
+
     test('does not mark failed materialization current or create escaped paths', async () => {
-        const outsideDir = path.join(tmpdir(), `sci-overlay-escape-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+        const outsideDir = path.join(
+            tmpdir(),
+            `sci-overlay-escape-${Date.now()}-${Math.random().toString(16).slice(2)}`
+        );
         const snap = overlayStore.createSnapshot(false);
         const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
         (snap as any).diffs.push(
@@ -207,7 +309,9 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
         );
         try {
             await expect(ensure(snap.id)).rejects.toThrow('workspace');
-            expect(existsSync(path.join(process.cwd(), '.ontology', 'snapshots', snap.id, '.materialized'))).toBe(false);
+            expect(existsSync(path.join(process.cwd(), '.ontology', 'snapshots', snap.id, '.materialized'))).toBe(
+                false
+            );
             expect(existsSync(outsideDir)).toBe(false);
         } finally {
             rmSync(outsideDir, { recursive: true, force: true });
@@ -220,7 +324,11 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
         try {
             process.env.SNAPSHOT_PARTIAL = '1';
             await fs.mkdir(path.join(root, 'src'), { recursive: true });
-            await fs.writeFile(path.join(root, 'package.json'), '{"type":"module","scripts":{"build":"test ! -e src/foo.ts"}}\n', 'utf8');
+            await fs.writeFile(
+                path.join(root, 'package.json'),
+                '{"type":"module","scripts":{"build":"test ! -e src/foo.ts"}}\n',
+                'utf8'
+            );
             await fs.writeFile(path.join(root, 'src', 'foo.ts'), 'export const foo = 1;\n', 'utf8');
 
             const snap = overlayStore.createSnapshot(false, { workspaceRoot: root });
@@ -242,7 +350,11 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
         try {
             process.env.SNAPSHOT_PARTIAL = '1';
             await fs.mkdir(path.join(root, 'src'), { recursive: true });
-            await fs.writeFile(path.join(root, 'package.json'), '{"type":"module","scripts":{"typecheck":"true","build":"test ! -e src/foo.ts"}}\n', 'utf8');
+            await fs.writeFile(
+                path.join(root, 'package.json'),
+                '{"type":"module","scripts":{"typecheck":"true","build":"test ! -e src/foo.ts"}}\n',
+                'utf8'
+            );
             await fs.writeFile(path.join(root, 'src', 'foo.ts'), 'export const foo = 1;\n', 'utf8');
 
             const snap = overlayStore.createSnapshot(false, { workspaceRoot: root });
@@ -268,7 +380,9 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
             const snap = overlayStore.createSnapshot(false);
             await fs.writeFile(abs, 'after\n', 'utf8');
             await expect(ensure(snap.id)).rejects.toThrow('Workspace changed since snapshot creation');
-            expect(existsSync(path.join(process.cwd(), '.ontology', 'snapshots', snap.id, '.materialized'))).toBe(false);
+            expect(existsSync(path.join(process.cwd(), '.ontology', 'snapshots', snap.id, '.materialized'))).toBe(
+                false
+            );
         } finally {
             rmSync(abs, { force: true });
         }

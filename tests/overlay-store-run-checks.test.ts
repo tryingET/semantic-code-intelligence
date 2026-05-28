@@ -26,9 +26,14 @@ describe('OverlayStore runChecks evidence receipts', () => {
             `diff --git a/docs/project/alpha-mvp-contract.md b/docs/project/alpha-mvp-contract.md
 --- a/docs/project/alpha-mvp-contract.md
 +++ b/docs/project/alpha-mvp-contract.md
-@@ -9,1 +9,2 @@
+@@ -7,6 +7,7 @@ type: "reference"
+ ---
+${' '}
  # Alpha MVP contract — harnessed LLM coding sessions
 +<!-- prefer-existing-regression-marker -->
+${' '}
+ ## User and job
+${' '}
 `
         );
         expect(staged.accepted).toBe(true);
@@ -43,7 +48,10 @@ describe('OverlayStore runChecks evidence receipts', () => {
     });
 
     test('configured-workspace snapshots reload by id with explicit workspace root after memory is cleared', async () => {
-        const workspace = path.join(tmpdir(), `sci-snapshot-reload-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+        const workspace = path.join(
+            tmpdir(),
+            `sci-snapshot-reload-${Date.now()}-${Math.random().toString(16).slice(2)}`
+        );
         await mkdir(workspace, { recursive: true });
         try {
             const snap = overlayStore.createSnapshot(false, { workspaceRoot: workspace });
@@ -70,8 +78,12 @@ describe('OverlayStore runChecks evidence receipts', () => {
         try {
             const snapA = overlayStore.createSnapshot(false, { workspaceRoot: workspaceA });
 
-            expect(() => overlayStore.ensureSnapshot(snapA.id, { workspaceRoot: workspaceB })).toThrow('Unknown snapshot id');
-            await expect(overlayStore.runChecks(snapA.id, ['true'], 30, { workspaceRoot: workspaceB })).rejects.toThrow('Unknown snapshot id');
+            expect(() => overlayStore.ensureSnapshot(snapA.id, { workspaceRoot: workspaceB })).toThrow(
+                'Unknown snapshot id'
+            );
+            await expect(overlayStore.runChecks(snapA.id, ['true'], 30, { workspaceRoot: workspaceB })).rejects.toThrow(
+                'Unknown snapshot id'
+            );
         } finally {
             overlayStore.clearAll();
             await rm(workspaceA, { recursive: true, force: true });
@@ -130,7 +142,12 @@ describe('OverlayStore runChecks evidence receipts', () => {
 
     test('cleanup removes stale disposable check workspaces', async () => {
         const snap = overlayStore.createSnapshot(false);
-        const checkDir = path.join(process.cwd(), '.ontology', 'snapshots', `.${snap.id}.1.1.00000000-0000-4000-8000-000000000000.check`);
+        const checkDir = path.join(
+            process.cwd(),
+            '.ontology',
+            'snapshots',
+            `.${snap.id}.1.1.00000000-0000-4000-8000-000000000000.check`
+        );
         await mkdir(checkDir, { recursive: true });
         await utimes(checkDir, new Date(0), new Date(0));
 
@@ -270,7 +287,10 @@ describe('OverlayStore runChecks evidence receipts', () => {
 
     test('timeout kills explicitly enabled shell descendant processes', async () => {
         await withUnsafeCheckShell(async () => {
-            const marker = path.join(tmpdir(), `sci-runchecks-leak-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+            const marker = path.join(
+                tmpdir(),
+                `sci-runchecks-leak-${Date.now()}-${Math.random().toString(16).slice(2)}`
+            );
             try {
                 await rm(marker, { force: true });
                 const snap = overlayStore.createSnapshot(false);

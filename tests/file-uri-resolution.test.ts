@@ -11,9 +11,9 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import type { CodeAnalyzer } from '../src/core/unified-analyzer';
 import { MCPAdapter } from '../src/adapters/mcp-adapter';
 import { AnalyzerFactory } from '../src/core/analyzer-factory';
+import type { CodeAnalyzer } from '../src/core/unified-analyzer';
 
 describe('File URI Resolution', () => {
     let analyzer: CodeAnalyzer;
@@ -116,7 +116,9 @@ const grep = new AsyncEnhancedGrep();
             identifier: 'SomeSymbol',
         } as any);
 
-        const definitions = Array.isArray((result as any).data) ? (result as any).data : (result as any).definitions || [];
+        const definitions = Array.isArray((result as any).data)
+            ? (result as any).data
+            : (result as any).definitions || [];
         for (const def of definitions) {
             expect(def.uri).toMatch(/^file:\/\//);
             expect(def.uri).not.toBe('file://unknown');
@@ -147,7 +149,7 @@ const grep = new AsyncEnhancedGrep();
         const cwdProbe = path.join(process.cwd(), 'async-grep.ts');
         const cwdProbeBefore = await fs.readFile(cwdProbe, 'utf8').catch(() => null);
         const snapshot = (await callToolJson('get_snapshot', { preferExisting: false })).snapshot;
-        const patch = `*** Begin Patch\n*** Update File: async-grep.ts\n@@\n export class AsyncEnhancedGrep {\n-  constructor() {}\n+  constructor() { this.${marker} = true; }\n*** End Patch\n`;
+        const patch = `*** Begin Patch\n*** Update File: async-grep.ts\n@@\n export class AsyncEnhancedGrep {\n-  constructor() {}\n+  constructor() { this.${marker} = true; }\n   async search(pattern: string) {\n*** End Patch\n`;
 
         const staged = await callToolJson('propose_patch', { snapshot, patch });
         expect(staged.accepted).toBe(true);
@@ -161,8 +163,18 @@ const grep = new AsyncEnhancedGrep();
             timeoutSec: 30,
         });
         expect(checks.ok).toBe(true);
-        expect(await fs.stat(snapshotOverlayPath).then((stat) => stat.isFile()).catch(() => false)).toBe(true);
-        expect(await fs.stat(cwdSnapshotOverlayPath).then((stat) => stat.isFile()).catch(() => false)).toBe(false);
+        expect(
+            await fs
+                .stat(snapshotOverlayPath)
+                .then((stat) => stat.isFile())
+                .catch(() => false)
+        ).toBe(true);
+        expect(
+            await fs
+                .stat(cwdSnapshotOverlayPath)
+                .then((stat) => stat.isFile())
+                .catch(() => false)
+        ).toBe(false);
         expect(await fs.readFile(path.join(testDir, 'async-grep.ts'), 'utf8')).toBe(original);
 
         const previousAllow = process.env.ALLOW_SNAPSHOT_APPLY;

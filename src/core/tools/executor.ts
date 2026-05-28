@@ -14,14 +14,102 @@ function hasRequired(obj: Record<string, any>, fields: string[]): boolean {
     return true;
 }
 
-function validateArgs(args: Record<string, any>, spec: ToolSpec): void {
-    const schema: any = spec.inputSchema || {};
-    // Basic required validation
-    if (Array.isArray(schema.required) && schema.required.length > 0) {
-        if (!hasRequired(args, schema.required)) {
-            throw new CoreError('InvalidParams', `Missing required parameters: ${schema.required.join(', ')}`);
+function validateSchemaValue(value: any, property: any, field: string): void {
+    if (Array.isArray(property?.enum) && !property.enum.includes(value)) {
+        throw new CoreError('InvalidParams', `${field} must be one of: ${property.enum.join(', ')}`, {
+            field,
+            allowed: property.enum,
+        });
+    }
+
+    if (property?.type === 'string') {
+        if (typeof value !== 'string') throw new CoreError('InvalidParams', `${field} must be a string`, { field });
+        if (typeof property.minLength === 'number' && value.length < property.minLength) {
+            throw new CoreError('InvalidParams', `${field} must be at least ${property.minLength} characters`, {
+                field,
+                minLength: property.minLength,
+            });
+        }
+        if (typeof property.maxLength === 'number' && value.length > property.maxLength) {
+            throw new CoreError('InvalidParams', `${field} must be at most ${property.maxLength} characters`, {
+                field,
+                maxLength: property.maxLength,
+            });
         }
     }
+
+    if (property?.type === 'number') {
+        if (typeof value !== 'number' || !Number.isFinite(value)) {
+            throw new CoreError('InvalidParams', `${field} must be a number`, { field });
+        }
+        if (typeof property.minimum === 'number' && value < property.minimum) {
+            throw new CoreError('InvalidParams', `${field} must be >= ${property.minimum}`, {
+                field,
+                minimum: property.minimum,
+            });
+        }
+        if (typeof property.maximum === 'number' && value > property.maximum) {
+            throw new CoreError('InvalidParams', `${field} must be <= ${property.maximum}`, {
+                field,
+                maximum: property.maximum,
+            });
+        }
+    }
+
+    if (property?.type === 'boolean' && typeof value !== 'boolean') {
+        throw new CoreError('InvalidParams', `${field} must be a boolean`, { field });
+    }
+
+    if (property?.type === 'object') {
+        if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+            throw new CoreError('InvalidParams', `${field} must be an object`, { field });
+        }
+        validateObjectAgainstSchema(value, property, field);
+    }
+
+    if (property?.type === 'array') {
+        if (!Array.isArray(value)) throw new CoreError('InvalidParams', `${field} must be an array`, { field });
+        if (typeof property.minItems === 'number' && value.length < property.minItems) {
+            throw new CoreError('InvalidParams', `${field} must contain at least ${property.minItems} items`, {
+                field,
+                minItems: property.minItems,
+            });
+        }
+        if (typeof property.maxItems === 'number' && value.length > property.maxItems) {
+            throw new CoreError('InvalidParams', `${field} must contain at most ${property.maxItems} items`, {
+                field,
+                maxItems: property.maxItems,
+            });
+        }
+        if (property.items && typeof property.items === 'object') {
+            value.forEach((item, index) => validateSchemaValue(item, property.items, `${field}[${index}]`));
+        }
+    }
+}
+
+function validateObjectAgainstSchema(obj: Record<string, any>, schema: any, prefix = ''): void {
+    const properties = schema.properties && typeof schema.properties === 'object' ? schema.properties : {};
+    if (Array.isArray(schema.required) && schema.required.length > 0) {
+        const missing = schema.required.filter((key: string) => !hasRequired(obj, [key]));
+        if (missing.length > 0) {
+            const qualified = missing.map((key: string) => (prefix ? `${prefix}.${key}` : key));
+            throw new CoreError('InvalidParams', `Missing required parameters: ${qualified.join(', ')}`);
+        }
+    }
+    for (const [key, property] of Object.entries(properties) as Array<[string, any]>) {
+        const value = obj?.[key];
+        if (value === undefined) continue;
+        validateSchemaValue(value, property, prefix ? `${prefix}.${key}` : key);
+    }
+}
+
+function validateArgs(args: Record<string, any>, spec: ToolSpec): void {
+    const schema: any = spec.inputSchema || {};
+    if (schema?.type === 'object' && (args === null || typeof args !== 'object' || Array.isArray(args))) {
+        throw new CoreError('InvalidParams', 'Arguments must be an object');
+    }
+    // Basic required validation
+    validateObjectAgainstSchema(args, schema);
     // Handle anyOf with required clauses (simple case)
     if (Array.isArray(schema.anyOf) && schema.anyOf.length > 0) {
         const ok = schema.anyOf.some((alt: any) =>
@@ -29,22 +117,6 @@ function validateArgs(args: Record<string, any>, spec: ToolSpec): void {
         );
         if (!ok) {
             throw new CoreError('InvalidParams', 'Arguments do not satisfy any required shape');
-        }
-    }
-    const properties = schema.properties && typeof schema.properties === 'object' ? schema.properties : {};
-    for (const [key, property] of Object.entries(properties) as Array<[string, any]>) {
-        const value = args?.[key];
-        if (value === undefined || value === null) continue;
-        if (property?.type === 'array') {
-            if (!Array.isArray(value)) throw new CoreError('InvalidParams', `${key} must be an array`, { field: key });
-            if (typeof property.maxItems === 'number' && value.length > property.maxItems) {
-                throw new CoreError('InvalidParams', `${key} must contain at most ${property.maxItems} items`, { field: key, maxItems: property.maxItems });
-            }
-            if (property.items?.type === 'string') {
-                value.forEach((item, index) => {
-                    if (typeof item !== 'string') throw new CoreError('InvalidParams', `${key}[${index}] must be a string`, { field: key, index });
-                });
-            }
         }
     }
 }

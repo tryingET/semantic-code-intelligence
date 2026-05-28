@@ -15,9 +15,14 @@ const patchPlanningTarget = 'docs/project/alpha-mvp-contract.md';
 const patchPlanningDiff = `diff --git a/${patchPlanningTarget} b/${patchPlanningTarget}
 --- a/${patchPlanningTarget}
 +++ b/${patchPlanningTarget}
-@@ -9,1 +9,2 @@
+@@ -7,6 +7,7 @@ type: "reference"
+ ---
+${' '}
  # Alpha MVP contract — harnessed LLM coding sessions
 +${patchPlanningMarker}
+${' '}
+ ## User and job
+${' '}
 `;
 
 const hasAstGrep = spawnSync('bash', ['-lc', 'command -v ast-grep >/dev/null 2>&1'], { stdio: 'ignore' }).status === 0;
@@ -56,7 +61,9 @@ describe('Alpha MVP tool contract', () => {
     });
 
     test('MCP and HTTP use the same Alpha MVP exposure membrane', () => {
-        const mcpNames = listMcpTools().map((tool) => tool.name).sort();
+        const mcpNames = listMcpTools()
+            .map((tool) => tool.name)
+            .sort();
         const httpNames = [...defaultHttpToolNames()].sort();
         const expected = [...alphaMvpTools].sort();
 
@@ -75,24 +82,42 @@ describe('Alpha MVP tool contract', () => {
         expect(() => assertAlphaMvpToolAllowed('rename_safely', {}, { allowedToolNames: ['rename_safely'] })).toThrow(
             /not available/
         );
-        expect(() => assertAlphaMvpToolAllowed('read_file', { path: 'README.md' }, { allowedToolNames: ['read_file'] })).not.toThrow();
-        expect(() => assertAlphaMvpToolAllowed('text_search', { query: 'alpha' }, { allowedToolNames: ['read_file'] })).toThrow(
-            /not available/
-        );
+        expect(() =>
+            assertAlphaMvpToolAllowed('read_file', { path: 'README.md' }, { allowedToolNames: ['read_file'] })
+        ).not.toThrow();
+        expect(() =>
+            assertAlphaMvpToolAllowed('text_search', { query: 'alpha' }, { allowedToolNames: ['read_file'] })
+        ).toThrow(/not available/);
     });
 
     test('HTTP adapter allowlist narrows the Alpha membrane instead of widening it', () => {
         expect(() =>
-            assertHttpToolAllowed('rename_safely', {}, { surface: 'HTTP adapter surface', allowedToolNames: ['rename_safely'] })
+            assertHttpToolAllowed(
+                'rename_safely',
+                {},
+                { surface: 'HTTP adapter surface', allowedToolNames: ['rename_safely'] }
+            )
         ).toThrow(/not available/);
         expect(() =>
-            assertHttpToolAllowed('list_files', {}, { surface: 'HTTP adapter surface', allowedToolNames: ['list_files'] })
+            assertHttpToolAllowed(
+                'list_files',
+                {},
+                { surface: 'HTTP adapter surface', allowedToolNames: ['list_files'] }
+            )
         ).toThrow(/not available/);
         expect(() =>
-            assertHttpToolAllowed('read_file', { path: 'README.md' }, { surface: 'HTTP adapter surface', allowedToolNames: ['read_file'] })
+            assertHttpToolAllowed(
+                'read_file',
+                { path: 'README.md' },
+                { surface: 'HTTP adapter surface', allowedToolNames: ['read_file'] }
+            )
         ).not.toThrow();
         expect(() =>
-            assertHttpToolAllowed('text_search', { query: 'alpha' }, { surface: 'HTTP adapter surface', allowedToolNames: ['read_file'] })
+            assertHttpToolAllowed(
+                'text_search',
+                { query: 'alpha' },
+                { surface: 'HTTP adapter surface', allowedToolNames: ['read_file'] }
+            )
         ).toThrow(/not available/);
     });
 
@@ -174,16 +199,27 @@ bindDescribe('Alpha MVP HTTP tools/call contract', () => {
         const calls = [
             ['text_search', { query: 'handleToolCall', path: 'src', maxResults: 5 }],
             ['symbol_search', { query: 'handleToolCall', maxResults: 5, fileHint: 'src/adapters/mcp-adapter.ts' }],
-            ['find_definition', { symbol: 'handleToolCall', file: 'src/adapters/mcp-adapter.ts', precise: true, maxResults: 5 }],
+            [
+                'find_definition',
+                { symbol: 'handleToolCall', file: 'src/adapters/mcp-adapter.ts', precise: true, maxResults: 5 },
+            ],
             [
                 'find_references',
-                { symbol: 'handleToolCall', file: 'src/adapters/mcp-adapter.ts', includeDeclaration: true, maxResults: 5 },
+                {
+                    symbol: 'handleToolCall',
+                    file: 'src/adapters/mcp-adapter.ts',
+                    includeDeclaration: true,
+                    maxResults: 5,
+                },
             ],
             [
                 'ast_query',
                 { language: 'typescript', query: '(program) @root', paths: ['src/adapters/mcp-adapter.ts'], limit: 5 },
             ],
-            ['graph_expand', { file: 'src/adapters/mcp-adapter.ts', edges: ['imports', 'exports'], depth: 1, limit: 5 }],
+            [
+                'graph_expand',
+                { file: 'src/adapters/mcp-adapter.ts', edges: ['imports', 'exports'], depth: 1, limit: 5 },
+            ],
         ] as const;
 
         const results = new Map<string, any>();
@@ -204,24 +240,28 @@ bindDescribe('Alpha MVP HTTP tools/call contract', () => {
         expect(results.get('graph_expand')?.neighbors).toBeDefined();
     }, 30000);
 
-    structuralTest('structural_search succeeds through HTTP tools/call', async () => {
-        const { status, body } = await callTool(base, 'structural_search', {
-            language: 'typescript',
-            pattern: 'callTool($BASE, $NAME, $ARGS)',
-            paths: ['tests/alpha-mvp-tool-contract.test.ts'],
-            maxResults: 5,
-        });
+    structuralTest(
+        'structural_search succeeds through HTTP tools/call',
+        async () => {
+            const { status, body } = await callTool(base, 'structural_search', {
+                language: 'typescript',
+                pattern: 'callTool($BASE, $NAME, $ARGS)',
+                paths: ['tests/alpha-mvp-tool-contract.test.ts'],
+                maxResults: 5,
+            });
 
-        expect(status).toBe(200);
-        expect(body.success).toBe(true);
-        expect(body.result.workflow).toBe('structural_search');
-        expect(body.result.ok).toBe(true);
-        expect(body.result.backend).toBe('ast-grep');
-        expect(body.result.paths).toEqual(['tests/alpha-mvp-tool-contract.test.ts']);
-        expect(body.result.matches.length).toBeGreaterThan(0);
-        expect(body.result.matches.length).toBeLessThanOrEqual(5);
-        expect(body.result.limits.timeoutMs).toBeGreaterThan(0);
-    }, 30000);
+            expect(status).toBe(200);
+            expect(body.success).toBe(true);
+            expect(body.result.workflow).toBe('structural_search');
+            expect(body.result.ok).toBe(true);
+            expect(body.result.backend).toBe('ast-grep');
+            expect(body.result.paths).toEqual(['tests/alpha-mvp-tool-contract.test.ts']);
+            expect(body.result.matches.length).toBeGreaterThan(0);
+            expect(body.result.matches.length).toBeLessThanOrEqual(5);
+            expect(body.result.limits.timeoutMs).toBeGreaterThan(0);
+        },
+        30000
+    );
 
     test('patch-planning cluster stages a diff and runs checks without mutating workspace', async () => {
         const before = await Bun.file(patchPlanningTarget).text();
@@ -238,7 +278,11 @@ bindDescribe('Alpha MVP HTTP tools/call contract', () => {
         expect(proposed.body.result.accepted).toBe(true);
         expect(proposed.body.result.snapshot).toBe(snapshotId);
 
-        const checked = await callTool(base, 'run_checks', { snapshot: snapshotId, commands: ['true'], timeoutSec: 30 });
+        const checked = await callTool(base, 'run_checks', {
+            snapshot: snapshotId,
+            commands: ['true'],
+            timeoutSec: 30,
+        });
         expect(checked.status).toBe(200);
         expect(checked.body.success).toBe(true);
         expect(checked.body.result.ok).toBe(true);

@@ -44,7 +44,11 @@ export class ToolRegistry {
                             endLine: { type: 'number', description: '1-based inclusive end line' },
                         },
                     },
-                    snapshot: { type: 'string', description: 'Optional snapshot id; when supplied, read from the materialized snapshot overlay instead of live workspace state' },
+                    snapshot: {
+                        type: 'string',
+                        description:
+                            'Optional snapshot id; when supplied, read from the materialized snapshot overlay instead of live workspace state',
+                    },
                     maxBytes: { type: 'number', default: 65536 },
                 },
                 required: ['path'],
@@ -64,7 +68,12 @@ export class ToolRegistry {
                     oldName: { type: 'string', description: 'Original symbol name' },
                     newName: { type: 'string', description: 'New symbol name' },
                     file: { type: 'string', description: 'Optional context file URI' },
-                    commands: { type: 'array', items: { type: 'string' }, maxItems: 20, default: ['bun run typecheck'] },
+                    commands: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        maxItems: 20,
+                        default: ['bun run typecheck'],
+                    },
                     timeoutSec: {
                         type: 'number',
                         default: 240,
@@ -105,13 +114,21 @@ export class ToolRegistry {
                 properties: {
                     patch: { type: 'string', description: 'Unified diff (git format) to stage' },
                     snapshot: { type: 'string', description: 'Optional snapshot id; if absent a snapshot is created' },
-                    commands: { type: 'array', items: { type: 'string' }, maxItems: 20, default: ['bun run typecheck'] },
+                    commands: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        maxItems: 20,
+                        default: ['bun run typecheck'],
+                    },
                     recommendChecks: {
                         type: 'boolean',
                         default: false,
                         description: 'Include advisory recommend_checks output without changing the commands that run',
                     },
-                    impactSummary: { type: 'object', description: 'Optional graph_expand impactSummary to include in recommendations/validationPlan' },
+                    impactSummary: {
+                        type: 'object',
+                        description: 'Optional graph_expand impactSummary to include in recommendations/validationPlan',
+                    },
                     onlyTouched: {
                         type: 'boolean',
                         description: 'Restrict checks to touched files when possible',
@@ -154,7 +171,11 @@ export class ToolRegistry {
                 properties: {
                     language: { type: 'string', description: 'ast-grep language, e.g. typescript, javascript, python' },
                     pattern: { type: 'string', description: 'ast-grep pattern' },
-                    paths: { type: 'array', items: { type: 'string' }, description: 'Repo-relative files or directories' },
+                    paths: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'Repo-relative files or directories',
+                    },
                     maxResults: { type: 'number', default: 50 },
                     timeoutMs: { type: 'number', default: 30000 },
                     maxBuffer: { type: 'number', default: 8388608 },
@@ -175,8 +196,17 @@ export class ToolRegistry {
                     language: { type: 'string', description: 'ast-grep language, e.g. typescript, javascript, python' },
                     pattern: { type: 'string', description: 'ast-grep pattern' },
                     rewrite: { type: 'string', description: 'ast-grep rewrite template' },
-                    paths: { type: 'array', items: { type: 'string' }, description: 'Repo-relative files or directories' },
-                    commands: { type: 'array', items: { type: 'string' }, maxItems: 20, default: ['bun run typecheck'] },
+                    paths: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'Repo-relative files or directories',
+                    },
+                    commands: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        maxItems: 20,
+                        default: ['bun run typecheck'],
+                    },
                     timeoutSec: { type: 'number', default: 240 },
                     timeoutMs: { type: 'number', default: 30000 },
                     maxBuffer: { type: 'number', default: 16777216 },
@@ -197,7 +227,11 @@ export class ToolRegistry {
                     paths: { type: 'array', items: { type: 'string' } },
                     glob: { type: 'string' },
                     limit: { type: 'number' },
-                    snapshot: { type: 'string', description: 'Optional snapshot id; when supplied, query files from the materialized snapshot overlay' },
+                    snapshot: {
+                        type: 'string',
+                        description:
+                            'Optional snapshot id; when supplied, query files from the materialized snapshot overlay',
+                    },
                 },
                 required: ['language', 'query'],
             },
@@ -213,13 +247,20 @@ export class ToolRegistry {
                     edges: {
                         type: 'array',
                         items: { type: 'string', enum: ['imports', 'exports', 'callers', 'callees'] },
-                        description: 'Defaults to imports/exports for file seeds and callers/callees for symbol-only seeds.',
+                        description:
+                            'Defaults to imports/exports for file seeds and callers/callees for symbol-only seeds.',
                     },
-                    depth: { type: 'number', default: 1, description: 'Reserved for future recursive expansion; current graph_expand returns one-hop evidence.' },
+                    depth: {
+                        type: 'number',
+                        default: 1,
+                        description:
+                            'Reserved for future recursive expansion; current graph_expand returns one-hop evidence.',
+                    },
                     limit: { type: 'number', default: 50 },
                     scipIndexPath: {
                         type: 'string',
-                        description: 'Optional path to an existing local index.scip artifact. SCI reads it only; graph_expand does not generate SCIP indexes.',
+                        description:
+                            'Optional path to an existing local index.scip artifact. SCI reads it only; graph_expand does not generate SCIP indexes.',
                     },
                 },
                 anyOf: [{ required: ['file'] }, { required: ['symbol'] }],
@@ -235,7 +276,11 @@ export class ToolRegistry {
                 type: 'object',
                 properties: {
                     patch: { type: 'string', description: 'Optional unified diff used to infer touched files' },
-                    files: { type: 'array', items: { type: 'string' }, description: 'Optional repo-relative touched files' },
+                    files: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'Optional repo-relative touched files',
+                    },
                     impactSummary: { type: 'object', description: 'Optional graph_expand impactSummary' },
                     mode: { type: 'string', enum: ['minimum', 'broader'], default: 'minimum' },
                 },
@@ -302,7 +347,8 @@ export class ToolRegistry {
                     precise: { type: 'boolean' },
                     position: {
                         type: 'object',
-                        properties: { line: { type: 'number' }, character: { type: 'number' } },
+                        properties: { line: { type: 'number', minimum: 0 }, character: { type: 'number', minimum: 0 } },
+                        required: ['line', 'character'],
                     },
                 },
                 required: ['symbol'],
@@ -385,7 +431,8 @@ export class ToolRegistry {
         },
         {
             name: 'apply_rename',
-            description: 'Apply a rename by oldName/newName. Direct WorkspaceEdit application is unsupported; use snapshot workflows for reviewed patches.',
+            description:
+                'Apply a rename by oldName/newName. Direct WorkspaceEdit application is unsupported; use snapshot workflows for reviewed patches.',
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -408,7 +455,11 @@ export class ToolRegistry {
                     caseInsensitive: { type: 'boolean' },
                     kind: { type: 'string', enum: ['literal', 'regex', 'word'], default: 'literal' },
                     context: { type: 'number', default: 2 },
-                    snapshot: { type: 'string', description: 'Optional snapshot id; when supplied, search the materialized snapshot overlay instead of live workspace state' },
+                    snapshot: {
+                        type: 'string',
+                        description:
+                            'Optional snapshot id; when supplied, search the materialized snapshot overlay instead of live workspace state',
+                    },
                 },
                 required: ['query'],
             },
@@ -447,7 +498,8 @@ export class ToolRegistry {
                     file: { type: 'string' },
                     position: {
                         type: 'object',
-                        properties: { line: { type: 'number' }, character: { type: 'number' } },
+                        properties: { line: { type: 'number', minimum: 0 }, character: { type: 'number', minimum: 0 } },
+                        required: ['line', 'character'],
                     },
                     maxResults: { type: 'number' },
                 },
@@ -564,7 +616,12 @@ export class ToolRegistry {
                     oldName: { type: 'string' },
                     newName: { type: 'string' },
                     file: { type: 'string' },
-                    commands: { type: 'array', items: { type: 'string' }, maxItems: 20, default: ['bun run typecheck'] },
+                    commands: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        maxItems: 20,
+                        default: ['bun run typecheck'],
+                    },
                     timeoutSec: {
                         type: 'number',
                         default: 240,
@@ -605,13 +662,21 @@ export class ToolRegistry {
                 properties: {
                     patch: { type: 'string' },
                     snapshot: { type: 'string' },
-                    commands: { type: 'array', items: { type: 'string' }, maxItems: 20, default: ['bun run typecheck'] },
+                    commands: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        maxItems: 20,
+                        default: ['bun run typecheck'],
+                    },
                     recommendChecks: {
                         type: 'boolean',
                         default: false,
                         description: 'Include advisory recommend_checks output without changing the commands that run',
                     },
-                    impactSummary: { type: 'object', description: 'Optional graph_expand impactSummary to include in recommendations/validationPlan' },
+                    impactSummary: {
+                        type: 'object',
+                        description: 'Optional graph_expand impactSummary to include in recommendations/validationPlan',
+                    },
                     timeoutSec: {
                         type: 'number',
                         default: 240,
@@ -666,13 +731,21 @@ export class ToolRegistry {
                 properties: {
                     patch: { type: 'string' },
                     snapshot: { type: 'string' },
-                    commands: { type: 'array', items: { type: 'string' }, maxItems: 20, default: ['bun run typecheck'] },
+                    commands: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        maxItems: 20,
+                        default: ['bun run typecheck'],
+                    },
                     recommendChecks: {
                         type: 'boolean',
                         default: false,
                         description: 'Include advisory recommend_checks output without changing the commands that run',
                     },
-                    impactSummary: { type: 'object', description: 'Optional graph_expand impactSummary to include in recommendations/validationPlan' },
+                    impactSummary: {
+                        type: 'object',
+                        description: 'Optional graph_expand impactSummary to include in recommendations/validationPlan',
+                    },
                     timeoutSec: { type: 'number', default: 240 },
                     apply: { type: 'boolean', default: false },
                     brief: { type: 'boolean', default: false },
@@ -692,7 +765,12 @@ export class ToolRegistry {
                 properties: {
                     patch: { type: 'string' },
                     snapshot: { type: 'string' },
-                    commands: { type: 'array', items: { type: 'string' }, maxItems: 20, default: ['bun run typecheck'] },
+                    commands: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        maxItems: 20,
+                        default: ['bun run typecheck'],
+                    },
                     timeoutSec: { type: 'number', default: 240 },
                     reverse: { type: 'boolean', default: false },
                 },
@@ -724,7 +802,12 @@ export class ToolRegistry {
                         default: false,
                         description: 'If checks pass and apply is allowed, apply snapshot',
                     },
-                    commands: { type: 'array', items: { type: 'string' }, maxItems: 20, description: 'Optional commands for checks' },
+                    commands: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        maxItems: 20,
+                        description: 'Optional commands for checks',
+                    },
                     timeoutSec: { type: 'number', default: 240 },
                     // Explore/Locate
                     symbol: { type: 'string' },

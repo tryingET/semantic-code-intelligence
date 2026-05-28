@@ -14,9 +14,14 @@ const patchPlanningTarget = 'docs/project/alpha-mvp-contract.md';
 const patchPlanningDiff = `diff --git a/${patchPlanningTarget} b/${patchPlanningTarget}
 --- a/${patchPlanningTarget}
 +++ b/${patchPlanningTarget}
-@@ -9,1 +9,2 @@
+@@ -7,6 +7,7 @@ type: "reference"
+ ---
+${' '}
  # Alpha MVP contract — harnessed LLM coding sessions
 +${patchPlanningMarker}
+${' '}
+ ## User and job
+${' '}
 `;
 const alphaPerCallBudgetMs = 15_000;
 
@@ -84,7 +89,11 @@ describe('Alpha MVP direct MCP parity', () => {
 
     test('navigation cluster works through direct MCPAdapter calls', async () => {
         const textSearch = await parseContent(
-            await callWithAlphaBudget(mcp, 'text_search', { query: 'handleToolCall', path: `${process.cwd()}/src`, maxResults: 5 })
+            await callWithAlphaBudget(mcp, 'text_search', {
+                query: 'handleToolCall',
+                path: `${process.cwd()}/src`,
+                maxResults: 5,
+            })
         );
         const symbolSearch = await parseContent(
             await callWithAlphaBudget(mcp, 'symbol_search', {
@@ -136,24 +145,28 @@ describe('Alpha MVP direct MCP parity', () => {
         expect(graph.neighbors).toBeDefined();
     }, 30000);
 
-    structuralTest('structural_search works through direct MCPAdapter calls', async () => {
-        const search = await parseContent(
-            await mcp.handleToolCall('structural_search', {
-                language: 'typescript',
-                pattern: 'mcp.handleToolCall($NAME, $ARGS)',
-                paths: ['tests/alpha-mvp-mcp-parity.test.ts'],
-                maxResults: 5,
-            })
-        );
+    structuralTest(
+        'structural_search works through direct MCPAdapter calls',
+        async () => {
+            const search = await parseContent(
+                await mcp.handleToolCall('structural_search', {
+                    language: 'typescript',
+                    pattern: 'mcp.handleToolCall($NAME, $ARGS)',
+                    paths: ['tests/alpha-mvp-mcp-parity.test.ts'],
+                    maxResults: 5,
+                })
+            );
 
-        expect(search.workflow).toBe('structural_search');
-        expect(search.ok).toBe(true);
-        expect(search.backend).toBe('ast-grep');
-        expect(search.paths).toEqual(['tests/alpha-mvp-mcp-parity.test.ts']);
-        expect(search.matches.length).toBeGreaterThan(0);
-        expect(search.matches.length).toBeLessThanOrEqual(5);
-        expect(search.limits.timeoutMs).toBeGreaterThan(0);
-    }, 30000);
+            expect(search.workflow).toBe('structural_search');
+            expect(search.ok).toBe(true);
+            expect(search.backend).toBe('ast-grep');
+            expect(search.paths).toEqual(['tests/alpha-mvp-mcp-parity.test.ts']);
+            expect(search.matches.length).toBeGreaterThan(0);
+            expect(search.matches.length).toBeLessThanOrEqual(5);
+            expect(search.limits.timeoutMs).toBeGreaterThan(0);
+        },
+        30000
+    );
 
     test('patch-planning cluster stages a diff and runs checks without mutating workspace', async () => {
         const before = await Bun.file(patchPlanningTarget).text();
@@ -163,7 +176,9 @@ describe('Alpha MVP direct MCP parity', () => {
         const snapshotId = snapshot.id || snapshot.snapshot;
         expect(snapshotId).toBeDefined();
 
-        const proposed = await parseContent(await mcp.handleToolCall('propose_patch', { snapshot: snapshotId, patch: patchPlanningDiff }));
+        const proposed = await parseContent(
+            await mcp.handleToolCall('propose_patch', { snapshot: snapshotId, patch: patchPlanningDiff })
+        );
         expect(proposed.accepted).toBe(true);
         expect(proposed.snapshot).toBe(snapshotId);
 

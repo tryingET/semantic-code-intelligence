@@ -98,10 +98,24 @@ function checkCommandSurfaceScanCoverage(): void {
   }
 }
 
+function checkRuntimeVersionSource(): void {
+  const pkg = readJson('package.json') as { version?: string };
+  const source = readFileSync('src/core/version.ts', 'utf8');
+  const match = source.match(/SCI_VERSION\s*=\s*['"]([^'"]+)['"]/);
+  if (!match) {
+    add('src/core/version.ts', 'runtime-version-source-missing', 'SCI_VERSION export is missing or unparseable', 'Expose a shared SCI_VERSION constant for CLI/MCP runtime metadata.');
+    return;
+  }
+  if (match[1] !== pkg.version) {
+    add('src/core/version.ts', 'runtime-version-drift', `SCI_VERSION=${match[1]}, package.json version=${pkg.version ?? '<missing>'}`, 'Keep SCI_VERSION equal to package.json version.');
+  }
+}
+
 function main(): void {
   checkPackageEntrypoints();
   checkBuildOutputs();
   checkCommandSurfaceScanCoverage();
+  checkRuntimeVersionSource();
 
   if (violations.length === 0) {
     process.stdout.write('public-runtime-surface: ok\n');

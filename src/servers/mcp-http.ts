@@ -31,6 +31,7 @@ import { getEnvironmentConfig } from '../core/config/server-config.js';
 import { CoreError } from '../core/errors.js';
 import { createCodeAnalyzer } from '../core/index';
 import type { CodeAnalyzer } from '../core/unified-analyzer';
+import { SCI_VERSION } from '../core/version.js';
 import { resolveConfiguredWorkspaceRoot } from '../core/workspace-root.js';
 import { metricsRegistry, recordToolEnd, recordToolStart } from '../instrumentation/metrics.js';
 import { toMcpToolCallError } from '../mcp/tool-call-error.js';
@@ -261,7 +262,7 @@ async function createMcpServer(desiredSid?: string, enableJsonResponse = false):
     // Create adapter and low-level server with handlers
     const adapter = new MCPAdapter(analyzer);
     const server = new Server(
-        { name: 'semantic-code-intelligence', version: '1.0.0' },
+        { name: 'semantic-code-intelligence', version: SCI_VERSION },
         { capabilities: { tools: {}, resources: {}, prompts: {} } }
     );
 

@@ -62,14 +62,17 @@ const docsPatch = `diff --git a/docs/project/alpha-mvp-contract.md b/docs/projec
 `;
 
 const sourceFile = 'src/adapters/mcp-adapter.ts';
-const sourceFirstLine = readFileSync(sourceFile, 'utf8').split(/\r?\n/)[0] || '';
+const sourceLines = readFileSync(sourceFile, 'utf8').split(/\r?\n/);
+const sourceFirstLine = sourceLines[0] || '';
 const sourceReplacementLine = sourceFirstLine.endsWith(' ') ? sourceFirstLine.trimEnd() : `${sourceFirstLine} `;
 const sourcePatch = `diff --git a/${sourceFile} b/${sourceFile}
 --- a/${sourceFile}
 +++ b/${sourceFile}
-@@ -1 +1 @@
+@@ -1,3 +1,3 @@
 -${sourceFirstLine}
 +${sourceReplacementLine}
+ ${sourceLines[1] || ''}
+ ${sourceLines[2] || ''}
 `;
 
 const impactSummary = {

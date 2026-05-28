@@ -1,8 +1,8 @@
 import { afterAll, describe, expect, test } from 'bun:test';
+import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
 
 const repoRoot = process.cwd();
 const roots: string[] = [];
@@ -42,7 +42,11 @@ describe('CLI workspace file boundary', () => {
 
     test('workflow --args-file accepts cwd-relative files from a nested workspace directory', () => {
         const nested = tempWorkspaceDir('sci-cli-args-inside-');
-        writeFileSync(join(nested, 'args.json'), JSON.stringify({ files: ['src/servers/cli.ts'], mode: 'minimum' }), 'utf8');
+        writeFileSync(
+            join(nested, 'args.json'),
+            JSON.stringify({ files: ['src/servers/cli.ts'], mode: 'minimum' }),
+            'utf8'
+        );
 
         const result = runCli(['workflow', 'recommend_checks', '-F', 'args.json', '--json'], nested);
 
@@ -59,14 +63,29 @@ describe('CLI workspace file boundary', () => {
 
     test('patch file options accept cwd-relative files from a nested workspace directory', () => {
         const nested = tempWorkspaceDir('sci-cli-patch-inside-');
+        mkdirSync(join(nested, 'tests', 'fixtures'), { recursive: true });
+        writeFileSync(
+            join(nested, 'tests', 'fixtures', 'safe-write-target.md'),
+            `---
+type: "fixture"
+---
+
+# Safe Write Dogfood Fixture
+
+This file is intentionally small and stable.
+The safe-write dogfood harness may temporarily patch it and must restore it exactly.
+`,
+            'utf8'
+        );
         writeFileSync(
             join(nested, 'patch.diff'),
             `diff --git a/tests/fixtures/safe-write-target.md b/tests/fixtures/safe-write-target.md
 --- a/tests/fixtures/safe-write-target.md
 +++ b/tests/fixtures/safe-write-target.md
-@@ -7,5 +7,5 @@ type: "fixture"
+@@ -4,5 +4,5 @@ type: "fixture"
+${' '}
  # Safe Write Dogfood Fixture
- 
+${' '}
 -This file is intentionally small and stable.
 +This file is intentionally small, stable, and checked.
  The safe-write dogfood harness may temporarily patch it and must restore it exactly.
@@ -83,13 +102,30 @@ describe('CLI workspace file boundary', () => {
 
     test('propose-patch accepts apply_patch format through the shared workflow conversion', () => {
         const nested = tempWorkspaceDir('sci-cli-apply-patch-');
+        mkdirSync(join(nested, 'tests', 'fixtures'), { recursive: true });
+        writeFileSync(
+            join(nested, 'tests', 'fixtures', 'safe-write-target.md'),
+            `---
+type: "fixture"
+---
+
+# Safe Write Dogfood Fixture
+
+This file is intentionally small and stable.
+The safe-write dogfood harness may temporarily patch it and must restore it exactly.
+`,
+            'utf8'
+        );
         writeFileSync(
             join(nested, 'patch.apply'),
             `*** Begin Patch
 *** Update File: tests/fixtures/safe-write-target.md
 @@
+ # Safe Write Dogfood Fixture
+${' '}
 -This file is intentionally small and stable.
 +This file is intentionally small, stable, and staged.
+ The safe-write dogfood harness may temporarily patch it and must restore it exactly.
 *** End Patch
 `,
             'utf8'

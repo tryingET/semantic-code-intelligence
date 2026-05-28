@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { canBindTcp } from './helpers/bind-utils';
 import path from 'node:path';
 import { HTTPServer } from '../src/servers/http';
+import { canBindTcp } from './helpers/bind-utils';
 
 const canBind = await canBindTcp('127.0.0.1');
 const bindDescribe = canBind ? describe : describe.skip;
@@ -79,7 +79,7 @@ bindDescribe('Tool-First Gate (HTTP tools/call)', () => {
 
     test('patch_checks_in_snapshot (onlyTouched=true) with tiny apply_patch diff', async () => {
         // Create or reuse a snapshot implicitly via the workflow
-        const patch = `*** Begin Patch\n*** Update File: tests/fixtures/example.ts\n@@\n export class TestClass {\n-    private value: number = 0;\n+    // tool-first gate: noop comment\n+    private value: number = 0;\n*** End Patch\n`;
+        const patch = `*** Begin Patch\n*** Update File: tests/fixtures/example.ts\n@@\n export class TestClass {\n // mcp unified apply_after_checks test\n+    // tool-first gate: noop comment\n     private value: number = 0;\n*** End Patch\n`;
         const result = await callTool(base, 'patch_checks_in_snapshot', {
             patch,
             onlyTouched: true,

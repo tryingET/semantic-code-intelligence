@@ -355,13 +355,17 @@ export function registerCommonResources(
                 if (extra.length > 0) throw new McpError(ErrorCode.InvalidParams, `Unsupported resource ${uriStr}`);
                 if (tail === 'overlay.diff') {
                     const { overlayStore } = await import('../core/overlay-store.js');
-                    const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
-                    const dir = ensure ? await ensure(id, { workspaceRoot: opts.workspaceRoot }) : undefined;
-                    const text = await readSnapshotArtifactText(
-                        dir,
-                        'overlay.diff',
-                        '# No overlay.diff found in snapshot'
-                    );
+                    let text =
+                        (overlayStore as any).getOverlayDiffText?.(id, { workspaceRoot: opts.workspaceRoot }) || '';
+                    if (!text) {
+                        const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
+                        const dir = ensure ? await ensure(id, { workspaceRoot: opts.workspaceRoot }) : undefined;
+                        text = await readSnapshotArtifactText(
+                            dir,
+                            'overlay.diff',
+                            '# No overlay.diff found in snapshot'
+                        );
+                    }
                     return { contents: [{ uri: uri.href, mimeType: 'text/plain', text }] } as any;
                 }
                 if (tail === 'status') {

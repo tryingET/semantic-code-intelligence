@@ -27,6 +27,7 @@ import * as path from 'path';
 import { parseIntegerOption, strictJsonParse } from '../adapters/utils.js';
 import { CoreError, isCoreError } from '../core/errors.js';
 import { assertAlphaMvpToolAllowed } from '../core/tools/alpha-surface.js';
+import { SCI_VERSION } from '../core/version.js';
 import { workspaceInputToPath } from '../core/workspace-input.js';
 import { openWorkspaceFileForRead } from '../core/workspace-path.js';
 import { getPushgatewayUrl, pushToGateway, recordToolEnd, recordToolStart } from '../instrumentation/metrics.js';
@@ -84,7 +85,10 @@ class CLI {
     }
 
     private setupCommands(): void {
-        this.program.name('semantic-code-intelligence').description('Semantic Code Intelligence CLI').version('1.0.0');
+        this.program
+            .name('semantic-code-intelligence')
+            .description('Semantic Code Intelligence CLI')
+            .version(SCI_VERSION);
 
         // Find command
         this.program

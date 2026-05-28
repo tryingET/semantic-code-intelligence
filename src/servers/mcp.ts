@@ -21,6 +21,7 @@ import { MCPAdapter } from '../adapters/mcp-adapter.js';
 import { createDefaultCoreConfig } from '../adapters/utils.js';
 import { createCodeAnalyzer } from '../core/index';
 import type { CodeAnalyzer } from '../core/unified-analyzer';
+import { SCI_VERSION } from '../core/version.js';
 import { resolveConfiguredWorkspaceRoot } from '../core/workspace-root.js';
 import { metricsRegistry, recordToolEnd, recordToolStart } from '../instrumentation/metrics.js';
 import { toMcpToolCallError } from '../mcp/tool-call-error.js';
@@ -38,7 +39,7 @@ export class MCPServer {
         this.server = new Server(
             {
                 name: 'semantic-code-intelligence',
-                version: '1.0.0',
+                version: SCI_VERSION,
             },
             {
                 capabilities: {

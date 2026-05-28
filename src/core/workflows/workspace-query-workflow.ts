@@ -1,5 +1,6 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { AsyncEnhancedGrep } from '../../layers/enhanced-search-tools-async.js';
 import { CoreError } from '../errors.js';
 import { parseBoundedInteger } from '../input-validation.js';
@@ -517,16 +518,11 @@ export class WorkspaceQueryWorkflowService {
         if (!query) throw new CoreError('InvalidParams', 'Missing required parameter: query', { field: 'query' });
         const maxResults = parseBoundedInteger(args?.maxResults, 'maxResults', { defaultValue: 50, min: 1, max: 200 });
         const fileHint = typeof args?.fileHint === 'string' ? args.fileHint : '';
-        const res = await this.deps.coreAnalyzer.buildSymbolMap({
-            identifier: query,
-            maxFiles: maxResults,
-            astOnly: true,
-        });
-        let out = (res?.declarations || [])
-            .slice(0, maxResults)
-            .map((d: any) => ({ uri: d.uri, range: d.range, kind: d.kind, name: d.name || query }));
-
-        if (out.length === 0 && fileHint) {
+        let hintedRelativePath = '';
+        let hintedText = '';
+        let hintedUri = '';
+        let hintedAbsolutePath = '';
+        if (fileHint) {
             let opened: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
             try {
                 const workspaceRoot = this.workspaceRoot;
@@ -534,24 +530,10 @@ export class WorkspaceQueryWorkflowService {
                     workspaceRoot,
                     inputLabel: 'symbol_search fileHint',
                 });
-                const text = await opened.handle.readFile('utf8');
-                const lines = text.split(/\r?\n/);
-                out = lines
-                    .map((line, index) => ({ line, index, column: line.indexOf(query) }))
-                    .filter((match) => match.column >= 0)
-                    .slice(0, maxResults)
-                    .map((match) => ({
-                        uri: `file://${path.resolve(workspaceRoot, opened?.relativePath || fileHint)}`,
-                        range: {
-                            start: { line: match.index, character: match.column },
-                            end: { line: match.index, character: match.column + query.length },
-                        },
-                        kind: /function|class|interface|const|let|var|private|public|async/.test(match.line)
-                            ? 'symbol'
-                            : 'text_match',
-                        name: query,
-                        fallback: 'fileHint_text_scan',
-                    }));
+                hintedRelativePath = opened.relativePath;
+                hintedAbsolutePath = opened.realPath;
+                hintedUri = pathToFileURL(opened.realPath).href;
+                hintedText = await opened.handle.readFile('utf8');
             } catch (error) {
                 throw error instanceof CoreError
                     ? error
@@ -564,8 +546,63 @@ export class WorkspaceQueryWorkflowService {
                 await opened?.handle.close().catch(() => undefined);
             }
         }
+        const res = await this.deps.coreAnalyzer.buildSymbolMap({
+            identifier: query,
+            uri: hintedUri || undefined,
+            maxFiles: fileHint ? Math.max(maxResults, 50) : maxResults,
+            astOnly: true,
+        });
+        const declarations = (res?.declarations || []).map((d: any) => ({
+            uri: d.uri,
+            range: d.range,
+            kind: d.kind,
+            name: d.name || query,
+        }));
+        const relativeFromUri = (uri: string): string => {
+            try {
+                const absolute = uri.startsWith('file://') ? fileURLToPath(uri) : uri;
+                const rel = path.relative(this.workspaceRoot, absolute);
+                return rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? rel.split(path.sep).join('/') : '';
+            } catch {
+                return '';
+            }
+        };
+        let out = declarations;
+        if (hintedRelativePath) {
+            const hinted = declarations.filter(
+                (item: any) => relativeFromUri(String(item.uri || '')) === hintedRelativePath
+            );
+            const other = declarations.filter(
+                (item: any) => relativeFromUri(String(item.uri || '')) !== hintedRelativePath
+            );
+            const hintedTextMatches =
+                hinted.length === 0 && hintedText
+                    ? hintedText
+                          .split(/\r?\n/)
+                          .map((line, index) => ({ line, index, column: line.indexOf(query) }))
+                          .filter((match) => match.column >= 0)
+                          .map((match) => ({
+                              uri: pathToFileURL(
+                                  hintedAbsolutePath || path.resolve(this.workspaceRoot, hintedRelativePath)
+                              ).href,
+                              range: {
+                                  start: { line: match.index, character: match.column },
+                                  end: { line: match.index, character: match.column + query.length },
+                              },
+                              kind: /function|class|interface|const|let|var|private|public|async/.test(match.line)
+                                  ? 'symbol'
+                                  : 'text_match',
+                              name: query,
+                              fallback: 'fileHint_text_scan',
+                          }))
+                    : [];
+            out = hinted.length ? [...hinted, ...other] : [...hintedTextMatches, ...other];
+        }
 
-        return { payload: { query, count: out.length, symbols: out }, isError: false };
+        return {
+            payload: { query, count: out.slice(0, maxResults).length, symbols: out.slice(0, maxResults) },
+            isError: false,
+        };
     }
 
     async astQuery(args: Record<string, any>): Promise<SnapshotWorkflowResult> {
@@ -573,6 +610,12 @@ export class WorkspaceQueryWorkflowService {
         const query = String(args?.query || '').trim();
         if (!language)
             throw new CoreError('InvalidParams', 'Missing required parameter: language', { field: 'language' });
+        if (!['typescript', 'javascript', 'python'].includes(language)) {
+            throw new CoreError('InvalidParams', 'Unsupported ast_query language', {
+                field: 'language',
+                allowed: ['typescript', 'javascript', 'python'],
+            });
+        }
         if (!query) throw new CoreError('InvalidParams', 'Missing required parameter: query', { field: 'query' });
         const paths = Array.isArray(args?.paths) ? (args.paths as string[]) : undefined;
         const glob = typeof args?.glob === 'string' ? (args.glob as string) : undefined;

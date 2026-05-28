@@ -58,7 +58,7 @@ describe('MCP workflows GA shapes', () => {
     }, 30000);
 
     test('patch_checks_in_snapshot: predictable shape (no-op cmd)', async () => {
-        const patch = `*** Begin Patch\n*** Update File: tests/fixtures/example.ts\n@@\n export class TestClass {\n-    private value: number = 0;\n+    private value: number = 0; // ga\n*** End Patch\n`;
+        const patch = `*** Begin Patch\n*** Update File: tests/fixtures/example.ts\n@@\n export class TestClass {\n // mcp unified apply_after_checks test\n+    // ga\n     private value: number = 0;\n*** End Patch\n`;
         const res = await mcp.handleToolCall('patch_checks_in_snapshot', { patch, commands: ['true'] });
         const obj = await parse(res);
         expect(obj.workflow).toBe('patch_checks_in_snapshot');

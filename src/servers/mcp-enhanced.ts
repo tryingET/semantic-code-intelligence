@@ -15,6 +15,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 
 import type { MCPAdapter } from '../adapters/mcp-adapter.js';
 import type { CodeAnalyzer } from '../core/unified-analyzer';
+import { SCI_VERSION } from '../core/version.js';
 import { ConnectionManager } from '../mcp/connection-manager.js';
 import {
     createInternalError,
@@ -41,7 +42,7 @@ export class EnhancedMCPServer {
         this.server = new Server(
             {
                 name: 'semantic-code-intelligence',
-                version: '1.0.0',
+                version: SCI_VERSION,
             },
             {
                 capabilities: {
@@ -358,7 +359,7 @@ export class EnhancedMCPServer {
                 await this.server.connect(transport);
 
                 mcpLogger.info('Enhanced MCP Server running on stdio', {
-                    version: '1.0.0',
+                    version: SCI_VERSION,
                     pid: process.pid,
                     workspaceRoot: process.env.SEMANTIC_CODE_WORKSPACE || process.cwd(),
                 });

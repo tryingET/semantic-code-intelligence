@@ -87,7 +87,7 @@ async function main() {
   const snapshotId = snapParsed?.id || snapParsed?.snapshot || snapParsed; // accept simple shape
   log(`snapshot id: ${snapshotId}`);
 
-  const patch = `*** Begin Patch\n*** Update File: tests/fixtures/example.ts\n@@\n export class TestClass {\n-    private value: number = 0;\n+    // dogfood: noop comment\n+    private value: number = 0;\n*** End Patch\n`;
+  const patch = `*** Begin Patch\n*** Update File: tests/fixtures/example.ts\n@@\n export class TestClass {\n // mcp unified apply_after_checks test\n+    // dogfood: noop comment\n     private value: number = 0;\n*** End Patch\n`;
   log('propose_patch (no checks) ...');
   t0(times, 'propose_patch');
   const stage = await mcp.handleToolCall('propose_patch', { snapshot: snapshotId, patch });

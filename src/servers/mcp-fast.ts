@@ -15,6 +15,7 @@ import { CallToolRequestSchema, ErrorCode, ListToolsRequestSchema, McpError } fr
 // IMPORTANT: Avoid importing heavy core modules at top-level.
 // Use type-only import to prevent runtime side effects.
 import type { CodeAnalyzer } from '../core/unified-analyzer';
+import { SCI_VERSION } from '../core/version.js';
 import { toMcpToolCallError } from '../mcp/tool-call-error.js';
 import { registerCommonPrompts, registerCommonResources } from './mcp-shared.js';
 
@@ -29,7 +30,7 @@ export class FastMCPServer {
         this.server = new Server(
             {
                 name: 'semantic-code-intelligence',
-                version: '1.0.0',
+                version: SCI_VERSION,
             },
             {
                 capabilities: {
