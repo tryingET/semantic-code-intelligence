@@ -214,6 +214,51 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
         }
     }, 30000);
 
+    test('partial snapshot checks preserve staged deletions during build/test directory refill', async () => {
+        const root = await fs.mkdtemp(path.join(tmpdir(), 'sci-overlay-partial-delete-'));
+        const previous = process.env.SNAPSHOT_PARTIAL;
+        try {
+            process.env.SNAPSHOT_PARTIAL = '1';
+            await fs.mkdir(path.join(root, 'src'), { recursive: true });
+            await fs.writeFile(path.join(root, 'package.json'), '{"type":"module","scripts":{"build":"test ! -e src/foo.ts"}}\n', 'utf8');
+            await fs.writeFile(path.join(root, 'src', 'foo.ts'), 'export const foo = 1;\n', 'utf8');
+
+            const snap = overlayStore.createSnapshot(false, { workspaceRoot: root });
+            const patch = `diff --git a/src/foo.ts b/src/foo.ts\ndeleted file mode 100644\n--- a/src/foo.ts\n+++ /dev/null\n@@ -1 +0,0 @@\n-export const foo = 1;\n`;
+            expect(overlayStore.stagePatch(snap.id, patch).accepted).toBe(true);
+
+            const checks = await overlayStore.runChecks(snap.id, ['bun run build'], 30, { workspaceRoot: root });
+            expect(checks.ok).toBe(true);
+        } finally {
+            if (previous === undefined) delete process.env.SNAPSHOT_PARTIAL;
+            else process.env.SNAPSHOT_PARTIAL = previous;
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    }, 30000);
+
+    test('partial snapshot default checks hydrate needed files and preserve staged deletions', async () => {
+        const root = await fs.mkdtemp(path.join(tmpdir(), 'sci-overlay-partial-default-delete-'));
+        const previous = process.env.SNAPSHOT_PARTIAL;
+        try {
+            process.env.SNAPSHOT_PARTIAL = '1';
+            await fs.mkdir(path.join(root, 'src'), { recursive: true });
+            await fs.writeFile(path.join(root, 'package.json'), '{"type":"module","scripts":{"typecheck":"true","build":"test ! -e src/foo.ts"}}\n', 'utf8');
+            await fs.writeFile(path.join(root, 'src', 'foo.ts'), 'export const foo = 1;\n', 'utf8');
+
+            const snap = overlayStore.createSnapshot(false, { workspaceRoot: root });
+            const patch = `diff --git a/src/foo.ts b/src/foo.ts\ndeleted file mode 100644\n--- a/src/foo.ts\n+++ /dev/null\n@@ -1 +0,0 @@\n-export const foo = 1;\n`;
+            expect(overlayStore.stagePatch(snap.id, patch).accepted).toBe(true);
+
+            const checks = await overlayStore.runChecks(snap.id, [], 30, { workspaceRoot: root });
+            expect(checks.ok).toBe(true);
+            expect(checks.commands.map((cmd) => cmd.command)).toEqual(['bun run typecheck', 'bun run build']);
+        } finally {
+            if (previous === undefined) delete process.env.SNAPSHOT_PARTIAL;
+            else process.env.SNAPSHOT_PARTIAL = previous;
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    }, 30000);
+
     test('fails closed when workspace changes before lazy snapshot materialization', async () => {
         const rel = `.tmp-overlay-lazy-base-${Date.now()}-${Math.random().toString(16).slice(2)}.txt`;
         const abs = path.join(process.cwd(), rel);

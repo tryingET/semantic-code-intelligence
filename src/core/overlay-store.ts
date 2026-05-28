@@ -1277,16 +1277,37 @@ export class OverlayStore {
             outputBytes = maxOutputBytes;
             outputTruncated = true;
         };
+        // Build command list before any partial-workspace hydration so default
+        // validation commands get the same source/test/script fill as explicit commands.
+        let cmdList = commands && commands.length ? [...commands] : ['bun run typecheck', 'bun run build'];
+        const maxCommands = 20;
+        if (cmdList.length > maxCommands) {
+            return {
+                ok: false,
+                output: `Rejected check command list: at most ${maxCommands} commands are allowed\n`,
+                elapsedMs: Date.now() - start,
+                commands: [],
+            };
+        }
         // If running under partial materialization, ensure essential directories exist
         // for common commands like build/test which require source files or local scripts.
         try {
             const preferPartial = process.env.SNAPSHOT_PARTIAL === '1';
-            const needsBuild = (commands || []).some((c) => /\b(build(:|\b)|bun\s+build|bun\s+run\s+build)/.test(c));
-            const needsTest = (commands || []).some((c) => /\b(test(\b|:)|bun\s+test|just\s+test(\b|[-_]))/.test(c));
-            const needsScripts = (commands || []).some((c) => /\bbun\s+run\s+|npm\s+run\s+|pnpm\s+run\s+/.test(c));
+            const needsBuild = cmdList.some((c) => /\b(build(:|\b)|bun\s+build|bun\s+run\s+build)/.test(c));
+            const needsTest = cmdList.some((c) => /\b(test(\b|:)|bun\s+test|just\s+test(\b|[-_]))/.test(c));
+            const needsScripts = cmdList.some((c) => /\bbun\s+run\s+|npm\s+run\s+|pnpm\s+run\s+/.test(c));
             if (preferPartial && (needsBuild || needsTest || needsScripts)) {
                 const snap = this.ensureSnapshot(snapshotId);
                 const base = this.resolveWorkspaceBase(snap.workspaceRoot);
+                const touched = Array.from(snap.touchedFiles || []);
+                const deletedInSnapshot = touched.filter((rel) => {
+                    try {
+                        const { absolutePath } = this.containedPath(cwd, rel, 'partial snapshot touched path');
+                        return !fs.existsSync(absolutePath);
+                    } catch {
+                        return false;
+                    }
+                });
                 if (snap.baseFingerprint && this.workspaceBaseFingerprint(snap.workspaceRoot) !== snap.baseFingerprint) {
                     throw new Error('Workspace changed since snapshot creation before partial check fill; create a fresh snapshot');
                 }
@@ -1324,6 +1345,10 @@ export class OverlayStore {
                         );
                     }
                 }
+                for (const rel of deletedInSnapshot) {
+                    const { absolutePath } = this.containedPath(cwd, rel, 'partial snapshot deleted path');
+                    await fsp.rm(absolutePath, { recursive: true, force: true }).catch(() => undefined);
+                }
                 if (snap.baseFingerprint && this.workspaceBaseFingerprint(snap.workspaceRoot) !== snap.baseFingerprint) {
                     throw new Error('Workspace changed since snapshot creation during partial check fill; create a fresh snapshot');
                 }
@@ -1334,17 +1359,6 @@ export class OverlayStore {
             return {
                 ok: false,
                 output: `Rejected check workspace: ${message}\n`,
-                elapsedMs: Date.now() - start,
-                commands: [],
-            };
-        }
-        // Build command list
-        let cmdList = commands && commands.length ? [...commands] : ['bun run typecheck', 'bun run build'];
-        const maxCommands = 20;
-        if (cmdList.length > maxCommands) {
-            return {
-                ok: false,
-                output: `Rejected check command list: at most ${maxCommands} commands are allowed\n`,
                 elapsedMs: Date.now() - start,
                 commands: [],
             };
