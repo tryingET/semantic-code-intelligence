@@ -51,6 +51,9 @@ describe('tool boundary contract', () => {
 
         const applySnapshot = tool('apply_snapshot').inputSchema;
         expect(applySnapshot.properties.reverse).toEqual({ type: 'boolean', default: false });
+
+        const proposePatch = tool('propose_patch').inputSchema;
+        expect(proposePatch.properties.runChecks).toBeUndefined();
     });
 
     test('run_checks accepts common validation command shapes without shell execution', async () => {
@@ -94,6 +97,27 @@ describe('tool boundary contract', () => {
         expect(nodeOptionsResult.output).toContain('unsupported validation environment variable: NODE_OPTIONS');
         expect(npmConfigResult.ok).toBe(false);
         expect(npmConfigResult.output).toContain('unsupported validation environment variable: npm_config_userconfig');
+    });
+
+    test('run_checks rejects recursive symlink-following search commands', async () => {
+        const root = tempRoot();
+        const outside = tempRoot();
+        writeFileSync(join(root, 'package.json'), '{"type":"module"}\n', 'utf8');
+        writeFileSync(join(root, 'sample.txt'), 'inside\n', 'utf8');
+        writeFileSync(join(outside, 'secret.txt'), 'outside-secret-sci-must-not-leak\n', 'utf8');
+        symlinkSync(outside, join(root, 'linkout'), 'dir');
+        const store = new OverlayStore();
+        const snap = store.createSnapshot(false, { workspaceRoot: root });
+
+        const grepResult = await store.runChecks(snap.id, ['grep -R secret .'], 5, { workspaceRoot: root });
+        const rgResult = await store.runChecks(snap.id, ['rg --follow secret .'], 5, { workspaceRoot: root });
+
+        expect(grepResult.ok).toBe(false);
+        expect(grepResult.output).toContain('unsupported grep option');
+        expect(grepResult.output).not.toContain('outside-secret-sci-must-not-leak');
+        expect(rgResult.ok).toBe(false);
+        expect(rgResult.output).toContain('unsupported rg option');
+        expect(rgResult.output).not.toContain('outside-secret-sci-must-not-leak');
     });
 
     test('snapshot patches and checks reject symlink escapes and unsafe git apply', async () => {

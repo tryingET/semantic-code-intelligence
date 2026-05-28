@@ -72,15 +72,6 @@ export class OverlayStore {
         return snapshotsDir;
     }
 
-    private assertSafeSnapshotStorageRootAfterCreate(workspaceRoot?: string): string {
-        const base = this.resolveWorkspaceBase(workspaceRoot);
-        const ontologyDir = path.join(base, '.ontology');
-        const snapshotsDir = path.join(ontologyDir, 'snapshots');
-        this.assertSafeSnapshotStoragePath(base, ontologyDir, '.ontology');
-        this.assertSafeSnapshotStoragePath(base, snapshotsDir, '.ontology/snapshots');
-        return snapshotsDir;
-    }
-
     private async logProgress(id: string, msg: string): Promise<void> {
         if (!this.wantProgress()) return;
         try {
@@ -334,9 +325,9 @@ export class OverlayStore {
         const deadline = Date.now() + 30_000;
         while (true) {
             try {
-                this.assertSafeSnapshotStorageRootAfterCreate(workspaceRoot);
+                this.assertSafeSnapshotStorageRoot(workspaceRoot);
                 await fsp.mkdir(lockDir, { recursive: false });
-                this.assertSafeSnapshotStorageRootAfterCreate(workspaceRoot);
+                this.assertSafeSnapshotStorageRoot(workspaceRoot);
                 await fsp.writeFile(path.join(lockDir, 'owner.json'), JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() }), 'utf8');
                 return async () => { await fsp.rm(lockDir, { recursive: true, force: true }); };
             } catch (error: any) {
@@ -971,6 +962,14 @@ export class OverlayStore {
                 }
             }
         }
+        if (executable === 'grep') {
+            const followsSymlinks = words.slice(1).some((word) => word === '--dereference-recursive' || /^-[^-]*R/.test(word));
+            if (followsSymlinks) return { ok: false, message: 'unsupported grep option: recursive symlink following is not allowed' };
+        }
+        if (executable === 'rg') {
+            const followsSymlinks = words.slice(1).some((word) => word === '--follow' || /^-[^-]*L/.test(word));
+            if (followsSymlinks) return { ok: false, message: 'unsupported rg option: symlink following is not allowed' };
+        }
         const pathBoundaryViolation = this.checkCommandPathBoundaryViolation(words, env);
         if (pathBoundaryViolation) return { ok: false, message: pathBoundaryViolation };
         return { ok: true, words, env };
@@ -1050,7 +1049,7 @@ export class OverlayStore {
         let snapsRoot = this.snapshotsRoot(snap.workspaceRoot);
         const dir = path.join(snapsRoot, snapshotId);
         await fsp.mkdir(snapsRoot, { recursive: true }).catch(() => {});
-        snapsRoot = this.assertSafeSnapshotStorageRootAfterCreate(snap.workspaceRoot);
+        snapsRoot = this.assertSafeSnapshotStorageRoot(snap.workspaceRoot);
         const materializedMarker = path.join(dir, '.materialized');
         const preferPartial = process.env.SNAPSHOT_PARTIAL === '1';
         const base = this.resolveWorkspaceBase(snap.workspaceRoot);

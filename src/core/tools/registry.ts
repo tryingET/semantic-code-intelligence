@@ -250,7 +250,6 @@ export class ToolRegistry {
                     patch: { type: 'string' },
                     format: { type: 'string', enum: ['unified'], default: 'unified' },
                     snapshot: { type: 'string' },
-                    runChecks: { type: 'boolean', default: true },
                 },
                 required: ['patch'],
             },

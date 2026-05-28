@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
+import yaml from 'js-yaml';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -16,6 +17,15 @@ function recipeBody(justfile: string, recipeName: string): string {
 }
 
 describe('build command surface', () => {
+    test('GitHub workflow YAML files parse', () => {
+        const workflowFiles = readdirSync('.github/workflows').filter((file) => /\.ya?ml$/.test(file));
+        expect(workflowFiles.length).toBeGreaterThan(0);
+        for (const file of workflowFiles) {
+            const workflowPath = join('.github/workflows', file);
+            expect(() => yaml.load(readText(workflowPath)), workflowPath).not.toThrow();
+        }
+    });
+
     test('command-surface audit passes for package, workflow, and review surfaces', () => {
         const proc = spawnSync('bun', ['run', 'scripts/check-command-surface.ts', '--json'], {
             cwd: process.cwd(),
