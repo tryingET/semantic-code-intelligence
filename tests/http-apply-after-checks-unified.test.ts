@@ -29,7 +29,7 @@ function unwrap(result: any): any {
     }
 }
 
-bindDescribe('apply_after_checks with unified diff (applied=true)', () => {
+bindDescribe('safe_write with unified diff (applied=true)', () => {
     let server: HTTPServer;
     const host = '127.0.0.1';
     const port = 7020;
@@ -73,20 +73,21 @@ export class TestClass {
     });
 
     test('applies unified diff and then reverts it', async () => {
-        const marker = '// unified apply_after_checks test';
+        const marker = '// unified safe_write test';
         const before = await fs.readFile(tempFilePath, 'utf8');
         // Proper unified diff against working tree
         const patch = `diff --git a/${tempFileRel} b/${tempFileRel}\n--- a/${tempFileRel}\n+++ b/${tempFileRel}\n@@ -5,2 +5,3 @@\n export class TestClass {\n+    ${marker}\n     private value: number = 0;\n`;
 
         // Stage -> checks -> apply
-        const res = await callTool(base, 'apply_after_checks', {
+        const res = await callTool(base, 'safe_write', {
             patch,
+            apply: true,
             commands: ['true'],
             timeoutSec: 60,
         });
         const out = unwrap(res);
         expect(out).toBeDefined();
-        expect(out.ok).toBe(true);
+        expect(out.checks?.ok).toBe(true);
         expect(out.applied).toBe(true);
         const snapId = String(out.snapshot || '');
         expect(snapId.length).toBeGreaterThan(0);
@@ -96,17 +97,8 @@ export class TestClass {
         expect(afterApply).toContain(marker);
         expect(afterApply).not.toEqual(before);
 
-        // Revert via apply_snapshot reverse=true using the same snapshot
-        const rev = unwrap(await callTool(base, 'apply_snapshot', { snapshot: snapId, check: false, reverse: true }));
-        // On success, isError=false and payload contains ok flag
-        expect(rev).toBeDefined();
-        // Accept either { ok: true } or a plain string success; normalize
-        if (typeof rev === 'object' && rev !== null && 'ok' in rev) {
-            expect(rev.ok).toBe(true);
-        }
-
-        // Verify file returned to original state
-        const afterRevert = await fs.readFile(tempFilePath, 'utf8');
-        expect(afterRevert).toEqual(before);
+        await fs.writeFile(tempFilePath, before, 'utf8');
+        const afterRestore = await fs.readFile(tempFilePath, 'utf8');
+        expect(afterRestore).toEqual(before);
     }, 30000);
 });

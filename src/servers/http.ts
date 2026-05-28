@@ -379,7 +379,7 @@ export class HTTPServer {
 
                             const t0 = Date.now();
                             recordToolStart('http');
-                            const toolResult = await this.executeToolWorkflow(name, args);
+                            const toolResult = await this.executeToolWorkflow(name, args, { enforceHttpToolSurface: true });
                             // Record tool call in monitoring (if enabled)
                             try {
                                 const mon = (this.coreAnalyzer as any)?.sharedServices?.monitoring;
@@ -1356,8 +1356,12 @@ export class HTTPServer {
 
     // ===== PRIVATE HELPERS =====
 
-    private async executeToolWorkflow(name: string, args: Record<string, any>): Promise<SnapshotWorkflowResult> {
-        this.assertHttpToolAllowed(name, args);
+    private async executeToolWorkflow(
+        name: string,
+        args: Record<string, any>,
+        opts: { enforceHttpToolSurface?: boolean } = {}
+    ): Promise<SnapshotWorkflowResult> {
+        if (opts.enforceHttpToolSurface) this.assertHttpToolAllowed(name, args);
         return this.toolExecutor.execute(this.toolRouter, name, args);
     }
 

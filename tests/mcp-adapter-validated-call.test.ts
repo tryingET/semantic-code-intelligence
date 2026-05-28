@@ -19,8 +19,9 @@ function expectInvalidConfig(config: any, message: string) {
 }
 
 describe('MCPAdapter validated server calls', () => {
-    test('constructor rejects every config field except maxResults', () => {
+    test('constructor rejects every config field except maxResults and surface', () => {
         expect(() => new MCPAdapter(undefined as any, { maxResults: 10 })).not.toThrow();
+        expect(() => new MCPAdapter(undefined as any, { surface: 'registry' })).not.toThrow();
         expectInvalidConfig({ timeout: 1 }, 'Unsupported MCPAdapter config field');
         expectInvalidConfig({ enableSSE: false, ssePort: 9999 }, 'enableSSE, ssePort');
         expectInvalidConfig({ serverName: 'legacy-name' }, 'serverName');
@@ -45,6 +46,7 @@ describe('MCPAdapter validated server calls', () => {
         expectInvalidConfig({ maxResults: Number.POSITIVE_INFINITY }, 'maxResults must be an integer from 1 to 1000');
         expectInvalidConfig({ maxResults: Number.MAX_SAFE_INTEGER + 1 }, 'maxResults must be an integer from 1 to 1000');
         expectInvalidConfig({ maxResults: 1001 }, 'maxResults must be an integer from 1 to 1000');
+        expectInvalidConfig({ surface: 'legacy' }, "surface must be 'alpha' or 'registry'");
     });
 
     test('direct handleToolCall keeps unknown tools as MCP tool-result errors', async () => {

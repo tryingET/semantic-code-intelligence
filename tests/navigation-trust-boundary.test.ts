@@ -198,7 +198,7 @@ describe('navigation workspace trust boundary', () => {
                 called = true;
                 return { symbol: '', definitions: [], references: [], performance: {}, diagnostics: [], timestamp: '' };
             },
-        } as any);
+        } as any, { surface: 'registry' });
 
         const result = await mcp.handleToolCall('explore_codebase', {
             file: `file://${outsideFile}`,
@@ -225,7 +225,7 @@ describe('navigation workspace trust boundary', () => {
                     timestamp: '',
                 };
             },
-        } as any);
+        } as any, { surface: 'registry' });
 
         const result = await mcp.handleToolCall('explore_codebase', {
             file: 'src/core/code-graph.ts',

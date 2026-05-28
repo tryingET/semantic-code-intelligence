@@ -29,7 +29,7 @@ describe('Dogfooding MCP workflows (fast)', () => {
         await lm.initialize();
         analyzer = new CodeAnalyzer(lm, shared, config, shared.eventBus);
         await analyzer.initialize();
-        mcp = new MCPAdapter(analyzer);
+        mcp = new MCPAdapter(analyzer, { surface: 'registry' });
     });
 
     afterAll(async () => {

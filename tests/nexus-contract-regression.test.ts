@@ -246,8 +246,8 @@ describe('nexus contract regressions', () => {
                 headers: { 'content-type': 'application/json' },
                 body: JSON.stringify({ name: 'list_files', arguments: { path: '.', maxFiles: 10, depth: 1 } }),
             });
-            expect(listed.status).toBe(200);
-            expect(JSON.parse(listed.body).success).toBe(true);
+            expect(listed.status).toBe(400);
+            expect(JSON.parse(listed.body).error.message).toContain('not available');
         } finally {
             await analyzer.dispose?.();
         }
@@ -317,15 +317,14 @@ describe('nexus contract regressions', () => {
         expect(result.patterns.some((pattern) => pattern.type === 'factory')).toBe(true);
     });
 
-    test('advertised list_files routes to a bounded workspace listing', async () => {
+    test('registered list_files is not exposed through the Alpha MCP membrane', async () => {
         const workspaceRoot = tempWorkspace();
         writeFileSync(join(workspaceRoot, 'sample.ts'), 'export const value = 1;\n', 'utf8');
 
         await withMcp(workspaceRoot, async (mcp) => {
             const res = await mcp.handleToolCall('list_files', { path: '.', maxFiles: 10, depth: 1 });
-            const out = parseContent(res);
-            expect(res.isError).toBe(false);
-            expect(out.files.some((file: any) => file.path === 'sample.ts' && file.type === 'file')).toBe(true);
+            expect(res.isError).toBe(true);
+            expect(String(res.error?.message || res.content?.[0]?.text || '')).toContain('not available');
         });
     });
 

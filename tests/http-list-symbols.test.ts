@@ -1,43 +1,26 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { canBindTcp } from './helpers/bind-utils';
-import path from 'node:path';
 import { HTTPServer } from '../src/servers/http';
 
 const canBind = await canBindTcp('127.0.0.1');
 const bindDescribe = canBind ? describe : describe.skip;
 
-async function callTool(base: string, name: string, args: Record<string, any>) {
+async function callToolRaw(base: string, name: string, args: Record<string, any>) {
     const res = await fetch(`${base}/api/v1/tools/call`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ name, arguments: args }),
     });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.success).toBe(true);
-    return body.result;
+    return { status: res.status, body: await res.json() };
 }
 
-function parseContent(result: any): any {
-    try {
-        const txt = result?.content?.[0]?.text;
-        if (!txt) return result;
-        return JSON.parse(txt);
-    } catch {
-        return result;
-    }
-}
-
-bindDescribe('HTTP tools: list_symbols (regex and AST paths)', () => {
+bindDescribe('HTTP tools: list_symbols legacy boundary', () => {
     let server: HTTPServer;
     const host = '127.0.0.1';
-    const port = 7017; // dedicated test port for list_symbols
+    const port = 7017;
     const base = `http://${host}:${port}`;
 
-    const fixtureFile = path.join(process.cwd(), 'tests', 'fixtures', 'example.ts');
-
     beforeAll(async () => {
-        // Exercise AST-backed path where available
         process.env.LIST_SYMBOLS_AST = '1';
         server = new HTTPServer({ host, port, workspaceRoot: process.cwd(), enableOpenAPI: false });
         await server.start();
@@ -48,25 +31,12 @@ bindDescribe('HTTP tools: list_symbols (regex and AST paths)', () => {
         delete process.env.LIST_SYMBOLS_AST;
     });
 
-    test('list_symbols returns symbols with positions', async () => {
-        const result = await callTool(base, 'list_symbols', { file: fixtureFile });
-        const out = parseContent(result);
-        expect(out).toBeDefined();
-        expect(typeof out.file).toBe('string');
-        expect(Array.isArray(out.symbols)).toBe(true);
-        expect(out.symbols.length).toBeGreaterThan(0);
-        const first = out.symbols[0];
-        expect(typeof first.name).toBe('string');
-        expect(typeof first.kind).toBe('string');
-        expect(typeof first.line).toBe('number');
-        expect(typeof first.character).toBe('number');
-    });
-
-    test('list_symbols accepts workspace URI file inputs', async () => {
-        const result = await callTool(base, 'list_symbols', { file: 'file://workspace/tests/fixtures/example.ts' });
-        const out = parseContent(result);
-        expect(out).toBeDefined();
-        expect(Array.isArray(out.symbols)).toBe(true);
-        expect(out.symbols.length).toBeGreaterThan(0);
+    test('list_symbols is registered but not exposed through the Alpha HTTP tools/call membrane', async () => {
+        for (const file of ['tests/fixtures/example.ts', 'file://workspace/tests/fixtures/example.ts']) {
+            const result = await callToolRaw(base, 'list_symbols', { file });
+            expect(result.status).toBe(400);
+            expect(result.body.success).toBe(false);
+            expect(result.body.error.message).toContain('not available');
+        }
     });
 });

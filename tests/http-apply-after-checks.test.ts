@@ -30,7 +30,7 @@ function unwrap(result: any): any {
     }
 }
 
-bindDescribe('apply_after_checks (guarded apply)', () => {
+bindDescribe('safe_write (guarded apply)', () => {
     let server: HTTPServer;
     const host = '127.0.0.1';
     const port = 7019;
@@ -77,10 +77,11 @@ export class TestClass {
 
     test('stages patch, runs checks, attempts apply (structured result)', async () => {
         // Using apply_patch format patch: apply may or may not succeed depending on patch engine support.
-        const patch = `*** Begin Patch\n*** Update File: ${tempFileRel}\n@@\n export class TestClass {\n-    private value: number = 0;\n+    // apply_after_checks noop\n+    private value: number = 0;\n*** End Patch\n`;
+        const patch = `*** Begin Patch\n*** Update File: ${tempFileRel}\n@@\n export class TestClass {\n-    private value: number = 0;\n+    // safe_write noop\n+    private value: number = 0;\n*** End Patch\n`;
 
-        const res = await callTool(base, 'apply_after_checks', {
+        const res = await callTool(base, 'safe_write', {
             patch,
+            apply: false,
             commands: ['true'], // minimal check for speed/stability
             timeoutSec: 60,
         });
@@ -93,10 +94,11 @@ export class TestClass {
     }, 30000);
 
     test('returns HTTP success with domain ok=false when guarded checks fail', async () => {
-        const patch = `*** Begin Patch\n*** Update File: ${tempFileRel}\n@@\n export class TestClass {\n-    private value: number = 0;\n+    // apply_after_checks failed-check noop\n+    private value: number = 0;\n*** End Patch\n`;
+        const patch = `*** Begin Patch\n*** Update File: ${tempFileRel}\n@@\n export class TestClass {\n-    private value: number = 0;\n+    // safe_write failed-check noop\n+    private value: number = 0;\n*** End Patch\n`;
 
-        const res = await callTool(base, 'apply_after_checks', {
+        const res = await callTool(base, 'safe_write', {
             patch,
+            apply: true,
             commands: ['false'],
             timeoutSec: 60,
         });

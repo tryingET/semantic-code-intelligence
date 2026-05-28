@@ -43,7 +43,7 @@ const grep = new AsyncEnhancedGrep();
 
         const created = await AnalyzerFactory.createWorkspaceAnalyzer(testDir, undefined);
         analyzer = created.analyzer;
-        mcpAdapter = new MCPAdapter(analyzer);
+        mcpAdapter = new MCPAdapter(analyzer, { surface: 'registry' });
     });
 
     afterAll(async () => {

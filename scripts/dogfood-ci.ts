@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
 /**
- * Dogfood (HTTP tools) CI runner
+ * Dogfood (HTTP Alpha tools) CI runner
  * - Starts a local HTTP server on a test port with a bounded workspace
- * - Executes three primary flows via /api/v1/tools/call
- *   1) explore_symbol_impact (precise on) and explore_codebase (conceptual off/on)
- *   2) rename_safely (preview+snapshot with checks disabled for speed)
- *   3) patch_checks_in_snapshot (quick typecheck only)
+ * - Exercises only the Alpha MVP /api/v1/tools/call membrane:
+ *   1) find_definition, find_references, graph_expand
+ *   2) safe_write preview (no working-tree mutation)
+ *   3) patch_checks_in_snapshot
  * - Prints a concise JSON summary to stdout
  */
 
@@ -19,7 +19,6 @@ async function postJson(url: string, payload: any): Promise<any> {
   });
   let body: any = null;
   try { body = await res.json(); } catch { body = null; }
-  // Always return parsed body even on non-2xx; include status for diagnostics
   return { _httpStatus: res.status, ...(body || {}) };
 }
 
@@ -32,14 +31,11 @@ async function callTool(base: string, args: ToolCallArgs): Promise<any> {
 }
 
 async function main() {
-  // Bounded, deterministic workspace
   const workspaceRoot = process.env.WORKSPACE_ROOT || 'tests/fixtures';
   process.env.CI = process.env.CI || '1';
   process.env.SILENT_MODE = '1';
-  // Keep stdout reserved for the final JSON summary (avoid noisy logs)
   process.env.STDIO_MODE = process.env.STDIO_MODE || '1';
 
-  // Start local HTTP server on a dedicated test port
   const host = '127.0.0.1';
   const port = Number(process.env.DOGFOOD_HTTP_PORT || 7051);
   process.env.HTTP_API_PORT = String(port);
@@ -48,56 +44,50 @@ async function main() {
   await server.start();
 
   const base = `http://${host}:${port}`;
-
-  const file = 'tests/fixtures/example.ts';
+  const file = 'example.ts';
   const symbol = 'TestClass';
-  const renameTarget = 'TestFunction';
 
   const timings: Record<string, number> = {};
   const t0 = (k: string) => (timings[k] = Date.now());
   const t1 = (k: string) => (timings[k] = Date.now() - timings[k]);
 
-  // 1) Explore flows
-  t0('explore_symbol_impact');
-  const exploreImpact = await callTool(base, {
-    name: 'explore_symbol_impact',
-    arguments: { symbol, file, precise: true, depth: 1, limit: 50 },
+  t0('find_definition');
+  const definition = await callTool(base, {
+    name: 'find_definition',
+    arguments: { symbol, file, precise: true, maxResults: 20 },
   });
-  t1('explore_symbol_impact');
+  t1('find_definition');
 
-  t0('explore_codebase_off');
-  const exploreOff = await callTool(base, {
-    name: 'explore_codebase',
-    arguments: { symbol, file, conceptual: false },
+  t0('find_references');
+  const references = await callTool(base, {
+    name: 'find_references',
+    arguments: { symbol, file, includeDeclaration: true, maxResults: 50 },
   });
-  t1('explore_codebase_off');
+  t1('find_references');
 
-  t0('explore_codebase_on');
-  const exploreOn = await callTool(base, {
-    name: 'explore_codebase',
-    arguments: { symbol, file, conceptual: true },
+  t0('graph_expand');
+  const graph = await callTool(base, {
+    name: 'graph_expand',
+    arguments: { file, edges: ['imports', 'exports'], depth: 1, limit: 50 },
   });
-  t1('explore_codebase_on');
+  t1('graph_expand');
 
-  // 2) Safe rename workflow (checks disabled for speed)
-  t0('rename_safely');
-  const renameResult = await callTool(base, {
-    name: 'rename_safely',
-    arguments: { oldName: renameTarget, newName: `${renameTarget}X`, file, runChecks: false, timeoutSec: 60 },
+  const patch = `*** Begin Patch\n*** Update File: example.ts\n@@\n export class TestClass {\n-    private value: number = 0;\n+    /* ci: noop */\n+    private value: number = 0;\n*** End Patch\n`;
+
+  t0('safe_write');
+  const safeWrite = await callTool(base, {
+    name: 'safe_write',
+    arguments: { patch, commands: ['true'], timeoutSec: 60, apply: false, brief: true },
   });
-  t1('rename_safely');
+  t1('safe_write');
 
-  // 3) Patch + checks (typecheck only)
-  const patch = `*** Begin Patch\n*** Update File: tests/fixtures/example.ts\n@@\n export class TestClass {\n-    private value: number = 0;\n+    /* ci: noop */\n+    private value: number = 0;\n*** End Patch\n`;
   t0('patch_checks');
   const patchResult = await callTool(base, {
     name: 'patch_checks_in_snapshot',
-    arguments: { patch, commands: ['bun run typecheck'], timeoutSec: 120 },
+    arguments: { patch, commands: ['true'], timeoutSec: 60 },
   });
   t1('patch_checks');
 
-  // Summaries
-  // Metrics snapshot (L1/L2 p95 + counts)
   let metrics: any = {};
   try {
     const m = await fetch(`${base}/metrics?format=json`).then((r) => r.json());
@@ -126,9 +116,10 @@ async function main() {
   }
 
   const toolCounts = {
-    explore_symbol_impact: 1,
-    explore_codebase: 2,
-    rename_safely: 1,
+    find_definition: 1,
+    find_references: 1,
+    graph_expand: 1,
+    safe_write: 1,
     patch_checks_in_snapshot: 1,
   };
 
@@ -143,24 +134,15 @@ async function main() {
     timingsMs: timings,
     metrics,
     toolCounts,
-    explore: {
-      impact: {
-        defs: exploreImpact?.definitions?.length ?? 0,
-        neighbors: Object.keys(exploreImpact?.neighbors || {}).reduce((a: number, k: string) => a + ((exploreImpact?.neighbors?.[k] || []).length), 0),
-      },
-      off: {
-        defs: exploreOff?.definitions?.length ?? 0,
-        refs: exploreOff?.references?.length ?? 0,
-      },
-      on: {
-        defs: exploreOn?.definitions?.length ?? 0,
-        refs: exploreOn?.references?.length ?? 0,
-      },
+    navigation: {
+      definitions: definition?.definitions?.length ?? definition?.count ?? 0,
+      references: references?.references?.length ?? references?.count ?? 0,
+      graphNodes: Object.keys(graph?.neighbors || {}).reduce((a: number, k: string) => a + ((graph?.neighbors?.[k] || []).length), 0),
     },
-    rename: {
-      ok: !!renameResult?.ok || !!renameResult?.accepted || false,
-      snapshot: renameResult?.snapshot || null,
-      files: typeof renameResult?.changes === 'object' ? Object.keys(renameResult?.changes).length : undefined,
+    safeWrite: {
+      ok: !!safeWrite?.ok,
+      snapshot: safeWrite?.snapshot || null,
+      applied: !!safeWrite?.applied,
     },
     patchChecks: {
       ok: !!patchResult?.ok,
@@ -168,18 +150,11 @@ async function main() {
     },
   };
 
-  console.log(JSON.stringify(summary, null, 2));
-
   await server.stop();
-  // Ensure CI never hangs due to stray timers/handles (e.g., schedulers)
-  process.exit(0);
+  console.log(JSON.stringify(summary, null, 2));
 }
 
-main().catch(async (err) => {
-  console.error('[dogfood-ci] failed:', err);
-  try {
-    // Best-effort cleanup if server was started but not tracked
-    await fetch('http://127.0.0.1:7051/health').then(() => {}).catch(() => {});
-  } catch {}
+main().catch((err) => {
+  console.error(JSON.stringify({ error: String(err?.message || err) }));
   process.exit(1);
 });

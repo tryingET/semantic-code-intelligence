@@ -310,9 +310,9 @@ export function createOpenApiResponse(apiVersion?: string): HttpOpenApiResponse 
             paths: {
                 [api('/tools/call')]: {
                     post: {
-                        summary: 'Execute a registered tool/workflow (MCP parity)',
+                        summary: 'Execute an Alpha MVP tool (MCP/CLI parity)',
                         description:
-                            'Generic tools endpoint. Body provides the tool name and arguments. Examples: list_pipelines, run_pipeline, list_pipeline_runs, locate_confirm_definition, rename_safely, patch_checks_in_snapshot.',
+                            'Generic Alpha MVP tools endpoint. Body provides the contract-supported tool name and arguments; registered legacy, pipeline, diagnostic, or compatibility tools are intentionally not exposed here.',
                         requestBody: {
                             required: true,
                             content: {
@@ -326,84 +326,28 @@ export function createOpenApiResponse(apiVersion?: string): HttpOpenApiResponse 
                                     'application/json': {
                                         schema: { $ref: '#/components/schemas/ToolCallResponse' },
                                         examples: {
-                                            list_pipelines: {
-                                                summary: 'List pipelines',
+                                            read_file: {
+                                                summary: 'Read a bounded workspace file range',
                                                 value: {
                                                     success: true,
                                                     result: {
-                                                        pipelines: [
-                                                            {
-                                                                id: 'pattern_feedback_cycle',
-                                                                name: 'Pattern-Feedback Learning Cycle',
-                                                                trigger: 'event_driven',
-                                                                schedule: null,
-                                                                enabled: true,
-                                                            },
-                                                        ],
+                                                        path: 'docs/project/alpha-mvp-contract.md',
+                                                        range: { startLine: 1, endLine: 8 },
+                                                        content: '---\nsummary: "Alpha MVP contract..."',
+                                                        truncated: false,
                                                     },
                                                 },
                                             },
-                                            run_pipeline: {
-                                                summary: 'Run pipeline',
-                                                value: { success: true, result: { ok: true, runId: '<uuid>' } },
-                                            },
-                                            list_runs: {
-                                                summary: 'List recent pipeline runs',
+                                            safe_write_preview: {
+                                                summary: 'Preview/check a patch without mutating the working tree',
                                                 value: {
                                                     success: true,
                                                     result: {
-                                                        runs: [
-                                                            {
-                                                                id: '<uuid>',
-                                                                pipeline_id: 'pattern_feedback_cycle',
-                                                                started_at: 1710000000,
-                                                                finished_at: 1710000005,
-                                                                status: 'success',
-                                                                metrics: { totalTimeMs: 42 },
-                                                            },
-                                                        ],
-                                                    },
-                                                },
-                                            },
-                                            locate_confirm_definition: {
-                                                summary: 'Locate & confirm definition',
-                                                value: {
-                                                    success: true,
-                                                    result: {
-                                                        $schema: '#/components/schemas/LocateConfirmDefinitionResult',
+                                                        workflow: 'safe_write',
                                                         ok: true,
-                                                        symbol: 'TestClass',
-                                                        attempts: [{ mode: 'precise', count: 1 }],
-                                                        definitions: [
-                                                            {
-                                                                uri: 'file:///workspace/tests/fixtures/example.ts',
-                                                                range: {
-                                                                    start: { line: 4, character: 7 },
-                                                                    end: { line: 4, character: 16 },
-                                                                },
-                                                                kind: 'class',
-                                                                confidence: 0.95,
-                                                            },
-                                                        ],
-                                                        decision: 'precise_retry',
-                                                    },
-                                                },
-                                            },
-                                            rename_safely: {
-                                                summary: 'Safe rename (snapshot + checks)',
-                                                value: {
-                                                    success: true,
-                                                    result: {
-                                                        $schema: '#/components/schemas/SafeRenameResult',
-                                                        ok: true,
+                                                        mode: 'preview_validate',
                                                         snapshot: '<snapshot-id>',
-                                                        filesAffected: 1,
-                                                        totalEdits: 3,
-                                                        elapsedMs: 850,
-                                                        next_actions: [
-                                                            'Optionally apply this patch to working tree',
-                                                            'Open snapshot diff: snapshot://<snapshot-id>/overlay.diff',
-                                                        ],
+                                                        applied: false,
                                                     },
                                                 },
                                             },

@@ -56,7 +56,23 @@ async function workflow(name: string, args: Record<string, unknown>, options: { 
     return parseWorkflow(res.stdout);
 }
 
+async function workflowFailure(name: string, args: Record<string, unknown>, options: { cwd?: string } = {}) {
+    const res = await runCli(['workflow', name, '--args', JSON.stringify(args), '--json'], options);
+    expect(res.code, `${name} should fail`).not.toBe(0);
+    expect(res.stderr).not.toContain('[HTTP Server]');
+    return JSON.parse(res.stdout.trim() || '{}');
+}
+
 describe('Alpha MVP CLI fallback parity', () => {
+    test('generic workflow command rejects registered non-Alpha tools', async () => {
+        for (const name of ['rename_safely', 'plan_rename', 'list_pipelines', 'get_completions']) {
+            const refused = await workflowFailure(name, {});
+            expect(refused.success, `${name} should fail`).toBe(false);
+            expect(refused.error?.code, `${name} should be an Alpha membrane error`).toBe('InvalidParams');
+            expect(refused.error?.message, `${name} should report Alpha membrane`).toContain('not available');
+        }
+    }, 60000);
+
     test('generic workflow command executes read/navigation tools with machine-readable stdout', async () => {
         const read = await workflow('read_file', {
             path: 'docs/project/alpha-mvp-contract.md',
@@ -204,18 +220,15 @@ ${initial.trimEnd()}
             appliedDiffMatchesSnapshot: null,
         });
 
-        const refusedApply = await workflow('safe_write', {
+        const refusedApply = await workflowFailure('safe_write', {
             patch: patchPlanningDiff,
             commands: ['true'],
             timeoutSec: 30,
             apply: true,
         });
-        expect(refusedApply.payload.workflow).toBe('safe_write');
-        expect(refusedApply.payload.ok).toBe(false);
-        expect(refusedApply.payload.applied).toBe(false);
-        expect(refusedApply.payload.applyResult?.message).toBe('ALLOW_SNAPSHOT_APPLY=1 required');
-        expect(refusedApply.payload.rollback?.command).toContain('workflow apply_snapshot');
-        expect(refusedApply.payload.rollback?.command).toContain('reverse');
+        expect(refusedApply.success).toBe(false);
+        expect(refusedApply.error?.code).toBe('InvalidParams');
+        expect(refusedApply.error?.message).toContain('safe_write apply requires ALLOW_SNAPSHOT_APPLY=1');
 
         const after = await Bun.file(patchPlanningTarget).text();
         expect(after).toBe(before);

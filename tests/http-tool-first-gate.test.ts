@@ -48,50 +48,33 @@ bindDescribe('Tool-First Gate (HTTP tools/call)', () => {
         delete process.env.HTTP_API_PORT;
     });
 
-    test('locate_confirm_definition returns ≥1 definition', async () => {
-        const result = await callTool(base, 'locate_confirm_definition', {
+    test('find_definition returns ≥1 definition', async () => {
+        const result = await callTool(base, 'find_definition', {
             symbol: 'TestClass',
-            // no file hint to allow workspace search + precise retry
+            file: `file://${fixtureFile}`,
+            precise: true,
+            maxResults: 10,
         });
         const out = parseContent(result);
         expect(out).toBeDefined();
-        expect(out.ok).toBe(true);
+        expect(out.count).toBeGreaterThan(0);
         expect(Array.isArray(out.definitions)).toBe(true);
-        expect(out.definitions.length).toBeGreaterThan(0);
     });
 
-    test('rename_safely (runChecks=false) yields snapshot + diff', async () => {
-        // First, ensure plan_rename produces a non-empty plan for the fixture
-        const planRes = await callTool(base, 'plan_rename', {
-            oldName: 'TestFunction',
-            newName: 'TestFunctionX',
-            file: `file://${fixtureFile}`,
-            dryRun: true,
-        });
-        const plan = parseContent(planRes);
-        const filesAffected = plan?.summary?.filesAffected ?? Object.keys(plan?.changes || {}).length;
-        const totalEdits =
-            plan?.summary?.totalEdits ??
-            Object.values(plan?.changes || {}).reduce((a: number, v: any) => a + (Array.isArray(v) ? v.length : 0), 0);
-        expect(filesAffected + totalEdits).toBeGreaterThan(0);
-
-        // Then, run the safe workflow without checks; expect structured output and a snapshot id
-        const result = await callTool(base, 'rename_safely', {
-            oldName: 'TestFunction',
-            newName: 'TestFunctionX',
-            file: `file://${fixtureFile}`,
-            runChecks: false,
+    test('safe_write preview yields snapshot + diff without mutating workspace', async () => {
+        const patch = `*** Begin Patch\n*** Update File: tests/fixtures/example.ts\n@@\n export function TestFunction(param: string): string {\n-    return \`Hello, \${param}!\`;\n+    return \`Hello from safe_write preview, \${param}!\`;\n }\n*** End Patch\n`;
+        const result = await callTool(base, 'safe_write', {
+            patch,
+            apply: false,
+            commands: ['true'],
+            timeoutSec: 60,
         });
         const out = parseContent(result);
         expect(out).toBeDefined();
+        expect(out.workflow).toBe('safe_write');
+        expect(out.ok).toBe(true);
         expect(typeof out.snapshot).toBe('string');
-        // Prefer ok=true, but accept a structured no_changes preview in constrained envs
-        if (out.ok === false) {
-            expect(out.reason).toBe('no_changes');
-        } else {
-            expect(out.ok).toBe(true);
-            expect((out.filesAffected ?? 0) + (out.totalEdits ?? 0)).toBeGreaterThan(0);
-        }
+        expect(out.applied).toBe(false);
     });
 
     test('patch_checks_in_snapshot (onlyTouched=true) with tiny apply_patch diff', async () => {

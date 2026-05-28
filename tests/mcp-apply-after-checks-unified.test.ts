@@ -23,7 +23,7 @@ describe('MCP apply_after_checks with unified diff (applied=true)', () => {
         process.env.ALLOW_SNAPSHOT_APPLY = '1';
         const analyzer = await createCodeAnalyzer({ workspaceRoot: process.cwd() });
         await (analyzer as any).initialize?.();
-        mcp = new MCPAdapter(analyzer);
+        mcp = new MCPAdapter(analyzer, { surface: 'registry' });
     });
 
     afterAll(async () => {

@@ -10,6 +10,7 @@
  */
 
 import { CoreError } from '../core/errors.js';
+import { assertAlphaMvpToolAllowed } from '../core/tools/alpha-surface.js';
 import { withMcpErrorHandling } from '../mcp/error-handler.js';
 import { listMcpTools } from '../mcp/tool-list.js';
 import {
@@ -26,15 +27,16 @@ import { handleAdapterError } from './utils.js';
 
 export interface MCPAdapterConfig {
     maxResults?: number;
+    surface?: 'alpha' | 'registry';
 }
 
-const SUPPORTED_CONFIG_FIELDS = new Set<PropertyKey>(['maxResults']);
+const SUPPORTED_CONFIG_FIELDS = new Set<PropertyKey>(['maxResults', 'surface']);
 const MAX_CONFIGURED_RESULTS = 1000;
 
 function normalizeMcpAdapterConfig(config: unknown): MCPAdapterConfig {
     if (!isPlainConfigObject(config)) {
         throw new CoreError('InvalidParams', 'MCPAdapter config must be a plain object', {
-            remediation: 'Pass an object with only the maxResults field, or omit config entirely.',
+            remediation: 'Pass an object with only maxResults/surface fields, or omit config entirely.',
         });
     }
 
@@ -43,7 +45,7 @@ function normalizeMcpAdapterConfig(config: unknown): MCPAdapterConfig {
         throw new CoreError('InvalidParams', `Unsupported MCPAdapter config field(s): ${unsupported.map(formatConfigFieldName).join(', ')}`, {
             unsupported: unsupported.map(formatConfigFieldName),
             remediation:
-                'Keep MCPAdapter config to maxResults only; use registry/tool arguments for execution policy and MCP server environment variables for transports.',
+                'Keep MCPAdapter config to maxResults/surface only; use registry/tool arguments for execution policy and MCP server environment variables for transports.',
         });
     }
 
@@ -56,6 +58,12 @@ function normalizeMcpAdapterConfig(config: unknown): MCPAdapterConfig {
                 max: MAX_CONFIGURED_RESULTS,
             });
         }
+    }
+    if ('surface' in config && config.surface !== undefined && config.surface !== 'alpha' && config.surface !== 'registry') {
+        throw new CoreError('InvalidParams', "MCPAdapter config surface must be 'alpha' or 'registry'", {
+            field: 'surface',
+            value: config.surface,
+        });
     }
 
     return config;
@@ -95,7 +103,7 @@ export class MCPAdapter {
      * Get available MCP tools
      */
     getTools() {
-        return listMcpTools();
+        return listMcpTools({ surface: this.config.surface || 'alpha' });
     }
 
     /**
@@ -140,6 +148,9 @@ export class MCPAdapter {
             });
 
             try {
+                if (this.config.surface !== 'registry') {
+                    assertAlphaMvpToolAllowed(name, args, { surface: 'MCP tool surface' });
+                }
                 this.toolRunner.validate(name, args);
             } catch (error) {
                 if (options.convertValidationErrorsToResult) {

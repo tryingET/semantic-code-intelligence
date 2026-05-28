@@ -48,12 +48,9 @@ export class FastMCPServer {
     private setupHandlers(): void {
         // List available tools - return immediately without initialization; allow filtering for stdio
         this.server.setRequestHandler(ListToolsRequestSchema, async () => {
-            const { listMcpTools } = await import('../mcp/tool-list.js');
+            const { fastStdioToolListOptions, listMcpTools } = await import('../mcp/tool-list.js');
             return {
-                tools: listMcpTools({
-                    mode: process.env.FAST_STDIO_LIST_MODE || 'workflows',
-                    preferRenamed: process.env.FAST_STDIO_PREFER_RENAMED === '1',
-                }),
+                tools: listMcpTools(fastStdioToolListOptions()),
             } as any;
         });
 

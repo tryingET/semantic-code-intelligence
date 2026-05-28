@@ -25,7 +25,7 @@ describe('MCP apply_after_checks add-new-file (unified)', () => {
         process.env.ALLOW_SNAPSHOT_APPLY = '1';
         const analyzer = await createCodeAnalyzer({ workspaceRoot: process.cwd() });
         await (analyzer as any).initialize?.();
-        mcp = new MCPAdapter(analyzer);
+        mcp = new MCPAdapter(analyzer, { surface: 'registry' });
     });
 
     afterAll(async () => {

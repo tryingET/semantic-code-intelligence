@@ -26,6 +26,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { parseIntegerOption, strictJsonParse } from '../adapters/utils.js';
 import { CoreError, isCoreError } from '../core/errors.js';
+import { assertAlphaMvpToolAllowed } from '../core/tools/alpha-surface.js';
 import { workspaceInputToPath } from '../core/workspace-input.js';
 import { openWorkspaceFileForRead } from '../core/workspace-path.js';
 import { recordToolStart, recordToolEnd, pushToGateway, getPushgatewayUrl } from '../instrumentation/metrics.js';
@@ -573,6 +574,7 @@ class CLI {
                     if (!args || typeof args !== 'object' || Array.isArray(args)) {
                         throw new CoreError('InvalidParams', 'Arguments must be a JSON object');
                     }
+                    assertAlphaMvpToolAllowed(String(name), args, { surface: 'CLI workflow surface' });
                     const result = await this.executeToolWorkflow(String(name), args);
                     const printed = this.printToolResult(result, !!options.json);
                     if (this.isToolResultError(result)) {

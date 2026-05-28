@@ -275,7 +275,7 @@ e2e-local: start-test-http
 
 dogfood:
     @echo "🥣 Dogfooding (stdio MCP) — fast path" 
-    @echo "   Steps: explore(off/on) → plan_rename → get_snapshot+propose_patch"
+    @echo "   Steps: legacy registry dogfood → get_snapshot+propose_patch"
     @echo "   Flags: -w|--workspace <dir> (default: tests/fixtures), -f|--file, -s|--symbol, --full"
     @CI=1 ~/.bun/bin/bun run scripts/dogfood-mcp.ts
 
@@ -306,7 +306,7 @@ dogfood_progress:
 # CI-friendly dogfood using HTTP tools
 dogfood_ci:
     @echo "🥣 Dogfooding (HTTP tools) — CI summary" 1>&2
-    @echo "   Runs: explore → rename_safely → patch_checks_in_snapshot" 1>&2
+    @echo "   Runs: find_definition/find_references/graph_expand → safe_write preview → patch_checks_in_snapshot" 1>&2
     @CI=1 WORKSPACE_ROOT=tests/fixtures ~/.bun/bin/bun run scripts/dogfood-ci.ts
 
 # === BUILD COMMANDS ===

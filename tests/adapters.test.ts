@@ -372,63 +372,26 @@ describe('Protocol Adapters Integration', () => {
             expect(Array.isArray(result.content)).toBe(true);
         });
 
-        test('should handle get_completions tool correctly', async () => {
-            const mcpRequest = {
-                name: 'get_completions',
-                arguments: {
-                    file: testFile,
-                    position: testPosition,
-                    maxResults: 20,
-                },
-            };
-
-            const result = await context.adapters.mcp.handleToolCall(mcpRequest.name, mcpRequest.arguments);
+        test('should reject get_completions outside the Alpha MCP membrane', async () => {
+            const result = await context.adapters.mcp.handleToolCall('get_completions', {
+                file: testFile,
+                position: testPosition,
+                maxResults: 20,
+            });
 
             expect(result).toBeDefined();
-            expect(result).toHaveProperty('content');
-            expect(Array.isArray(result.content)).toBe(true);
-
-            const text = result.content?.[0]?.text;
-            expect(typeof text).toBe('string');
-            const payload = JSON.parse(text);
-            expect(Array.isArray(payload.completions)).toBe(true);
-            expect(payload.completions.length).toBeGreaterThan(0);
-            expect(typeof payload.completions[0].label).toBe('string');
-            expect(typeof payload.completions[0].kind).toBe('number');
-            expect(payload.completions[0].kind).toBeGreaterThanOrEqual(1);
-            expect(payload.completions[0].kind).toBeLessThanOrEqual(25);
+            expect(result).toHaveProperty('isError', true);
+            expect(result.error.message).toContain('not available');
         });
 
-        test('should handle rename_symbol tool correctly', async () => {
-            const mcpRequest = {
-                name: 'rename_symbol',
-                arguments: {
-                    oldName: testSymbol,
-                    newName: 'RenamedFunction',
-                    preview: true,
-                },
-            };
+        test('should reject non-Alpha MCP tools through the adapter membrane', async () => {
+            for (const name of ['rename_symbol', 'generate_tests']) {
+                const result = await context.adapters.mcp.handleToolCall(name, {});
 
-            const result = await context.adapters.mcp.handleToolCall(mcpRequest.name, mcpRequest.arguments);
-
-            expect(result).toBeDefined();
-            expect(result).toHaveProperty('content');
-        });
-
-        test('should handle generate_tests tool correctly', async () => {
-            const mcpRequest = {
-                name: 'generate_tests',
-                arguments: {
-                    target: testFile,
-                    framework: 'bun',
-                    coverage: 'comprehensive',
-                },
-            };
-
-            const result = await context.adapters.mcp.handleToolCall(mcpRequest.name, mcpRequest.arguments);
-
-            expect(result).toBeDefined();
-            expect(result).toHaveProperty('content');
+                expect(result).toBeDefined();
+                expect(result).toHaveProperty('isError', true);
+                expect(result.error.message).toContain('not available');
+            }
         });
 
         test('should provide correct MCP tool list', async () => {
@@ -440,8 +403,10 @@ describe('Protocol Adapters Integration', () => {
             const toolNames = tools.map((tool) => tool.name);
             expect(toolNames).toContain('find_definition');
             expect(toolNames).toContain('find_references');
-            expect(toolNames).toContain('rename_symbol');
-            expect(toolNames).toContain('generate_tests');
+            expect(toolNames).toContain('safe_write');
+            expect(toolNames).toContain('patch_checks_in_snapshot');
+            expect(toolNames).not.toContain('rename_symbol');
+            expect(toolNames).not.toContain('generate_tests');
         });
 
         test('should handle invalid MCP tool requests gracefully', async () => {
@@ -778,17 +743,17 @@ describe('Protocol Adapters Integration', () => {
             expect(Array.isArray(result)).toBe(true);
         });
 
-        test('should maintain compatibility with existing MCP tools', async () => {
+        test('should maintain the Alpha MCP tool membrane', async () => {
             const tools = context.adapters.mcp.getTools();
 
-            // Should have all expected MCP tools
             const toolNames = tools.map((tool) => tool.name);
             expect(toolNames).toContain('find_definition');
             expect(toolNames).toContain('find_references');
-            expect(toolNames).toContain('rename_symbol');
-            expect(toolNames).toContain('generate_tests');
+            expect(toolNames).toContain('safe_write');
+            expect(toolNames).toContain('patch_checks_in_snapshot');
+            expect(toolNames).not.toContain('rename_symbol');
+            expect(toolNames).not.toContain('generate_tests');
 
-            // Each tool should have proper schema
             tools.forEach((tool) => {
                 expect(tool).toHaveProperty('name');
                 expect(tool).toHaveProperty('description');

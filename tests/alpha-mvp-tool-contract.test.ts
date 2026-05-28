@@ -1,6 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
+import { ALPHA_MVP_TOOL_NAMES, assertAlphaMvpToolAllowed } from '../src/core/tools/alpha-surface';
 import { ToolRegistry } from '../src/core/tools/registry';
+import { assertHttpToolAllowed, defaultHttpToolNames } from '../src/core/workflows/http-tool-policy';
+import { listMcpTools } from '../src/mcp/tool-list';
 import { HTTPServer } from '../src/servers/http';
 import { canBindTcp } from './helpers/bind-utils';
 
@@ -20,21 +23,19 @@ const patchPlanningDiff = `diff --git a/${patchPlanningTarget} b/${patchPlanning
 const hasAstGrep = spawnSync('bash', ['-lc', 'command -v ast-grep >/dev/null 2>&1'], { stdio: 'ignore' }).status === 0;
 const structuralTest = hasAstGrep ? test : test.skip;
 
-const alphaMvpTools = [
-    'get_snapshot',
-    'read_file',
-    'text_search',
-    'symbol_search',
-    'ast_query',
-    'find_definition',
-    'find_references',
-    'graph_expand',
-    'recommend_checks',
-    'propose_patch',
-    'run_checks',
-    'structural_search',
-    'structural_patch_checks',
-    'safe_write',
+const alphaMvpTools = [...ALPHA_MVP_TOOL_NAMES];
+
+const nonAlphaToolNames = [
+    'workflow_safe_rename',
+    'rename_safely',
+    'plan_rename',
+    'apply_rename',
+    'rename_symbol',
+    'get_completions',
+    'generate_tests',
+    'cache_controls',
+    'list_pipelines',
+    'locate_confirm_definition',
 ];
 
 async function callTool(base: string, name: string, args: Record<string, unknown>) {
@@ -52,6 +53,47 @@ describe('Alpha MVP tool contract', () => {
         for (const name of alphaMvpTools) {
             expect(toolNames.has(name), `${name} should be registered`).toBe(true);
         }
+    });
+
+    test('MCP and HTTP use the same Alpha MVP exposure membrane', () => {
+        const mcpNames = listMcpTools().map((tool) => tool.name).sort();
+        const httpNames = [...defaultHttpToolNames()].sort();
+        const expected = [...alphaMvpTools].sort();
+
+        expect(mcpNames).toEqual(expected);
+        expect(httpNames).toEqual(expected);
+        for (const name of nonAlphaToolNames) {
+            expect(mcpNames).not.toContain(name);
+            expect(httpNames).not.toContain(name);
+        }
+    });
+
+    test('Alpha helper allowlist narrows the membrane instead of widening it', () => {
+        expect(() => assertAlphaMvpToolAllowed('no_such_tool', {}, { allowedToolNames: ['no_such_tool'] })).toThrow(
+            /Unknown tool/
+        );
+        expect(() => assertAlphaMvpToolAllowed('rename_safely', {}, { allowedToolNames: ['rename_safely'] })).toThrow(
+            /not available/
+        );
+        expect(() => assertAlphaMvpToolAllowed('read_file', { path: 'README.md' }, { allowedToolNames: ['read_file'] })).not.toThrow();
+        expect(() => assertAlphaMvpToolAllowed('text_search', { query: 'alpha' }, { allowedToolNames: ['read_file'] })).toThrow(
+            /not available/
+        );
+    });
+
+    test('HTTP adapter allowlist narrows the Alpha membrane instead of widening it', () => {
+        expect(() =>
+            assertHttpToolAllowed('rename_safely', {}, { surface: 'HTTP adapter surface', allowedToolNames: ['rename_safely'] })
+        ).toThrow(/not available/);
+        expect(() =>
+            assertHttpToolAllowed('list_files', {}, { surface: 'HTTP adapter surface', allowedToolNames: ['list_files'] })
+        ).toThrow(/not available/);
+        expect(() =>
+            assertHttpToolAllowed('read_file', { path: 'README.md' }, { surface: 'HTTP adapter surface', allowedToolNames: ['read_file'] })
+        ).not.toThrow();
+        expect(() =>
+            assertHttpToolAllowed('text_search', { query: 'alpha' }, { surface: 'HTTP adapter surface', allowedToolNames: ['read_file'] })
+        ).toThrow(/not available/);
     });
 
     test('navigation operations advertise bounded input caps or scope hints', () => {
@@ -117,6 +159,15 @@ bindDescribe('Alpha MVP HTTP tools/call contract', () => {
         expect(status).toBe(400);
         expect(body.success).toBe(false);
         expect(body.error.message).toContain('workspace');
+    });
+
+    test('HTTP tools/call rejects registered non-Alpha tools', async () => {
+        for (const name of nonAlphaToolNames) {
+            const { status, body } = await callTool(base, name, {});
+            expect(status, `${name} should be rejected`).toBe(400);
+            expect(body.success, `${name} should fail`).toBe(false);
+            expect(body.error.message, `${name} should report Alpha membrane`).toContain('not available');
+        }
     });
 
     test('navigation cluster returns bounded structured results', async () => {

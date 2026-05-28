@@ -94,14 +94,14 @@ const COMMON_PROMPTS: PromptSpec[] = [
                         role: 'assistant',
                         content: {
                             type: 'text',
-                            text: 'Use plan_rename first; for application use rename_safely into a snapshot. Prefer AST-validated hits.',
+                            text: 'Use Alpha MVP primitives only: locate/read the target, prepare a reviewed unified diff, then stage and check it with safe_write or propose_patch + run_checks.',
                         },
                     },
                     {
                         role: 'user',
                         content: {
                             type: 'text',
-                            text: `Intent: rename ${oldName} -> ${newName} at ${file}\nSteps:\n1) tools/call plan_rename ${inlineJson({ oldName, newName, file })}\n2) tools/call rename_safely ${inlineJson({ oldName, newName, file, runChecks, commands: [command], timeoutSec: 180 })}`,
+                            text: `Intent: rename ${oldName} -> ${newName} at ${file}\nSteps:\n1) tools/call find_definition ${inlineJson({ symbol: oldName, file, maxResults: 20, precise: true })}\n2) tools/call read_file ${inlineJson({ path: '<repo-relative-file-from-definition>', range: { startLine: 1, endLine: 120 } })}\n3) Prepare a unified diff replacing reviewed occurrences only.\n4) tools/call safe_write ${inlineJson({ patch: '<unified_diff>', commands: runChecks ? [command] : ['true'], timeoutSec: 180, apply: false })}`,
                         },
                     },
                 ],
@@ -125,7 +125,6 @@ const COMMON_PROMPTS: PromptSpec[] = [
         render: (args) => {
             const symbol = stringArg(args, 'symbol', '<symbol>');
             const file = stringArg(args, 'file', 'file://workspace');
-            const conceptual = booleanArg(args, 'conceptual', false);
             return {
                 description: 'Explore, build symbol map (AST-only), and expand graph neighbors',
                 messages: [
@@ -133,14 +132,14 @@ const COMMON_PROMPTS: PromptSpec[] = [
                         role: 'assistant',
                         content: {
                             type: 'text',
-                            text: 'Start broad with explore_codebase (optionally conceptual), then build_symbol_map (astOnly), then graph_expand symbol callers/callees or file imports/exports as appropriate.',
+                            text: 'Start with find_definition/find_references, then use graph_expand for bounded one-hop impact context. Stay within the Alpha MVP tool surface.',
                         },
                     },
                     {
                         role: 'user',
                         content: {
                             type: 'text',
-                            text: `Target: ${symbol} at ${file}\nSuggested tools:\n- tools/call explore_codebase ${inlineJson({ symbol, file, conceptual })}\n- tools/call build_symbol_map ${inlineJson({ symbol, file, maxFiles: 10, astOnly: true })}\n- tools/call graph_expand ${inlineJson({ symbol, edges: ['callers', 'callees'], depth: 1, limit: 50 })}\n- Optional: tools/call explore_symbol_impact ${inlineJson({ symbol, file, limit: 50 })}`,
+                            text: `Target: ${symbol} at ${file}\nSuggested tools:\n- tools/call find_definition ${inlineJson({ symbol, file, precise: true, maxResults: 20 })}\n- tools/call find_references ${inlineJson({ symbol, file, includeDeclaration: true, maxResults: 50 })}\n- tools/call graph_expand ${inlineJson({ symbol, edges: ['callers', 'callees'], depth: 1, limit: 50 })}`,
                         },
                     },
                 ],
@@ -206,7 +205,7 @@ const COMMON_PROMPTS: PromptSpec[] = [
                         role: 'user',
                         content: {
                             type: 'text',
-                            text: `Target: ${symbol} at ${file}\nSuggested tool:\n- tools/call locate_confirm_definition ${inlineJson({ symbol, file })}`,
+                            text: `Target: ${symbol} at ${file}\nSuggested tool:\n- tools/call find_definition ${inlineJson({ symbol, file, precise: true, maxResults: 20 })}`,
                         },
                     },
                 ],

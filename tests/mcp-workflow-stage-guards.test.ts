@@ -8,7 +8,7 @@ async function withMcp<T>(fn: (mcp: MCPAdapter) => Promise<T>): Promise<T> {
     const analyzer = await createCodeAnalyzer({ ...cfg, workspaceRoot: process.cwd() });
     await analyzer.initialize();
     try {
-        return await fn(new MCPAdapter(analyzer));
+        return await fn(new MCPAdapter(analyzer, { surface: 'registry' }));
     } finally {
         await analyzer.dispose?.();
     }
