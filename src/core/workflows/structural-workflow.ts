@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { CoreError } from '../errors.js';
 import { overlayStore } from '../overlay-store.js';
+import { workspaceInputToPath } from '../workspace-input.js';
 import { openWorkspaceFileForRead, resolveWorkspacePath } from '../workspace-path.js';
 import { snapshotArtifactLinks, type SnapshotWorkflowResult } from './snapshot-patch-workflow.js';
 
@@ -26,7 +27,7 @@ export async function normalizeStructuralPaths(pathsArg: any, workspaceRoot: str
     for (const raw of rawPaths) {
         const requested = String(raw || '').trim();
         if (!requested) continue;
-        const resolved = await resolveWorkspacePath(requested, {
+        const resolved = await resolveWorkspacePath(workspaceInputToPath(requested, workspaceRoot), {
             workspaceRoot,
             inputLabel: 'structural path',
             allowRoot: true,

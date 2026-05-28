@@ -26,6 +26,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { parseIntegerOption, strictJsonParse } from '../adapters/utils.js';
 import { CoreError, isCoreError } from '../core/errors.js';
+import { workspaceInputToPath } from '../core/workspace-input.js';
+import { openWorkspaceFileForRead } from '../core/workspace-path.js';
 import { recordToolStart, recordToolEnd, pushToGateway, getPushgatewayUrl } from '../instrumentation/metrics.js';
 
 class CLI {
@@ -361,7 +363,7 @@ class CLI {
                 await this.ensureInitialized(options);
                 let patch = '';
                 if (options.file) {
-                    patch = fs.readFileSync(path.resolve(options.file), 'utf8');
+                    patch = await this.readWorkspaceInputFile(String(options.file), 'propose-patch file');
                 } else {
                     patch = fs.readFileSync(0, 'utf8'); // stdin
                 }
@@ -563,8 +565,7 @@ class CLI {
                     await this.ensureInitialized(options);
                     let args: Record<string, any> = {};
                     if (options.argsFile) {
-                        const p = path.resolve(String(options.argsFile));
-                        const body = fs.readFileSync(p, 'utf8');
+                        const body = await this.readWorkspaceInputFile(String(options.argsFile), 'workflow args-file');
                         args = strictJsonParse(body);
                     } else if (options.args) {
                         args = strictJsonParse(String(options.args));
@@ -637,7 +638,7 @@ class CLI {
                 await this.ensureInitialized(options);
                 let patch = '';
                 if (options.patchFile) {
-                    patch = fs.readFileSync(path.resolve(String(options.patchFile)), 'utf8');
+                    patch = await this.readWorkspaceInputFile(String(options.patchFile), 'patch-checks-in-snapshot patch-file');
                 } else {
                     patch = fs.readFileSync(0, 'utf8'); // stdin
                 }
@@ -869,6 +870,22 @@ class CLI {
             return JSON.stringify({ success: false, error: payload }, null, 2);
         }
         return `Workflow failed: ${payload.message}`;
+    }
+
+    private async readWorkspaceInputFile(requestedPath: string, inputLabel: string): Promise<string> {
+        const normalizedPath = this.resolveCliFileInput(requestedPath);
+        const opened = await openWorkspaceFileForRead(normalizedPath, { workspaceRoot: this.workspaceRoot, inputLabel });
+        try {
+            return await opened.handle.readFile('utf8');
+        } finally {
+            await opened.handle.close().catch(() => undefined);
+        }
+    }
+
+    private resolveCliFileInput(requestedPath: string): string {
+        const raw = requestedPath.trim();
+        if (raw.startsWith('file://')) return workspaceInputToPath(raw, this.workspaceRoot);
+        return path.isAbsolute(raw) ? path.resolve(raw) : path.resolve(process.cwd(), raw);
     }
 
     private async ensureInitialized(options: any): Promise<void> {

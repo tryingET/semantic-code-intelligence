@@ -264,7 +264,7 @@ export class WorkspaceQueryWorkflowService {
         let opened: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
         try {
             const workspaceRoot = this.workspaceRoot;
-            opened = await openWorkspaceFileForRead(file, { workspaceRoot, inputLabel: 'list_symbols file' });
+            opened = await openWorkspaceFileForRead(this.pathInputFromToolFile(file, workspaceRoot), { workspaceRoot, inputLabel: 'list_symbols file' });
             const text = await opened.handle.readFile('utf8');
             const lines = text.split(/\r?\n/);
             const out: Array<{ name: string; kind: string; line: number; character: number }> = [];

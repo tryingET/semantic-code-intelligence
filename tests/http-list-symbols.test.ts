@@ -61,4 +61,12 @@ bindDescribe('HTTP tools: list_symbols (regex and AST paths)', () => {
         expect(typeof first.line).toBe('number');
         expect(typeof first.character).toBe('number');
     });
+
+    test('list_symbols accepts workspace URI file inputs', async () => {
+        const result = await callTool(base, 'list_symbols', { file: 'file://workspace/tests/fixtures/example.ts' });
+        const out = parseContent(result);
+        expect(out).toBeDefined();
+        expect(Array.isArray(out.symbols)).toBe(true);
+        expect(out.symbols.length).toBeGreaterThan(0);
+    });
 });

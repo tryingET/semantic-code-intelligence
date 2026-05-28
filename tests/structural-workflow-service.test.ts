@@ -54,6 +54,13 @@ describe('StructuralWorkflowService', () => {
         ).rejects.toThrow('workspace');
     });
 
+    test('normalizes workspace URI structural paths before containment checks', async () => {
+        const workspaceRoot = tempWorkspace();
+        writeFileSync(join(workspaceRoot, 'sample.ts'), 'const value = 1;\n', 'utf8');
+
+        await expect(normalizeStructuralPaths(['file://workspace/sample.ts'], workspaceRoot)).resolves.toEqual(['sample.ts']);
+    });
+
     test('rejects structural paths outside the configured workspace', async () => {
         const workspaceRoot = tempWorkspace();
         await expect(normalizeStructuralPaths(['../outside'], workspaceRoot)).rejects.toThrow('structural path must stay within the workspace');

@@ -72,7 +72,7 @@ export class CLIAdapter {
             return suffix ? nodePath.join(workspaceRoot, decodeURIComponent(suffix)) : workspaceRoot;
         }
         if (raw.startsWith('file://')) return fileURLToPath(raw);
-        return raw;
+        return nodePath.isAbsolute(raw) ? nodePath.resolve(raw) : nodePath.resolve(process.cwd(), raw);
     }
 
     private async workspaceUriForFile(value: string | undefined, inputLabel: string): Promise<string> {
