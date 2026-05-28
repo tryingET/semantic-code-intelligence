@@ -104,6 +104,7 @@ export class SemanticGraphStorage implements StoragePort {
         if (this.schemaInitialized) return;
         try {
             this.createTables();
+            this.backfillDuplicateSymbols();
             this.createIndices();
             this.schemaInitialized = true;
         } catch (e) {
@@ -169,6 +170,12 @@ export class SemanticGraphStorage implements StoragePort {
         UNIQUE(text, language)
       );
 
+      CREATE TABLE IF NOT EXISTS symbol_aliases (
+        alias_id TEXT PRIMARY KEY,
+        canonical_id TEXT NOT NULL,
+        FOREIGN KEY (canonical_id) REFERENCES symbols(id) ON DELETE CASCADE
+      );
+
       CREATE TABLE IF NOT EXISTS things (
         id TEXT PRIMARY KEY,
         kind TEXT NOT NULL,
@@ -206,6 +213,29 @@ export class SemanticGraphStorage implements StoragePort {
     `);
     }
 
+    private backfillDuplicateSymbols(): void {
+        const rows = this.db
+            .prepare(`SELECT id, text, language FROM symbols ORDER BY text, language, id`)
+            .all() as Array<{ id: string; text: string; language: string | null }>;
+        const groups = new Map<string, Array<{ id: string; text: string; language: string | null }>>();
+        for (const row of rows) {
+            const key = `${row.text}\u0000${row.language ?? '<null>'}`;
+            const group = groups.get(key) ?? [];
+            group.push(row);
+            groups.set(key, group);
+        }
+
+        const tx = this.db.transaction(() => {
+            for (const group of groups.values()) {
+                if (group.length < 2) continue;
+                const [canonical, ...aliases] = group.sort((a, b) => a.id.localeCompare(b.id));
+                if (!canonical) continue;
+                for (const alias of aliases) this.migrateSymbolAlias(alias.id, canonical.id);
+            }
+        });
+        tx();
+    }
+
     private createIndices(): void {
         this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_concepts_canonical_name ON concepts(canonical_name);
@@ -219,6 +249,7 @@ export class SemanticGraphStorage implements StoragePort {
       CREATE INDEX IF NOT EXISTS idx_evolution_timestamp ON evolution_history(timestamp);
 
       CREATE INDEX IF NOT EXISTS idx_symbols_text ON symbols(text);
+      CREATE INDEX IF NOT EXISTS idx_symbol_aliases_canonical_id ON symbol_aliases(canonical_id);
 
       CREATE INDEX IF NOT EXISTS idx_things_location_uri ON things(location_uri);
       CREATE INDEX IF NOT EXISTS idx_things_kind ON things(kind);
@@ -322,7 +353,27 @@ export class SemanticGraphStorage implements StoragePort {
     }
 
     async upsertSymbol(symbol: Symbol): Promise<void> {
-        const stmt = this.db.prepare(`
+        const language = symbol.language ?? null;
+        const existingByText = this.db
+            .prepare(
+                `SELECT id FROM symbols
+                 WHERE text = ? AND ((language IS NULL AND ? IS NULL) OR language = ?) AND id <> ?
+                 ORDER BY id
+                 LIMIT 1`
+            )
+            .get(symbol.text, language, language, symbol.id) as { id: string } | undefined;
+
+        const tx = this.db.transaction(() => {
+            if (existingByText) {
+                this.db
+                    .prepare(`UPDATE symbols SET confidence = ?, updated_at = strftime('%s', 'now') WHERE id = ?`)
+                    .run(symbol.confidence ?? 0, existingByText.id);
+                this.migrateSymbolAlias(symbol.id, existingByText.id);
+                return;
+            }
+
+            this.db.prepare(`DELETE FROM symbol_aliases WHERE alias_id = ?`).run(symbol.id);
+            const stmt = this.db.prepare(`
       INSERT INTO symbols (id, text, language, confidence, updated_at)
       VALUES (?, ?, ?, ?, strftime('%s', 'now'))
       ON CONFLICT(id) DO UPDATE SET
@@ -330,11 +381,10 @@ export class SemanticGraphStorage implements StoragePort {
         language = excluded.language,
         confidence = excluded.confidence,
         updated_at = excluded.updated_at
-      ON CONFLICT(text, language) DO UPDATE SET
-        confidence = excluded.confidence,
-        updated_at = excluded.updated_at
     `);
-        stmt.run(symbol.id, symbol.text, symbol.language ?? null, symbol.confidence ?? 0);
+            stmt.run(symbol.id, symbol.text, language, symbol.confidence ?? 0);
+        });
+        tx();
     }
 
     async loadAllSymbols(): Promise<Symbol[]> {
@@ -423,11 +473,12 @@ export class SemanticGraphStorage implements StoragePort {
     }
 
     async upsertThingSymbol(link: ThingSymbolLink): Promise<void> {
+        const symbolId = this.resolveSymbolAlias(link.symbolId);
         const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO thing_symbols (thing_id, symbol_id, role)
       VALUES (?, ?, ?)
     `);
-        stmt.run(link.thingId, link.symbolId, link.role ?? 'unknown');
+        stmt.run(link.thingId, symbolId, link.role ?? 'unknown');
     }
 
     async upsertThingConcept(link: ThingConceptLink): Promise<void> {
@@ -436,6 +487,33 @@ export class SemanticGraphStorage implements StoragePort {
       VALUES (?, ?, ?, ?)
     `);
         stmt.run(link.thingId, link.conceptId, link.confidence ?? 0.5, JSON.stringify(link.evidence ?? []));
+    }
+
+    private migrateSymbolAlias(aliasId: string, canonicalId: string): void {
+        if (aliasId === canonicalId) return;
+        this.db.prepare(`UPDATE symbol_aliases SET canonical_id = ? WHERE canonical_id = ?`).run(canonicalId, aliasId);
+        this.db
+            .prepare(
+                `INSERT INTO symbol_aliases (alias_id, canonical_id)
+                 VALUES (?, ?)
+                 ON CONFLICT(alias_id) DO UPDATE SET canonical_id = excluded.canonical_id`
+            )
+            .run(aliasId, canonicalId);
+        this.db
+            .prepare(
+                `INSERT OR IGNORE INTO thing_symbols (thing_id, symbol_id, role)
+                 SELECT thing_id, ?, role FROM thing_symbols WHERE symbol_id = ?`
+            )
+            .run(canonicalId, aliasId);
+        this.db.prepare(`DELETE FROM thing_symbols WHERE symbol_id = ?`).run(aliasId);
+        this.db.prepare(`DELETE FROM symbols WHERE id = ?`).run(aliasId);
+    }
+
+    private resolveSymbolAlias(symbolId: string): string {
+        const row = this.db
+            .prepare(`SELECT canonical_id FROM symbol_aliases WHERE alias_id = ?`)
+            .get(symbolId) as { canonical_id: string } | undefined;
+        return row?.canonical_id ?? symbolId;
     }
 
     async loadAllThingSymbols(): Promise<ThingSymbolLink[]> {

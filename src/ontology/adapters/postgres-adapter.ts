@@ -35,6 +35,7 @@ export class PostgresStorageAdapter implements StoragePort {
         await client.connect();
         this.connected = true;
         await this.createTables();
+        await this.backfillDuplicateSymbols();
         await this.createIndices();
     }
 
@@ -90,6 +91,11 @@ export class PostgresStorageAdapter implements StoragePort {
         UNIQUE(text, language)
       );
 
+      CREATE TABLE IF NOT EXISTS symbol_aliases (
+        alias_id TEXT PRIMARY KEY,
+        canonical_id TEXT NOT NULL REFERENCES symbols(id) ON DELETE CASCADE
+      );
+
       CREATE TABLE IF NOT EXISTS things (
         id TEXT PRIMARY KEY,
         kind TEXT NOT NULL,
@@ -131,6 +137,7 @@ export class PostgresStorageAdapter implements StoragePort {
       CREATE INDEX IF NOT EXISTS idx_concept_relations_from ON concept_relations(from_concept_id);
       CREATE INDEX IF NOT EXISTS idx_concept_relations_to ON concept_relations(to_concept_id);
       CREATE INDEX IF NOT EXISTS idx_symbols_text ON symbols(text);
+      CREATE INDEX IF NOT EXISTS idx_symbol_aliases_canonical_id ON symbol_aliases(canonical_id);
       CREATE INDEX IF NOT EXISTS idx_things_location_uri ON things(location_uri);
       CREATE INDEX IF NOT EXISTS idx_thing_concepts_concept_id ON thing_concepts(concept_id);
     `;
@@ -224,15 +231,41 @@ export class PostgresStorageAdapter implements StoragePort {
 
     async upsertSymbol(symbol: Symbol): Promise<void> {
         this.ensureReady();
-        await this.client.query(
-            `INSERT INTO symbols (id, text, language, confidence, updated_at)
+        const language = symbol.language ?? null;
+        const existing = await this.client.query(
+            `SELECT id FROM symbols
+             WHERE text = $1 AND ((language IS NULL AND $2::text IS NULL) OR language = $2) AND id <> $3
+             ORDER BY id
+             LIMIT 1`,
+            [symbol.text, language, symbol.id]
+        );
+        const existingId = existing.rows?.[0]?.id;
+        const c = this.client;
+        await c.query('BEGIN');
+        try {
+            if (existingId) {
+                await c.query(
+                    `UPDATE symbols SET confidence = $1, updated_at = EXTRACT(EPOCH FROM NOW())::bigint WHERE id = $2`,
+                    [symbol.confidence ?? 0, existingId]
+                );
+                await this.migrateSymbolAlias(symbol.id, existingId);
+            } else {
+                await c.query(`DELETE FROM symbol_aliases WHERE alias_id = $1`, [symbol.id]);
+                await c.query(
+                    `INSERT INTO symbols (id, text, language, confidence, updated_at)
        VALUES ($1,$2,$3,$4,EXTRACT(EPOCH FROM NOW())::bigint)
        ON CONFLICT (id) DO UPDATE SET text = EXCLUDED.text,
          language = EXCLUDED.language,
          confidence = EXCLUDED.confidence,
          updated_at = EXTRACT(EPOCH FROM NOW())::bigint`,
-            [symbol.id, symbol.text, symbol.language ?? null, symbol.confidence ?? 0]
-        );
+                    [symbol.id, symbol.text, language, symbol.confidence ?? 0]
+                );
+            }
+            await c.query('COMMIT');
+        } catch (error) {
+            await c.query('ROLLBACK').catch(() => undefined);
+            throw error;
+        }
     }
 
     async loadAllSymbols(): Promise<Symbol[]> {
@@ -299,11 +332,12 @@ export class PostgresStorageAdapter implements StoragePort {
 
     async upsertThingSymbol(link: ThingSymbolLink): Promise<void> {
         this.ensureReady();
+        const symbolId = await this.resolveSymbolAlias(link.symbolId);
         await this.client.query(
             `INSERT INTO thing_symbols (thing_id, symbol_id, role)
        VALUES ($1,$2,$3)
        ON CONFLICT (thing_id, symbol_id, role) DO NOTHING`,
-            [link.thingId, link.symbolId, link.role]
+            [link.thingId, symbolId, link.role]
         );
     }
 
@@ -315,6 +349,58 @@ export class PostgresStorageAdapter implements StoragePort {
        ON CONFLICT (thing_id, concept_id) DO UPDATE SET confidence = EXCLUDED.confidence, evidence_json = EXCLUDED.evidence_json`,
             [link.thingId, link.conceptId, link.confidence ?? 0.5, JSON.stringify(link.evidence ?? [])]
         );
+    }
+
+    private async backfillDuplicateSymbols(): Promise<void> {
+        this.ensureReady();
+        const res = await this.client.query(`SELECT id, text, language FROM symbols ORDER BY text, language, id`);
+        const groups = new Map<string, Array<{ id: string; text: string; language: string | null }>>();
+        for (const row of res.rows as Array<{ id: string; text: string; language: string | null }>) {
+            const key = `${row.text}\u0000${row.language ?? '<null>'}`;
+            const group = groups.get(key) ?? [];
+            group.push(row);
+            groups.set(key, group);
+        }
+
+        const c = this.client;
+        await c.query('BEGIN');
+        try {
+            for (const group of groups.values()) {
+                if (group.length < 2) continue;
+                const [canonical, ...aliases] = group.sort((a, b) => a.id.localeCompare(b.id));
+                if (!canonical) continue;
+                for (const alias of aliases) await this.migrateSymbolAlias(alias.id, canonical.id);
+            }
+            await c.query('COMMIT');
+        } catch (error) {
+            await c.query('ROLLBACK').catch(() => undefined);
+            throw error;
+        }
+    }
+
+    private async migrateSymbolAlias(aliasId: string, canonicalId: string): Promise<void> {
+        if (aliasId === canonicalId) return;
+        await this.client.query(`UPDATE symbol_aliases SET canonical_id = $1 WHERE canonical_id = $2`, [canonicalId, aliasId]);
+        await this.client.query(
+            `INSERT INTO symbol_aliases (alias_id, canonical_id)
+             VALUES ($1, $2)
+             ON CONFLICT (alias_id) DO UPDATE SET canonical_id = EXCLUDED.canonical_id`,
+            [aliasId, canonicalId]
+        );
+        await this.client.query(
+            `INSERT INTO thing_symbols (thing_id, symbol_id, role)
+             SELECT thing_id, $1, role FROM thing_symbols WHERE symbol_id = $2
+             ON CONFLICT (thing_id, symbol_id, role) DO NOTHING`,
+            [canonicalId, aliasId]
+        );
+        await this.client.query(`DELETE FROM thing_symbols WHERE symbol_id = $1`, [aliasId]);
+        await this.client.query(`DELETE FROM symbols WHERE id = $1`, [aliasId]);
+    }
+
+    private async resolveSymbolAlias(symbolId: string): Promise<string> {
+        this.ensureReady();
+        const res = await this.client.query(`SELECT canonical_id FROM symbol_aliases WHERE alias_id = $1`, [symbolId]);
+        return res.rows?.[0]?.canonical_id ?? symbolId;
     }
 
     async loadAllThingSymbols(): Promise<ThingSymbolLink[]> {

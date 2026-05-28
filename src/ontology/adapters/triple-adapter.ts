@@ -6,6 +6,7 @@ import type { StoragePort } from '../storage-port';
 export class TripleStoreStorageAdapter implements StoragePort {
     private concepts = new Map<string, Concept>();
     private symbols = new Map<string, Symbol>();
+    private symbolAliases = new Map<string, string>(); // alias id -> canonical symbol id
     private things = new Map<string, Thing>();
     private thingSymbols = new Map<string, ThingSymbolLink>(); // key: thing|symbol|role
     private thingConcepts = new Map<string, ThingConceptLink>(); // key: thing|concept
@@ -53,6 +54,15 @@ export class TripleStoreStorageAdapter implements StoragePort {
 
     async upsertSymbol(symbol: Symbol): Promise<void> {
         this.ensure();
+        const existing = [...this.symbols.values()].find(
+            (candidate) => candidate.text === symbol.text && (candidate.language ?? null) === (symbol.language ?? null)
+        );
+        if (existing && existing.id !== symbol.id) {
+            this.symbols.set(existing.id, { ...existing, confidence: symbol.confidence });
+            this.migrateSymbolAlias(symbol.id, existing.id);
+            return;
+        }
+        this.symbolAliases.delete(symbol.id);
         this.symbols.set(symbol.id, { ...symbol });
     }
 
@@ -73,14 +83,38 @@ export class TripleStoreStorageAdapter implements StoragePort {
 
     async upsertThingSymbol(link: ThingSymbolLink): Promise<void> {
         this.ensure();
-        const key = `${link.thingId}|${link.symbolId}|${link.role}`;
-        this.thingSymbols.set(key, { ...link });
+        const symbolId = this.resolveSymbolAlias(link.symbolId);
+        if (!this.things.has(link.thingId)) throw new Error('FOREIGN_KEY_VIOLATION: thing not found');
+        if (!this.symbols.has(symbolId)) throw new Error('FOREIGN_KEY_VIOLATION: symbol not found');
+        const key = `${link.thingId}|${symbolId}|${link.role}`;
+        this.thingSymbols.set(key, { ...link, symbolId });
     }
 
     async upsertThingConcept(link: ThingConceptLink): Promise<void> {
         this.ensure();
+        if (!this.things.has(link.thingId)) throw new Error('FOREIGN_KEY_VIOLATION: thing not found');
+        if (!this.concepts.has(link.conceptId)) throw new Error('FOREIGN_KEY_VIOLATION: concept not found');
         const key = `${link.thingId}|${link.conceptId}`;
         this.thingConcepts.set(key, { ...link });
+    }
+
+    private migrateSymbolAlias(aliasId: string, canonicalId: string): void {
+        if (aliasId === canonicalId) return;
+        for (const [alias, currentCanonical] of [...this.symbolAliases.entries()]) {
+            if (currentCanonical === aliasId) this.symbolAliases.set(alias, canonicalId);
+        }
+        this.symbolAliases.set(aliasId, canonicalId);
+        for (const [key, link] of [...this.thingSymbols.entries()]) {
+            if (link.symbolId !== aliasId) continue;
+            this.thingSymbols.delete(key);
+            const canonicalKey = `${link.thingId}|${canonicalId}|${link.role}`;
+            if (!this.thingSymbols.has(canonicalKey)) this.thingSymbols.set(canonicalKey, { ...link, symbolId: canonicalId });
+        }
+        this.symbols.delete(aliasId);
+    }
+
+    private resolveSymbolAlias(symbolId: string): string {
+        return this.symbolAliases.get(symbolId) ?? symbolId;
     }
 
     async loadAllThingSymbols(): Promise<ThingSymbolLink[]> {
