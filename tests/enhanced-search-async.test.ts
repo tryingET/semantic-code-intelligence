@@ -55,6 +55,24 @@ describe('Async Enhanced Search correctness', () => {
         }
     });
 
+    test('invalidates cached results when a matched file is deleted', async () => {
+        const root = await tempDir('sci-grep-delete-cache-');
+        const grep = new AsyncEnhancedGrep({ cacheSize: 10, cacheTTL: 60000, defaultTimeout: 1000 });
+        try {
+            const target = path.join(root, 'gone.ts');
+            await fs.writeFile(target, 'needle\n', 'utf8');
+            const first = await grep.search({ pattern: 'needle', path: root, maxResults: 10, timeout: 1000 });
+            expect(first).toHaveLength(1);
+
+            await fs.rm(target, { force: true });
+            const second = await grep.search({ pattern: 'needle', path: root, maxResults: 10, timeout: 1000 });
+            expect(second).toHaveLength(0);
+        } finally {
+            grep.destroy();
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    });
+
     test('parses ripgrep output for paths containing colons', async () => {
         const root = await tempDir('sci-grep-colon-');
         const grep = new AsyncEnhancedGrep({ cacheSize: 10, cacheTTL: 1000, defaultTimeout: 1000 });

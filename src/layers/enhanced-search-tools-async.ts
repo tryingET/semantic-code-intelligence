@@ -199,8 +199,10 @@ class SmartSearchCache {
             return null;
         }
 
-        // Check if any watched files changed
-        if (cached.watchedFiles.some((f) => this.hasFileChanged(f, cached.timestamp))) {
+        // Check if any watched files changed. A file that existed when the
+        // result was cached and is now missing is stale; files that were
+        // already absent in direct cache unit tests remain neutral.
+        if (cached.watchedFiles.some((f) => this.hasFileChanged(f, cached.timestamp, cached.watchedFileExistsAtSet?.[f] === true))) {
             this.invalidate(key);
             return null;
         }
@@ -224,10 +226,20 @@ class SmartSearchCache {
         // Extract unique files from results for watching
         const files = [...new Set(results.map((r) => r.file))];
 
+        const watchedFileExistsAtSet: Record<string, boolean> = {};
+        for (const file of files) {
+            try {
+                watchedFileExistsAtSet[file] = fsSync.statSync(file).isFile();
+            } catch {
+                watchedFileExistsAtSet[file] = false;
+            }
+        }
+
         this.cache.set(key, {
             results,
             timestamp: Date.now(),
             watchedFiles: files,
+            watchedFileExistsAtSet,
         });
 
         // Set up file watchers for invalidation
@@ -257,14 +269,14 @@ class SmartSearchCache {
         });
     }
 
-    private hasFileChanged(file: string, since: number): boolean {
+    private hasFileChanged(file: string, since: number, existedAtSet = true): boolean {
         try {
             const stats = fsSync.statSync(file);
             return stats.mtimeMs > since;
         } catch {
-            // If we can't stat the file, assume it hasn't changed
-            // This prevents cache invalidation for test files that don't exist
-            return false;
+            // If a previously cached result can no longer be statted, the
+            // cached search result is stale (deleted, moved, or inaccessible).
+            return existedAtSet;
         }
     }
 
@@ -299,6 +311,7 @@ interface CachedResult {
     results: StreamingGrepResult[];
     timestamp: number;
     watchedFiles: string[];
+    watchedFileExistsAtSet?: Record<string, boolean>;
 }
 
 /**
