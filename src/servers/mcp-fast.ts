@@ -12,10 +12,10 @@ process.env.STDIO_MODE = 'true';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ErrorCode, ListToolsRequestSchema, McpError } from '@modelcontextprotocol/sdk/types.js';
-import { toMcpToolCallError } from '../mcp/tool-call-error.js';
 // IMPORTANT: Avoid importing heavy core modules at top-level.
 // Use type-only import to prevent runtime side effects.
 import type { CodeAnalyzer } from '../core/unified-analyzer';
+import { toMcpToolCallError } from '../mcp/tool-call-error.js';
 import { registerCommonPrompts, registerCommonResources } from './mcp-shared.js';
 
 export class FastMCPServer {
@@ -68,7 +68,7 @@ export class FastMCPServer {
         }
         if (process.env.FAST_STDIO_RESOURCES === '1') {
             try {
-                registerCommonResources(this.server);
+                registerCommonResources(this.server, { getAnalyzer: () => this.coreAnalyzer });
             } catch (e) {
                 if (process.env.DEBUG && !process.env.STDIO_MODE) {
                     console.warn('[MCP stdio] Resources registration skipped:', (e as Error)?.message || String(e));

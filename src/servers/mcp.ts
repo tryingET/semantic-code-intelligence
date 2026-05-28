@@ -50,7 +50,10 @@ export class MCPServer {
         );
 
         registerCommonPrompts(this.server);
-        registerCommonResources(this.server, { workspaceRoot: this.workspaceRoot });
+        registerCommonResources(this.server, {
+            workspaceRoot: this.workspaceRoot,
+            getAnalyzer: () => this.coreAnalyzer,
+        });
         this.setupHandlers();
     }
 

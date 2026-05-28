@@ -16,7 +16,12 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import type { MCPAdapter } from '../adapters/mcp-adapter.js';
 import type { CodeAnalyzer } from '../core/unified-analyzer';
 import { ConnectionManager } from '../mcp/connection-manager.js';
-import { createInternalError, type ErrorContext, globalErrorHandler, withMcpErrorHandling } from '../mcp/error-handler.js';
+import {
+    createInternalError,
+    type ErrorContext,
+    globalErrorHandler,
+    withMcpErrorHandling,
+} from '../mcp/error-handler.js';
 // Import enhanced error handling and logging
 import { mcpLogger } from '../mcp/file-logger.js';
 import { toMcpToolCallError } from '../mcp/tool-call-error.js';
@@ -50,6 +55,7 @@ export class EnhancedMCPServer {
         registerCommonPrompts(this.server);
         registerCommonResources(this.server, {
             workspaceRoot: process.env.SEMANTIC_CODE_WORKSPACE || process.env.WORKSPACE_ROOT || process.cwd(),
+            getAnalyzer: () => this.coreAnalyzer,
         });
 
         this.connectionManager = new ConnectionManager({
@@ -291,7 +297,8 @@ export class EnhancedMCPServer {
 
                 // Create optimized config
                 const config = createDefaultCoreConfig();
-                const workspaceRoot = process.env.SEMANTIC_CODE_WORKSPACE || process.env.WORKSPACE_ROOT || process.cwd();
+                const workspaceRoot =
+                    process.env.SEMANTIC_CODE_WORKSPACE || process.env.WORKSPACE_ROOT || process.cwd();
 
                 // Optimize for fast initialization
                 config.optimization = {

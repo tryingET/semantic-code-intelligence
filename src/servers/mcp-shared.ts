@@ -1,13 +1,13 @@
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { completable } from '@modelcontextprotocol/sdk/server/completable.js';
+import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
+    ErrorCode,
+    GetPromptRequestSchema,
+    ListPromptsRequestSchema,
     ListResourcesRequestSchema,
     ListResourceTemplatesRequestSchema,
-    ReadResourceRequestSchema,
-    ListPromptsRequestSchema,
-    GetPromptRequestSchema,
-    ErrorCode,
     McpError,
+    ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 
@@ -166,7 +166,10 @@ const COMMON_PROMPTS: PromptSpec[] = [
                 messages: [
                     {
                         role: 'assistant',
-                        content: { type: 'text', text: 'Use get_snapshot + propose_patch + run_checks, keeping edits isolated in snapshot.' },
+                        content: {
+                            type: 'text',
+                            text: 'Use get_snapshot + propose_patch + run_checks, keeping edits isolated in snapshot.',
+                        },
                     },
                     {
                         role: 'user',
@@ -199,7 +202,10 @@ const COMMON_PROMPTS: PromptSpec[] = [
                 messages: [
                     {
                         role: 'assistant',
-                        content: { type: 'text', text: 'Prefer precise confirmation only when fast pass is ambiguous.' },
+                        content: {
+                            type: 'text',
+                            text: 'Prefer precise confirmation only when fast pass is ambiguous.',
+                        },
                     },
                     {
                         role: 'user',
@@ -236,7 +242,12 @@ export function registerCommonPrompts(server: Server): void {
 
 export function registerCommonPromptHandlers(server: Server): void {
     server.setRequestHandler(ListPromptsRequestSchema, async () => ({
-        prompts: COMMON_PROMPTS.map(({ name, title, description, arguments: args }) => ({ name, title, description, arguments: args })),
+        prompts: COMMON_PROMPTS.map(({ name, title, description, arguments: args }) => ({
+            name,
+            title,
+            description,
+            arguments: args,
+        })),
     }));
     server.setRequestHandler(GetPromptRequestSchema, async (request) => {
         const prompt = COMMON_PROMPTS.find((candidate) => candidate.name === request.params.name);
@@ -260,7 +271,9 @@ async function readSnapshotArtifactText(dir: string | undefined, file: string, f
         const noFollow = typeof fsSync.constants.O_NOFOLLOW === 'number' ? fsSync.constants.O_NOFOLLOW : 0;
         const handle = await fs.open(filePath, fsSync.constants.O_RDONLY | noFollow);
         try {
-            const openedReal = await fs.realpath(`/proc/self/fd/${handle.fd}`).catch(() => fs.realpath(`/dev/fd/${handle.fd}`));
+            const openedReal = await fs
+                .realpath(`/proc/self/fd/${handle.fd}`)
+                .catch(() => fs.realpath(`/dev/fd/${handle.fd}`));
             const openedRelative = path.relative(realDir, openedReal);
             if (!openedRelative || openedRelative.startsWith('..') || path.isAbsolute(openedRelative)) return fallback;
             return await handle.readFile('utf8');
@@ -273,7 +286,10 @@ async function readSnapshotArtifactText(dir: string | undefined, file: string, f
 }
 
 // Register common resources (monitoring and snapshot artifacts).
-export function registerCommonResources(server: Server, opts: { workspaceRoot?: string } = {}): void {
+export function registerCommonResources(
+    server: Server,
+    opts: { workspaceRoot?: string; getAnalyzer?: () => any } = {}
+): void {
     server.setRequestHandler(ListResourcesRequestSchema, async () => ({
         resources: [
             {
@@ -317,15 +333,20 @@ export function registerCommonResources(server: Server, opts: { workspaceRoot?: 
         try {
             const uri = new URL(uriStr);
             if (uri.protocol === 'monitoring:') {
-                const coreIndex = await import('../core/index');
-                const analyzerGetter = (coreIndex as any)?.getActiveAnalyzer;
-                // Fallback: use any exported accessor or return empty
-                const stats = typeof analyzerGetter === 'function' ? await analyzerGetter()?.getDetailedStats?.() : {};
+                const analyzer = opts.getAnalyzer?.();
+                const stats = analyzer?.getDetailedStats
+                    ? await analyzer.getDetailedStats()
+                    : analyzer?.getDiagnostics
+                      ? await analyzer.getDiagnostics()
+                      : {};
                 const body = JSON.stringify(stats || {}, null, 2);
                 return { contents: [{ uri: uri.href, mimeType: 'application/json', text: body }] } as any;
             }
             if (uri.protocol === 'snapshot:') {
-                const parts = uri.pathname.split('/').filter(Boolean).map((part) => decodeURIComponent(part));
+                const parts = uri.pathname
+                    .split('/')
+                    .filter(Boolean)
+                    .map((part) => decodeURIComponent(part));
                 const hostId = uri.host ? decodeURIComponent(uri.host) : '';
                 const id = hostId || parts[0];
                 const tail = hostId ? parts[0] : parts[1];
@@ -336,7 +357,11 @@ export function registerCommonResources(server: Server, opts: { workspaceRoot?: 
                     const { overlayStore } = await import('../core/overlay-store.js');
                     const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
                     const dir = ensure ? await ensure(id, { workspaceRoot: opts.workspaceRoot }) : undefined;
-                    const text = await readSnapshotArtifactText(dir, 'overlay.diff', '# No overlay.diff found in snapshot');
+                    const text = await readSnapshotArtifactText(
+                        dir,
+                        'overlay.diff',
+                        '# No overlay.diff found in snapshot'
+                    );
                     return { contents: [{ uri: uri.href, mimeType: 'text/plain', text }] } as any;
                 }
                 if (tail === 'status') {
@@ -346,7 +371,13 @@ export function registerCommonResources(server: Server, opts: { workspaceRoot?: 
                         snap = (overlayStore as any).getStatus?.(id, { workspaceRoot: opts.workspaceRoot }) || null;
                     } catch {}
                     const body = JSON.stringify(
-                        { id, exists: !!snap, diffCount: snap?.diffsCount || 0, createdAt: snap?.createdAt || null, touchedFiles: snap?.touchedFiles || [] },
+                        {
+                            id,
+                            exists: !!snap,
+                            diffCount: snap?.diffsCount || 0,
+                            createdAt: snap?.createdAt || null,
+                            touchedFiles: snap?.touchedFiles || [],
+                        },
                         null,
                         2
                     );
@@ -356,9 +387,15 @@ export function registerCommonResources(server: Server, opts: { workspaceRoot?: 
                     const { overlayStore } = await import('../core/overlay-store.js');
                     let snapshotDir = '';
                     try {
-                        snapshotDir = (overlayStore as any).getSnapshotDirectory?.(id, { workspaceRoot: opts.workspaceRoot }) || '';
+                        snapshotDir =
+                            (overlayStore as any).getSnapshotDirectory?.(id, { workspaceRoot: opts.workspaceRoot }) ||
+                            '';
                     } catch {}
-                    const text = await readSnapshotArtifactText(snapshotDir, 'progress.log', '# No progress.log found for snapshot');
+                    const text = await readSnapshotArtifactText(
+                        snapshotDir,
+                        'progress.log',
+                        '# No progress.log found for snapshot'
+                    );
                     return { contents: [{ uri: uri.href, mimeType: 'text/plain', text }] } as any;
                 }
             }

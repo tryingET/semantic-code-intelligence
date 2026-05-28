@@ -316,7 +316,7 @@ async function createMcpServer(desiredSid?: string, enableJsonResponse = false):
         console.warn('[MCP HTTP] Prompts registration skipped:', (e as Error)?.message || String(e));
     }
     try {
-        registerCommonResources(server, { workspaceRoot });
+        registerCommonResources(server, { workspaceRoot, getAnalyzer: () => analyzer });
     } catch (e) {
         // eslint-disable-next-line no-console
         console.warn('[MCP HTTP] Resources registration skipped:', (e as Error)?.message || String(e));
@@ -391,9 +391,15 @@ app.post('/mcp', async (req, res) => {
         // SDK request schema validation can surface "missing params" as InternalError (-32603).
         // Normalize the most common transport-level case (tools/call with missing params) to InvalidParams (-32602).
         try {
-            const invalidToolsCall = (body: any): body is { method?: unknown; params?: unknown; id?: JsonRpcMessageId } =>
-                !!body && body.method === 'tools/call' && (!body.params || typeof body.params !== 'object' || Array.isArray(body.params));
-            const body = req.body as { method?: unknown; params?: unknown; id?: JsonRpcMessageId } | Array<{ method?: unknown; params?: unknown; id?: JsonRpcMessageId }>;
+            const invalidToolsCall = (
+                body: any
+            ): body is { method?: unknown; params?: unknown; id?: JsonRpcMessageId } =>
+                !!body &&
+                body.method === 'tools/call' &&
+                (!body.params || typeof body.params !== 'object' || Array.isArray(body.params));
+            const body = req.body as
+                | { method?: unknown; params?: unknown; id?: JsonRpcMessageId }
+                | Array<{ method?: unknown; params?: unknown; id?: JsonRpcMessageId }>;
             const core = new CoreError('InvalidParams', 'Missing required parameters: params');
             if (Array.isArray(body)) {
                 const invalid = body.filter(invalidToolsCall);
