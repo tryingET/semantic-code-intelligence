@@ -71,7 +71,8 @@ export class RenameWorkflowService {
                 payload: {
                     schemaVersion: 2,
                     status: 'unsupported',
-                    message: 'Direct changes application is unsupported; use plan_rename with oldName/newName or stage changes with snapshot workflows.',
+                    message:
+                        'Direct changes application is unsupported; use plan_rename with oldName/newName or stage changes with snapshot workflows.',
                 },
                 isError: true,
             };
@@ -122,7 +123,7 @@ export class RenameWorkflowService {
                 : await this.computePlanRename({ oldName, newName, file });
         } catch (error) {
             const root = this.deps.workspaceRoot();
-            const snap = overlayStore.createSnapshot(true, { workspaceRoot: root });
+            const snap = overlayStore.createSnapshot(false, { workspaceRoot: root });
             return {
                 payload: {
                     workflow: 'rename_safely',
@@ -140,7 +141,7 @@ export class RenameWorkflowService {
 
         const root = this.deps.workspaceRoot();
         if (!files.length) {
-            const snap = overlayStore.createSnapshot(true, { workspaceRoot: root });
+            const snap = overlayStore.createSnapshot(false, { workspaceRoot: root });
             return {
                 payload: {
                     workflow: 'rename_safely',
@@ -154,7 +155,7 @@ export class RenameWorkflowService {
             };
         }
         const invalidPlanPaths: string[] = [];
-        const snap = overlayStore.createSnapshot(true, { workspaceRoot: root });
+        const snap = overlayStore.createSnapshot(false, { workspaceRoot: root });
         const tmpRootBase = runChecksFlag
             ? (await (overlayStore as any).ensureMaterialized?.(snap.id, { workspaceRoot: root })) || ''
             : path.resolve(root, '.ontology', 'tmp-diffs');
@@ -197,10 +198,14 @@ export class RenameWorkflowService {
             await fs.mkdir(path.dirname(tmpPath), { recursive: true }).catch(() => {});
             await fs.writeFile(tmpPath, mod, 'utf8');
 
-            const proc = spawnSync('git', ['diff', '--no-index', '--src-prefix=a/', '--dst-prefix=b/', '--', srcPath, tmpPath], {
-                stdio: 'pipe',
-                encoding: 'utf8',
-            });
+            const proc = spawnSync(
+                'git',
+                ['diff', '--no-index', '--src-prefix=a/', '--dst-prefix=b/', '--', srcPath, tmpPath],
+                {
+                    stdio: 'pipe',
+                    encoding: 'utf8',
+                }
+            );
             const out = rewriteNoIndexDiffHeaders(String(proc.stdout || ''), rel);
             if (out && out.trim().length > 0) {
                 diffParts.push(out);
@@ -237,7 +242,10 @@ export class RenameWorkflowService {
                     snapshot: snap.id,
                     filesAffected: files.length,
                     totalEdits,
-                    next_actions: ['Run checks when ready', 'Open snapshot diff: snapshot://' + snap.id + '/overlay.diff'],
+                    next_actions: [
+                        'Run checks when ready',
+                        'Open snapshot diff: snapshot://' + snap.id + '/overlay.diff',
+                    ],
                 },
                 isError: false,
             };
@@ -245,7 +253,10 @@ export class RenameWorkflowService {
 
         const onlyTouchedEnv = (process.env.FAST_STDIO_CHECKS || '').toLowerCase() === 'touched';
         const onlyTouched = typeof args?.onlyTouched === 'boolean' ? !!args.onlyTouched : onlyTouchedEnv;
-        const checks = await overlayStore.runChecks(snap.id, commands, timeoutSec, { onlyTouched, workspaceRoot: root });
+        const checks = await overlayStore.runChecks(snap.id, commands, timeoutSec, {
+            onlyTouched,
+            workspaceRoot: root,
+        });
         const ok = !!checks.ok;
         return {
             payload: {
@@ -255,10 +266,17 @@ export class RenameWorkflowService {
                 filesAffected: files.length,
                 totalEdits,
                 elapsedMs: checks.elapsedMs,
-                checks: { ok, commands: Array.isArray(checks.commands) ? checks.commands : [], elapsedMs: checks.elapsedMs },
+                checks: {
+                    ok,
+                    commands: Array.isArray(checks.commands) ? checks.commands : [],
+                    elapsedMs: checks.elapsedMs,
+                },
                 outputTail: (checks.output || '').slice(-4000),
                 next_actions: ok
-                    ? ['Optionally apply this patch to working tree', 'Open snapshot diff: snapshot://' + snap.id + '/overlay.diff']
+                    ? [
+                          'Optionally apply this patch to working tree',
+                          'Open snapshot diff: snapshot://' + snap.id + '/overlay.diff',
+                      ]
                     : ['Review failing checks in outputTail', 'Adjust plan and retry'],
             },
             isError: !ok,
@@ -330,7 +348,10 @@ export class RenameWorkflowService {
             preview: true,
             summary: {
                 filesAffected: Object.keys(changes || {}).length,
-                totalEdits: Object.values(changes || {}).reduce((acc: number, edits: any) => acc + (edits as any[]).length, 0),
+                totalEdits: Object.values(changes || {}).reduce(
+                    (acc: number, edits: any) => acc + (edits as any[]).length,
+                    0
+                ),
             },
         };
     }
@@ -361,7 +382,13 @@ export function applyTextEdits(text: string, edits: TextEdit[]): string {
     return out;
 }
 
-function buildRenameRequest(params: { uri: string; position: { line: number; character: number }; identifier: string; newName: string; dryRun?: boolean }) {
+function buildRenameRequest(params: {
+    uri: string;
+    position: { line: number; character: number };
+    identifier: string;
+    newName: string;
+    dryRun?: boolean;
+}) {
     return {
         uri: params.uri,
         position: params.position,
@@ -410,7 +437,11 @@ function validateRequired(args: Record<string, any>, fields: string[]) {
         throw new CoreError('InvalidParams', 'Arguments must be an object');
     }
     for (const field of fields) {
-        if (args[field] === undefined || args[field] === null || (typeof args[field] === 'string' && args[field].trim() === '')) {
+        if (
+            args[field] === undefined ||
+            args[field] === null ||
+            (typeof args[field] === 'string' && args[field].trim() === '')
+        ) {
             throw new CoreError('InvalidParams', `Missing required parameter: ${field}`, { field });
         }
     }
