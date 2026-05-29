@@ -47,4 +47,3 @@ describe('Layer 4: Import/Export parity', () => {
         expect(exported.some((c: any) => c?.concept?.canonicalName === 'Demo')).toBe(true);
     });
 });
-

@@ -44,7 +44,10 @@ describe('MCPAdapter validated server calls', () => {
         expectInvalidConfig({ maxResults: -5 }, 'maxResults must be an integer from 1 to 1000');
         expectInvalidConfig({ maxResults: 2.5 }, 'maxResults must be an integer from 1 to 1000');
         expectInvalidConfig({ maxResults: Number.POSITIVE_INFINITY }, 'maxResults must be an integer from 1 to 1000');
-        expectInvalidConfig({ maxResults: Number.MAX_SAFE_INTEGER + 1 }, 'maxResults must be an integer from 1 to 1000');
+        expectInvalidConfig(
+            { maxResults: Number.MAX_SAFE_INTEGER + 1 },
+            'maxResults must be an integer from 1 to 1000'
+        );
         expectInvalidConfig({ maxResults: 1001 }, 'maxResults must be an integer from 1 to 1000');
         expectInvalidConfig({ surface: 'legacy' }, "surface must be 'alpha' or 'registry'");
     });

@@ -261,7 +261,7 @@ learning-stats:
 # Start a dedicated HTTP server on port 7050 for E2E cross‑protocol tests
 start-test-http:
     @echo "🚀 Starting test HTTP server (port 7050)..."
-    @sh -c 'HTTP_API_PORT=7050 ~/.bun/bin/bun run src/servers/http.ts > .e2e-http.log 2>&1 & echo $! > .e2e-http.pid'
+    @sh -c 'HTTP_API_PORT=7050 {{bun}} run src/servers/http.ts > .e2e-http.log 2>&1 & echo $! > .e2e-http.pid'
     @sh -c 'for x in 1 2 3 4 5 6 7 8 9 10; do if curl -sf http://localhost:7050/health >/dev/null 2>&1; then echo "✅ Test HTTP ready"; exit 0; fi; sleep 1; done; echo "❌ HTTP did not start"; exit 1'
 
 stop-test-http:
@@ -277,37 +277,37 @@ dogfood:
     @echo "🥣 Dogfooding (stdio MCP) — fast path" 
     @echo "   Steps: legacy registry dogfood → get_snapshot+propose_patch"
     @echo "   Flags: -w|--workspace <dir> (default: tests/fixtures), -f|--file, -s|--symbol, --full"
-    @CI=1 ~/.bun/bin/bun run scripts/dogfood-mcp.ts
+    @CI=1 {{bun}} run scripts/dogfood-mcp.ts
 
 dogfood_full:
     @echo "🥣 Dogfooding (stdio MCP) — with quick checks (typecheck)"
     @echo "   Flags: -w|--workspace <dir> (default: tests/fixtures)"
-    @CI=1 ~/.bun/bin/bun run scripts/dogfood-mcp.ts --full
+    @CI=1 {{bun}} run scripts/dogfood-mcp.ts --full
 
 snap_diff id:
-    @~/.bun/bin/bun run scripts/snapshot-tools.ts diff {{id}}
+    @{{bun}} run scripts/snapshot-tools.ts diff {{id}}
 
 snap_status id:
-    @~/.bun/bin/bun run scripts/snapshot-tools.ts status {{id}}
+    @{{bun}} run scripts/snapshot-tools.ts status {{id}}
 
 
 snap_progress id:
-    @~/.bun/bin/bun run scripts/snapshot-tools.ts progress {{id}}
+    @{{bun}} run scripts/snapshot-tools.ts progress {{id}}
 
 
 snap_apply id:
-    @ALLOW_SNAPSHOT_APPLY=1 ~/.bun/bin/bun run scripts/snapshot-tools.ts apply {{id}}
+    @ALLOW_SNAPSHOT_APPLY=1 {{bun}} run scripts/snapshot-tools.ts apply {{id}}
 
 dogfood_progress:
     @echo "🥣 Dogfooding with progress logs (bounded workspace)" 
     @echo "   Progress: .ontology/snapshots/<id>/progress.log (snap:progress)"
-    @CI=1 DOGFOOD_PROGRESS=1 ~/.bun/bin/bun run scripts/dogfood-mcp.ts -w tests/fixtures -f tests/fixtures/example.ts -s TestClass
+    @CI=1 DOGFOOD_PROGRESS=1 {{bun}} run scripts/dogfood-mcp.ts -w tests/fixtures -f tests/fixtures/example.ts -s TestClass
 
 # CI-friendly dogfood using HTTP tools
 dogfood_ci:
     @echo "🥣 Dogfooding (HTTP tools) — CI summary" 1>&2
     @echo "   Runs: find_definition/find_references/graph_expand → safe_write preview → patch_checks_in_snapshot" 1>&2
-    @CI=1 WORKSPACE_ROOT=tests/fixtures ~/.bun/bin/bun run scripts/dogfood-ci.ts
+    @CI=1 WORKSPACE_ROOT=tests/fixtures {{bun}} run scripts/dogfood-ci.ts
 
 # === BUILD COMMANDS ===
 

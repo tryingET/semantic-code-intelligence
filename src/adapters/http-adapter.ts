@@ -14,13 +14,14 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pathToFileURL } from 'node:url';
 import { CoreError, isCoreError } from '../core/errors.js';
 import { ToolExecutor } from '../core/tools/executor.js';
 import type { CodeAnalyzer } from '../core/unified-analyzer.js';
 import { assertHttpToolAllowed as assertSharedHttpToolAllowed } from '../core/workflows/http-tool-policy.js';
 import type { SnapshotWorkflowResult } from '../core/workflows/snapshot-patch-workflow.js';
 import { ToolWorkflowRouter } from '../core/workflows/tool-workflow-router.js';
+import { workspaceInputToPath } from '../core/workspace-input.js';
 import { resolveWorkspacePath } from '../core/workspace-path.js';
 import type { SearchStream } from '../layers/enhanced-search-tools-async.js';
 import { createOpenApiResponse } from './http-openapi.js';
@@ -138,13 +139,8 @@ export class HTTPAdapter {
     }
 
     private pathInputFromHttpUri(raw: string, workspaceRoot: string): string {
-        const workspacePrefix = 'file://workspace';
-        if (raw.startsWith(workspacePrefix)) {
-            const suffix = raw.slice(workspacePrefix.length).replace(/^\/+/, '');
-            return suffix ? path.join(workspaceRoot, decodeURIComponent(suffix)) : workspaceRoot;
-        }
         if (raw === 'file://unknown' || raw === 'file://search' || raw === 'file://definition') return workspaceRoot;
-        return raw.startsWith('file://') ? fileURLToPath(raw) : raw;
+        return workspaceInputToPath(raw, workspaceRoot);
     }
 
     private async legacyRepoLocalUriOrNull(requested: string): Promise<string | null> {

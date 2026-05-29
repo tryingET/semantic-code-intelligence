@@ -41,7 +41,17 @@ bindDescribe('Snapshot apply/checks (partial materialize)', () => {
 
     test('patch_checks_in_snapshot builds http with partial snapshot', async () => {
         // Create a tiny patch that touches only tests (common offender for partial snapshots)
-        const patch = `*** Begin Patch\n*** Update File: tests/fixtures/example.ts\n@@\n export class TestClass {\n // mcp unified apply_after_checks test\n+    // partial snapshot test noop\n     private value: number = 0;\n*** End Patch\n`;
+        const patch = [
+            '*** Begin Patch',
+            '*** Update File: tests/fixtures/example.ts',
+            '@@',
+            ' export class TestClass {',
+            '     // mcp unified apply_after_checks test',
+            '+    // partial snapshot test noop',
+            '     private value: number = 0;',
+            '*** End Patch',
+            '',
+        ].join('\n');
 
         // Stage + run checks: build only http (fast, externals set)
         const result = await callTool(base, 'patch_checks_in_snapshot', {

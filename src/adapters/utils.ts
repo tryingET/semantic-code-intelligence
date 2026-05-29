@@ -11,7 +11,7 @@ import type {
     RenameRequest,
 } from '../core/types.js';
 import { CoreError } from '../core/errors.js';
-import { AnalyzerFactory } from '../core/analyzer-factory.js';
+import { createRuntimeCoreConfig } from '../core/runtime-config.js';
 
 export function pathToUri(filePath: string): string {
     try {
@@ -242,7 +242,7 @@ export function parseIntegerOption(
 export { handleAdapterError, withAdapterTimeout } from './error-mapper.js';
 
 export function createDefaultCoreConfig(): CoreConfig {
-    const cfg = AnalyzerFactory.createDefaultConfig();
+    const cfg = createRuntimeCoreConfig();
     (cfg as any).monitoring = { ...(cfg as any).monitoring, enabled: false };
 
     // Allow simple env-based overrides for storage without touching callers
@@ -331,13 +331,13 @@ function normalizeCompletionKindKey(kind: string): string {
     if (/^[a-z][a-zA-Z0-9]*$/.test(trimmed)) return trimmed;
     if (/^[A-Z][a-zA-Z0-9]*$/.test(trimmed)) return trimmed[0].toLowerCase() + trimmed.slice(1);
 
-    const parts = trimmed.replace(/[-_\s]+/g, ' ').split(' ').filter(Boolean);
+    const parts = trimmed
+        .replace(/[-_\s]+/g, ' ')
+        .split(' ')
+        .filter(Boolean);
     if (parts.length === 0) return '';
     const [head, ...rest] = parts;
-    return (
-        head.toLowerCase() +
-        rest.map((p) => (p ? p[0].toUpperCase() + p.slice(1).toLowerCase() : '')).join('')
-    );
+    return head.toLowerCase() + rest.map((p) => (p ? p[0].toUpperCase() + p.slice(1).toLowerCase() : '')).join('');
 }
 
 export function completionKindToLspKind(kind: unknown): number | undefined {

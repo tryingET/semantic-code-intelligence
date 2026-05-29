@@ -9,7 +9,10 @@ describe('MCP tool call error mapping', () => {
         expect(unknown.code).toBe(ErrorCode.MethodNotFound);
         expect(unknown.message).toContain('Unknown tool');
 
-        const invalid = toMcpToolCallError('find_definition', new CoreError('InvalidParams', 'Missing required parameters: symbol'));
+        const invalid = toMcpToolCallError(
+            'find_definition',
+            new CoreError('InvalidParams', 'Missing required parameters: symbol')
+        );
         expect(invalid.code).toBe(ErrorCode.InvalidParams);
         expect(invalid.message).toContain('Missing required parameters');
     });

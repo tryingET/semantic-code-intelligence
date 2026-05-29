@@ -28,7 +28,19 @@ test('propose_patch accepts apply_patch and produces unified overlay.diff', asyn
     expect(typeof snapshot).toBe('string');
 
     // Minimal apply_patch that updates tests/fixtures/example.ts using current fixture context.
-    const applyPatch = `*** Begin Patch\n*** Update File: tests/fixtures/example.ts\n@@\n export class TestClass {\n // mcp unified apply_after_checks test\n-    private value: number = 0;\n+    /* converted */ private value: number = 0;\n \n     constructor(initialValue?: number) {\n*** End Patch\n`;
+    const applyPatch = [
+        '*** Begin Patch',
+        '*** Update File: tests/fixtures/example.ts',
+        '@@',
+        ' export class TestClass {',
+        '     // mcp unified apply_after_checks test',
+        '-    private value: number = 0;',
+        '+    /* converted */ private value: number = 0;',
+        ' ',
+        '     constructor(initialValue?: number) {',
+        '*** End Patch',
+        '',
+    ].join('\n');
 
     const prop = await mcp.handleToolCall('propose_patch', { snapshot, patch: applyPatch });
     const propOut = await parseContent(prop);

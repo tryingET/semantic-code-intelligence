@@ -175,7 +175,13 @@ function callQueryForLanguage(id: GraphLanguage): string {
 function enclosingCallableForNode(node: any): { name: string; kind: string } | null {
     let cur = node?.parent;
     while (cur) {
-        if (cur.type === 'function_declaration' || cur.type === 'method_definition' || cur.type === 'function_definition' || cur.type === 'function_item' || cur.type === 'method_declaration') {
+        if (
+            cur.type === 'function_declaration' ||
+            cur.type === 'method_definition' ||
+            cur.type === 'function_definition' ||
+            cur.type === 'function_item' ||
+            cur.type === 'method_declaration'
+        ) {
             const nameNode = cur.childForFieldName?.('name');
             if (nameNode?.text) return { name: nameNode.text, kind: cur.type };
         }
@@ -278,7 +284,9 @@ function includeExportCapture(id: GraphLanguage, node: any): boolean {
 
 function languageGraphLimitations(id: GraphLanguage): string[] {
     if (id === 'python') {
-        return ['python: export evidence is syntactic module-level public definitions/assignments; no __all__, package, import-resolution, or runtime API analysis is performed'];
+        return [
+            'python: export evidence is syntactic module-level public definitions/assignments; no __all__, package, import-resolution, or runtime API analysis is performed',
+        ];
     }
     if (id === 'rust') {
         return [
@@ -369,7 +377,9 @@ export async function expandNeighbors(opts: {
             res.neighbors.callers = [];
             const sym = typeof opts.symbol === 'string' ? opts.symbol : '';
             if (!sym) {
-                notes.push('callers: symbol required (pass symbol for cross-file callers or pass file+symbol for in-file callers)');
+                notes.push(
+                    'callers: symbol required (pass symbol for cross-file callers or pass file+symbol for in-file callers)'
+                );
             } else {
                 // In-file callers (call sites) for the provided literal symbol. Capture
                 // candidate call names and filter in code rather than interpolating the
@@ -379,7 +389,11 @@ export async function expandNeighbors(opts: {
                     const caps = Q.captures(tree.rootNode);
                     for (const cap of caps) {
                         const n = cap.node;
-                        if ((cap.name !== 'call.func' && cap.name !== 'call.method' && cap.name !== 'call.macro') || n.text !== sym) continue;
+                        if (
+                            (cap.name !== 'call.func' && cap.name !== 'call.method' && cap.name !== 'call.macro') ||
+                            n.text !== sym
+                        )
+                            continue;
                         const caller = enclosingCallableForNode(n);
                         res.neighbors.callers.push({
                             file: res.file,
@@ -414,7 +428,10 @@ export async function expandNeighbors(opts: {
         const containedSeedFiles: string[] = [];
         for (const seedFile of opts.seedFiles || []) {
             try {
-                const resolved = await resolveWorkspacePath(seedFile, { workspaceRoot, inputLabel: 'graph_expand seedFile' });
+                const resolved = await resolveWorkspacePath(seedFile, {
+                    workspaceRoot,
+                    inputLabel: 'graph_expand seedFile',
+                });
                 containedSeedFiles.push(resolved.realPath);
             } catch {}
         }
@@ -444,7 +461,10 @@ export async function expandNeighbors(opts: {
         let foundDefinitionBodies = false;
         for (const file of files) {
             try {
-                const opened = await openWorkspaceFileForRead(file, { workspaceRoot, inputLabel: 'graph_expand search result' });
+                const opened = await openWorkspaceFileForRead(file, {
+                    workspaceRoot,
+                    inputLabel: 'graph_expand search result',
+                });
                 let text: string;
                 try {
                     text = await opened.handle.readFile('utf8');
@@ -482,14 +502,22 @@ export async function expandNeighbors(opts: {
                 }
                 if (neighbors.callers.length > limit) neighbors.callers = neighbors.callers.slice(0, limit);
                 if (neighbors.callees.length > limit) neighbors.callees = neighbors.callees.slice(0, limit);
-                if (neighbors.callers.length >= limit && (!edges.includes('callees') || neighbors.callees.length >= limit)) break;
+                if (
+                    neighbors.callers.length >= limit &&
+                    (!edges.includes('callees') || neighbors.callees.length >= limit)
+                )
+                    break;
             } catch {}
         }
         if (edges.includes('callees')) {
             if (!foundDefinitionBodies) {
-                notes.push('callees: symbol definition body not found in bounded candidate files; scoped callee extraction unavailable');
+                notes.push(
+                    'callees: symbol definition body not found in bounded candidate files; scoped callee extraction unavailable'
+                );
             } else {
-                notes.push('callees: symbol-only callees are syntactic and scoped to bounded candidate definition files; not whole-program typed call graph evidence');
+                notes.push(
+                    'callees: symbol-only callees are syntactic and scoped to bounded candidate definition files; not whole-program typed call graph evidence'
+                );
             }
         }
         if (edges.some((e) => e === 'imports' || e === 'exports')) {

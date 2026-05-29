@@ -234,7 +234,12 @@ export class LSPAdapter {
      */
     async handleReferences(params: ReferenceParams): Promise<Location[]> {
         try {
-            if (!params || !(params as any).textDocument?.uri || !(params as any).position || !(params as any).context) {
+            if (
+                !params ||
+                !(params as any).textDocument?.uri ||
+                !(params as any).position ||
+                !(params as any).context
+            ) {
                 throw new CoreError(
                     'InvalidParams',
                     'Missing required parameters: textDocument.uri, position, context.includeDeclaration'
@@ -311,7 +316,10 @@ export class LSPAdapter {
                 !(params as any).position ||
                 typeof (params as any).newName !== 'string'
             ) {
-                throw new CoreError('InvalidParams', 'Missing required parameters: textDocument.uri, position, newName');
+                throw new CoreError(
+                    'InvalidParams',
+                    'Missing required parameters: textDocument.uri, position, newName'
+                );
             }
             const containedUri = await this.containedLspUriOrNull(params.textDocument.uri);
             if (!containedUri) {
@@ -330,7 +338,11 @@ export class LSPAdapter {
                 dryRun: true,
             });
 
-            const result = await withAdapterTimeout(this.coreAnalyzer.rename(request), this.config.timeout, 'lsp.rename');
+            const result = await withAdapterTimeout(
+                this.coreAnalyzer.rename(request),
+                this.config.timeout,
+                'lsp.rename'
+            );
 
             return workspaceEditToLsp(result.data);
         } catch (error) {

@@ -77,7 +77,8 @@ describe('MCP graph_expand hardening', () => {
         expect(valid.impactSummary?.hasImpactEvidence).toBe(true);
         expect(valid.impactSummary?.limitations.join('\n')).toContain('symbol-only callees are syntactic');
 
-        const injectedSymbol = 'uniqueGraphTarget")\n(call_expression function: (identifier) @f (#eq? @f "uniqueGraphHelper';
+        const injectedSymbol =
+            'uniqueGraphTarget")\n(call_expression function: (identifier) @f (#eq? @f "uniqueGraphHelper';
         const injectedResult = await mcp.handleToolCall('graph_expand', {
             symbol: injectedSymbol,
             edges: ['callers', 'callees'],

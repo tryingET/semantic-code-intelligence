@@ -143,7 +143,10 @@ describe('read_file workspace trust boundary', () => {
 
         const mcp = new MCPAdapter(undefined as any);
         const snapshot = await freshSnapshot(mcp);
-        await mcp.handleToolCall('propose_patch', { snapshot, patch: updateOneLineDiff(relPath, liveText, snapshotText) });
+        await mcp.handleToolCall('propose_patch', {
+            snapshot,
+            patch: updateOneLineDiff(relPath, liveText, snapshotText),
+        });
 
         const result = await mcp.handleToolCall('read_file', { path: absPath, snapshot });
         const payload = parseToolJson(result);
@@ -179,7 +182,10 @@ describe('read_file workspace trust boundary', () => {
 
     test('snapshot reads fail closed for unknown snapshot ids', async () => {
         const mcp = new MCPAdapter(undefined as any);
-        const result = await mcp.handleToolCall('read_file', { path: 'package.json', snapshot: '00000000-0000-4000-8000-000000000000' });
+        const result = await mcp.handleToolCall('read_file', {
+            path: 'package.json',
+            snapshot: '00000000-0000-4000-8000-000000000000',
+        });
 
         expect(result.isError).toBe(true);
         expect(JSON.stringify(result)).toContain('Unknown snapshot id');
@@ -194,7 +200,10 @@ describe('read_file workspace trust boundary', () => {
 
         const mcp = new MCPAdapter(undefined as any);
         const snapshot = await freshSnapshot(mcp);
-        await mcp.handleToolCall('propose_patch', { snapshot, patch: updateOneLineDiff(relPath, liveText, snapshotText) });
+        await mcp.handleToolCall('propose_patch', {
+            snapshot,
+            patch: updateOneLineDiff(relPath, liveText, snapshotText),
+        });
 
         const result = await mcp.handleToolCall('read_file', { path: relPath, snapshot, maxBytes: 32 });
         const payload = parseToolJson(result);

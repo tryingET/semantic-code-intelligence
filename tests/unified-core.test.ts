@@ -129,7 +129,12 @@ describe('Unified Core Architecture', () => {
 
             // Verify performance shape; enforce wall-clock targets only in explicit performance runs.
             enforceBudget('findDefinition duration', duration, 100, 'UNIFIED_CORE_FIND_DEFINITION_BUDGET_MS');
-            enforceBudget('findDefinition reported total', result.performance.total, 100, 'UNIFIED_CORE_FIND_DEFINITION_REPORTED_BUDGET_MS');
+            enforceBudget(
+                'findDefinition reported total',
+                result.performance.total,
+                100,
+                'UNIFIED_CORE_FIND_DEFINITION_REPORTED_BUDGET_MS'
+            );
 
             // Verify result structure
             expect(result.requestId).toBeDefined();
@@ -206,7 +211,12 @@ describe('Unified Core Architecture', () => {
 
             // Verify performance shape; enforce wall-clock targets only in explicit performance runs.
             enforceBudget('findReferences duration', duration, 500, 'UNIFIED_CORE_FIND_REFERENCES_BUDGET_MS');
-            enforceBudget('findReferences reported total', result.performance.total, 500, 'UNIFIED_CORE_FIND_REFERENCES_REPORTED_BUDGET_MS');
+            enforceBudget(
+                'findReferences reported total',
+                result.performance.total,
+                500,
+                'UNIFIED_CORE_FIND_REFERENCES_REPORTED_BUDGET_MS'
+            );
 
             // Verify result structure and non-cache layered timing evidence.
             expect(result.requestId).toBeDefined();
@@ -295,7 +305,11 @@ describe('Unified Core Architecture', () => {
         test('should reject rename when AST validation is unavailable instead of returning a false no-op', async () => {
             mkdirSync(context.config.workspaceRoot, { recursive: true });
             const renameFixture = join(context.config.workspaceRoot, 'rename-execute-fixture.ts');
-            writeFileSync(renameFixture, 'export const ExecuteRenameSymbol = 1;\nconsole.log(ExecuteRenameSymbol);\n', 'utf8');
+            writeFileSync(
+                renameFixture,
+                'export const ExecuteRenameSymbol = 1;\nconsole.log(ExecuteRenameSymbol);\n',
+                'utf8'
+            );
             const request: RenameRequest = {
                 identifier: 'ExecuteRenameSymbol',
                 newName: 'RenamedFunction',
@@ -304,7 +318,9 @@ describe('Unified Core Architecture', () => {
                 dryRun: true,
             };
 
-            await expect(context.codeAnalyzer.rename(request)).rejects.toThrow('text-only matches are unsafe to rename');
+            await expect(context.codeAnalyzer.rename(request)).rejects.toThrow(
+                'text-only matches are unsafe to rename'
+            );
         });
 
         test('should reject invalid rename requests', async () => {
@@ -333,7 +349,12 @@ describe('Unified Core Architecture', () => {
 
             // Verify performance shape; enforce wall-clock targets only in explicit performance runs.
             enforceBudget('getCompletions duration', duration, 100, 'UNIFIED_CORE_COMPLETIONS_BUDGET_MS');
-            enforceBudget('getCompletions reported total', result.performance.total, 100, 'UNIFIED_CORE_COMPLETIONS_REPORTED_BUDGET_MS');
+            enforceBudget(
+                'getCompletions reported total',
+                result.performance.total,
+                100,
+                'UNIFIED_CORE_COMPLETIONS_REPORTED_BUDGET_MS'
+            );
 
             // Verify result structure
             expect(result.requestId).toBeDefined();
@@ -540,7 +561,12 @@ describe('Unified Core Architecture', () => {
 
             // Average per request target remains visible but non-enforced in the normal suite.
             const avgDuration = totalDuration / requests.length;
-            enforceBudget('findDefinition batch average duration', avgDuration, 150, 'UNIFIED_CORE_BATCH_AVG_BUDGET_MS');
+            enforceBudget(
+                'findDefinition batch average duration',
+                avgDuration,
+                150,
+                'UNIFIED_CORE_BATCH_AVG_BUDGET_MS'
+            );
 
             // All requests should complete successfully
             expect(results.length).toBe(requests.length);
@@ -572,7 +598,12 @@ describe('Unified Core Architecture', () => {
             const referencesDuration = Date.now() - referencesStart;
 
             // Should complete reasonably quickly (cache may help with symbol resolution).
-            enforceBudget('cached findReferences duration', referencesDuration, 500, 'UNIFIED_CORE_CACHED_REFERENCES_BUDGET_MS');
+            enforceBudget(
+                'cached findReferences duration',
+                referencesDuration,
+                500,
+                'UNIFIED_CORE_CACHED_REFERENCES_BUDGET_MS'
+            );
         });
     });
 

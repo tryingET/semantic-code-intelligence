@@ -42,24 +42,37 @@ function normalizeMcpAdapterConfig(config: unknown): MCPAdapterConfig {
 
     const unsupported = Reflect.ownKeys(config).filter((field) => !SUPPORTED_CONFIG_FIELDS.has(field));
     if (unsupported.length > 0) {
-        throw new CoreError('InvalidParams', `Unsupported MCPAdapter config field(s): ${unsupported.map(formatConfigFieldName).join(', ')}`, {
-            unsupported: unsupported.map(formatConfigFieldName),
-            remediation:
-                'Keep MCPAdapter config to maxResults/surface only; use registry/tool arguments for execution policy and MCP server environment variables for transports.',
-        });
+        throw new CoreError(
+            'InvalidParams',
+            `Unsupported MCPAdapter config field(s): ${unsupported.map(formatConfigFieldName).join(', ')}`,
+            {
+                unsupported: unsupported.map(formatConfigFieldName),
+                remediation:
+                    'Keep MCPAdapter config to maxResults/surface only; use registry/tool arguments for execution policy and MCP server environment variables for transports.',
+            }
+        );
     }
 
     if ('maxResults' in config && config.maxResults !== undefined) {
         const maxResults = config.maxResults;
         if (!Number.isSafeInteger(maxResults) || maxResults <= 0 || maxResults > MAX_CONFIGURED_RESULTS) {
-            throw new CoreError('InvalidParams', `MCPAdapter config maxResults must be an integer from 1 to ${MAX_CONFIGURED_RESULTS}`, {
-                field: 'maxResults',
-                value: maxResults,
-                max: MAX_CONFIGURED_RESULTS,
-            });
+            throw new CoreError(
+                'InvalidParams',
+                `MCPAdapter config maxResults must be an integer from 1 to ${MAX_CONFIGURED_RESULTS}`,
+                {
+                    field: 'maxResults',
+                    value: maxResults,
+                    max: MAX_CONFIGURED_RESULTS,
+                }
+            );
         }
     }
-    if ('surface' in config && config.surface !== undefined && config.surface !== 'alpha' && config.surface !== 'registry') {
+    if (
+        'surface' in config &&
+        config.surface !== undefined &&
+        config.surface !== 'alpha' &&
+        config.surface !== 'registry'
+    ) {
         throw new CoreError('InvalidParams', "MCPAdapter config surface must be 'alpha' or 'registry'", {
             field: 'surface',
             value: config.surface,
@@ -142,46 +155,52 @@ export class MCPAdapter {
     ): Promise<any> {
         const errorHandlingOptions = this.toolRunner.errorHandlingOptionsForTool(name, args);
 
-        return await withMcpErrorHandling('MCPAdapter', `tool_${name}`, async () => {
-            adapterLogger.debug(`Handling tool call: ${name}`, {
-                args: sanitizeMcpLogArgs(args),
-            });
+        return await withMcpErrorHandling(
+            'MCPAdapter',
+            `tool_${name}`,
+            async () => {
+                adapterLogger.debug(`Handling tool call: ${name}`, {
+                    args: sanitizeMcpLogArgs(args),
+                });
 
-            try {
-                if (this.config.surface !== 'registry') {
-                    assertAlphaMvpToolAllowed(name, args, { surface: 'MCP tool surface' });
+                try {
+                    if (this.config.surface !== 'registry') {
+                        assertAlphaMvpToolAllowed(name, args, { surface: 'MCP tool surface' });
+                    }
+                    this.toolRunner.validate(name, args);
+                } catch (error) {
+                    if (options.convertValidationErrorsToResult) {
+                        return handleAdapterError(error, 'mcp');
+                    }
+                    throw error;
                 }
-                this.toolRunner.validate(name, args);
-            } catch (error) {
-                if (options.convertValidationErrorsToResult) {
+
+                const startTime = Date.now();
+                let result: any;
+                try {
+                    result = await this.toolRunner.execute(name, args);
+                } catch (error) {
                     return handleAdapterError(error, 'mcp');
                 }
-                throw error;
-            }
 
-            const startTime = Date.now();
-            let result: any;
-            try {
-                result = await this.toolRunner.execute(name, args);
-            } catch (error) {
-                return handleAdapterError(error, 'mcp');
-            }
+                const duration = Date.now() - startTime;
+                const safeStr = safeMcpStringify(result);
+                adapterLogger.logPerformance(`tool_${name}`, duration, true, {
+                    resultSize: safeStr.length,
+                });
+                if (process.env.DEBUG && !process.env.SILENT_MODE) {
+                    try {
+                        adapterLogger.debug('tool result keys', {
+                            keys: typeof result === 'object' && result ? Object.keys(result as any) : typeof result,
+                        });
+                    } catch {}
+                }
 
-            const duration = Date.now() - startTime;
-            const safeStr = safeMcpStringify(result);
-            adapterLogger.logPerformance(`tool_${name}`, duration, true, {
-                resultSize: safeStr.length,
-            });
-            if (process.env.DEBUG && !process.env.SILENT_MODE) {
-                try {
-                    adapterLogger.debug('tool result keys', {
-                        keys: typeof result === 'object' && result ? Object.keys(result as any) : typeof result,
-                    });
-                } catch {}
-            }
-
-            return ensureMcpToolResponse(result);
-        }, undefined, errorHandlingOptions);
+                return ensureMcpToolResponse(result);
+            },
+            undefined,
+            errorHandlingOptions
+        );
     }
 
     /**

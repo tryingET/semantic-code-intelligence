@@ -90,10 +90,18 @@ export function structuralProcessErrorPayload(
         return { ok: false, code: 'timeout', message: stderr || 'ast-grep timed out', command };
     }
     if (proc.outputExceeded) {
-        return { ok: false, code: 'too_much_output', message: stderr || 'ast-grep output exceeded buffer limit', command };
+        return {
+            ok: false,
+            code: 'too_much_output',
+            message: stderr || 'ast-grep output exceeded buffer limit',
+            command,
+        };
     }
     const lower = stderr.toLowerCase();
-    const code = lower.includes('pattern') || lower.includes('parse') || lower.includes('invalid') ? 'bad_ast_grep_pattern' : 'ast_grep_failed';
+    const code =
+        lower.includes('pattern') || lower.includes('parse') || lower.includes('invalid')
+            ? 'bad_ast_grep_pattern'
+            : 'ast_grep_failed';
     return { ok: false, code, message: stderr.slice(0, 4000), command };
 }
 
@@ -144,7 +152,11 @@ export function applyStructuralReplacements(
     for (const edit of ordered) {
         const start = Math.max(0, Math.min(current.length, edit.start));
         const end = Math.max(start, Math.min(current.length, edit.end));
-        current = Buffer.concat([current.subarray(0, start), Buffer.from(edit.replacement, 'utf8'), current.subarray(end)]);
+        current = Buffer.concat([
+            current.subarray(0, start),
+            Buffer.from(edit.replacement, 'utf8'),
+            current.subarray(end),
+        ]);
     }
     return current.toString('utf8');
 }
@@ -164,17 +176,24 @@ export class StructuralWorkflowService {
         }
         const bin = findAstGrepBinary();
         if (!bin) {
-            return { payload: { ok: false, code: 'ast_grep_unavailable', message: 'ast-grep binary not found on PATH' }, isError: true };
+            return {
+                payload: { ok: false, code: 'ast_grep_unavailable', message: 'ast-grep binary not found on PATH' },
+                isError: true,
+            };
         }
         const paths = await normalizeStructuralPaths(args?.paths, this.workspaceRoot);
         const maxResults = Math.max(1, Math.min(1000, Number(args?.maxResults || 50)));
         const timeoutMs = Math.max(1_000, Math.min(120_000, Number(args?.timeoutMs || 30_000)));
         const maxBuffer = Math.max(64 * 1024, Math.min(32 * 1024 * 1024, Number(args?.maxBuffer || 8 * 1024 * 1024)));
-        const proc = await runStructuralProcess(bin, ['run', '--pattern', pattern, '--lang', language, '--json=stream', ...paths], {
-            cwd: this.workspaceRoot,
-            maxBuffer,
-            timeoutMs,
-        });
+        const proc = await runStructuralProcess(
+            bin,
+            ['run', '--pattern', pattern, '--lang', language, '--json=stream', ...paths],
+            {
+                cwd: this.workspaceRoot,
+                maxBuffer,
+                timeoutMs,
+            }
+        );
         if (proc.status !== 0 && (String(proc.stderr || '').trim() || proc.timedOut || proc.outputExceeded)) {
             return { payload: structuralProcessErrorPayload(proc, 'ast-grep run'), isError: true };
         }
@@ -228,7 +247,9 @@ export class StructuralWorkflowService {
                 const ordered = [...edits].sort((a, b) => a.start - b.start);
                 for (let i = 1; i < ordered.length; i++) {
                     if (ordered[i].start < ordered[i - 1].end) {
-                        throw new CoreError('InvalidParams', 'ast-grep produced overlapping structural replacements', { file: rel });
+                        throw new CoreError('InvalidParams', 'ast-grep produced overlapping structural replacements', {
+                            file: rel,
+                        });
                     }
                 }
                 const opened = await openWorkspaceFileForRead(rel, {
@@ -250,12 +271,16 @@ export class StructuralWorkflowService {
                 await fs.mkdir(path.dirname(modPath), { recursive: true });
                 await fs.writeFile(origPath, original, 'utf8');
                 await fs.writeFile(modPath, modified, 'utf8');
-                const proc = spawnSync('diff', ['-u', '--label', `a/${rel}`, '--label', `b/${rel}`, origPath, modPath], {
-                    stdio: 'pipe',
-                    encoding: 'utf8',
-                    maxBuffer: 4 * 1024 * 1024,
-                    timeout: 10_000,
-                });
+                const proc = spawnSync(
+                    'diff',
+                    ['-u', '--label', `a/${rel}`, '--label', `b/${rel}`, origPath, modPath],
+                    {
+                        stdio: 'pipe',
+                        encoding: 'utf8',
+                        maxBuffer: 4 * 1024 * 1024,
+                        timeout: 10_000,
+                    }
+                );
                 const body = String(proc.stdout || '');
                 if (body.trim()) diffParts.push(`diff --git a/${rel} b/${rel}\n${body}`);
             }
@@ -274,7 +299,10 @@ export class StructuralWorkflowService {
         }
         const bin = findAstGrepBinary();
         if (!bin) {
-            return { payload: { ok: false, code: 'ast_grep_unavailable', message: 'ast-grep binary not found on PATH' }, isError: true };
+            return {
+                payload: { ok: false, code: 'ast_grep_unavailable', message: 'ast-grep binary not found on PATH' },
+                isError: true,
+            };
         }
         const paths = await normalizeStructuralPaths(args?.paths, this.workspaceRoot);
         const maxResults = Math.max(1, Math.min(2000, Number(args?.maxResults || 200)));
@@ -321,19 +349,28 @@ export class StructuralWorkflowService {
         const snap = overlayStore.createSnapshot(false, { workspaceRoot: this.workspaceRoot });
         const stage = overlayStore.stagePatch(snap.id, built.diff);
         if (!stage.accepted) {
-            return { payload: { ok: false, matches: allMatches.length, snapshot: snap.id, stage, applied: false }, isError: true };
+            return {
+                payload: { ok: false, matches: allMatches.length, snapshot: snap.id, stage, applied: false },
+                isError: true,
+            };
         }
-        const checks = await overlayStore.runChecks(snap.id, commands, timeoutSec, { workspaceRoot: this.workspaceRoot });
+        const checks = await overlayStore.runChecks(snap.id, commands, timeoutSec, {
+            workspaceRoot: this.workspaceRoot,
+        });
         let applied = false;
         let applyResult: any = null;
         if (args?.apply === true) {
             if (process.env.ALLOW_SNAPSHOT_APPLY === '1' && checks.ok) {
-                applyResult = await overlayStore.applyToWorkingTree(snap.id, { check: false, workspaceRoot: this.workspaceRoot });
+                applyResult = await overlayStore.applyToWorkingTree(snap.id, {
+                    check: false,
+                    workspaceRoot: this.workspaceRoot,
+                });
                 applied = !!applyResult?.ok;
             } else {
                 applyResult = {
                     ok: false,
-                    message: process.env.ALLOW_SNAPSHOT_APPLY === '1' ? 'checks_failed' : 'ALLOW_SNAPSHOT_APPLY=1 required',
+                    message:
+                        process.env.ALLOW_SNAPSHOT_APPLY === '1' ? 'checks_failed' : 'ALLOW_SNAPSHOT_APPLY=1 required',
                 };
             }
         }

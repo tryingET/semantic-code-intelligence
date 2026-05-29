@@ -125,6 +125,45 @@ describe('SCIP reader', () => {
         expect(occurrences[0].file).toBe('pkg/foo.go');
     });
 
+    test('normalizes absolute file seeds relative to the supplied workspace root when SCIP metadata omits projectRoot', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'sci-scip-workspace-root-'));
+        const otherCwd = mkdtempSync(join(tmpdir(), 'sci-scip-other-cwd-'));
+        const indexPath = join(dir, 'index.scip');
+        const index = create(IndexSchema, {
+            metadata: create(MetadataSchema, {
+                version: ProtocolVersion.UnspecifiedProtocolVersion,
+                toolInfo: create(ToolInfoSchema, { name: 'sci-test', version: '0.0.0' }),
+                textDocumentEncoding: TextEncoding.UTF8,
+            }),
+            documents: [
+                create(DocumentSchema, {
+                    relativePath: 'pkg/foo.go',
+                    language: 'go',
+                    positionEncoding: PositionEncoding.UTF8CodeUnitOffsetFromLineStart,
+                    occurrences: [
+                        create(OccurrenceSchema, {
+                            range: [1, 1, 4],
+                            symbol: fooSymbol,
+                            symbolRoles: SymbolRole.Definition,
+                        }),
+                    ],
+                }),
+            ],
+        });
+        writeFileSync(indexPath, serializeSCIP(index));
+
+        const previousCwd = process.cwd();
+        try {
+            process.chdir(otherCwd);
+            const reader = await loadScipIndex(indexPath, { workspaceRoot: dir });
+            const occurrences = reader.occurrencesForFile(join(dir, 'pkg', 'foo.go'));
+            expect(occurrences).toHaveLength(1);
+            expect(occurrences[0].file).toBe('pkg/foo.go');
+        } finally {
+            process.chdir(previousCwd);
+        }
+    });
+
     test('normalizes absolute SCIP file seeds whose basename begins with dot-dot text', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'sci-scip-dotdot-'));
         const indexPath = join(dir, 'index.scip');

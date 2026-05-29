@@ -13,9 +13,7 @@ describe('SymbolWorkflowService', () => {
                 calls.push(args);
                 return {
                     payload: {
-                        definitions: args.precise
-                            ? [{ uri: 'file:///workspace/target.ts', name: args.symbol }]
-                            : [],
+                        definitions: args.precise ? [{ uri: 'file:///workspace/target.ts', name: args.symbol }] : [],
                     },
                     isError: false,
                 };
@@ -39,9 +37,18 @@ describe('SymbolWorkflowService', () => {
     test('explores symbols by composing navigation, map, and graph services without MCP objects', async () => {
         const service = new SymbolWorkflowService({
             pickOntologySeedFile: async () => 'src/target.ts',
-            findDefinition: async (args) => ({ payload: { definitions: [{ name: args.symbol, uri: args.file }] }, isError: false }),
-            buildSymbolMap: async (args) => ({ payload: { identifier: args.symbol, files: [args.file] }, isError: false }),
-            graphExpand: async (args) => ({ payload: { seed: args.symbol, file: args.file, nodes: [] }, isError: false }),
+            findDefinition: async (args) => ({
+                payload: { definitions: [{ name: args.symbol, uri: args.file }] },
+                isError: false,
+            }),
+            buildSymbolMap: async (args) => ({
+                payload: { identifier: args.symbol, files: [args.file] },
+                isError: false,
+            }),
+            graphExpand: async (args) => ({
+                payload: { seed: args.symbol, file: args.file, nodes: [] },
+                isError: false,
+            }),
             safeRename: async () => ({ payload: {}, isError: false }),
             patchChecksInSnapshot: async () => ({ payload: {}, isError: false }),
             applySnapshot: async () => ({ payload: {}, isError: false }),

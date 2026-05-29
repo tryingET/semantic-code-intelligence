@@ -58,10 +58,12 @@ export class ScipIndexReader {
     readonly indexPath: string;
     readonly index: Index;
     private readonly occurrences: ScipOccurrenceRecord[];
+    private readonly workspaceRoot: string | null;
 
-    constructor(index: Index, indexPath: string) {
+    constructor(index: Index, indexPath: string, workspaceRoot?: string | null) {
         this.index = index;
         this.indexPath = path.resolve(indexPath);
+        this.workspaceRoot = workspaceRoot ? path.resolve(workspaceRoot) : null;
         this.occurrences = this.flattenOccurrences(index);
     }
 
@@ -72,7 +74,7 @@ export class ScipIndexReader {
         return {
             indexPath: this.indexPath,
             generatedAt: null,
-            workspaceRoot: this.index.metadata?.projectRoot || null,
+            workspaceRoot: this.index.metadata?.projectRoot || this.workspaceRoot || null,
             documentCount: this.index.documents.length,
             occurrenceCount: this.occurrences.length,
             symbolCount,
@@ -85,7 +87,7 @@ export class ScipIndexReader {
     }
 
     occurrencesForFile(file: string): ScipOccurrenceRecord[] {
-        const normalized = normalizeInputFilePath(file, this.index.metadata?.projectRoot || null);
+        const normalized = normalizeInputFilePath(file, this.index.metadata?.projectRoot || null, this.workspaceRoot);
         return this.occurrences.filter((occurrence) => occurrence.file === normalized);
     }
 
@@ -142,7 +144,7 @@ export async function loadScipIndex(indexPath: string, options: ScipLoadOptions 
         }
         const bytes = await handle.readFile();
         const index = deserializeScipBytes(bytes, indexPath);
-        return new ScipIndexReader(index, resolved.path);
+        return new ScipIndexReader(index, resolved.path, options.workspaceRoot || null);
     } finally {
         await handle.close().catch(() => undefined);
     }
@@ -264,10 +266,10 @@ function normalizeRelativePath(file: string): string {
     return file.split(path.sep).join('/').replace(/^\.\//, '');
 }
 
-function normalizeInputFilePath(file: string, projectRoot: string | null): string {
+function normalizeInputFilePath(file: string, projectRoot: string | null, workspaceRoot: string | null = null): string {
     if (!path.isAbsolute(file)) return normalizeRelativePath(file);
 
-    const roots = [projectRoot, process.cwd()]
+    const roots = [projectRoot, workspaceRoot, process.cwd()]
         .map((root) => rootToPath(root))
         .filter((root): root is string => !!root)
         .map((root) => path.resolve(root));

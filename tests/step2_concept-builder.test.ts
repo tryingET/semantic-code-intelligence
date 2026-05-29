@@ -31,7 +31,9 @@ describe('Step 2: ConceptBuilder', () => {
 
         const built = await builder.buildFromContext('getUser', context);
         expect(built).not.toBeNull();
-        expect(built!.concept.metadata.tags).toEqual(expect.arrayContaining(['getter', 'camelCase', 'user-management']));
+        expect(built!.concept.metadata.tags).toEqual(
+            expect.arrayContaining(['getter', 'camelCase', 'user-management'])
+        );
         expect(built!.concept.signature.parameters).toContain('id');
         expect(built!.concept.signature.sideEffects).toContain('logging');
         expect(built!.concept.confidence).toBeGreaterThan(0.5);

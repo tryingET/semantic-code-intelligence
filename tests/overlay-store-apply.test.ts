@@ -12,6 +12,20 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
     const targetAbs = path.join(process.cwd(), targetRel);
     const marker = '// overlay unified add';
 
+    function patchAddingMarker(rel: string): string {
+        return [
+            `diff --git a/${rel} b/${rel}`,
+            `--- a/${rel}`,
+            `+++ b/${rel}`,
+            '@@ -5,3 +5,4 @@',
+            ' export class TestClass {',
+            '     // mcp unified apply_after_checks test',
+            `+    ${marker}`,
+            '     private value: number = 0;',
+            '',
+        ].join('\n');
+    }
+
     beforeAll(async () => {});
 
     afterAll(async () => {});
@@ -19,7 +33,7 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
     test('adds new file and reverts via reverse apply', async () => {
         const before = await fs.readFile(targetAbs, 'utf8');
         const snap = overlayStore.createSnapshot(false);
-        const patch = `diff --git a/${targetRel} b/${targetRel}\n--- a/${targetRel}\n+++ b/${targetRel}\n@@ -5,3 +5,4 @@\n export class TestClass {\n // mcp unified apply_after_checks test\n+${marker}\n     private value: number = 0;\n`;
+        const patch = patchAddingMarker(targetRel);
         const staged = overlayStore.stagePatch(snap.id, patch);
         expect(staged.accepted).toBe(true);
 
@@ -44,7 +58,7 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
 
     test('persists dry-run apply status across snapshot reloads', async () => {
         const snap = overlayStore.createSnapshot(false);
-        const patch = `diff --git a/${targetRel} b/${targetRel}\n--- a/${targetRel}\n+++ b/${targetRel}\n@@ -5,3 +5,4 @@\n export class TestClass {\n // mcp unified apply_after_checks test\n+${marker}\n     private value: number = 0;\n`;
+        const patch = patchAddingMarker(targetRel);
         const staged = overlayStore.stagePatch(snap.id, patch);
         expect(staged.accepted).toBe(true);
 

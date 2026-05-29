@@ -106,13 +106,17 @@ describe('SnapshotPatchWorkflowService', () => {
         const outside = tempWorkspace();
         const snapshot = '11111111-1111-4111-8111-111111111111';
         mkdirSync(join(workspaceRoot, '.ontology', 'snapshots'), { recursive: true });
-        writeFileSync(join(outside, 'metadata.json'), JSON.stringify({
-            id: snapshot,
-            createdAt: Date.now(),
-            diffs: [],
-            workspaceRoot,
-            touchedFiles: [],
-        }), 'utf8');
+        writeFileSync(
+            join(outside, 'metadata.json'),
+            JSON.stringify({
+                id: snapshot,
+                createdAt: Date.now(),
+                diffs: [],
+                workspaceRoot,
+                touchedFiles: [],
+            }),
+            'utf8'
+        );
         symlinkSync(outside, join(workspaceRoot, '.ontology', 'snapshots', snapshot));
 
         const service = new SnapshotPatchWorkflowService({ workspaceRoot: () => workspaceRoot });
@@ -125,7 +129,11 @@ describe('SnapshotPatchWorkflowService', () => {
         const workspaceRoot = tempWorkspace();
         const hostSentinel = join(process.env.HOME || tempWorkspace(), 'sci-safe-write-host-home-sentinel');
         rmSync(hostSentinel, { force: true });
-        writeFileSync(join(workspaceRoot, 'home-write.test.ts'), "import { test, expect } from 'bun:test';\nimport { writeFileSync } from 'node:fs';\nimport { join } from 'node:path';\ntest('home is isolated', () => { writeFileSync(join(process.env.HOME!, 'sci-safe-write-host-home-sentinel'), 'isolated'); expect(true).toBe(true); });\n", 'utf8');
+        writeFileSync(
+            join(workspaceRoot, 'home-write.test.ts'),
+            "import { test, expect } from 'bun:test';\nimport { writeFileSync } from 'node:fs';\nimport { join } from 'node:path';\ntest('home is isolated', () => { writeFileSync(join(process.env.HOME!, 'sci-safe-write-host-home-sentinel'), 'isolated'); expect(true).toBe(true); });\n",
+            'utf8'
+        );
         writeFileSync(join(workspaceRoot, 'package.json'), '{"scripts":{"typecheck":"echo ok"}}\n', 'utf8');
         writeFileSync(join(workspaceRoot, 'target.ts'), 'export const value = 1;\n', 'utf8');
         const service = new SnapshotPatchWorkflowService({ workspaceRoot: () => workspaceRoot });
@@ -139,7 +147,13 @@ describe('SnapshotPatchWorkflowService', () => {
 +export const value = 2;
 `;
         expect(payload(await service.proposePatch({ snapshot: snap.snapshot, patch: safePatch })).accepted).toBe(true);
-        const checked = payload(await service.runChecks({ snapshot: snap.snapshot, commands: ['bun test home-write.test.ts'], timeoutSec: 30 }));
+        const checked = payload(
+            await service.runChecks({
+                snapshot: snap.snapshot,
+                commands: ['bun test home-write.test.ts'],
+                timeoutSec: 30,
+            })
+        );
         expect(checked.ok).toBe(true);
         expect(existsSync(hostSentinel)).toBe(false);
 
@@ -151,8 +165,12 @@ describe('SnapshotPatchWorkflowService', () => {
 +{"scripts":{"typecheck":"echo unsafe"}}
 `;
         const packageSnap = payload(await service.getSnapshot({ preferExisting: false }));
-        expect(payload(await service.proposePatch({ snapshot: packageSnap.snapshot, patch: packagePatch })).accepted).toBe(true);
-        const rejected = payload(await service.runChecks({ snapshot: packageSnap.snapshot, commands: ['bun run typecheck'], timeoutSec: 30 }));
+        expect(
+            payload(await service.proposePatch({ snapshot: packageSnap.snapshot, patch: packagePatch })).accepted
+        ).toBe(true);
+        const rejected = payload(
+            await service.runChecks({ snapshot: packageSnap.snapshot, commands: ['bun run typecheck'], timeoutSec: 30 })
+        );
         expect(rejected.ok).toBe(false);
         expect(rejected.output).toContain('runner commands are disabled');
     });
@@ -175,13 +193,19 @@ describe('SnapshotPatchWorkflowService', () => {
 +export const value = 2;
 `;
             expect(payload(await service.proposePatch({ snapshot: snap.snapshot, patch })).accepted).toBe(true);
-            expect(payload(await service.extractSnapshotArtifacts({ snapshot: snap.snapshot, includeContent: true })).status.materialized).toBe(true);
+            expect(
+                payload(await service.extractSnapshotArtifacts({ snapshot: snap.snapshot, includeContent: true }))
+                    .status.materialized
+            ).toBe(true);
 
             const snapshotDir = overlayStore.getSnapshotDirectory(snap.snapshot, { workspaceRoot });
             rmSync(join(snapshotDir, 'progress.log'), { force: true });
             symlinkSync(outside, join(snapshotDir, 'progress.log'));
 
-            expect(payload(await service.extractSnapshotArtifacts({ snapshot: snap.snapshot, includeContent: true })).status.materialized).toBe(true);
+            expect(
+                payload(await service.extractSnapshotArtifacts({ snapshot: snap.snapshot, includeContent: true }))
+                    .status.materialized
+            ).toBe(true);
             expect(readFileSync(outside, 'utf8')).toBe('original-outside\n');
         } finally {
             if (previousProgress === undefined) delete process.env.PROGRESS_LOGS;

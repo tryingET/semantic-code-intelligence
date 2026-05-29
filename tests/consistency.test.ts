@@ -715,8 +715,8 @@ describe('Cross-Protocol Consistency', () => {
     });
 
     describe('Caching Consistency', () => {
-	        test('should share cache benefits across all protocols', async () => {
-	            const { symbol, file, position } = consistencyTestData;
+        test('should share cache benefits across all protocols', async () => {
+            const { symbol, file, position } = consistencyTestData;
 
             // Clear cache first
             await context.sharedServices.cache.clear();
@@ -843,34 +843,34 @@ describe('Cross-Protocol Consistency', () => {
             // Core should show cache hits
             expect(cacheHitIndicators.core).toBe(true);
 
-	            // All protocols should benefit from caching (second run faster)
-	            for (const protocol of protocols) {
-	                const first = firstRunTimes[protocol];
-	                const second = secondRunTimes[protocol];
-	                // Guard against near-zero durations making ratios meaningless/flaky.
-	                const speedup = first / Math.max(second, 0.0001);
-	                console.log(`${protocol} speedup: ${speedup.toFixed(2)}x`);
+            // All protocols should benefit from caching (second run faster)
+            for (const protocol of protocols) {
+                const first = firstRunTimes[protocol];
+                const second = secondRunTimes[protocol];
+                // Guard against near-zero durations making ratios meaningless/flaky.
+                const speedup = first / Math.max(second, 0.0001);
+                console.log(`${protocol} speedup: ${speedup.toFixed(2)}x`);
 
-	                // Core should show strong cache benefits since we can track cache hits
-	                if (protocol === 'core') {
-	                    expect(speedup).toBeGreaterThan(2.0); // Core should show >2x speedup
-	                } else if (protocol === 'http') {
+                // Core should show strong cache benefits since we can track cache hits
+                if (protocol === 'core') {
+                    expect(speedup).toBeGreaterThan(2.0); // Core should show >2x speedup
+                } else if (protocol === 'http') {
                     // HTTP has known serialization/parsing overhead that may mask cache benefits
                     // Log details for debugging but allow it to be slower for now
                     console.warn(`HTTP speedup is ${speedup.toFixed(2)}x - investigating overhead`);
-	                    // Temporarily allow HTTP to be slower while we fix the underlying issue
-	                    expect(speedup).toBeGreaterThan(0.1); // Just verify it doesn't completely fail
-	                } else {
-	                    // Other protocols should benefit from shared cache, but if the first run is
-	                    // sub-millisecond the ratio becomes mostly noise (scheduler/GC/IO jitter).
-	                    if (first < 5) {
-	                        expect(second).toBeLessThan(100);
-	                    } else {
-	                        expect(speedup).toBeGreaterThan(0.8);
-	                    }
-	                }
-	            }
-	        });
+                    // Temporarily allow HTTP to be slower while we fix the underlying issue
+                    expect(speedup).toBeGreaterThan(0.1); // Just verify it doesn't completely fail
+                } else {
+                    // Other protocols should benefit from shared cache, but if the first run is
+                    // sub-millisecond the ratio becomes mostly noise (scheduler/GC/IO jitter).
+                    if (first < 5) {
+                        expect(second).toBeLessThan(100);
+                    } else {
+                        expect(speedup).toBeGreaterThan(0.8);
+                    }
+                }
+            }
+        });
 
         test('should maintain cache coherence across protocol boundaries', async () => {
             const testSymbol = 'CacheCoherenceTest';

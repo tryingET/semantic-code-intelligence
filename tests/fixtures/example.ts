@@ -3,7 +3,7 @@
  */
 
 export class TestClass {
-// mcp unified apply_after_checks test
+    // mcp unified apply_after_checks test
     private value: number = 0;
 
     constructor(initialValue?: number) {

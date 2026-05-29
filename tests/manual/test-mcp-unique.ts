@@ -81,9 +81,7 @@ async function testMCPLayer3Unique() {
                     });
                 } else if (parsedContent.performance.layer3 > 0) {
                     console.log(`\n⚠️  Layer 3 executed (${parsedContent.performance.layer3}ms) but found no matches`);
-                    console.log(
-                        '   This could mean the symbol exists in concepts but has no valid symbol anchors'
-                    );
+                    console.log('   This could mean the symbol exists in concepts but has no valid symbol anchors');
                 } else {
                     console.log('\n⚠️  Layer 3 was not executed (0ms timing)');
                     console.log('   This suggests Layer 1 found results or there was an error');

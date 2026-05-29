@@ -79,7 +79,9 @@ describe('graph_expand executable capability contract', () => {
         expect(obj.impactSummary?.counts?.callees).toBeGreaterThan(0);
 
         expect(texts(obj.neighbors.imports)).toEqual(expect.arrayContaining(['def', 'a', 'b', 'c', "'./module'"]));
-        expect(texts(obj.neighbors.exports)).toEqual(expect.arrayContaining(['exportedFunction', 'x', 'y', '42', 'renamedFunction', 'contractTarget']));
+        expect(texts(obj.neighbors.exports)).toEqual(
+            expect.arrayContaining(['exportedFunction', 'x', 'y', '42', 'renamedFunction', 'contractTarget'])
+        );
         expect(names(obj.neighbors.callees)).toEqual(['contractHelper']);
         expect(names(obj.neighbors.callees)).not.toContain('outsideHelper');
         expect(obj.neighbors.callers.map((item: GraphNeighbor) => item.caller)).toEqual(['contractCaller']);
@@ -121,7 +123,9 @@ describe('graph_expand executable capability contract', () => {
             })
         );
 
-        expect(obj.impactSummary?.limitations).toContain('depth: recursive graph expansion is not implemented; returned evidence is one-hop best effort');
+        expect(obj.impactSummary?.limitations).toContain(
+            'depth: recursive graph expansion is not implemented; returned evidence is one-hop best effort'
+        );
         expect(obj.impactSummary?.counts?.imports).toBeGreaterThan(0);
     });
 

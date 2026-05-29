@@ -38,7 +38,9 @@ afterEach(() => {
 
 describe('navigation workspace trust boundary', () => {
     test('graph_expand rejects absolute out-of-workspace files without leaking graph content', async () => {
-        const outsideFile = outsideFileWith('import outsideSecretGraphLeak from "secret-module";\nexport const outsideSecretExport = 1;\n');
+        const outsideFile = outsideFileWith(
+            'import outsideSecretGraphLeak from "secret-module";\nexport const outsideSecretExport = 1;\n'
+        );
         const mcp = new MCPAdapter({ buildSymbolMap: async () => ({ declarations: [] }) } as any);
 
         const result = await mcp.handleToolCall('graph_expand', {
@@ -122,7 +124,18 @@ describe('navigation workspace trust boundary', () => {
             async initialize() {},
             async findDefinitionAsync() {
                 return {
-                    data: [{ uri: `file://${outsideFile}`, range: { start: { line: 0, character: 16 }, end: { line: 0, character: 16 + secretName.length } }, kind: 'function', name: secretName, confidence: 1 }],
+                    data: [
+                        {
+                            uri: `file://${outsideFile}`,
+                            range: {
+                                start: { line: 0, character: 16 },
+                                end: { line: 0, character: 16 + secretName.length },
+                            },
+                            kind: 'function',
+                            name: secretName,
+                            confidence: 1,
+                        },
+                    ],
                     performance: { total: 0 },
                 };
             },
@@ -170,7 +183,14 @@ describe('navigation workspace trust boundary', () => {
             async initialize() {},
             async findReferencesAsync() {
                 return {
-                    data: [{ uri: `file://${outsideFile}`, range: { start: { line: 0, character: 0 }, end: { line: 0, character: secretName.length } }, kind: 'reference', name: secretName }],
+                    data: [
+                        {
+                            uri: `file://${outsideFile}`,
+                            range: { start: { line: 0, character: 0 }, end: { line: 0, character: secretName.length } },
+                            kind: 'reference',
+                            name: secretName,
+                        },
+                    ],
                     performance: { total: 0 },
                 };
             },
@@ -193,12 +213,22 @@ describe('navigation workspace trust boundary', () => {
     test('explore_codebase rejects outside file before calling core', async () => {
         const outsideFile = outsideFileWith('export const outsideExploreSecret = true;\n');
         let called = false;
-        const mcp = new MCPAdapter({
-            async exploreCodebase() {
-                called = true;
-                return { symbol: '', definitions: [], references: [], performance: {}, diagnostics: [], timestamp: '' };
-            },
-        } as any, { surface: 'registry' });
+        const mcp = new MCPAdapter(
+            {
+                async exploreCodebase() {
+                    called = true;
+                    return {
+                        symbol: '',
+                        definitions: [],
+                        references: [],
+                        performance: {},
+                        diagnostics: [],
+                        timestamp: '',
+                    };
+                },
+            } as any,
+            { surface: 'registry' }
+        );
 
         const result = await mcp.handleToolCall('explore_codebase', {
             file: `file://${outsideFile}`,
@@ -213,19 +243,42 @@ describe('navigation workspace trust boundary', () => {
     test('explore_codebase filters out-of-workspace definition and reference URIs returned by core', async () => {
         const secretName = `outsideExploreReturnedSecret${Date.now()}${Math.random().toString(16).slice(2)}`;
         const outsideFile = outsideFileWith(`export const ${secretName} = true;\n`);
-        const mcp = new MCPAdapter({
-            async exploreCodebase() {
-                return {
-                    symbol: secretName,
-                    contextUri: 'file://workspace/src/core/code-graph.ts',
-                    definitions: [{ uri: `file://${outsideFile}`, range: { start: { line: 0, character: 13 }, end: { line: 0, character: 13 + secretName.length } }, kind: 'variable', name: secretName }],
-                    references: [{ uri: `file://${outsideFile}`, range: { start: { line: 0, character: 13 }, end: { line: 0, character: 13 + secretName.length } }, kind: 'reference', name: secretName }],
-                    performance: {},
-                    diagnostics: [],
-                    timestamp: '',
-                };
-            },
-        } as any, { surface: 'registry' });
+        const mcp = new MCPAdapter(
+            {
+                async exploreCodebase() {
+                    return {
+                        symbol: secretName,
+                        contextUri: 'file://workspace/src/core/code-graph.ts',
+                        definitions: [
+                            {
+                                uri: `file://${outsideFile}`,
+                                range: {
+                                    start: { line: 0, character: 13 },
+                                    end: { line: 0, character: 13 + secretName.length },
+                                },
+                                kind: 'variable',
+                                name: secretName,
+                            },
+                        ],
+                        references: [
+                            {
+                                uri: `file://${outsideFile}`,
+                                range: {
+                                    start: { line: 0, character: 13 },
+                                    end: { line: 0, character: 13 + secretName.length },
+                                },
+                                kind: 'reference',
+                                name: secretName,
+                            },
+                        ],
+                        performance: {},
+                        diagnostics: [],
+                        timestamp: '',
+                    };
+                },
+            } as any,
+            { surface: 'registry' }
+        );
 
         const result = await mcp.handleToolCall('explore_codebase', {
             file: 'src/core/code-graph.ts',

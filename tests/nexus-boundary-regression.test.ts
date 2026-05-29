@@ -3,6 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { CLIAdapter } from '../src/adapters/cli-adapter.js';
+import { HTTPAdapter } from '../src/adapters/http-adapter.js';
 import { LSPAdapter } from '../src/adapters/lsp-adapter.js';
 import { uriToPath } from '../src/adapters/utils.js';
 import { expandNeighbors } from '../src/core/code-graph.js';
@@ -247,9 +249,42 @@ describe('nexus boundary regressions', () => {
         expect(definitionRequest?.identifier).toBe('target');
     });
 
-    test('workspace URI normalization rejects workspace-like file hosts instead of localizing them', () => {
-        expect(() => workspaceInputToPath('file://workspace-evil/a', tempWorkspace())).toThrow();
+    test('workspace URI normalization rejects workspace-like file hosts instead of localizing them', async () => {
+        const workspace = tempWorkspace();
+        mkdirSync(join(workspace, '-evil'), { recursive: true });
+        writeFileSync(join(workspace, '-evil', 'a'), 'const shouldNotLocalize = 1;\n', 'utf8');
+        expect(() => workspaceInputToPath('file://workspace-evil/a', workspace)).toThrow();
         expect(() => uriToPath('file://workspace-evil/a')).toThrow();
+
+        const core = {
+            config: { workspaceRoot: workspace },
+            async initialize() {},
+            async findDefinitionAsync(request: any) {
+                return {
+                    data: [
+                        {
+                            uri: request.uri,
+                            range: { start: request.position, end: request.position },
+                            kind: 'variable',
+                        },
+                    ],
+                };
+            },
+            async findReferencesAsync() {
+                return { data: [] };
+            },
+        } as any;
+        const http = new HTTPAdapter(core, { enableCors: false, enableOpenAPI: false });
+        const httpResponse = await http.handleRequest({
+            method: 'POST',
+            url: 'http://localhost/api/v1/definition',
+            headers: {},
+            body: JSON.stringify({ identifier: 'shouldNotLocalize', file: 'file://workspace-evil/a' }),
+        });
+        expect(httpResponse.status).toBe(400);
+
+        const cli = new CLIAdapter(core);
+        await expect(cli.findDefinition('file://workspace-evil/a', { symbol: 'shouldNotLocalize' })).rejects.toThrow();
     });
 
     test('LSP shared containment rejects outside-workspace precise request URIs', async () => {

@@ -17,7 +17,9 @@ repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$repo_root"
 
 # 1. Broken symlinks are almost always migration residue.
-if broken_links="$(find . -xtype l -not -path './.git/*' -print)" && [[ -n "$broken_links" ]]; then
+if broken_links="$(find . \
+  \( -path './.git' -o -path './node_modules' -o -path './dist' -o -path './.ontology' -o -path './.test-results' \) -prune \
+  -o -xtype l -print)" && [[ -n "$broken_links" ]]; then
   fail "broken symlinks found:\n$broken_links"
 else
   info "no broken symlinks"

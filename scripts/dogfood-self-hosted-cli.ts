@@ -58,7 +58,7 @@ function parseWorkflowStdout(stdout: string) {
 
 function callCliWorkflow(name: string, args: Record<string, unknown>, observation: string) {
     const started = Date.now();
-    const bun = process.env.BUN_PATH || `${process.env.HOME}/.bun/bin/bun`;
+    const bun = process.env.BUN_PATH || 'bun';
     const proc = spawnSync(bun, ['run', 'src/servers/cli.ts', 'workflow', name, '--args', JSON.stringify(args), '--json'], {
         encoding: 'utf8',
         env: { ...process.env, SILENT_MODE: 'true', STDIO_MODE: 'true' },

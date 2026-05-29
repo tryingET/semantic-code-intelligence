@@ -1,11 +1,21 @@
 import { describe, expect, test } from 'bun:test';
-import { isLoopbackHost, isLoopbackOrigin, resolveMcpHttpCorsOrigin, type McpHttpCorsOrigin } from '../src/servers/mcp-http-cors';
+import {
+    isLoopbackHost,
+    isLoopbackOrigin,
+    resolveMcpHttpCorsOrigin,
+    type McpHttpCorsOrigin,
+} from '../src/servers/mcp-http-cors';
 
-function assertCorsCallback(policy: McpHttpCorsOrigin): asserts policy is Exclude<McpHttpCorsOrigin, boolean | string | string[]> {
+function assertCorsCallback(
+    policy: McpHttpCorsOrigin
+): asserts policy is Exclude<McpHttpCorsOrigin, boolean | string | string[]> {
     expect(typeof policy).toBe('function');
 }
 
-function evaluateCorsPolicy(policy: Exclude<McpHttpCorsOrigin, boolean | string | string[]>, origin: string | undefined) {
+function evaluateCorsPolicy(
+    policy: Exclude<McpHttpCorsOrigin, boolean | string | string[]>,
+    origin: string | undefined
+) {
     let result: boolean | string | string[] | undefined;
     let error: Error | null | undefined;
     policy(origin, (err, allow) => {

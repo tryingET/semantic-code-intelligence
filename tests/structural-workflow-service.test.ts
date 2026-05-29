@@ -58,12 +58,16 @@ describe('StructuralWorkflowService', () => {
         const workspaceRoot = tempWorkspace();
         writeFileSync(join(workspaceRoot, 'sample.ts'), 'const value = 1;\n', 'utf8');
 
-        await expect(normalizeStructuralPaths(['file://workspace/sample.ts'], workspaceRoot)).resolves.toEqual(['sample.ts']);
+        await expect(normalizeStructuralPaths(['file://workspace/sample.ts'], workspaceRoot)).resolves.toEqual([
+            'sample.ts',
+        ]);
     });
 
     test('rejects structural paths outside the configured workspace', async () => {
         const workspaceRoot = tempWorkspace();
-        await expect(normalizeStructuralPaths(['../outside'], workspaceRoot)).rejects.toThrow('structural path must stay within the workspace');
+        await expect(normalizeStructuralPaths(['../outside'], workspaceRoot)).rejects.toThrow(
+            'structural path must stay within the workspace'
+        );
     });
 
     test('rejects structural path symlinks that escape the workspace', async () => {
@@ -72,6 +76,8 @@ describe('StructuralWorkflowService', () => {
         writeFileSync(join(outsideRoot, 'secret.ts'), 'function OutsideSecret() { return 1; }\n', 'utf8');
         symlinkSync(outsideRoot, join(workspaceRoot, 'out'));
 
-        await expect(normalizeStructuralPaths(['out'], workspaceRoot)).rejects.toThrow('structural path must stay within the workspace');
+        await expect(normalizeStructuralPaths(['out'], workspaceRoot)).rejects.toThrow(
+            'structural path must stay within the workspace'
+        );
     });
 });

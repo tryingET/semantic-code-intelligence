@@ -100,7 +100,17 @@ describe('Dogfooding MCP workflows (fast)', () => {
         const snapshotId = snapParsed?.id || snapParsed?.snapshot || snapParsed;
         expect(snapshotId).toBeDefined();
 
-        const patch = `*** Begin Patch\n*** Update File: tests/fixtures/example.ts\n@@\n export class TestClass {\n // mcp unified apply_after_checks test\n+    // dogfood: noop comment for stage-only\n     private value: number = 0;\n*** End Patch\n`;
+        const patch = [
+            '*** Begin Patch',
+            '*** Update File: tests/fixtures/example.ts',
+            '@@',
+            ' export class TestClass {',
+            '     // mcp unified apply_after_checks test',
+            '+    // dogfood: noop comment for stage-only',
+            '     private value: number = 0;',
+            '*** End Patch',
+            '',
+        ].join('\n');
         const stage = await mcp.handleToolCall('propose_patch', { snapshot: snapshotId, patch });
         const stageParsed = await parseContent(stage);
         expect(stageParsed).toBeDefined();

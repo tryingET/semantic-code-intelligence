@@ -54,7 +54,16 @@ export class TestClass {
 
     test('stages unified diff, runs checks and applies to working tree', async () => {
         const before = await fs.readFile(targetAbs, 'utf8');
-        const patch = `diff --git a/${targetRel} b/${targetRel}\n--- a/${targetRel}\n+++ b/${targetRel}\n@@ -5,2 +5,3 @@\n export class TestClass {\n+    ${marker}\n     private value: number = 0;\n`;
+        const patch = [
+            `diff --git a/${targetRel} b/${targetRel}`,
+            `--- a/${targetRel}`,
+            `+++ b/${targetRel}`,
+            '@@ -5,2 +5,3 @@',
+            ' export class TestClass {',
+            `+    ${marker}`,
+            '     private value: number = 0;',
+            '',
+        ].join('\n');
 
         // Stage via CLI adapter
         const staged = await cli.handleProposePatch(patch, { json: true, runChecks: false });

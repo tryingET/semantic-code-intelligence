@@ -104,10 +104,22 @@ describe('search workspace trust boundary', () => {
 
         const mcp = new MCPAdapter(undefined as any);
         const snapshot = await freshSnapshot(mcp);
-        await mcp.handleToolCall('propose_patch', { snapshot, patch: updateOneLineDiff(relPath, liveText, snapshotText) });
+        await mcp.handleToolCall('propose_patch', {
+            snapshot,
+            patch: updateOneLineDiff(relPath, liveText, snapshotText),
+        });
 
-        const snapshotResult = await mcp.handleToolCall('text_search', { query: snapshotText, path: relPath, snapshot, maxResults: 5 });
-        const liveResult = await mcp.handleToolCall('text_search', { query: snapshotText, path: relPath, maxResults: 5 });
+        const snapshotResult = await mcp.handleToolCall('text_search', {
+            query: snapshotText,
+            path: relPath,
+            snapshot,
+            maxResults: 5,
+        });
+        const liveResult = await mcp.handleToolCall('text_search', {
+            query: snapshotText,
+            path: relPath,
+            maxResults: 5,
+        });
         const snapshotPayload = parseToolJson(snapshotResult);
         const livePayload = parseToolJson(liveResult);
 
@@ -126,9 +138,17 @@ describe('search workspace trust boundary', () => {
 
         const mcp = new MCPAdapter(undefined as any);
         const snapshot = await freshSnapshot(mcp);
-        await mcp.handleToolCall('propose_patch', { snapshot, patch: updateOneLineDiff(relPath, liveText, snapshotText) });
+        await mcp.handleToolCall('propose_patch', {
+            snapshot,
+            patch: updateOneLineDiff(relPath, liveText, snapshotText),
+        });
 
-        const result = await mcp.handleToolCall('text_search', { query: snapshotText, path: absPath, snapshot, maxResults: 5 });
+        const result = await mcp.handleToolCall('text_search', {
+            query: snapshotText,
+            path: absPath,
+            snapshot,
+            maxResults: 5,
+        });
         const payload = parseToolJson(result);
 
         expect(result.isError).toBe(false);
@@ -149,8 +169,18 @@ describe('search workspace trust boundary', () => {
         mkdirSync(dirname(linkPath), { recursive: true });
         symlinkSync(outsideFile, linkPath);
 
-        const traversal = await mcp.handleToolCall('text_search', { query: 'package', path: '../package.json', snapshot, maxResults: 5 });
-        const symlink = await mcp.handleToolCall('text_search', { query: 'outsideSecretSnapshotTextSearchLeak', path: linkRel, snapshot, maxResults: 5 });
+        const traversal = await mcp.handleToolCall('text_search', {
+            query: 'package',
+            path: '../package.json',
+            snapshot,
+            maxResults: 5,
+        });
+        const symlink = await mcp.handleToolCall('text_search', {
+            query: 'outsideSecretSnapshotTextSearchLeak',
+            path: linkRel,
+            snapshot,
+            maxResults: 5,
+        });
         const rendered = JSON.stringify(symlink);
 
         expect(traversal.isError).toBe(true);
@@ -161,7 +191,10 @@ describe('search workspace trust boundary', () => {
 
     test('text_search fails closed for unknown snapshot ids', async () => {
         const mcp = new MCPAdapter(undefined as any);
-        const result = await mcp.handleToolCall('text_search', { query: 'anything', snapshot: '00000000-0000-4000-8000-000000000000' });
+        const result = await mcp.handleToolCall('text_search', {
+            query: 'anything',
+            snapshot: '00000000-0000-4000-8000-000000000000',
+        });
 
         expect(result.isError).toBe(true);
         expect(JSON.stringify(result)).toContain('Unknown snapshot id');

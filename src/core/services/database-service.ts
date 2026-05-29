@@ -285,6 +285,7 @@ class ConnectionPool {
         timeoutId: NodeJS.Timeout;
     }> = [];
     private Database: SQLiteDatabaseConstructor;
+    private disposed = false;
 
     constructor(dbPath: string, maxConnections: number = 10) {
         this.maxConnections = maxConnections;
@@ -310,6 +311,10 @@ class ConnectionPool {
     }
 
     async acquire(): Promise<SQLiteDatabase> {
+        if (this.disposed) {
+            throw new CoreError('Database service shutting down', 'DB_SHUTDOWN');
+        }
+
         if (this.connections.length > 0) {
             const db = this.connections.pop()!;
             this.activeConnections++;
@@ -335,7 +340,16 @@ class ConnectionPool {
     }
 
     release(db: SQLiteDatabase): void {
-        this.activeConnections--;
+        this.activeConnections = Math.max(0, this.activeConnections - 1);
+
+        if (this.disposed) {
+            try {
+                db.close();
+            } catch (error) {
+                console.error('Error closing database connection:', error);
+            }
+            return;
+        }
 
         if (this.waitQueue.length > 0) {
             const waiter = this.waitQueue.shift()!;
@@ -348,7 +362,11 @@ class ConnectionPool {
     }
 
     async dispose(): Promise<void> {
-        // Close all connections
+        this.disposed = true;
+
+        // Close all idle connections. Active checked-out connections are closed
+        // when their owner releases them; this avoids returning handles to a
+        // disposed pool without closing a database in the middle of a callback.
         for (const db of this.connections) {
             try {
                 db.close();
@@ -467,11 +485,12 @@ export class DatabaseService {
             throw new CoreError('Database service not initialized', 'DB_NOT_INITIALIZED');
         }
 
+        const pool = this.pool;
         const maxRetries = 2; // Fewer retries for queries since they're typically faster
         let attempt = 0;
 
         while (attempt < maxRetries) {
-            const db = await this.pool.acquire();
+            const db = await pool.acquire();
 
             try {
                 // Set busy timeout for better concurrency handling
@@ -480,10 +499,10 @@ export class DatabaseService {
                 const stmt = db.prepare(sql);
                 const result = stmt.all(...params) as T[];
 
-                this.pool.release(db);
+                pool.release(db);
                 return result;
             } catch (error) {
-                this.pool.release(db);
+                pool.release(db);
 
                 const errorMessage = error instanceof Error ? error.message : String(error);
                 const isRetryable =
@@ -534,11 +553,12 @@ export class DatabaseService {
             throw new CoreError('Database service not initialized', 'DB_NOT_INITIALIZED');
         }
 
+        const pool = this.pool;
         const maxRetries = 3;
         let attempt = 0;
 
         while (attempt < maxRetries) {
-            const db = await this.pool.acquire();
+            const db = await pool.acquire();
 
             try {
                 // Set busy timeout for better concurrency handling
@@ -547,13 +567,13 @@ export class DatabaseService {
                 const stmt = db.prepare(sql);
                 const result = stmt.run(...params);
 
-                this.pool.release(db);
+                pool.release(db);
                 return {
                     changes: result.changes,
                     lastInsertRowid: Number(result.lastInsertRowid),
                 };
             } catch (error) {
-                this.pool.release(db);
+                pool.release(db);
 
                 const errorMessage = error instanceof Error ? error.message : String(error);
                 const isRetryable =
@@ -597,11 +617,12 @@ export class DatabaseService {
             throw new CoreError('Database service not initialized', 'DB_NOT_INITIALIZED');
         }
 
+        const pool = this.pool;
         const maxRetries = 3;
         let attempt = 0;
 
         while (attempt < maxRetries) {
-            const db = await this.pool.acquire();
+            const db = await pool.acquire();
             let transactionStarted = false;
 
             try {
@@ -628,7 +649,7 @@ export class DatabaseService {
                 // Commit transaction
                 db.exec('COMMIT');
 
-                this.pool.release(db);
+                pool.release(db);
                 return result;
             } catch (error) {
                 // Rollback on error if transaction was started
@@ -640,7 +661,7 @@ export class DatabaseService {
                     }
                 }
 
-                this.pool.release(db);
+                pool.release(db);
 
                 // Check if this is a retryable error
                 const errorMessage = error instanceof Error ? error.message : String(error);

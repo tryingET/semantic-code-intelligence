@@ -15,7 +15,13 @@ declare module '../core/tools/registry.js' {
 declare module '../mcp/error-handler.js' {
     export type ErrorContext = any;
     export function createValidationError(...args: any[]): Error;
-    export function withMcpErrorHandling(component: string, operation: string, fn: () => Promise<any>, requestId?: string, options?: any): Promise<any>;
+    export function withMcpErrorHandling(
+        component: string,
+        operation: string,
+        fn: () => Promise<any>,
+        requestId?: string,
+        options?: any
+    ): Promise<any>;
 }
 
 declare module '../mcp/file-logger.js' {

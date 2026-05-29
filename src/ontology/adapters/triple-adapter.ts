@@ -116,7 +116,8 @@ export class TripleStoreStorageAdapter implements StoragePort {
             if (link.symbolId !== aliasId) continue;
             this.thingSymbols.delete(key);
             const canonicalKey = `${link.thingId}|${canonicalId}|${link.role}`;
-            if (!this.thingSymbols.has(canonicalKey)) this.thingSymbols.set(canonicalKey, { ...link, symbolId: canonicalId });
+            if (!this.thingSymbols.has(canonicalKey))
+                this.thingSymbols.set(canonicalKey, { ...link, symbolId: canonicalId });
         }
         this.symbols.delete(aliasId);
     }
@@ -178,4 +179,3 @@ export class TripleStoreStorageAdapter implements StoragePort {
         };
     }
 }
-

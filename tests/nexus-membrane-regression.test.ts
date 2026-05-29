@@ -65,7 +65,11 @@ describe('nexus contract membrane regressions', () => {
     test('ast_query limit caps results without truncating file discovery first', async () => {
         const workspaceRoot = tempWorkspace();
         writeFileSync(join(workspaceRoot, 'empty.ts'), 'export const noMatch = 1;\n', 'utf8');
-        writeFileSync(join(workspaceRoot, 'has.ts'), 'function target() { return 1; }\nfunction second() { return 2; }\n', 'utf8');
+        writeFileSync(
+            join(workspaceRoot, 'has.ts'),
+            'function target() { return 1; }\nfunction second() { return 2; }\n',
+            'utf8'
+        );
 
         const skippedFirstFile = await runAstQuery({
             language: 'typescript',
@@ -98,7 +102,11 @@ describe('nexus contract membrane regressions', () => {
 
     test('fallback definition scan ignores prose mentions and returns declaration-shaped code hits', async () => {
         const workspaceRoot = tempWorkspace();
-        writeFileSync(join(workspaceRoot, 'README.md'), 'ImportantSymbol is mentioned here, but this is prose.\n', 'utf8');
+        writeFileSync(
+            join(workspaceRoot, 'README.md'),
+            'ImportantSymbol is mentioned here, but this is prose.\n',
+            'utf8'
+        );
         writeFileSync(join(workspaceRoot, 'target.ts'), 'export const ImportantSymbol = () => 1;\n', 'utf8');
 
         const result = await fallbackScanForDefinition(workspaceRoot, 'ImportantSymbol', 300);
@@ -106,5 +114,22 @@ describe('nexus contract membrane regressions', () => {
         expect(result).toHaveLength(1);
         expect(String(result[0]?.uri || '')).toContain('target.ts');
         expect(result[0]?.kind).toBe('variable');
+    });
+
+    test('fallback definition scan classifies declaration kinds with real word-boundary regexes', async () => {
+        const workspaceRoot = tempWorkspace();
+        writeFileSync(
+            join(workspaceRoot, 'sample.ts'),
+            'export class ImportantClass {}\nfunction importantFunction() { return 1; }\ntype ImportantType = string;\n',
+            'utf8'
+        );
+
+        const classResult = await fallbackScanForDefinition(workspaceRoot, 'ImportantClass', 300);
+        const functionResult = await fallbackScanForDefinition(workspaceRoot, 'importantFunction', 300);
+        const typeResult = await fallbackScanForDefinition(workspaceRoot, 'ImportantType', 300);
+
+        expect(classResult[0]?.kind).toBe('class');
+        expect(functionResult[0]?.kind).toBe('function');
+        expect(typeResult[0]?.kind).toBe('type');
     });
 });

@@ -15,7 +15,11 @@ export function forgetDocumentText(documentTextByUri: Map<string, string>, uri: 
     } catch {}
 }
 
-export function applyDocumentChanges(documentTextByUri: Map<string, string>, uri: string, contentChanges: any[]): string | undefined {
+export function applyDocumentChanges(
+    documentTextByUri: Map<string, string>,
+    uri: string,
+    contentChanges: any[]
+): string | undefined {
     if (!Array.isArray(contentChanges)) return undefined;
     let text = documentTextByUri.get(uri);
     try {

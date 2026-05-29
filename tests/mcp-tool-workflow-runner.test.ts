@@ -20,7 +20,11 @@ describe('McpToolWorkflowRunner', () => {
 
         expect(calls).toHaveLength(1);
         expect(calls[0].name).toBe('get_snapshot');
-        expect(JSON.parse(result.content[0].text)).toEqual({ ok: true, name: 'get_snapshot', args: { preferExisting: true } });
+        expect(JSON.parse(result.content[0].text)).toEqual({
+            ok: true,
+            name: 'get_snapshot',
+            args: { preferExisting: true },
+        });
         expect(result.isError).toBe(false);
     });
 

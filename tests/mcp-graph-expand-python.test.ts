@@ -97,6 +97,8 @@ describe('MCP graph_expand Python exports', () => {
         expect(exports).not.toContain('inner');
         expect(exports).not.toContain('method');
         expect(obj.neighbors.callees.map((item: GraphNeighbor) => item.name)).toContain('helper');
-        expect(obj.impactSummary?.limitations.join('\n')).toContain('python: export evidence is syntactic module-level public definitions/assignments');
+        expect(obj.impactSummary?.limitations.join('\n')).toContain(
+            'python: export evidence is syntactic module-level public definitions/assignments'
+        );
     });
 });

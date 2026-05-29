@@ -77,7 +77,12 @@ export class SymbolWorkflowService {
         const limit = typeof args?.limit === 'number' ? args.limit : 50;
 
         const definitions = await this.deps.findDefinition({ symbol, file, precise, maxResults: limit });
-        const symbolMap = await this.deps.buildSymbolMap({ symbol, file, maxFiles: Math.min(20, limit), astOnly: true });
+        const symbolMap = await this.deps.buildSymbolMap({
+            symbol,
+            file,
+            maxFiles: Math.min(20, limit),
+            astOnly: true,
+        });
         const neighbors = await this.deps.graphExpand(
             file
                 ? { file, symbol, edges: ['imports', 'exports', 'callers', 'callees'], depth, limit }

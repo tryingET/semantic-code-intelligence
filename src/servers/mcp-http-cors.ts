@@ -2,7 +2,10 @@ export type McpHttpCorsOrigin =
     | boolean
     | string
     | string[]
-    | ((origin: string | undefined, callback: (err: Error | null, allow?: boolean | string | string[]) => void) => void);
+    | ((
+          origin: string | undefined,
+          callback: (err: Error | null, allow?: boolean | string | string[]) => void
+      ) => void);
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '0:0:0:0:0:0:0:1']);
 
@@ -28,7 +31,10 @@ export function isLoopbackOrigin(origin: string | undefined): boolean {
     return host ? isLoopbackHost(host) : false;
 }
 
-function loopbackOnlyCorsOrigin(origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void): void {
+function loopbackOnlyCorsOrigin(
+    origin: string | undefined,
+    callback: (err: Error | null, allow?: boolean) => void
+): void {
     callback(null, isLoopbackOrigin(origin));
 }
 

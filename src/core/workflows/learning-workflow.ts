@@ -129,7 +129,8 @@ export class LearningWorkflowService {
         try {
             const layerManager: any = this.deps.coreAnalyzer?.layerManager;
             const layer5 = layerManager?.getLayer?.('layer5');
-            const stats = layer5 && typeof layer5.getPatternStatistics === 'function' ? await layer5.getPatternStatistics() : {};
+            const stats =
+                layer5 && typeof layer5.getPatternStatistics === 'function' ? await layer5.getPatternStatistics() : {};
             return { text: JSON.stringify(stats, null, 2), isError: false };
         } catch (error) {
             return { text: String(error), isError: true };

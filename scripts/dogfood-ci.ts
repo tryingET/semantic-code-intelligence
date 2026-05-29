@@ -72,7 +72,18 @@ async function main() {
   });
   t1('graph_expand');
 
-  const patch = `*** Begin Patch\n*** Update File: example.ts\n@@\n export class TestClass {\n-    private value: number = 0;\n+    /* ci: noop */\n+    private value: number = 0;\n*** End Patch\n`;
+  const patch = [
+    '*** Begin Patch',
+    '*** Update File: example.ts',
+    '@@',
+    ' export class TestClass {',
+    '     // mcp unified apply_after_checks test',
+    '-    private value: number = 0;',
+    '+    /* ci: noop */',
+    '+    private value: number = 0;',
+    '*** End Patch',
+    '',
+  ].join('\n');
 
   t0('safe_write');
   const safeWrite = await callTool(base, {

@@ -1060,7 +1060,10 @@ export class CodeEvolutionTracker {
         const percentage = (value: number, fallback = 0) => Math.min(100, nonNegative(value, fallback));
 
         return {
-            timestamp: metrics.timestamp instanceof Date && !Number.isNaN(metrics.timestamp.getTime()) ? metrics.timestamp : new Date(),
+            timestamp:
+                metrics.timestamp instanceof Date && !Number.isNaN(metrics.timestamp.getTime())
+                    ? metrics.timestamp
+                    : new Date(),
             complexity: {
                 cyclomatic: nonNegative(metrics.complexity?.cyclomatic),
                 cognitive: nonNegative(metrics.complexity?.cognitive),

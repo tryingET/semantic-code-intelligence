@@ -31,15 +31,18 @@ function isSupportedPath(file: string): boolean {
     return textExtensions.has(file.slice(dot));
 }
 
-const changed = new Set([
-    ...runGit(['diff', '--name-only', '--diff-filter=ACMR', '--', '.']),
-    ...runGit(['diff', '--cached', '--name-only', '--diff-filter=ACMR', '--', '.']),
-    ...runGit(['ls-files', '--others', '--exclude-standard', '--', '.']),
-]);
+const allMode = process.argv.includes('--all');
+const candidates = allMode
+    ? new Set(runGit(['ls-files', '--', '.']))
+    : new Set([
+          ...runGit(['diff', '--name-only', '--diff-filter=ACMR', '--', '.']),
+          ...runGit(['diff', '--cached', '--name-only', '--diff-filter=ACMR', '--', '.']),
+          ...runGit(['ls-files', '--others', '--exclude-standard', '--', '.']),
+      ]);
 
-const files = [...changed].filter(isSupportedPath).sort();
+const files = [...candidates].filter(isSupportedPath).sort();
 if (files.length === 0) {
-    console.log('format-check: no changed supported files');
+    console.log(`format-check: no ${allMode ? 'tracked' : 'changed'} supported files`);
     process.exit(0);
 }
 

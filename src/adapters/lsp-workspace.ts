@@ -23,7 +23,12 @@ export function lspInputPathOrNull(uri: string, workspaceRoot: string): string |
 }
 
 export function isOutsideWorkspaceRelative(relativePath: string): boolean {
-    return !relativePath || relativePath === '..' || relativePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativePath);
+    return (
+        !relativePath ||
+        relativePath === '..' ||
+        relativePath.startsWith(`..${path.sep}`) ||
+        path.isAbsolute(relativePath)
+    );
 }
 
 export async function extractIdentifierAtPosition(

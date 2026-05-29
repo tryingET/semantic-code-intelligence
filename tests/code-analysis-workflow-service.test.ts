@@ -20,7 +20,9 @@ describe('CodeAnalysisWorkflowService', () => {
             },
         });
 
-        const result = payload(await service.getCompletions({ file: 'target.ts', position: { line: 0, character: 0 } }));
+        const result = payload(
+            await service.getCompletions({ file: 'target.ts', position: { line: 0, character: 0 } })
+        );
         expect(result).toMatchObject({ schemaVersion: 2, requestId: 'comp-1', count: 1 });
         expect(result.completions[0]).toMatchObject({ label: 'alpha', kind: 3, detail: 'demo', confidence: 0.8 });
     });
@@ -37,9 +39,15 @@ describe('CodeAnalysisWorkflowService', () => {
             },
         });
 
-        await expect(service.getCompletions({ file: 'target.ts', position: { line: 0, character: 0 }, maxResults: -1 })).rejects.toThrow('maxResults must be an integer from 1 to 200');
-        await expect(service.buildSymbolMap({ symbol: 'Target', maxFiles: -1 })).rejects.toThrow('maxFiles must be an integer from 1 to 100');
-        await expect(service.exploreCodebase({ symbol: 'Target', maxResults: -1 })).rejects.toThrow('maxResults must be an integer from 1 to 1000');
+        await expect(
+            service.getCompletions({ file: 'target.ts', position: { line: 0, character: 0 }, maxResults: -1 })
+        ).rejects.toThrow('maxResults must be an integer from 1 to 200');
+        await expect(service.buildSymbolMap({ symbol: 'Target', maxFiles: -1 })).rejects.toThrow(
+            'maxFiles must be an integer from 1 to 100'
+        );
+        await expect(service.exploreCodebase({ symbol: 'Target', maxResults: -1 })).rejects.toThrow(
+            'maxResults must be an integer from 1 to 1000'
+        );
     });
 
     test('builds symbol map and generate-tests payloads without adapter formatting', async () => {
@@ -62,8 +70,13 @@ describe('CodeAnalysisWorkflowService', () => {
     test('explore_codebase filters out-of-workspace definitions and references', async () => {
         const service = new CodeAnalysisWorkflowService({
             maxResults: () => 50,
-            resolveWorkspaceFile: async () => ({ path: '/workspace/target.ts', uri: 'file:///workspace/target.ts', relativePath: 'target.ts' }),
-            filterWorkspaceItemsByUri: async (items) => items.filter((item: any) => String(item.uri).includes('/workspace/')),
+            resolveWorkspaceFile: async () => ({
+                path: '/workspace/target.ts',
+                uri: 'file:///workspace/target.ts',
+                relativePath: 'target.ts',
+            }),
+            filterWorkspaceItemsByUri: async (items) =>
+                items.filter((item: any) => String(item.uri).includes('/workspace/')),
             coreAnalyzer: {
                 exploreCodebase: async () => ({
                     symbol: 'Target',

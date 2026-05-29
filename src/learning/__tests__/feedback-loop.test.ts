@@ -112,17 +112,7 @@ describe('FeedbackLoopSystem', () => {
           timestamp, confidence, source
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
-                [
-                    'test-1',
-                    'accept',
-                    'suggestion-1',
-                    'oldName',
-                    '/test/file.ts',
-                    'rename',
-                    Date.now(),
-                    0.8,
-                    'test',
-                ]
+                ['test-1', 'accept', 'suggestion-1', 'oldName', '/test/file.ts', 'rename', Date.now(), 0.8, 'test']
             );
 
             // Create new instance to test loading

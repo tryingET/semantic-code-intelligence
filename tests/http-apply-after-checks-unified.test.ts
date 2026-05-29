@@ -76,7 +76,16 @@ export class TestClass {
         const marker = '// unified safe_write test';
         const before = await fs.readFile(tempFilePath, 'utf8');
         // Proper unified diff against working tree
-        const patch = `diff --git a/${tempFileRel} b/${tempFileRel}\n--- a/${tempFileRel}\n+++ b/${tempFileRel}\n@@ -5,2 +5,3 @@\n export class TestClass {\n+    ${marker}\n     private value: number = 0;\n`;
+        const patch = [
+            `diff --git a/${tempFileRel} b/${tempFileRel}`,
+            `--- a/${tempFileRel}`,
+            `+++ b/${tempFileRel}`,
+            '@@ -5,2 +5,3 @@',
+            ' export class TestClass {',
+            `+    ${marker}`,
+            '     private value: number = 0;',
+            '',
+        ].join('\n');
 
         // Stage -> checks -> apply
         const res = await callTool(base, 'safe_write', {

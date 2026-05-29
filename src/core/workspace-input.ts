@@ -9,7 +9,11 @@ const WORKSPACE_FILE_URI = 'file://workspace';
  * CLI/MCP/HTTP/LSP workflow inputs; containment is still enforced separately by
  * workspace-path helpers after normalization.
  */
-export function workspaceInputToPath(value: string | undefined | null, workspaceRoot: string, fallback = WORKSPACE_FILE_URI): string {
+export function workspaceInputToPath(
+    value: string | undefined | null,
+    workspaceRoot: string,
+    fallback = WORKSPACE_FILE_URI
+): string {
     const root = path.resolve(workspaceRoot || process.cwd());
     const raw = typeof value === 'string' && value.trim() ? value.trim() : fallback;
 
@@ -29,6 +33,10 @@ export function workspaceInputToPath(value: string | undefined | null, workspace
     return path.isAbsolute(raw) ? path.resolve(raw) : path.resolve(root, raw);
 }
 
-export function normalizeWorkspaceInputUri(value: string | undefined | null, workspaceRoot: string, fallback = WORKSPACE_FILE_URI): string {
+export function normalizeWorkspaceInputUri(
+    value: string | undefined | null,
+    workspaceRoot: string,
+    fallback = WORKSPACE_FILE_URI
+): string {
     return pathToFileURL(workspaceInputToPath(value, workspaceRoot, fallback)).href;
 }

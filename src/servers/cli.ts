@@ -43,6 +43,7 @@ class CLI {
     private fmtRef?: (r: any) => string;
     private toolRouter!: any;
     private toolExecutor!: any;
+    private colorOutput = true;
 
     // Metrics tracking for CLI commands
     private currentCommand: string | null = null;
@@ -991,7 +992,8 @@ class CLI {
             ]);
 
             const config = createDefaultCoreConfig();
-            const workspaceRoot = this.findWorkspaceRoot();
+            const { resolveConfiguredWorkspaceRoot } = await import('../core/workspace-root.js');
+            const workspaceRoot = resolveConfiguredWorkspaceRoot(undefined, this.findWorkspaceRoot());
             if (
                 process.env.SCI_ENABLE_CACHE_WARMUP_IN_CLI !== '1' &&
                 process.env.SCI_DISABLE_CACHE_WARMUP === undefined
@@ -1007,8 +1009,9 @@ class CLI {
             await this.coreAnalyzer.initialize();
 
             // Create CLI adapter and reusable core workflow executor
+            this.colorOutput = options.color !== false;
             this.cliAdapter = new CLIAdapter(this.coreAnalyzer, {
-                colorOutput: options.color !== false,
+                colorOutput: this.colorOutput,
                 verboseMode: options.verbose || false,
                 maxResults: 50,
                 timeout: 30000,
@@ -1028,7 +1031,7 @@ class CLI {
     }
 
     private formatHeader(text: string): string {
-        return `\x1b[1m\x1b[36m${text}\x1b[0m`;
+        return this.colorOutput ? `\x1b[1m\x1b[36m${text}\x1b[0m` : text;
     }
 
     private hasCommand(cmd: string): boolean {

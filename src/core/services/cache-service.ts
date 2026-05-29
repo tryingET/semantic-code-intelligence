@@ -12,11 +12,12 @@ class MemoryCache {
     private cache = new Map<CacheKey, CacheEntry<any>>();
     private accessOrder = new Map<CacheKey, number>();
     private accessCounter = 0;
-    private maxSize: number;
+    private maxSizeBytes: number;
+    private currentSizeBytes = 0;
     private defaultTtl: number;
 
-    constructor(maxSize: number, defaultTtl: number) {
-        this.maxSize = maxSize;
+    constructor(maxSizeBytes: number, defaultTtl: number) {
+        this.maxSizeBytes = Math.max(0, maxSizeBytes);
         this.defaultTtl = defaultTtl;
     }
 
@@ -29,8 +30,7 @@ class MemoryCache {
         // Check TTL
         const now = Date.now();
         if (now - entry.timestamp > entry.ttl * 1000) {
-            this.cache.delete(key);
-            this.accessOrder.delete(key);
+            this.delete(key);
             return null;
         }
 
@@ -56,15 +56,26 @@ class MemoryCache {
             size,
         };
 
+        if (this.maxSizeBytes <= 0 || size > this.maxSizeBytes) {
+            this.delete(key);
+            return;
+        }
+
+        const existing = this.cache.get(key);
+        if (existing?.size) this.currentSizeBytes = Math.max(0, this.currentSizeBytes - existing.size);
+
         // Evict if necessary before adding
-        this.evictIfNecessary();
+        this.evictIfNecessary(size);
 
         this.cache.set(key, entry);
+        this.currentSizeBytes += size;
         this.accessOrder.set(key, ++this.accessCounter);
     }
 
     delete(key: CacheKey): boolean {
+        const existing = this.cache.get(key);
         const deleted = this.cache.delete(key);
+        if (deleted && existing?.size) this.currentSizeBytes = Math.max(0, this.currentSizeBytes - existing.size);
         this.accessOrder.delete(key);
         return deleted;
     }
@@ -73,6 +84,7 @@ class MemoryCache {
         this.cache.clear();
         this.accessOrder.clear();
         this.accessCounter = 0;
+        this.currentSizeBytes = 0;
     }
 
     size(): number {
@@ -85,6 +97,8 @@ class MemoryCache {
         avgHits: number;
         oldestEntry: number;
         newestEntry: number;
+        byteSize: number;
+        maxSizeBytes: number;
     } {
         const entries = Array.from(this.cache.values());
         const totalHits = entries.reduce((sum, e) => sum + e.hits, 0);
@@ -96,14 +110,18 @@ class MemoryCache {
             avgHits: entries.length > 0 ? totalHits / entries.length : 0,
             oldestEntry: timestamps.length > 0 ? Math.min(...timestamps) : 0,
             newestEntry: timestamps.length > 0 ? Math.max(...timestamps) : 0,
+            byteSize: this.currentSizeBytes,
+            maxSizeBytes: this.maxSizeBytes,
         };
     }
 
-    private evictIfNecessary(): void {
-        if (this.cache.size < this.maxSize) {
-            return;
+    private evictIfNecessary(incomingSize = 0): void {
+        while (this.currentSizeBytes + incomingSize > this.maxSizeBytes && this.cache.size > 0) {
+            this.evictOldest();
         }
+    }
 
+    evictOldest(): boolean {
         // Find LRU entry
         let lruKey: CacheKey | null = null;
         let lruAccess = Infinity;
@@ -115,10 +133,7 @@ class MemoryCache {
             }
         }
 
-        if (lruKey) {
-            this.cache.delete(lruKey);
-            this.accessOrder.delete(lruKey);
-        }
+        return lruKey ? this.delete(lruKey) : false;
     }
 
     private estimateSize(data: any): number {
@@ -188,10 +203,7 @@ export class CacheService {
         this.config = normalized;
         this.eventBus = eventBus;
 
-        this.memoryCache = new MemoryCache(
-            Math.floor(normalized.memory.maxSize / 1024), // Convert bytes to approximate entries
-            normalized.memory.ttl
-        );
+        this.memoryCache = new MemoryCache(normalized.memory.maxSize, normalized.memory.ttl);
 
         if (normalized.strategy === 'redis' || normalized.strategy === 'hybrid') {
             if (normalized.redis) {
@@ -541,19 +553,8 @@ export class CacheService {
         const toEvict = Math.floor(currentSize * percentage);
 
         if (toEvict > 0) {
-            // Access the private cache and accessOrder maps
-            const cache = this.memoryCache['cache'];
-            const accessOrder = this.memoryCache['accessOrder'];
-
-            // Get LRU entries
-            const accessEntries = Array.from(accessOrder.entries()).sort((a, b) => a[1] - b[1]); // Sort by access order (oldest first)
-
             let evicted = 0;
-            for (const [key] of accessEntries) {
-                if (evicted >= toEvict) break;
-
-                cache.delete(key);
-                accessOrder.delete(key);
+            while (evicted < toEvict && this.memoryCache.evictOldest()) {
                 evicted++;
             }
 

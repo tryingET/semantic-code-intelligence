@@ -38,7 +38,10 @@ describe('MCP tool result helpers', () => {
     });
 
     test('redacts sensitive logging arguments and detects result success', () => {
-        expect(sanitizeMcpLogArgs({ token: 'secret', path: 'README.md' })).toEqual({ token: '[REDACTED]', path: 'README.md' });
+        expect(sanitizeMcpLogArgs({ token: 'secret', path: 'README.md' })).toEqual({
+            token: '[REDACTED]',
+            path: 'README.md',
+        });
         expect(safeMcpStringify({ ok: true })).toBe('{"ok":true}');
         expect(isMcpToolResultSuccess({ content: [], isError: false })).toBe(true);
         expect(isMcpToolResultSuccess({ content: [], isError: true })).toBe(false);

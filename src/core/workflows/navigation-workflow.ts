@@ -313,11 +313,11 @@ function declarationRegexForSymbol(symbol: unknown, flags = ''): RegExp {
 }
 
 function definitionKindForLine(line: string): DefinitionKind {
-    if (/\\bclass\\s+/.test(line) || /\\bstruct\\s+/.test(line)) return DefinitionKind.Class;
-    if (/\\binterface\\s+/.test(line)) return DefinitionKind.Interface;
-    if (/\\bfunction\\s+/.test(line) || /\\bdef\\s+/.test(line) || /\\bfn\\s+/.test(line) || /\\bfunc\\s+/.test(line))
+    if (/\bclass\s+/.test(line) || /\bstruct\s+/.test(line)) return DefinitionKind.Class;
+    if (/\binterface\s+/.test(line)) return DefinitionKind.Interface;
+    if (/\bfunction\s+/.test(line) || /\bdef\s+/.test(line) || /\bfn\s+/.test(line) || /\bfunc\s+/.test(line))
         return DefinitionKind.Function;
-    if (/\\btype\\s+/.test(line)) return DefinitionKind.Type;
+    if (/\btype\s+/.test(line)) return DefinitionKind.Type;
     return DefinitionKind.Variable;
 }
 

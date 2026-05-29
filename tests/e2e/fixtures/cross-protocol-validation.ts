@@ -406,10 +406,10 @@ export class CrossProtocolValidator {
     private async executeTestCaseAcrossProtocols(testCase: ProtocolTestCase): Promise<ProtocolResult[]> {
         const protocols = this.seededShuffle(
             [
-            { name: 'lsp', adapter: this.adapters.lsp },
-            { name: 'mcp', adapter: this.adapters.mcp },
-            { name: 'http', adapter: this.adapters.http },
-            { name: 'cli', adapter: this.adapters.cli },
+                { name: 'lsp', adapter: this.adapters.lsp },
+                { name: 'mcp', adapter: this.adapters.mcp },
+                { name: 'http', adapter: this.adapters.http },
+                { name: 'cli', adapter: this.adapters.cli },
             ],
             `${this.repository.name}:${testCase.name}:${testCase.operation}`
         );
@@ -564,8 +564,7 @@ export class CrossProtocolValidator {
                     const result = await adapter.rename(testCase.file, testCase.input.position, testCase.input.newName);
                     return this.normalizeChanges(result);
                 } else if (protocolName === 'mcp') {
-                    const oldName =
-                        (await this.deriveSymbol(testCase.file, testCase.input.position)) || 'symbol';
+                    const oldName = (await this.deriveSymbol(testCase.file, testCase.input.position)) || 'symbol';
                     const result = await adapter.executeTool({
                         name: 'rename_symbol',
                         arguments: { oldName, newName: testCase.input.newName, preview: true, file: testCase.file },
@@ -573,8 +572,7 @@ export class CrossProtocolValidator {
                     const parsed = this.parseMcpTextPayload(result);
                     return this.normalizeChanges(parsed || {});
                 } else if (protocolName === 'http') {
-                    const identifier =
-                        (await this.deriveSymbol(testCase.file, testCase.input.position)) || 'symbol';
+                    const identifier = (await this.deriveSymbol(testCase.file, testCase.input.position)) || 'symbol';
                     const response = await adapter.handleRequest({
                         method: 'POST',
                         url: '/api/v1/rename',

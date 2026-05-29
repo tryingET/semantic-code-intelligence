@@ -182,13 +182,19 @@ describe('Enhanced Search Tools with Smart Cache', () => {
 
             const countResults = await grep.search({ pattern: 'testFunction', path: tempDir, outputMode: 'count' });
             expect(countResults.length).toBeGreaterThan(0);
-            expect(countResults.some((result) => result.file.endsWith('test1.ts') && Number(result.text) > 0)).toBe(true);
+            expect(countResults.some((result) => result.file.endsWith('test1.ts') && Number(result.text) > 0)).toBe(
+                true
+            );
         });
 
         it('should preserve public grep output mode semantics in Node fallback', async () => {
             const nodeGrep = new EnhancedGrep({ enableSmartCache: false, enableCache: false, useRipgrep: false });
 
-            const contentResults = await nodeGrep.search({ pattern: 'testFunction', path: tempDir, outputMode: 'content' });
+            const contentResults = await nodeGrep.search({
+                pattern: 'testFunction',
+                path: tempDir,
+                outputMode: 'content',
+            });
             expect(contentResults.length).toBeGreaterThan(0);
             expect(contentResults[0].text).toContain('testFunction');
 
@@ -204,7 +210,9 @@ describe('Enhanced Search Tools with Smart Cache', () => {
 
             const countResults = await nodeGrep.search({ pattern: 'testFunction', path: tempDir, outputMode: 'count' });
             expect(countResults.length).toBeGreaterThan(0);
-            expect(countResults.some((result) => result.file.endsWith('test1.ts') && Number(result.text) > 0)).toBe(true);
+            expect(countResults.some((result) => result.file.endsWith('test1.ts') && Number(result.text) > 0)).toBe(
+                true
+            );
         });
 
         it('should invalidate directory search cache when a nested file changes', async () => {

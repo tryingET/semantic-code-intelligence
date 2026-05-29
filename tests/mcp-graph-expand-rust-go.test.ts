@@ -56,10 +56,16 @@ describe('MCP graph_expand Rust and Go support', () => {
         expect(obj.impactSummary?.counts?.imports).toBeGreaterThan(0);
         expect(obj.impactSummary?.counts?.exports).toBeGreaterThan(0);
         expect(obj.impactSummary?.counts?.callees).toBeGreaterThan(0);
-        expect(obj.neighbors.imports.map((item: GraphNeighbor) => item.text).join('\n')).toContain('use std::collections::HashMap');
-        expect(obj.neighbors.exports.map((item: GraphNeighbor) => item.text)).toEqual(expect.arrayContaining(['Widget', 'Mode', 'Renderable', 'render']));
+        expect(obj.neighbors.imports.map((item: GraphNeighbor) => item.text).join('\n')).toContain(
+            'use std::collections::HashMap'
+        );
+        expect(obj.neighbors.exports.map((item: GraphNeighbor) => item.text)).toEqual(
+            expect.arrayContaining(['Widget', 'Mode', 'Renderable', 'render'])
+        );
         expect(obj.neighbors.exports.map((item: GraphNeighbor) => item.text)).not.toContain('helper');
-        expect(obj.neighbors.callees.map((item: GraphNeighbor) => item.name)).toEqual(expect.arrayContaining(['helper', 'draw', 'println']));
+        expect(obj.neighbors.callees.map((item: GraphNeighbor) => item.name)).toEqual(
+            expect.arrayContaining(['helper', 'draw', 'println'])
+        );
         expect(obj.impactSummary?.limitations.join('\n')).toContain('rust: tree-sitter graph evidence is syntactic');
     });
 
@@ -83,16 +89,26 @@ describe('MCP graph_expand Rust and Go support', () => {
         expect(obj.impactSummary?.counts?.exports).toBeGreaterThan(0);
         expect(obj.impactSummary?.counts?.callees).toBeGreaterThan(0);
         expect(obj.neighbors.imports.map((item: GraphNeighbor) => item.text).join('\n')).toContain('"fmt"');
-        expect(obj.neighbors.exports.map((item: GraphNeighbor) => item.text)).toEqual(expect.arrayContaining(['Widget', 'Render', 'Draw']));
+        expect(obj.neighbors.exports.map((item: GraphNeighbor) => item.text)).toEqual(
+            expect.arrayContaining(['Widget', 'Render', 'Draw'])
+        );
         expect(obj.neighbors.exports.map((item: GraphNeighbor) => item.text)).not.toContain('helper');
-        expect(obj.neighbors.callees.map((item: GraphNeighbor) => item.name)).toEqual(expect.arrayContaining(['helper', 'Draw', 'Println', 'TrimSpace']));
+        expect(obj.neighbors.callees.map((item: GraphNeighbor) => item.name)).toEqual(
+            expect.arrayContaining(['helper', 'Draw', 'Println', 'TrimSpace'])
+        );
         expect(obj.impactSummary?.limitations.join('\n')).toContain('go: tree-sitter graph evidence is syntactic');
     });
 
     test('Rust and Go caller-controlled symbols remain literal and do not widen missing scopes', async () => {
         for (const [file, injectedSymbol] of [
-            ['tests/fixtures/graph/rust/sample.rs', 'render")\n(call_expression function: (identifier) @call.func (#eq? @call.func "helper'],
-            ['tests/fixtures/graph/go/sample.go', 'Render")\n(call_expression function: (identifier) @call.func (#eq? @call.func "helper'],
+            [
+                'tests/fixtures/graph/rust/sample.rs',
+                'render")\n(call_expression function: (identifier) @call.func (#eq? @call.func "helper',
+            ],
+            [
+                'tests/fixtures/graph/go/sample.go',
+                'Render")\n(call_expression function: (identifier) @call.func (#eq? @call.func "helper',
+            ],
         ] as const) {
             const res = await mcp.handleToolCall('graph_expand', {
                 file,

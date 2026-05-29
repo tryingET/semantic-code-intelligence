@@ -70,11 +70,10 @@ export class ConceptBuilder {
         if (context.location) {
             const safeLoc = {
                 uri: normUri(context.location.uri),
-                range:
-                    sanitizeRange(context.location.range) || {
-                        start: { line: 0, character: 0 },
-                        end: { line: 0, character: 0 },
-                    },
+                range: sanitizeRange(context.location.range) || {
+                    start: { line: 0, character: 0 },
+                    end: { line: 0, character: 0 },
+                },
             };
             if (isValidLocation(safeLoc)) {
                 anchors.push({
@@ -248,7 +247,10 @@ export class ConceptBuilder {
             // Skip duplicates by (symbolText, uri, start)
             const key = `${match.text}|${loc.uri}|${loc.range.start.line}|${loc.range.start.character}`;
             const seen = new Set(
-                anchors.map((a) => `${a.symbolText}|${a.location.uri}|${(a.location as any).range.start.line}|${(a.location as any).range.start.character}`)
+                anchors.map(
+                    (a) =>
+                        `${a.symbolText}|${a.location.uri}|${(a.location as any).range.start.line}|${(a.location as any).range.start.character}`
+                )
             );
             if (seen.has(key)) continue;
 

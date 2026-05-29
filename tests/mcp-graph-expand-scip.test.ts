@@ -50,9 +50,21 @@ function writeSampleScipIndex(): string {
                 language: 'go',
                 positionEncoding: PositionEncoding.UTF8CodeUnitOffsetFromLineStart,
                 occurrences: [
-                    create(OccurrenceSchema, { range: [0, 7, 20], symbol: 'scip-go gomod fmt/', symbolRoles: SymbolRole.Import }),
-                    create(OccurrenceSchema, { range: [2, 5, 8], symbol: fooSymbol, symbolRoles: SymbolRole.Definition }),
-                    create(OccurrenceSchema, { range: [3, 9, 12], symbol: barSymbol, symbolRoles: SymbolRole.ReadAccess }),
+                    create(OccurrenceSchema, {
+                        range: [0, 7, 20],
+                        symbol: 'scip-go gomod fmt/',
+                        symbolRoles: SymbolRole.Import,
+                    }),
+                    create(OccurrenceSchema, {
+                        range: [2, 5, 8],
+                        symbol: fooSymbol,
+                        symbolRoles: SymbolRole.Definition,
+                    }),
+                    create(OccurrenceSchema, {
+                        range: [3, 9, 12],
+                        symbol: barSymbol,
+                        symbolRoles: SymbolRole.ReadAccess,
+                    }),
                 ],
             }),
             create(DocumentSchema, {
@@ -60,8 +72,16 @@ function writeSampleScipIndex(): string {
                 language: 'go',
                 positionEncoding: PositionEncoding.UTF8CodeUnitOffsetFromLineStart,
                 occurrences: [
-                    create(OccurrenceSchema, { range: [1, 5, 8], symbol: barSymbol, symbolRoles: SymbolRole.Definition }),
-                    create(OccurrenceSchema, { range: [2, 9, 12], symbol: fooSymbol, symbolRoles: SymbolRole.ReadAccess }),
+                    create(OccurrenceSchema, {
+                        range: [1, 5, 8],
+                        symbol: barSymbol,
+                        symbolRoles: SymbolRole.Definition,
+                    }),
+                    create(OccurrenceSchema, {
+                        range: [2, 9, 12],
+                        symbol: fooSymbol,
+                        symbolRoles: SymbolRole.ReadAccess,
+                    }),
                 ],
             }),
         ],
@@ -123,7 +143,9 @@ describe('MCP graph_expand SCIP backend', () => {
         expect(obj.impactSummary?.counts?.exports).toBe(1);
         expect(obj.neighbors.callers[0].file).toBe('pkg/bar.go');
         expect(obj.neighbors.exports[0].file).toBe('pkg/foo.go');
-        expect(obj.impactSummary?.limitations).toContain('callers: SCIP backend returns symbol references, not proven call sites');
+        expect(obj.impactSummary?.limitations).toContain(
+            'callers: SCIP backend returns symbol references, not proven call sites'
+        );
         expect(obj.impactSummary?.limitations).toContain('callees: SCIP reader does not infer callee edges yet');
     });
 

@@ -857,9 +857,10 @@ e2eDescribe('End-to-End Integration Tests', () => {
                 expect(metrics.learningRate).toBeGreaterThanOrEqual(0.05); // At least 5% learning rate (1 pattern per 20 operations)
                 expect(metrics.suggestionAccuracy).toBeGreaterThanOrEqual(0.6); // At least 60% accuracy
                 expect(metrics.patternsLearned).toBeGreaterThanOrEqual(1); // At least 1 pattern learned
-                const allowedEffectiveness = process.env.USE_LOCAL_REPOS === 'true'
-                    ? ['excellent', 'good', 'moderate', 'poor']
-                    : ['excellent', 'good', 'moderate'];
+                const allowedEffectiveness =
+                    process.env.USE_LOCAL_REPOS === 'true'
+                        ? ['excellent', 'good', 'moderate', 'poor']
+                        : ['excellent', 'good', 'moderate'];
                 expect(allowedEffectiveness).toContain(learningReport.insights.learningEffectiveness);
             }
 

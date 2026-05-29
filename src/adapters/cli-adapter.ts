@@ -19,6 +19,7 @@ import { CoreError } from '../core/errors.js';
 import { overlayStore } from '../core/overlay-store.js';
 import type { CodeAnalyzer } from '../core/unified-analyzer.js';
 import { SnapshotPatchWorkflowService } from '../core/workflows/snapshot-patch-workflow.js';
+import { workspaceInputToPath } from '../core/workspace-input.js';
 import { resolveWorkspacePath } from '../core/workspace-path.js';
 import { AsyncEnhancedGrep } from '../layers/enhanced-search-tools-async.js';
 import {
@@ -66,13 +67,7 @@ export class CLIAdapter {
 
     private pathInputFromCliFile(value: string, workspaceRoot: string): string {
         const raw = String(value || '').trim();
-        const workspacePrefix = 'file://workspace';
-        if (!raw || raw === workspacePrefix) return workspaceRoot;
-        if (raw.startsWith(workspacePrefix)) {
-            const suffix = raw.slice(workspacePrefix.length).replace(/^\/+/, '');
-            return suffix ? nodePath.join(workspaceRoot, decodeURIComponent(suffix)) : workspaceRoot;
-        }
-        if (raw.startsWith('file://')) return fileURLToPath(raw);
+        if (!raw || raw.startsWith('file://')) return workspaceInputToPath(raw, workspaceRoot);
         return nodePath.isAbsolute(raw) ? nodePath.resolve(raw) : nodePath.resolve(process.cwd(), raw);
     }
 
@@ -90,7 +85,10 @@ export class CLIAdapter {
         return resolved.realPath;
     }
 
-    private async workspaceRelativePaths(values: string[] | undefined, inputLabel: string): Promise<string[] | undefined> {
+    private async workspaceRelativePaths(
+        values: string[] | undefined,
+        inputLabel: string
+    ): Promise<string[] | undefined> {
         if (!values) return undefined;
         const workspaceRoot = this.getWorkspaceRoot();
         const out: string[] = [];
@@ -289,7 +287,9 @@ export class CLIAdapter {
 
             // When no file context provided, first locate the symbol via definitions
             // to get seed files for a more targeted references search
-            let contextUri = options.file ? await this.workspaceUriForFile(options.file, 'CLI references file') : await this.workspaceUriForFile(undefined, 'CLI references file');
+            let contextUri = options.file
+                ? await this.workspaceUriForFile(options.file, 'CLI references file')
+                : await this.workspaceUriForFile(undefined, 'CLI references file');
             if (!options.file) {
                 try {
                     const defRequest = buildFindDefinitionRequest({
@@ -517,7 +517,8 @@ export class CLIAdapter {
             if (process.env.DEBUG_TEXT_SEARCH === '1') {
                 console.error('[CLI handleTextSearch] Error calling textSearch:', error);
             }
-            if (error instanceof CoreError) return this.formatError(`Text search failed: ${handleAdapterError(error, 'cli')}`);
+            if (error instanceof CoreError)
+                return this.formatError(`Text search failed: ${handleAdapterError(error, 'cli')}`);
             const kind = options.kind || 'literal';
             const caseInsensitive = !!options.caseInsensitive;
             const maxResults = parseIntegerOption(options.maxResults, 'maxResults', {
@@ -528,7 +529,14 @@ export class CLIAdapter {
             const path = await this.workspacePathForSearch(options.path, 'CLI text-search path');
             const asyncGrep = new AsyncEnhancedGrep({ cacheSize: 500, cacheTTL: 30000 });
             const pattern = kind === 'word' ? `\\b${escapeRegex(query)}\\b` : query;
-            const results = await asyncGrep.search({ pattern, path, maxResults, timeout: 200, caseInsensitive, useRegex: kind !== 'literal' });
+            const results = await asyncGrep.search({
+                pattern,
+                path,
+                maxResults,
+                timeout: 200,
+                caseInsensitive,
+                useRegex: kind !== 'literal',
+            });
             const normalized = results.map((r) => ({
                 file: r.file,
                 line: r.line ?? 0,
@@ -583,9 +591,12 @@ export class CLIAdapter {
         const workflow = new SnapshotPatchWorkflowService({ workspaceRoot: () => this.getWorkspaceRoot() });
         const proposed = await workflow.proposePatch({ snapshot: snap.id, patch });
         const proposedPayload = (proposed as any).payload || {};
-        if (proposed.isError || proposedPayload.accepted !== true) return this.formatError(proposedPayload.message || 'Patch rejected');
+        if (proposed.isError || proposedPayload.accepted !== true)
+            return this.formatError(proposedPayload.message || 'Patch rejected');
         if (options.runChecks) {
-            const r = await overlayStore.runChecks(snap.id, options.commands || [], options.timeoutSec || 120, { workspaceRoot: this.getWorkspaceRoot() });
+            const r = await overlayStore.runChecks(snap.id, options.commands || [], options.timeoutSec || 120, {
+                workspaceRoot: this.getWorkspaceRoot(),
+            });
             const payload = {
                 snapshot: snap.id,
                 accepted: true,
@@ -611,9 +622,19 @@ export class CLIAdapter {
         const snapId = options.snapshot;
         if (!snapId) return this.formatError('snapshot required');
         try {
-            const r = await overlayStore.runChecks(snapId, options.commands || [], options.timeoutSec || 120, { workspaceRoot: this.getWorkspaceRoot() });
-            const payload = { snapshot: snapId, ok: r.ok, elapsedMs: r.elapsedMs, commands: r.commands || [], output: r.output.slice(-4000) };
-            return options.json ? JSON.stringify(payload, null, 2) : `${snapId} ${r.ok ? 'OK' : 'FAIL'} (${r.elapsedMs}ms)`;
+            const r = await overlayStore.runChecks(snapId, options.commands || [], options.timeoutSec || 120, {
+                workspaceRoot: this.getWorkspaceRoot(),
+            });
+            const payload = {
+                snapshot: snapId,
+                ok: r.ok,
+                elapsedMs: r.elapsedMs,
+                commands: r.commands || [],
+                output: r.output.slice(-4000),
+            };
+            return options.json
+                ? JSON.stringify(payload, null, 2)
+                : `${snapId} ${r.ok ? 'OK' : 'FAIL'} (${r.elapsedMs}ms)`;
         } catch (error) {
             return this.formatError(error instanceof Error ? error.message : String(error));
         }
@@ -1022,7 +1043,7 @@ export class CLIAdapter {
     }
 
     private isFormattedErrorOutput(value: unknown): boolean {
-        return typeof value === 'string' && (/^(Error:|\u001b\[1m\u001b\[31mError:)/.test(value));
+        return typeof value === 'string' && /^(Error:|\u001b\[1m\u001b\[31mError:)/.test(value);
     }
 
     /**

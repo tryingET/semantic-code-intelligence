@@ -87,24 +87,24 @@ function createTestPattern(id: string): Pattern {
     };
 }
 
-	describe('TeamKnowledgeSystem', () => {
-	    let teamKnowledge: TeamKnowledgeSystem;
-	    let sharedServices: SharedServices;
-	    let eventBus: EventBusService;
-	    let testDbPath: string;
+describe('TeamKnowledgeSystem', () => {
+    let teamKnowledge: TeamKnowledgeSystem;
+    let sharedServices: SharedServices;
+    let eventBus: EventBusService;
+    let testDbPath: string;
 
-	    beforeEach(async () => {
-	        fs.mkdirSync(TEST_DB_DIR, { recursive: true });
-	        testDbPath = createTestDbPath();
-	        cleanupDbFiles(testDbPath);
+    beforeEach(async () => {
+        fs.mkdirSync(TEST_DB_DIR, { recursive: true });
+        testDbPath = createTestDbPath();
+        cleanupDbFiles(testDbPath);
 
-	        // Create fresh event bus and shared services
-	        eventBus = new EventBusService();
-	        sharedServices = new SharedServices(makeConfig(testDbPath), eventBus);
-	        await sharedServices.initialize();
+        // Create fresh event bus and shared services
+        eventBus = new EventBusService();
+        sharedServices = new SharedServices(makeConfig(testDbPath), eventBus);
+        await sharedServices.initialize();
 
-	        // Create team knowledge system
-	        teamKnowledge = new TeamKnowledgeSystem(sharedServices, eventBus, {
+        // Create team knowledge system
+        teamKnowledge = new TeamKnowledgeSystem(sharedServices, eventBus, {
             minValidators: 2,
             minApprovalScore: 3.0,
             adoptionThreshold: 3,
@@ -113,14 +113,14 @@ function createTestPattern(id: string): Pattern {
         await teamKnowledge.initialize();
     });
 
-	    afterEach(async () => {
-	        // Clean up
-	        await teamKnowledge.dispose();
-	        await sharedServices.dispose();
+    afterEach(async () => {
+        // Clean up
+        await teamKnowledge.dispose();
+        await sharedServices.dispose();
 
-	        // Remove test database
-	        cleanupDbFiles(testDbPath);
-	    });
+        // Remove test database
+        cleanupDbFiles(testDbPath);
+    });
 
     describe('Initialization', () => {
         test('should initialize successfully', async () => {

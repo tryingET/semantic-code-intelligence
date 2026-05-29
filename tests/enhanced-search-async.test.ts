@@ -31,7 +31,13 @@ describe('Async Enhanced Search correctness', () => {
         try {
             await fs.writeFile(path.join(root, 'sample.ts'), 'const foo = 1;\nfoobar\n', 'utf8');
             const fixed = await grep.search({ pattern: '\\bfoo\\b', path: root, maxResults: 10, timeout: 1000 });
-            const regex = await grep.search({ pattern: '\\bfoo\\b', path: root, maxResults: 10, timeout: 1000, useRegex: true });
+            const regex = await grep.search({
+                pattern: '\\bfoo\\b',
+                path: root,
+                maxResults: 10,
+                timeout: 1000,
+                useRegex: true,
+            });
             expect(fixed).toHaveLength(0);
             expect(regex).toHaveLength(1);
         } finally {
