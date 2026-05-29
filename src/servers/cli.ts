@@ -1206,7 +1206,12 @@ build/
         try {
             await this.program.parseAsync(argv);
         } catch (error) {
-            console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
+            const message = error instanceof Error ? error.message : String(error);
+            if (argv.includes('--json') || argv.includes('-j')) {
+                console.error(JSON.stringify({ ok: false, error: message }));
+            } else {
+                console.error(`Error: ${message}`);
+            }
             process.exit(1);
         }
     }

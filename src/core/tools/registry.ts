@@ -433,7 +433,7 @@ export class ToolRegistry {
         {
             name: 'apply_rename',
             description:
-                'Apply a rename by oldName/newName. Direct WorkspaceEdit application is unsupported; use snapshot workflows for reviewed patches.',
+                'Reject direct rename mutation; use plan_rename for preview or workflow_safe_rename/snapshot workflows for reviewed patches.',
             inputSchema: {
                 type: 'object',
                 properties: {

@@ -160,7 +160,20 @@ function requestJsonRpcId(body: unknown): JsonRpcMessageId {
     return null;
 }
 
-function sendMissingSession(res: express.Response, id: JsonRpcMessageId = null) {
+function sendMissingSession(res: express.Response, bodyOrId: unknown = null) {
+    if (Array.isArray(bodyOrId)) {
+        const payloads = bodyOrId.map((item) => ({
+            jsonrpc: '2.0',
+            error: { ...missingSessionError },
+            id: requestJsonRpcId(item),
+        }));
+        res.status(400).json(payloads);
+        return;
+    }
+    const id =
+        typeof bodyOrId === 'string' || typeof bodyOrId === 'number' || bodyOrId === null
+            ? bodyOrId
+            : requestJsonRpcId(bodyOrId);
     res.status(400).json({ jsonrpc: '2.0', error: { ...missingSessionError }, id });
 }
 
@@ -513,13 +526,13 @@ app.post('/mcp', async (req, res) => {
                 void disposeSession(initializedRecord, sid);
             };
         } else {
-            sendMissingSession(res, requestJsonRpcId(req.body));
+            sendMissingSession(res, req.body);
             return;
         }
 
         const activeRecord = record;
         if (!activeRecord) {
-            sendMissingSession(res, requestJsonRpcId(req.body));
+            sendMissingSession(res, req.body);
             return;
         }
 
@@ -573,15 +586,16 @@ app.post('/mcp', async (req, res) => {
                 await disposeSession(activeRecord, provisionalSessionId);
             }
             if (!res.headersSent) {
-                res.status(500).json({
+                const errorPayload = (item: unknown) => ({
                     jsonrpc: '2.0',
                     error: {
                         code: -32603,
                         message: 'Internal server error',
                         data: String(e instanceof Error ? e.message : e),
                     },
-                    id: req.body?.id ?? null,
+                    id: requestJsonRpcId(item),
                 });
+                res.status(500).json(Array.isArray(req.body) ? req.body.map(errorPayload) : errorPayload(req.body));
             }
             return;
         }
@@ -601,15 +615,16 @@ app.post('/mcp', async (req, res) => {
         // eslint-disable-next-line no-console
         console.error('[MCP HTTP] Uncaught error:', error);
         if (!res.headersSent) {
-            res.status(500).json({
+            const errorPayload = (item: unknown) => ({
                 jsonrpc: '2.0',
                 error: {
                     code: -32603,
                     message: 'Internal server error',
                     data: String(error instanceof Error ? error.message : error),
                 },
-                id: req.body?.id ?? null,
+                id: requestJsonRpcId(item),
             });
+            res.status(500).json(Array.isArray(req.body) ? req.body.map(errorPayload) : errorPayload(req.body));
         }
     }
 });

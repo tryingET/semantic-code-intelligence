@@ -260,7 +260,10 @@ export class EnhancedMCPServer {
         }
 
         if (!this.initPromise) {
-            this.initPromise = this.initializeCore();
+            this.initPromise = this.initializeCore().catch((error) => {
+                this.initPromise = undefined;
+                throw error;
+            });
         }
 
         await this.initPromise;

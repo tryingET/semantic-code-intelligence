@@ -80,24 +80,15 @@ export class RenameWorkflowService {
         }
 
         validateRequired(args, ['oldName', 'newName']);
-        const result = await this.coreAnalyzer.rename(
-            buildRenameRequest({
-                uri: await this.containedWorkspaceUri(args.file, 'apply_rename file'),
-                position: createPosition(0, 0),
-                identifier: args.oldName,
-                newName: args.newName,
-                dryRun: false,
-            })
-        );
+        await this.containedWorkspaceUri(args.file, 'apply_rename file');
         return {
             payload: {
                 schemaVersion: 2,
-                status: 'applied',
-                changes: result.data.changes,
-                performance: result.performance,
-                requestId: result.requestId,
+                status: 'unsupported',
+                message:
+                    'apply_rename does not mutate files directly; use plan_rename for preview or workflow_safe_rename/snapshot workflows for reviewed application.',
             },
-            isError: false,
+            isError: true,
         };
     }
 

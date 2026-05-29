@@ -373,7 +373,7 @@ export function registerCommonResources(
                 const id = hostId || parts[0];
                 const tail = hostId ? parts[0] : parts[1];
                 const extra = hostId ? parts.slice(1) : parts.slice(2);
-                if (!id) throw new Error('Missing snapshot id');
+                if (!id) throw new McpError(ErrorCode.InvalidParams, 'Missing snapshot id');
                 if (extra.length > 0) throw new McpError(ErrorCode.InvalidParams, `Unsupported resource ${uriStr}`);
                 if (tail === 'overlay.diff') {
                     const { overlayStore } = await import('../core/overlay-store.js');

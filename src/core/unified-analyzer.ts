@@ -3,6 +3,7 @@
  * This is the single source of truth for code analysis, used by all protocol adapters
  */
 
+import * as fsSync from 'node:fs';
 import * as fs from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { EventEmitter } from 'events';
@@ -48,7 +49,7 @@ import {
 } from './types.js';
 import { SCI_VERSION } from './version.js';
 import { workspaceInputToPath } from './workspace-input.js';
-import { openWorkspaceFileForRead } from './workspace-path.js';
+import { openWorkspaceFileForRead, resolveWorkspacePath } from './workspace-path.js';
 
 /**
  * The unified code analyzer that orchestrates all 5 layers
@@ -331,7 +332,7 @@ export class CodeAnalyzer {
             // Use a short timeout derived from layer1 config to avoid long blocking
             const layer1Timeout = (this.config.layers?.layer1 as any)?.timeout ?? 1000;
             const asyncTimeout = Math.max(1000, Math.min(4000, layer1Timeout));
-            const searchDir = this.extractDirectoryFromUri(request.uri);
+            const searchDir = this.extractDirectoryFromUri(request.uri, 'find_definition uri');
             const isTestsScope = (() => {
                 try {
                     const p = (searchDir || '').replace(/\\/g, '/');
@@ -731,7 +732,7 @@ export class CodeAnalyzer {
         const l1Budget = Math.min(20000, (this.config as any)?.layers?.layer1?.grep?.defaultTimeout ?? 5000);
         const asyncOptions: AsyncSearchOptions = {
             pattern: `\\b${this.escapeRegex(request.identifier)}\\b`,
-            path: this.extractDirectoryFromUri(request.uri),
+            path: this.extractDirectoryFromUri(request.uri, 'find_definition uri'),
             maxResults: 100,
             timeout: l1Budget,
             caseInsensitive: false,
@@ -764,7 +765,7 @@ export class CodeAnalyzer {
                 (this.config as any)?.layers?.layer1?.grep?.defaultTimeout ??
                 1000;
             const asyncTimeout = Math.max(1000, Math.min(4000, l1Base));
-            const searchDir = this.extractDirectoryFromUri(request.uri);
+            const searchDir = this.extractDirectoryFromUri(request.uri, 'find_references uri');
             const isTestsScope = (() => {
                 try {
                     const p = (searchDir || '').replace(/\\/g, '/');
@@ -1035,7 +1036,7 @@ export class CodeAnalyzer {
         const l1Budget = Math.max(300, Math.min(10000, l1Base * 2));
         const asyncOptions: AsyncSearchOptions = {
             pattern: `\\b${this.escapeRegex(request.identifier)}\\b`,
-            path: this.extractDirectoryFromUri(request.uri),
+            path: this.extractDirectoryFromUri(request.uri, 'find_references uri'),
             maxResults: 500,
             timeout: l1Budget,
             caseInsensitive: false,
@@ -1599,7 +1600,7 @@ export class CodeAnalyzer {
             // Create search query for ClaudeToolsLayer
             const searchQuery = {
                 identifier: request.identifier,
-                searchPath: this.extractDirectoryFromUri(request.uri),
+                searchPath: this.extractDirectoryFromUri(request.uri, 'completion uri'),
                 fileTypes: this.getFileTypesFromUri(request.uri),
                 caseSensitive: false,
                 includeTests: false,
@@ -1763,7 +1764,7 @@ export class CodeAnalyzer {
             // Create search query for ClaudeToolsLayer
             const searchQuery = {
                 identifier: request.identifier,
-                searchPath: request.uri ? this.extractDirectoryFromUri(request.uri) : '.',
+                searchPath: request.uri ? this.extractDirectoryFromUri(request.uri, 'explore uri') : '.',
                 fileTypes: request.uri ? this.getFileTypesFromUri(request.uri) : ['typescript'],
                 caseSensitive: false,
                 includeTests: true, // Include tests for reference search
@@ -2842,9 +2843,10 @@ export class CodeAnalyzer {
         const isRegexLike = /[\\[*+?(){}|]|\\b/.test(query);
         const timeoutEnv = Number.parseInt(process.env.TEXT_SEARCH_DIRECT_TIMEOUT_MS || '0', 10);
         const timeout = Number.isFinite(timeoutEnv) && timeoutEnv > 0 ? Math.min(timeoutEnv, 5000) : 700;
+        const searchPath = await this.resolveWorkspaceSearchPath(options?.path || '.', 'text_search path');
         const results = await this.asyncSearchTools.search({
             pattern: query,
-            path: options?.path || this.config.workspaceRoot,
+            path: searchPath,
             maxResults: options?.maxResults || 200,
             timeout,
             caseInsensitive: options?.caseInsensitive,
@@ -2880,6 +2882,8 @@ export class CodeAnalyzer {
         }
 
         const isRegexLike = /[\\[*+?(){}|]|\\b/.test(query);
+        const safePath = await this.resolveWorkspaceSearchPath(options?.path || '.', 'text_search path');
+        const safeOptions = { ...options, path: safePath };
         const layer1 = this.layerManager.getLayer('layer1');
         if (process.env.DEBUG_TEXT_SEARCH === '1') {
             console.log('[textSearch] direct bounded grep first; Layer 1 fallback available:', !!layer1);
@@ -2890,7 +2894,7 @@ export class CodeAnalyzer {
             results: Array<{ file: string; line: number; column: number; text: string }>;
         } | null = null;
         try {
-            directResult = await this.directTextSearch(query, options);
+            directResult = await this.directTextSearch(query, safeOptions);
             if (directResult.count > 0 || !layer1 || isRegexLike) return directResult;
         } catch (error) {
             if (process.env.DEBUG_TEXT_SEARCH === '1') {
@@ -2901,9 +2905,9 @@ export class CodeAnalyzer {
 
         const searchQuery: SearchQuery = {
             identifier: query,
-            searchPath: options?.path || this.config.workspaceRoot || process.cwd(),
-            fileTypes: options?.fileTypes,
-            caseSensitive: !options?.caseInsensitive,
+            searchPath: safePath,
+            fileTypes: safeOptions?.fileTypes,
+            caseSensitive: !safeOptions?.caseInsensitive,
             includeTests: true,
         };
 
@@ -2914,7 +2918,7 @@ export class CodeAnalyzer {
                 ...matches.fuzzy.map((m: any) => ({ ...m, confidence: 0.8 })),
             ];
             allMatches.sort((a, b) => b.confidence - a.confidence);
-            const limited = allMatches.slice(0, options?.maxResults || 200);
+            const limited = allMatches.slice(0, safeOptions?.maxResults || 200);
             if (limited.length > 0) {
                 return {
                     count: limited.length,
@@ -2941,50 +2945,104 @@ export class CodeAnalyzer {
         return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
-    private extractDirectoryFromUri(uri: string): string {
+    private async resolveWorkspaceSearchPath(requestedPath: string, inputLabel: string): Promise<string> {
+        const resolved = await resolveWorkspacePath(requestedPath || '.', {
+            workspaceRoot: (this.config as any)?.workspaceRoot || process.cwd(),
+            inputLabel,
+            allowRoot: true,
+        });
+        return resolved.realPath;
+    }
+
+    private extractDirectoryFromUri(uri: string, inputLabel = 'uri'): string {
+        const wsRoot = path.resolve((this.config as any)?.workspaceRoot || process.cwd());
+        const realWsRoot = fsSync.existsSync(wsRoot) ? this.realpathOrThrow(wsRoot, 'workspace root', wsRoot) : wsRoot;
+
         // Handle empty URI or workspace-wide search
-        if (!uri || uri === '' || uri === 'workspace://global' || uri === 'file://workspace') {
-            return (this.config as any)?.workspaceRoot || process.cwd(); // Search workspace root if available
+        if (
+            !uri ||
+            uri === '' ||
+            uri === 'workspace://global' ||
+            uri === 'file://workspace' ||
+            uri === 'file://unknown'
+        ) {
+            return realWsRoot;
         }
 
-        // Never process file://unknown
-        if (uri === 'file://unknown') {
-            return (this.config as any)?.workspaceRoot || process.cwd();
+        const filePath = this.uriToCandidatePath(uri, wsRoot);
+        const candidate = path.isAbsolute(filePath) ? path.resolve(filePath) : path.resolve(wsRoot, filePath);
+
+        if (!fsSync.existsSync(candidate)) {
+            return realWsRoot;
         }
 
-        // Normalize to file path
-        let filePath: string;
+        this.assertLexicallyInWorkspaceSync(wsRoot, candidate, inputLabel, uri, true);
+        const realCandidate = this.realpathOrThrow(candidate, inputLabel, uri);
+        this.assertRealInWorkspaceSync(realWsRoot, realCandidate, inputLabel, uri, true);
+
+        const stat = fsSync.statSync(realCandidate);
+        if (stat.isDirectory()) {
+            return realCandidate;
+        }
+
+        const dir = path.dirname(realCandidate);
+        this.assertRealInWorkspaceSync(realWsRoot, dir, inputLabel, uri, true);
+        return dir;
+    }
+
+    private uriToCandidatePath(uri: string, wsRoot: string): string {
         try {
-            const url = new URL(uri);
-            filePath = url.pathname;
-        } catch {
-            filePath = this.fileUriToPath(uri);
-        }
-
-        const wsRoot = (this.config as any)?.workspaceRoot || process.cwd();
-        // If path clearly doesn't exist, fall back to workspace root
-        try {
-            const fs = require('fs');
-            if (!fs.existsSync(filePath)) {
-                return wsRoot;
-            }
-        } catch {
+            const parsed = new URL(uri);
+            if (parsed.protocol === 'file:') return fileURLToPath(parsed);
             return wsRoot;
-        }
-
-        // If the URI points to a directory, return it as-is instead of its parent
-        try {
-            const fs = require('fs');
-            const stat = fs.statSync(filePath);
-            if (stat.isDirectory()) {
-                return filePath;
-            }
         } catch {
-            // If stat fails (e.g., path doesn't exist), fall through to dirname
+            return this.fileUriToPath(uri);
         }
+    }
 
-        const dir = path.dirname(filePath);
-        return dir === '.' ? wsRoot : dir;
+    private realpathOrThrow(candidate: string, inputLabel: string, requestedPath: string): string {
+        try {
+            return fsSync.realpathSync(candidate);
+        } catch (error) {
+            throw new InvalidRequestError(
+                `Failed to resolve ${inputLabel} '${requestedPath}': ${error instanceof Error ? error.message : String(error)}`
+            );
+        }
+    }
+
+    private assertLexicallyInWorkspaceSync(
+        workspaceRoot: string,
+        candidate: string,
+        inputLabel: string,
+        requestedPath: string,
+        allowRoot = false
+    ): void {
+        const relative = path.relative(workspaceRoot, candidate);
+        if (this.isOutsideWorkspaceRelative(relative, allowRoot)) {
+            throw new InvalidRequestError(`${inputLabel} must stay within the workspace: ${requestedPath}`);
+        }
+    }
+
+    private assertRealInWorkspaceSync(
+        realWorkspaceRoot: string,
+        realCandidate: string,
+        inputLabel: string,
+        requestedPath: string,
+        allowRoot = false
+    ): void {
+        const relative = path.relative(realWorkspaceRoot, realCandidate);
+        if (this.isOutsideWorkspaceRelative(relative, allowRoot)) {
+            throw new InvalidRequestError(`${inputLabel} must stay within the workspace: ${requestedPath}`);
+        }
+    }
+
+    private isOutsideWorkspaceRelative(relativePath: string, allowRoot = false): boolean {
+        return (
+            (!relativePath && !allowRoot) ||
+            relativePath === '..' ||
+            relativePath.startsWith(`..${path.sep}`) ||
+            path.isAbsolute(relativePath)
+        );
     }
 
     private getFileTypeFromUri(uri: string): string | undefined {
