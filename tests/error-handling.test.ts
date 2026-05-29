@@ -2,20 +2,19 @@
  * Comprehensive test suite for MCP server error handling and recovery
  */
 
-import { describe, expect, test, beforeEach, afterEach, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { spawnSync } from 'node:child_process';
 import { ErrorCode } from '@modelcontextprotocol/sdk/types.js';
-
+import { ConnectionManager, defaultConnectionManager } from '../src/mcp/connection-manager';
 // Import our error handling utilities
 import {
+    createInternalError,
+    createValidationError,
     ErrorHandler,
     globalErrorHandler,
     withMcpErrorHandling,
-    createValidationError,
-    createInternalError,
 } from '../src/mcp/error-handler';
-
 import { FileLogger, fileLogger } from '../src/mcp/file-logger';
-import { ConnectionManager, defaultConnectionManager } from '../src/mcp/connection-manager';
 
 describe('Error Handler', () => {
     let errorHandler: ErrorHandler;
@@ -331,6 +330,21 @@ describe('Connection Manager', () => {
         expect(health.state).toBe('disconnected');
         expect(typeof health.uptime).toBe('number');
         expect(typeof health.connections).toBe('number');
+    });
+
+    test('default import does not install process-wide uncaught exception handlers', () => {
+        expect(defaultConnectionManager.getState()).toBe('disconnected');
+        const proc = spawnSync(
+            process.execPath,
+            [
+                '--eval',
+                "await import('./src/mcp/connection-manager.ts'); setTimeout(() => { throw new Error('boom') }, 0); setTimeout(() => { console.log('still alive'); process.exit(0) }, 100);",
+            ],
+            { cwd: process.cwd(), encoding: 'utf8' }
+        );
+
+        expect(proc.status).not.toBe(0);
+        expect(proc.stdout).not.toContain('still alive');
     });
 });
 

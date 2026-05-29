@@ -105,7 +105,7 @@ function sendJsonRpcError(res: express.Response, error: unknown, id: JsonRpcMess
     res.status(httpStatus).json(payload);
 }
 
-function sendSseJsonRpcPayload(res: express.Response, payload: JsonRpcPayload) {
+function sendSseJsonRpcPayload(res: express.Response, payload: JsonRpcPayload | JsonRpcPayload[]) {
     // Minimal SSE envelope for streamable clients (single event; then close).
     // Keep status=200 even for JSON-RPC errors, matching typical JSON-RPC over HTTP behavior.
     try {
@@ -151,6 +151,17 @@ function containsInitializeRequest(body: unknown): boolean {
         if (!message || typeof message !== 'object' || Array.isArray(message)) return false;
         return isInitializeRequest(message) || (message as { method?: unknown }).method === 'initialize';
     });
+}
+
+function invalidInitializeRequests(body: unknown): Record<string, unknown>[] {
+    const messages = Array.isArray(body) ? body : [body];
+    const invalid: Record<string, unknown>[] = [];
+    for (const message of messages) {
+        if (!message || typeof message !== 'object' || Array.isArray(message)) continue;
+        const candidate = message as Record<string, unknown>;
+        if (candidate.method === 'initialize' && !isInitializeRequest(candidate)) invalid.push(candidate);
+    }
+    return invalid;
 }
 
 function ensureMcpAcceptHeaders(req: express.Request) {
@@ -338,6 +349,32 @@ app.post('/mcp', async (req, res) => {
         }
         const sessionId = (req.headers['mcp-session-id'] as string | undefined) || undefined;
         const originalAccept = String(req.headers.accept || '');
+        const invalidInitialize = invalidInitializeRequests(req.body);
+        if (invalidInitialize.length > 0) {
+            const core = new CoreError('InvalidParams', 'Invalid initialize request', {
+                error: 'initialize params must include protocolVersion, capabilities, and clientInfo',
+            });
+            if (Array.isArray(req.body)) {
+                const invalidItems = new Set(invalidInitialize);
+                const batchCore = new CoreError(
+                    'InvalidParams',
+                    'Batch rejected because initialize request is invalid',
+                    {
+                        error: 'Fix the invalid initialize request and retry the batch',
+                    }
+                );
+                const payloads = req.body.map((item) =>
+                    buildJsonRpcErrorPayload(invalidItems.has(item) ? core : batchCore, requestJsonRpcId(item))
+                );
+                if (/text\/event-stream/i.test(originalAccept)) sendSseJsonRpcPayload(res, payloads);
+                else res.status(400).json(payloads);
+            } else if (/text\/event-stream/i.test(originalAccept)) {
+                sendSseJsonRpcError(res, core, requestJsonRpcId(invalidInitialize[0]));
+            } else {
+                sendJsonRpcError(res, core, requestJsonRpcId(invalidInitialize[0]), 400);
+            }
+            return;
+        }
 
         let record: SessionRecord | undefined;
         let provisionalSessionId: string | undefined;
@@ -373,7 +410,7 @@ app.post('/mcp', async (req, res) => {
                 } catch {}
             };
             transport.onclose = () => {
-                const sid = transport.sessionId || preSid;
+                const sid = transport.sessionId || provisionalSessionId;
                 void disposeSession(initializedRecord, sid);
             };
         } else {

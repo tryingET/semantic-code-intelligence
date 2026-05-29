@@ -14,6 +14,7 @@ export interface ConnectionConfig {
     maxReconnectAttempts: number;
     reconnectBackoff: number; // milliseconds
     enableHeartbeat: boolean;
+    installProcessHandlers: boolean;
 }
 
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting' | 'failed';
@@ -56,6 +57,7 @@ export class ConnectionManager {
             maxReconnectAttempts: 5,
             reconnectBackoff: 2000, // 2 seconds
             enableHeartbeat: false, // Disabled for stdio
+            installProcessHandlers: false,
             ...config,
         };
 
@@ -70,8 +72,9 @@ export class ConnectionManager {
             errors: 0,
         };
 
-        // Setup graceful shutdown handlers
-        this.setupShutdownHandlers();
+        if (this.config.installProcessHandlers) {
+            this.setupShutdownHandlers();
+        }
     }
 
     /**
@@ -384,5 +387,5 @@ export class ConnectionManager {
     }
 }
 
-// Export a default connection manager instance
+// Export a default connection manager instance without process-wide side effects.
 export const defaultConnectionManager = new ConnectionManager();
