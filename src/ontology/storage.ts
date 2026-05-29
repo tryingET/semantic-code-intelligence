@@ -1,10 +1,26 @@
 // Semantic Graph Storage - SQLite persistence for Thing / Concept / Symbol (Ullmann triangle)
-import { Database } from 'bun:sqlite';
+
+import { createRequire } from 'node:module';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { Concept, Relation, Symbol, Thing, ThingConceptLink, ThingSymbolLink } from '../types/core';
 import { isValidLocation, normalizeUri, sanitizeRange } from './location-utils';
 import type { StoragePort } from './storage-port';
+
+type SQLiteDatabase = any;
+type SQLiteDatabaseConstructor = new (dbPath: string) => SQLiteDatabase;
+
+const requireBunModule = createRequire(import.meta.url);
+
+function loadBunSqliteDatabase(): SQLiteDatabaseConstructor {
+    try {
+        return requireBunModule('bun:sqlite').Database as SQLiteDatabaseConstructor;
+    } catch (error) {
+        throw new Error(
+            `SemanticGraphStorage requires the Bun runtime SQLite module: ${error instanceof Error ? error.message : String(error)}`
+        );
+    }
+}
 
 interface ConceptRow {
     id: string;
@@ -78,7 +94,7 @@ interface EvolutionRow {
 
 // SQLite-backed implementation of StoragePort
 export class SemanticGraphStorage implements StoragePort {
-    private db: Database;
+    private db: SQLiteDatabase;
     private schemaInitialized = false;
 
     constructor(private dbPath: string) {
@@ -90,6 +106,7 @@ export class SemanticGraphStorage implements StoragePort {
             }
         }
 
+        const Database = loadBunSqliteDatabase();
         this.db = new Database(dbPath);
         this.db.exec('PRAGMA foreign_keys = ON');
         this.db.exec('PRAGMA journal_mode = WAL');
@@ -510,9 +527,9 @@ export class SemanticGraphStorage implements StoragePort {
     }
 
     private resolveSymbolAlias(symbolId: string): string {
-        const row = this.db
-            .prepare(`SELECT canonical_id FROM symbol_aliases WHERE alias_id = ?`)
-            .get(symbolId) as { canonical_id: string } | undefined;
+        const row = this.db.prepare(`SELECT canonical_id FROM symbol_aliases WHERE alias_id = ?`).get(symbolId) as
+            | { canonical_id: string }
+            | undefined;
         return row?.canonical_id ?? symbolId;
     }
 
@@ -615,7 +632,9 @@ export class SemanticGraphStorage implements StoragePort {
             canonicalName: r.canonical_name,
             type: r.semantic_type ?? undefined,
             relations: relationsByConcept.get(r.id) ?? new Map(),
-            signature: r.signature_json ? JSON.parse(r.signature_json) : { parameters: [], sideEffects: [], complexity: 0, fingerprint: '' },
+            signature: r.signature_json
+                ? JSON.parse(r.signature_json)
+                : { parameters: [], sideEffects: [], complexity: 0, fingerprint: '' },
             evolution: evolutionByConcept.get(r.id) ?? [],
             metadata: r.metadata_json ? JSON.parse(r.metadata_json) : { tags: [] },
             confidence: r.confidence ?? 0,

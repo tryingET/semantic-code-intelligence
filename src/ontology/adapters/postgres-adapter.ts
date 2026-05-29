@@ -1,6 +1,6 @@
 import type { Concept, Relation, Symbol, Thing, ThingConceptLink, ThingSymbolLink } from '../../types/core';
-import type { StoragePort } from '../storage-port';
 import { normalizeLocation } from '../location-utils';
+import type { StoragePort } from '../storage-port';
 
 // Postgres adapter implementing the Layer 4 StoragePort.
 // Env: ONTOLOGY_PG_URL | DATABASE_URL | PG_URL | PGURL (postgres connection string)
@@ -10,7 +10,8 @@ export class PostgresStorageAdapter implements StoragePort {
     private url: string | null;
 
     constructor() {
-        this.url = process.env.ONTOLOGY_PG_URL || process.env.DATABASE_URL || process.env.PG_URL || process.env.PGURL || null;
+        this.url =
+            process.env.ONTOLOGY_PG_URL || process.env.DATABASE_URL || process.env.PG_URL || process.env.PGURL || null;
     }
 
     private async getClient(): Promise<any> {
@@ -31,7 +32,6 @@ export class PostgresStorageAdapter implements StoragePort {
     }
 
     async initialize(): Promise<void> {
-        if (!this.url) return; // allow initialize() in unconfigured envs
         const client = await this.getClient();
         await client.connect();
         this.connected = true;
@@ -308,7 +308,9 @@ export class PostgresStorageAdapter implements StoragePort {
                 thing.signature ?? null,
                 JSON.stringify((thing as any).typeInfo ?? null),
                 thing.confidence ?? 0,
-                thing.firstSeen ? Math.floor(new Date(thing.firstSeen).getTime() / 1000) : Math.floor(Date.now() / 1000),
+                thing.firstSeen
+                    ? Math.floor(new Date(thing.firstSeen).getTime() / 1000)
+                    : Math.floor(Date.now() / 1000),
                 thing.lastSeen ? Math.floor(new Date(thing.lastSeen).getTime() / 1000) : Math.floor(Date.now() / 1000),
                 typeof thing.occurrences === 'number' ? thing.occurrences : 1,
                 thing.context ?? null,
@@ -389,7 +391,10 @@ export class PostgresStorageAdapter implements StoragePort {
 
     private async migrateSymbolAlias(aliasId: string, canonicalId: string): Promise<void> {
         if (aliasId === canonicalId) return;
-        await this.client.query(`UPDATE symbol_aliases SET canonical_id = $1 WHERE canonical_id = $2`, [canonicalId, aliasId]);
+        await this.client.query(`UPDATE symbol_aliases SET canonical_id = $1 WHERE canonical_id = $2`, [
+            canonicalId,
+            aliasId,
+        ]);
         await this.client.query(
             `INSERT INTO symbol_aliases (alias_id, canonical_id)
              VALUES ($1, $2)
@@ -447,9 +452,15 @@ export class PostgresStorageAdapter implements StoragePort {
         totalConceptRelations: number;
     }> {
         this.ensureReady();
-        const totalConcepts = await this.client.query('SELECT COUNT(*)::int as c FROM concepts').then((r: any) => r.rows[0].c);
-        const totalSymbols = await this.client.query('SELECT COUNT(*)::int as c FROM symbols').then((r: any) => r.rows[0].c);
-        const totalThings = await this.client.query('SELECT COUNT(*)::int as c FROM things').then((r: any) => r.rows[0].c);
+        const totalConcepts = await this.client
+            .query('SELECT COUNT(*)::int as c FROM concepts')
+            .then((r: any) => r.rows[0].c);
+        const totalSymbols = await this.client
+            .query('SELECT COUNT(*)::int as c FROM symbols')
+            .then((r: any) => r.rows[0].c);
+        const totalThings = await this.client
+            .query('SELECT COUNT(*)::int as c FROM things')
+            .then((r: any) => r.rows[0].c);
         const totalConceptRelations = await this.client
             .query('SELECT COUNT(*)::int as c FROM concept_relations')
             .then((r: any) => r.rows[0].c);
@@ -514,4 +525,3 @@ export class PostgresStorageAdapter implements StoragePort {
         };
     }
 }
-

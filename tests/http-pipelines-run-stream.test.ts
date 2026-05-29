@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { canBindTcp } from './helpers/bind-utils';
 import { HTTPServer } from '../src/servers/http';
+import { canBindTcp } from './helpers/bind-utils';
 
-const canBind = await canBindTcp('127.0.0.1');
+const host = '127.0.0.1';
+const port = 7098;
+const canBind = await canBindTcp(host, port);
 const bindDescribe = canBind ? describe : describe.skip;
 
 bindDescribe('HTTP pipelines run-stream (NDJSON)', () => {
@@ -28,7 +30,10 @@ bindDescribe('HTTP pipelines run-stream (NDJSON)', () => {
         });
         expect(res.status).toBe(200);
         const text = await res.text();
-        const lines = text.trim().split('\n').map((line) => JSON.parse(line));
+        const lines = text
+            .trim()
+            .split('\n')
+            .map((line) => JSON.parse(line));
         expect(lines[0]?.event).toBe('started');
         // It may be very fast; finished should appear or we time out
         expect(lines.some((line) => line.event === 'finished' || line.event === 'timeout')).toBe(true);

@@ -37,6 +37,22 @@ describe('Layer 4 StoragePort factory', () => {
         await adapter.close();
     });
 
+    test('Postgres adapter fails fast when selected without a connection URL', async () => {
+        const keys = ['ONTOLOGY_PG_URL', 'DATABASE_URL', 'PG_URL', 'PGURL'] as const;
+        const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+        try {
+            for (const key of keys) delete process.env[key];
+            const adapter = createStorageAdapter({ enabled: true, adapter: 'postgres' });
+            await expect(adapter.initialize()).rejects.toThrow('PG_ADAPTER_NOT_CONFIGURED');
+        } finally {
+            for (const key of keys) {
+                const value = previous[key];
+                if (value === undefined) delete process.env[key];
+                else process.env[key] = value;
+            }
+        }
+    });
+
     test('returns Triple Store adapter when selected', async () => {
         const adapter = createStorageAdapter({ enabled: true, adapter: 'triplestore' });
         expect(innerAdapter(adapter)).toBeInstanceOf(TripleStoreStorageAdapter);
@@ -45,7 +61,9 @@ describe('Layer 4 StoragePort factory', () => {
     });
 
     test('rejects unknown storage adapters instead of silently falling back', () => {
-        expect(() => createStorageAdapter({ enabled: true, adapter: 'postgress' as any })).toThrow('Unsupported Layer 4 storage adapter');
+        expect(() => createStorageAdapter({ enabled: true, adapter: 'postgress' as any })).toThrow(
+            'Unsupported Layer 4 storage adapter'
+        );
     });
 
     test('SQLite canonicalizes duplicate symbol text and migrates existing links from alias ids', async () => {
@@ -57,15 +75,22 @@ describe('Layer 4 StoragePort factory', () => {
             await storage.upsertThing({
                 id: 't1',
                 kind: ThingKind.Function,
-                location: { uri: 'file:///tmp/a.ts', range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } } },
+                location: {
+                    uri: 'file:///tmp/a.ts',
+                    range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+                },
                 confidence: 0.7,
             });
             await storage.upsertThingSymbol({ thingId: 't1', symbolId: 's2', role: 'declaration' });
 
             await storage.upsertSymbol({ id: 's2', text: 'SharedName', language: 'ts', confidence: 0.9 });
 
-            expect(await storage.loadAllSymbols()).toEqual([{ id: 's1', text: 'SharedName', language: 'ts', confidence: 0.9 }]);
-            expect(await storage.loadAllThingSymbols()).toEqual([{ thingId: 't1', symbolId: 's1', role: 'declaration' }]);
+            expect(await storage.loadAllSymbols()).toEqual([
+                { id: 's1', text: 'SharedName', language: 'ts', confidence: 0.9 },
+            ]);
+            expect(await storage.loadAllThingSymbols()).toEqual([
+                { thingId: 't1', symbolId: 's1', role: 'declaration' },
+            ]);
         } finally {
             await storage.close().catch(() => undefined);
         }
@@ -78,15 +103,30 @@ describe('Layer 4 StoragePort factory', () => {
         try {
             await storage.initialize();
             const db = (storage as any).db;
-            db.prepare(`INSERT INTO symbols (id, text, language, confidence) VALUES (?, ?, NULL, ?)`).run('s1', 'SharedName', 0.5);
-            db.prepare(`INSERT INTO symbols (id, text, language, confidence) VALUES (?, ?, NULL, ?)`).run('s2', 'SharedName', 0.7);
+            db.prepare(`INSERT INTO symbols (id, text, language, confidence) VALUES (?, ?, NULL, ?)`).run(
+                's1',
+                'SharedName',
+                0.5
+            );
+            db.prepare(`INSERT INTO symbols (id, text, language, confidence) VALUES (?, ?, NULL, ?)`).run(
+                's2',
+                'SharedName',
+                0.7
+            );
             await storage.upsertThing({
                 id: 't1',
                 kind: ThingKind.Function,
-                location: { uri: 'file:///tmp/a.ts', range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } } },
+                location: {
+                    uri: 'file:///tmp/a.ts',
+                    range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+                },
                 confidence: 0.7,
             });
-            db.prepare(`INSERT INTO thing_symbols (thing_id, symbol_id, role) VALUES (?, ?, ?)`).run('t1', 's2', 'declaration');
+            db.prepare(`INSERT INTO thing_symbols (thing_id, symbol_id, role) VALUES (?, ?, ?)`).run(
+                't1',
+                's2',
+                'declaration'
+            );
         } finally {
             await storage.close().catch(() => undefined);
         }
@@ -94,8 +134,12 @@ describe('Layer 4 StoragePort factory', () => {
         const reopened = new OntologyStorage(dbPath);
         try {
             await reopened.initialize();
-            expect(await reopened.loadAllSymbols()).toEqual([{ id: 's1', text: 'SharedName', language: undefined, confidence: 0.5 }]);
-            expect(await reopened.loadAllThingSymbols()).toEqual([{ thingId: 't1', symbolId: 's1', role: 'declaration' }]);
+            expect(await reopened.loadAllSymbols()).toEqual([
+                { id: 's1', text: 'SharedName', language: undefined, confidence: 0.5 },
+            ]);
+            expect(await reopened.loadAllThingSymbols()).toEqual([
+                { thingId: 't1', symbolId: 's1', role: 'declaration' },
+            ]);
         } finally {
             await reopened.close().catch(() => undefined);
             rmSync(dir, { recursive: true, force: true });
@@ -106,46 +150,71 @@ describe('Layer 4 StoragePort factory', () => {
         const adapter = new TripleStoreStorageAdapter();
         await adapter.initialize();
 
-        await expect(adapter.upsertThingSymbol({ thingId: 'missingThing', symbolId: 'missingSymbol', role: 'declaration' })).rejects.toThrow(
-            'FOREIGN_KEY_VIOLATION'
-        );
-        await expect(adapter.upsertThingConcept({ thingId: 'missingThing', conceptId: 'missingConcept', confidence: 0.5 })).rejects.toThrow(
-            'FOREIGN_KEY_VIOLATION'
-        );
+        await expect(
+            adapter.upsertThingSymbol({ thingId: 'missingThing', symbolId: 'missingSymbol', role: 'declaration' })
+        ).rejects.toThrow('FOREIGN_KEY_VIOLATION');
+        await expect(
+            adapter.upsertThingConcept({ thingId: 'missingThing', conceptId: 'missingConcept', confidence: 0.5 })
+        ).rejects.toThrow('FOREIGN_KEY_VIOLATION');
 
         await adapter.upsertSymbol({ id: 's1', text: 'SharedName', language: 'ts', confidence: 0.5 });
         await adapter.upsertSymbol({ id: 's2', text: 'OtherName', language: 'ts', confidence: 0.4 });
         await adapter.upsertThing({
             id: 't1',
             kind: ThingKind.Function,
-            location: { uri: 'file:///tmp/a.ts', range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } } },
+            location: {
+                uri: 'file:///tmp/a.ts',
+                range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+            },
             confidence: 0.7,
         });
         await adapter.upsertThingSymbol({ thingId: 't1', symbolId: 's2', role: 'declaration' });
         await adapter.upsertSymbol({ id: 's2', text: 'SharedName', language: 'ts', confidence: 0.9 });
-        expect(await adapter.loadAllSymbols()).toEqual([{ id: 's1', text: 'SharedName', language: 'ts', confidence: 0.9 }]);
+        expect(await adapter.loadAllSymbols()).toEqual([
+            { id: 's1', text: 'SharedName', language: 'ts', confidence: 0.9 },
+        ]);
         expect(await adapter.loadAllThingSymbols()).toEqual([{ thingId: 't1', symbolId: 's1', role: 'declaration' }]);
     });
 
-    (hasPg ? test : test.skip)('Postgres canonicalizes duplicate symbol text and migrates links like other adapters', async () => {
-        const adapter = new PostgresStorageAdapter();
-        await adapter.initialize();
+    (hasPg ? test : test.skip)(
+        'Postgres canonicalizes duplicate symbol text and migrates links like other adapters',
+        async () => {
+            const adapter = new PostgresStorageAdapter();
+            await adapter.initialize();
+            try {
+                await adapter.upsertSymbol({ id: 's1', text: 'SharedName', language: 'ts', confidence: 0.5 });
+                await adapter.upsertSymbol({ id: 's2', text: 'OtherName', language: 'ts', confidence: 0.4 });
+                await adapter.upsertThing({
+                    id: 't1',
+                    kind: ThingKind.Function,
+                    location: {
+                        uri: 'file:///tmp/a.ts',
+                        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+                    },
+                    confidence: 0.7,
+                });
+                await adapter.upsertThingSymbol({ thingId: 't1', symbolId: 's2', role: 'declaration' });
+                await adapter.upsertSymbol({ id: 's2', text: 'SharedName', language: 'ts', confidence: 0.9 });
+                expect((await adapter.loadAllThingSymbols()).filter((link) => link.thingId === 't1')).toEqual([
+                    { thingId: 't1', symbolId: 's1', role: 'declaration' },
+                ]);
+            } finally {
+                await adapter.close().catch(() => undefined);
+            }
+        }
+    );
+
+    test('OntologyEngine accepts a SQLite database path for back-compat construction', async () => {
+        const { OntologyEngine } = await import('../src/ontology/ontology-engine');
+        const dir = mkdtempSync(join(tmpdir(), 'sci-ontology-engine-path-'));
+        const dbPath = join(dir, 'ontology.db');
+        const engine = new OntologyEngine(dbPath);
         try {
-            await adapter.upsertSymbol({ id: 's1', text: 'SharedName', language: 'ts', confidence: 0.5 });
-            await adapter.upsertSymbol({ id: 's2', text: 'OtherName', language: 'ts', confidence: 0.4 });
-            await adapter.upsertThing({
-                id: 't1',
-                kind: ThingKind.Function,
-                location: { uri: 'file:///tmp/a.ts', range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } } },
-                confidence: 0.7,
-            });
-            await adapter.upsertThingSymbol({ thingId: 't1', symbolId: 's2', role: 'declaration' });
-            await adapter.upsertSymbol({ id: 's2', text: 'SharedName', language: 'ts', confidence: 0.9 });
-            expect((await adapter.loadAllThingSymbols()).filter((link) => link.thingId === 't1')).toEqual([
-                { thingId: 't1', symbolId: 's1', role: 'declaration' },
-            ]);
+            await engine.ensureInitialized();
+            expect(engine.getStorageMetrics()).toBeTruthy();
         } finally {
-            await adapter.close().catch(() => undefined);
+            await engine.dispose().catch(() => undefined);
+            rmSync(dir, { recursive: true, force: true });
         }
     });
 

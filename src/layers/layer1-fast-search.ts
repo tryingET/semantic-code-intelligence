@@ -58,12 +58,18 @@ const searchTools = new EnhancedSearchTools({
     },
 });
 
-// Create async search tools instance with performance optimizations
-const asyncSearchTools = new AsyncEnhancedGrep({
-    // Let maxProcesses and defaultTimeout be derived from CPU/env; only tune cache here
-    cacheSize: 1000, // Large cache for frequent queries
-    cacheTTL: 60000, // 1 minute cache TTL
-});
+// Lazily create async search tools so importing the public package does not perform runtime probes.
+let asyncSearchTools: AsyncEnhancedGrep | null = null;
+function getAsyncSearchTools(): AsyncEnhancedGrep {
+    if (!asyncSearchTools) {
+        asyncSearchTools = new AsyncEnhancedGrep({
+            // Let maxProcesses and defaultTimeout be derived from CPU/env; only tune cache here
+            cacheSize: 1000, // Large cache for frequent queries
+            cacheTTL: 60000, // 1 minute cache TTL
+        });
+    }
+    return asyncSearchTools;
+}
 
 // Wrapper functions to maintain compatibility with existing code
 // Updated to use async streaming search as primary method with sync fallback
@@ -92,7 +98,7 @@ const Grep = async (params: ClaudeGrepParams): Promise<ClaudeGrepResult[] | stri
             excludePaths: ['node_modules', 'dist', '.git', 'coverage'],
         };
 
-        const streamingResults = await asyncSearchTools.search(asyncParams);
+        const streamingResults = await getAsyncSearchTools().search(asyncParams);
 
         // Convert StreamingGrepResult[] to ClaudeGrepResult[]
         const claudeResults: ClaudeGrepResult[] = streamingResults.map((result) => ({
@@ -387,7 +393,7 @@ export class FastSearchLayer implements Layer<SearchQuery, EnhancedMatches> {
         // Keep strategy info with each controller for correct classification
         const controllers = strategies.map((s) => ({
             s,
-            ctrl: asyncSearchTools.searchCancellable({
+            ctrl: getAsyncSearchTools().searchCancellable({
                 pattern: s.pattern,
                 path: query.searchPath,
                 maxResults: s.maxResults,
@@ -421,7 +427,9 @@ export class FastSearchLayer implements Layer<SearchQuery, EnhancedMatches> {
                             });
                             // Prefix/suffix searches can win the race with the same whole-word hit;
                             // keep those as exact rather than making result shape timing-dependent.
-                            const exactMatches = converted.filter((m) => s.name === 'exact' || exactWordRegex.test(m.text));
+                            const exactMatches = converted.filter(
+                                (m) => s.name === 'exact' || exactWordRegex.test(m.text)
+                            );
                             const fuzzyMatches = converted.filter((m) => !exactMatches.includes(m));
                             matches.exact.push(...exactMatches);
                             matches.fuzzy.push(...fuzzyMatches);
@@ -462,7 +470,7 @@ export class FastSearchLayer implements Layer<SearchQuery, EnhancedMatches> {
         });
 
         const ctrls = patterns.map((p) =>
-            asyncSearchTools.listFilesCancellable({
+            getAsyncSearchTools().listFilesCancellable({
                 includes: [p],
                 excludes,
                 path: query.searchPath || '.',
@@ -534,7 +542,7 @@ export class FastSearchLayer implements Layer<SearchQuery, EnhancedMatches> {
                     excludePaths: this.getExcludeDirs(),
                     useRegex: true,
                 };
-                const results = await asyncSearchTools.search(searchOptions);
+                const results = await getAsyncSearchTools().search(searchOptions);
                 if (results.length === 0) throw new Error('no-results');
                 return { s, results };
             })()
@@ -587,7 +595,7 @@ export class FastSearchLayer implements Layer<SearchQuery, EnhancedMatches> {
                 useRegex: true,
             };
             try {
-                const results = await asyncSearchTools.search(fallbackOptions);
+                const results = await getAsyncSearchTools().search(fallbackOptions);
                 if (results.length === 0) return;
                 const converted: Match[] = results.map((r) => {
                     const categorization = this.categorizeMatch(r.text, query.identifier);
@@ -700,7 +708,7 @@ export class FastSearchLayer implements Layer<SearchQuery, EnhancedMatches> {
         // Execute strategies with concurrency limit for better performance
         const strategyPromises = searchStrategies.map(async (strategy) => {
             try {
-                const results = await asyncSearchTools.search(strategy.options);
+                const results = await getAsyncSearchTools().search(strategy.options);
                 // Early termination if we have enough exact matches
                 if (results.length > 0 && strategy.matchType === 'exact') {
                     return {
@@ -934,7 +942,7 @@ export class FastSearchLayer implements Layer<SearchQuery, EnhancedMatches> {
             useRegex: true,
         };
 
-        return asyncSearchTools.searchStream(searchOptions);
+        return getAsyncSearchTools().searchStream(searchOptions);
     }
 
     /**
@@ -945,7 +953,7 @@ export class FastSearchLayer implements Layer<SearchQuery, EnhancedMatches> {
         directories: string[],
         options?: Partial<AsyncSearchOptions>
     ): Promise<Map<string, StreamingGrepResult[]>> {
-        return asyncSearchTools.searchParallel(patterns, directories, options);
+        return getAsyncSearchTools().searchParallel(patterns, directories, options);
     }
 
     private async searchWithGrep(query: SearchQuery, matches: EnhancedMatches): Promise<void> {
@@ -1000,7 +1008,7 @@ export class FastSearchLayer implements Layer<SearchQuery, EnhancedMatches> {
             const left = globalBudgetMs - elapsed;
             if (left <= 100) break;
             try {
-                const files = await asyncSearchTools.listFiles({
+                const files = await getAsyncSearchTools().listFiles({
                     includes: [pattern],
                     excludes,
                     path: query.searchPath || '.',
@@ -1603,7 +1611,9 @@ export class FastSearchLayer implements Layer<SearchQuery, EnhancedMatches> {
         const root = query.searchPath || 'src';
         const queue: string[] = [root];
         const seen = new Set<string>();
-        const exts = new Set((query.fileTypes || ['ts', 'tsx', 'js', 'jsx', 'py', 'rs', 'go']).map((e) => e.toLowerCase()));
+        const exts = new Set(
+            (query.fileTypes || ['ts', 'tsx', 'js', 'jsx', 'py', 'rs', 'go']).map((e) => e.toLowerCase())
+        );
         const id = query.identifier;
         let scanned = 0;
         while (queue.length && scanned < maxFiles) {

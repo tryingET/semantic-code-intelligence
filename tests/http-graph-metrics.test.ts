@@ -1,14 +1,14 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { canBindTcp } from './helpers/bind-utils';
 import { HTTPServer } from '../src/servers/http';
+import { canBindTcp } from './helpers/bind-utils';
 
-const canBind = await canBindTcp('127.0.0.1');
+const host = '127.0.0.1';
+const port = 7068;
+const canBind = await canBindTcp(host, port);
 const bindDescribe = canBind ? describe : describe.skip;
 
 bindDescribe('HTTP metrics for graph-expand', () => {
     let server: HTTPServer;
-    const host = '127.0.0.1';
-    const port = 7068;
     const base = `http://${host}:${port}`;
 
     beforeAll(async () => {
@@ -34,7 +34,7 @@ bindDescribe('HTTP metrics for graph-expand', () => {
         expect(text).toContain('tool_calls_total');
         expect(text).toContain('adapter="http"');
         // Either primary or fallback must be present depending on environment
-        expect(text.match(/tool=\"graph_expand_(primary|fallback)\"/)).toBeTruthy();
+        expect(text.match(/tool="graph_expand_(primary|fallback)"/)).toBeTruthy();
     }, 15000);
 
     test('records graph_expand_fallback on error', async () => {

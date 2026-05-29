@@ -1,11 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { canBindTcp } from './helpers/bind-utils';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { overlayStore } from '../src/core/overlay-store';
 import { HTTPServer } from '../src/servers/http';
+import { canBindTcp } from './helpers/bind-utils';
 
-const canBind = await canBindTcp('127.0.0.1');
+const host = '127.0.0.1';
+const port = 7020;
+const canBind = await canBindTcp(host, port);
 const bindDescribe = canBind ? describe : describe.skip;
 
 async function callTool(base: string, name: string, args: Record<string, any>) {
@@ -31,8 +33,6 @@ function unwrap(result: any): any {
 
 bindDescribe('safe_write with unified diff (applied=true)', () => {
     let server: HTTPServer;
-    const host = '127.0.0.1';
-    const port = 7020;
     const base = `http://${host}:${port}`;
     // Use a unique temp file to avoid conflicts with parallel tests
     const testId = `http-unified-${Date.now()}`;

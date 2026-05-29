@@ -1,9 +1,9 @@
 // Semantic Graph Engine (Layer 4) - explicit Thing / Concept / Symbol handling (Ullmann triangle)
+
+import { createHash } from 'node:crypto';
 import { EventEmitter } from 'events';
 import { Graph } from 'graphlib';
-import { createHash } from 'node:crypto';
 import { v4 as uuidv4 } from 'uuid';
-import { ThingKind } from '../types/core';
 import type {
     Concept,
     ConceptSignature,
@@ -16,10 +16,12 @@ import type {
     ThingSymbolLink,
     ThingSymbolRole,
 } from '../types/core';
+import { ThingKind } from '../types/core';
 import { ConceptBuilder, type ConceptBuildResult } from './concept-builder';
 import { InstrumentedStoragePort, type L4StorageMetrics } from './instrumented-storage';
 import { isValidLocation, normalizeUri as normUri, sanitizeRange } from './location-utils';
 import { SimilarityCalculator } from './similarity-calculator';
+import { SemanticGraphStorage } from './storage';
 import type { StoragePort } from './storage-port';
 
 export interface RelatedConcept {
@@ -64,6 +66,17 @@ export type ExportedConceptV2 = {
     anchors: ConceptAnchor[];
 };
 
+function isStoragePort(value: unknown): value is StoragePort {
+    const candidate = value as Partial<StoragePort> | null;
+    return (
+        !!candidate &&
+        typeof candidate === 'object' &&
+        typeof candidate.initialize === 'function' &&
+        typeof candidate.close === 'function' &&
+        typeof candidate.loadAllConcepts === 'function'
+    );
+}
+
 export class SemanticGraphEngine extends EventEmitter {
     private conceptGraph: Graph;
     private concepts = new Map<string, Concept>();
@@ -82,13 +95,18 @@ export class SemanticGraphEngine extends EventEmitter {
     private storage: StoragePort;
     private initPromise: Promise<void> | null = null;
 
-    constructor(storage: StoragePort) {
+    constructor(storage: StoragePort | string) {
         super();
         this.conceptGraph = new Graph({ directed: true, multigraph: true });
         this.similarityCalculator = new SimilarityCalculator();
         this.conceptBuilder = new ConceptBuilder();
-        const s: any = storage as any;
-        this.storage = s && typeof s.getMetrics === 'function' ? storage : new InstrumentedStoragePort(storage);
+        const resolvedStorage = typeof storage === 'string' ? new SemanticGraphStorage(storage) : storage;
+        if (!isStoragePort(resolvedStorage)) {
+            throw new TypeError('SemanticGraphEngine requires a StoragePort or SQLite database path');
+        }
+        const s: any = resolvedStorage as any;
+        this.storage =
+            s && typeof s.getMetrics === 'function' ? resolvedStorage : new InstrumentedStoragePort(resolvedStorage);
         this.initPromise = null;
     }
 
@@ -355,11 +373,10 @@ export class SemanticGraphEngine extends EventEmitter {
 
         const normalized = {
             uri: normUri((anchor.location as any)?.uri),
-            range:
-                sanitizeRange((anchor.location as any)?.range) || {
-                    start: { line: 0, character: 0 },
-                    end: { line: 0, character: 0 },
-                },
+            range: sanitizeRange((anchor.location as any)?.range) || {
+                start: { line: 0, character: 0 },
+                end: { line: 0, character: 0 },
+            },
         };
         if (!isValidLocation(normalized)) return;
 
@@ -512,7 +529,12 @@ export class SemanticGraphEngine extends EventEmitter {
             if (!targetConcept) continue;
             const relation = this.conceptGraph.edge(edge) as Relation;
             const conf = this.calculateRelationConfidence(relation, currentDepth);
-            result.push({ concept: targetConcept, relation: relation.type, distance: currentDepth + 1, confidence: conf });
+            result.push({
+                concept: targetConcept,
+                relation: relation.type,
+                distance: currentDepth + 1,
+                confidence: conf,
+            });
             this.traverseRelations(edge.w, currentDepth + 1, maxDepth, visited, result);
         }
 

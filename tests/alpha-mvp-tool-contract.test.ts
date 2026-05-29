@@ -7,7 +7,9 @@ import { listMcpTools } from '../src/mcp/tool-list';
 import { HTTPServer } from '../src/servers/http';
 import { canBindTcp } from './helpers/bind-utils';
 
-const canBind = await canBindTcp('127.0.0.1');
+const host = '127.0.0.1';
+const port = 7022;
+const canBind = await canBindTcp(host, port);
 const bindDescribe = canBind ? describe : describe.skip;
 
 const patchPlanningMarker = '<!-- alpha patch-planning parity snapshot-only marker -->';
@@ -150,8 +152,6 @@ describe('Alpha MVP tool contract', () => {
 
 bindDescribe('Alpha MVP HTTP tools/call contract', () => {
     let server: HTTPServer;
-    const host = '127.0.0.1';
-    const port = 7022;
     const base = `http://${host}:${port}`;
 
     beforeAll(async () => {

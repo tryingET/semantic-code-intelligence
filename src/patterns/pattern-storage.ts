@@ -1,8 +1,24 @@
 // Pattern Storage - Manages persistence of learned patterns
-import { Database } from 'bun:sqlite';
+
+import { createRequire } from 'node:module';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { Example, Pattern, PatternCategory, TokenPattern } from '../types/core';
+
+type SQLiteDatabase = any;
+type SQLiteDatabaseConstructor = new (dbPath: string) => SQLiteDatabase;
+
+const requireBunModule = createRequire(import.meta.url);
+
+function loadBunSqliteDatabase(): SQLiteDatabaseConstructor {
+    try {
+        return requireBunModule('bun:sqlite').Database as SQLiteDatabaseConstructor;
+    } catch (error) {
+        throw new Error(
+            `PatternStorage requires the Bun runtime SQLite module: ${error instanceof Error ? error.message : String(error)}`
+        );
+    }
+}
 
 // Helper to remove undefined fields from an object
 function pruneUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
@@ -59,7 +75,7 @@ interface TopPerformingPatternRow {
 }
 
 export class PatternStorage {
-    private db: Database;
+    private db: SQLiteDatabase;
 
     constructor(private dbPath: string) {
         // Ensure directory exists
@@ -68,6 +84,7 @@ export class PatternStorage {
             fs.mkdirSync(dir, { recursive: true });
         }
 
+        const Database = loadBunSqliteDatabase();
         this.db = new Database(dbPath);
         this.db.exec('PRAGMA foreign_keys = ON');
         this.db.exec('PRAGMA journal_mode = WAL');
@@ -397,7 +414,7 @@ export class PatternStorage {
             totalPatterns: statsRow.total_patterns || 0,
             totalApplications: statsRow.total_applications || 0,
             averageSuccessRate: statsRow.avg_success_rate || 0,
-            topPerformingPatterns: topPerformingRows.map((row) => ({
+            topPerformingPatterns: (topPerformingRows as TopPerformingPatternRow[]).map((row) => ({
                 patternId: (row as TopPerformingPatternRow).pattern_id,
                 category: (row as TopPerformingPatternRow).category,
                 successRate: (row as TopPerformingPatternRow).success_rate || 0,
@@ -443,7 +460,7 @@ export class PatternStorage {
             `)
                 .all(row.id);
 
-            const examples: Example[] = exampleRows.map((exRow) => {
+            const examples: Example[] = (exampleRows as PatternExampleRow[]).map((exRow) => {
                 const typedExRow = exRow as PatternExampleRow;
                 const contextData = JSON.parse(typedExRow.context_data || '{}') || {};
                 const ts = contextData.timestamp ? new Date(contextData.timestamp) : new Date(0);

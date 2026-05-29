@@ -1,14 +1,14 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { canBindTcp } from './helpers/bind-utils';
 import { HTTPServer } from '../src/servers/http';
+import { canBindTcp } from './helpers/bind-utils';
 
-const canBind = await canBindTcp('127.0.0.1');
+const host = '127.0.0.1';
+const port = 7012;
+const canBind = await canBindTcp(host, port);
 const bindDescribe = canBind ? describe : describe.skip;
 
 bindDescribe('HTTP /metrics JSON includes layerManager performance', () => {
     let server: HTTPServer;
-    const host = '127.0.0.1';
-    const port = 7012;
     const base = `http://${host}:${port}`;
 
     beforeAll(async () => {

@@ -9,7 +9,7 @@ import path from 'node:path';
 import { EventBusService } from '../src/core/services/event-bus-service.js';
 import { SharedServices } from '../src/core/services/index.js';
 import type { CoreConfig } from '../src/core/types.js';
-import { FeedbackEvent, FeedbackLoopSystem } from '../src/learning/feedback-loop.js';
+import { FEEDBACK_LOOP_PERFORMANCE_TARGETS, FeedbackEvent, FeedbackLoopSystem } from '../src/learning/feedback-loop.js';
 import { PatternLearner } from '../src/patterns/pattern-learner.js';
 
 // Test database paths
@@ -342,20 +342,20 @@ describe('FeedbackLoopSystem Integration', () => {
             expect(stats.recentTrends.last24h.modified).toBe(1);
         });
 
-	        test('should handle empty statistics gracefully', async () => {
-	            // Create completely separate services for empty test
-	            const emptyDbPath = path.join(process.cwd(), 'test-empty-feedback.db');
-	            cleanupDbFiles(emptyDbPath);
+        test('should handle empty statistics gracefully', async () => {
+            // Create completely separate services for empty test
+            const emptyDbPath = path.join(process.cwd(), 'test-empty-feedback.db');
+            cleanupDbFiles(emptyDbPath);
 
-	            const emptyConfig = {
-	                ...mockConfig,
-	                layers: {
-	                    ...mockConfig.layers,
-	                    layer3: { ...mockConfig.layers.layer3, dbPath: emptyDbPath },
-	                    layer4: { enabled: true, dbPath: emptyDbPath },
-	                },
-	                database: { ...mockConfig.database, path: emptyDbPath },
-	            };
+            const emptyConfig = {
+                ...mockConfig,
+                layers: {
+                    ...mockConfig.layers,
+                    layer3: { ...mockConfig.layers.layer3, dbPath: emptyDbPath },
+                    layer4: { enabled: true, dbPath: emptyDbPath },
+                },
+                database: { ...mockConfig.database, path: emptyDbPath },
+            };
             const emptyEventBus = new EventBusService();
             const emptyServices = new SharedServices(emptyConfig, emptyEventBus);
             await emptyServices.initialize();
@@ -370,10 +370,10 @@ describe('FeedbackLoopSystem Integration', () => {
             expect(stats.rejectionRate).toBe(0);
             expect(stats.modificationRate).toBe(0);
 
-	            await emptyFeedbackLoop.dispose();
-	            await emptyServices.dispose();
-	            cleanupDbFiles(emptyDbPath);
-	        });
+            await emptyFeedbackLoop.dispose();
+            await emptyServices.dispose();
+            cleanupDbFiles(emptyDbPath);
+        });
     });
 
     describe('Insight Generation', () => {
@@ -624,7 +624,7 @@ describe('FeedbackLoopSystem Integration', () => {
     });
 
     describe('Performance Requirements', () => {
-        test('should record feedback within performance targets', async () => {
+        test('should record feedback within the exported performance target', async () => {
             const measurements: number[] = [];
 
             for (let i = 0; i < 10; i++) {
@@ -650,7 +650,7 @@ describe('FeedbackLoopSystem Integration', () => {
             }
 
             const averageDuration = measurements.reduce((a, b) => a + b) / measurements.length;
-            expect(averageDuration).toBeLessThan(50); // Should average under 50ms
+            expect(averageDuration).toBeLessThan(FEEDBACK_LOOP_PERFORMANCE_TARGETS.recordFeedback);
         });
 
         test('should generate insights within performance targets', async () => {

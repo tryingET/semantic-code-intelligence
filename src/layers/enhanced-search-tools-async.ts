@@ -99,7 +99,6 @@ class RipgrepProcessPool {
 
     private validateRipgrepAvailability() {
         try {
-            const { execSync } = require('child_process');
             execSync('rg --version', { stdio: 'pipe' });
         } catch (error) {
             console.error('AsyncEnhancedGrep: ripgrep not available or not working:', error);
@@ -202,7 +201,11 @@ class SmartSearchCache {
         // Check if any watched files changed. A file that existed when the
         // result was cached and is now missing is stale; files that were
         // already absent in direct cache unit tests remain neutral.
-        if (cached.watchedFiles.some((f) => this.hasFileChanged(f, cached.timestamp, cached.watchedFileExistsAtSet?.[f] === true))) {
+        if (
+            cached.watchedFiles.some((f) =>
+                this.hasFileChanged(f, cached.timestamp, cached.watchedFileExistsAtSet?.[f] === true)
+            )
+        ) {
             this.invalidate(key);
             return null;
         }

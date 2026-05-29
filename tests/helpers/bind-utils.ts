@@ -1,12 +1,12 @@
 import { createServer } from 'node:net';
 
-export async function canBindTcp(host: string): Promise<boolean> {
+export async function canBindTcp(host: string, port = 0): Promise<boolean> {
     return await new Promise((resolve) => {
         const server = createServer();
         server.once('error', () => {
             resolve(false);
         });
-        server.listen(0, host, () => {
+        server.listen(port, host, () => {
             server.close(() => resolve(true));
         });
     });

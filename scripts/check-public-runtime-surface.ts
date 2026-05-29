@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 
 interface Violation {
@@ -32,12 +33,20 @@ function checkPackageEntrypoints(): void {
     bin?: Record<string, string>;
     files?: string[];
     scripts?: Record<string, string>;
+    engines?: Record<string, string>;
   };
 
   if (pkg.main !== 'dist/core/index.js') {
     add('package.json', 'package-main-drift', `main=${pkg.main ?? '<missing>'}`, 'Set package.json main to the built core entrypoint dist/core/index.js.');
   } else {
     requireExisting(pkg.main, 'package-main-missing', 'Run bun run build:core or fix the package main path.');
+  }
+
+  if (pkg.main && exists(pkg.main)) {
+    checkRuntimeImport('bun', ['--eval', `await import('./${pkg.main}')`], pkg.main, 'bun');
+    if (pkg.engines?.node) {
+      checkRuntimeImport('node', ['-e', `import('./${pkg.main}')`], pkg.main, 'node');
+    }
   }
 
   const requiredFiles = ['bin/semantic-code-intelligence', 'bin/semantic-code-mcp', 'dist/', 'README.md', 'LICENSE'];
@@ -70,6 +79,19 @@ function checkPackageEntrypoints(): void {
       continue;
     }
     requireExisting(match[1], 'package-bin-target-missing', `Run bun run build:all or fix the ${name} wrapper target.`);
+  }
+}
+
+function checkRuntimeImport(command: string, args: string[], file: string, runtime: string): void {
+  const proc = spawnSync(command, args, { cwd: process.cwd(), encoding: 'utf8' });
+  if (proc.status !== 0) {
+    const detail = [proc.stderr.trim(), proc.stdout.trim()].filter(Boolean).join('\n').slice(0, 1200);
+    add(
+      file,
+      `package-main-${runtime}-import-failed`,
+      detail || `${runtime} import exited with status ${proc.status}`,
+      `Make ${file} importable under the advertised ${runtime} runtime or remove that runtime claim.`
+    );
   }
 }
 

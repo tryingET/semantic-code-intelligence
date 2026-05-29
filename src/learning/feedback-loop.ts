@@ -9,6 +9,12 @@ import { CoreError, type EventBus } from '../core/types.js';
 import type { PatternLearner } from '../patterns/pattern-learner.js';
 import { Pattern, PatternCategory, Suggestion } from '../types/core.js';
 
+export const FEEDBACK_LOOP_PERFORMANCE_TARGETS = {
+    recordFeedback: 20,
+    updatePatternStrength: 15,
+    generateInsights: 20,
+} as const;
+
 export interface FeedbackEvent {
     id: string;
     type: 'accept' | 'reject' | 'modify' | 'ignore';
@@ -70,11 +76,7 @@ export class FeedbackLoopSystem {
     };
 
     // Performance target: <20ms for learning operations
-    private performanceTargets = {
-        recordFeedback: 10, // ms
-        updatePatternStrength: 15, // ms
-        generateInsights: 20, // ms
-    };
+    private performanceTargets = FEEDBACK_LOOP_PERFORMANCE_TARGETS;
 
     constructor(
         sharedServices: SharedServices,
@@ -570,7 +572,8 @@ export class FeedbackLoopSystem {
 
             for (const row of rows) {
                 const rawTimestamp = typeof row.timestamp === 'number' ? row.timestamp : Number(row.timestamp);
-                const timestamp = rawTimestamp > 0 && rawTimestamp < 1_000_000_000_000 ? rawTimestamp * 1000 : rawTimestamp;
+                const timestamp =
+                    rawTimestamp > 0 && rawTimestamp < 1_000_000_000_000 ? rawTimestamp * 1000 : rawTimestamp;
                 const feedback: FeedbackEvent = {
                     id: String(row.id),
                     type: this.validateFeedbackType(row.type) ? row.type : 'ignore',

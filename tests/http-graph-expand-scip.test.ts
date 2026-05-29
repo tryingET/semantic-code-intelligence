@@ -11,14 +11,16 @@ import {
     PositionEncoding,
     ProtocolVersion,
     SymbolRole,
+    serializeSCIP,
     TextEncoding,
     ToolInfoSchema,
-    serializeSCIP,
 } from '@c4312/scip';
 import { HTTPServer } from '../src/servers/http';
 import { canBindTcp } from './helpers/bind-utils';
 
-const canBind = await canBindTcp('127.0.0.1');
+const host = '127.0.0.1';
+const port = 7072;
+const canBind = await canBindTcp(host, port);
 const bindDescribe = canBind ? describe : describe.skip;
 const fooSymbol = 'scip-go gomod example.com/acme Foo().';
 
@@ -39,8 +41,16 @@ function writeSampleScipIndex(): string {
                 language: 'go',
                 positionEncoding: PositionEncoding.UTF8CodeUnitOffsetFromLineStart,
                 occurrences: [
-                    create(OccurrenceSchema, { range: [0, 7, 20], symbol: 'scip-go gomod fmt/', symbolRoles: SymbolRole.Import }),
-                    create(OccurrenceSchema, { range: [2, 5, 8], symbol: fooSymbol, symbolRoles: SymbolRole.Definition }),
+                    create(OccurrenceSchema, {
+                        range: [0, 7, 20],
+                        symbol: 'scip-go gomod fmt/',
+                        symbolRoles: SymbolRole.Import,
+                    }),
+                    create(OccurrenceSchema, {
+                        range: [2, 5, 8],
+                        symbol: fooSymbol,
+                        symbolRoles: SymbolRole.Definition,
+                    }),
                 ],
             }),
         ],
@@ -51,8 +61,6 @@ function writeSampleScipIndex(): string {
 
 bindDescribe('HTTP /api/v1/graph-expand SCIP parity', () => {
     let server: HTTPServer;
-    const host = '127.0.0.1';
-    const port = 7072;
     const base = `http://${host}:${port}`;
 
     beforeAll(async () => {

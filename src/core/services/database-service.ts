@@ -3,10 +3,26 @@
  * Provides schema management, connection pooling, and query optimization
  */
 
-import { Database } from 'bun:sqlite';
+import { createRequire } from 'node:module';
 import * as fs from 'fs';
 import * as path from 'path';
 import { CoreError, type EventBus } from '../types.js';
+
+type SQLiteDatabase = any;
+type SQLiteDatabaseConstructor = new (dbPath: string) => SQLiteDatabase;
+
+const requireBunModule = createRequire(import.meta.url);
+
+function loadBunSqliteDatabase(): SQLiteDatabaseConstructor {
+    try {
+        return requireBunModule('bun:sqlite').Database as SQLiteDatabaseConstructor;
+    } catch (error) {
+        throw new CoreError(
+            `DatabaseService requires the Bun runtime SQLite module: ${error instanceof Error ? error.message : String(error)}`,
+            'BUN_SQLITE_UNAVAILABLE'
+        );
+    }
+}
 
 export interface DatabaseConfig {
     path: string;
@@ -260,22 +276,24 @@ CREATE INDEX IF NOT EXISTS idx_pipeline_runs_status ON pipeline_runs (status);
  * Connection pool for SQLite databases
  */
 class ConnectionPool {
-    private connections: Database[] = [];
+    private connections: SQLiteDatabase[] = [];
     private maxConnections: number;
     private activeConnections = 0;
     private waitQueue: Array<{
-        resolve: (db: Database) => void;
+        resolve: (db: SQLiteDatabase) => void;
         reject: (error: Error) => void;
         timeoutId: NodeJS.Timeout;
     }> = [];
+    private Database: SQLiteDatabaseConstructor;
 
     constructor(dbPath: string, maxConnections: number = 10) {
         this.maxConnections = maxConnections;
+        this.Database = loadBunSqliteDatabase();
 
         // Pre-create connections with optimized settings
         for (let i = 0; i < maxConnections; i++) {
             try {
-                const db = new Database(dbPath);
+                const db = new this.Database(dbPath);
 
                 // Configure each connection for optimal concurrency
                 db.exec('PRAGMA busy_timeout = 30000');
@@ -291,7 +309,7 @@ class ConnectionPool {
         }
     }
 
-    async acquire(): Promise<Database> {
+    async acquire(): Promise<SQLiteDatabase> {
         if (this.connections.length > 0) {
             const db = this.connections.pop()!;
             this.activeConnections++;
@@ -316,7 +334,7 @@ class ConnectionPool {
         });
     }
 
-    release(db: Database): void {
+    release(db: SQLiteDatabase): void {
         this.activeConnections--;
 
         if (this.waitQueue.length > 0) {
@@ -395,7 +413,7 @@ export class DatabaseService {
             }
 
             // Create connection pool
-            const maxConnections = isMemory ? 1 : (this.config.maxConnections || 10);
+            const maxConnections = isMemory ? 1 : this.config.maxConnections || 10;
             if (isMemory) {
                 this.config.enableWAL = false;
             }
