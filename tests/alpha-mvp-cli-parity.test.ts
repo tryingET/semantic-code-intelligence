@@ -106,6 +106,10 @@ describe('Alpha MVP CLI fallback parity', () => {
     }, 60000);
 
     test('CLI aliases cannot bypass the Alpha workflow membrane', async () => {
+        const help = await runCli(['--help']);
+        expect(help.code).toBe(0);
+        expect(help.stdout).not.toContain('pipelines');
+
         const pipelines = await runCli(['pipelines', 'list', '--json']);
         expect(pipelines.code).not.toBe(0);
         const pipelinesError = JSON.parse(pipelines.stdout.trim() || '{}');

@@ -753,8 +753,9 @@ class CLI {
                 await this.printToolWorkflowAndExit('structural_patch_checks', args, !!options.json);
             });
 
-        // Pipelines (L5) helpers
+        // Pipelines (L5) helpers remain Alpha-gated and hidden from help until promoted.
         const pipelines = this.program.command('pipelines').description('Learning pipelines tools');
+        (pipelines as any)._hidden = true;
 
         // pipelines list
         pipelines
