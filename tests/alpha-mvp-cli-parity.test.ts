@@ -70,7 +70,7 @@ async function workflowFailure(name: string, args: Record<string, unknown>, opti
 
 describe('Alpha MVP CLI fallback parity', () => {
     test('generic workflow command rejects registered non-Alpha tools', async () => {
-        for (const name of ['rename_safely', 'plan_rename', 'list_pipelines', 'get_completions']) {
+        for (const name of ['plan_rename', 'list_pipelines', 'get_completions']) {
             const refused = await workflowFailure(name, {});
             expect(refused.success, `${name} should fail`).toBe(false);
             expect(refused.error?.code, `${name} should be an Alpha membrane error`).toBe('InvalidParams');
@@ -78,14 +78,34 @@ describe('Alpha MVP CLI fallback parity', () => {
         }
     }, 60000);
 
-    test('CLI aliases cannot bypass the Alpha workflow membrane', async () => {
-        const rename = await runCli(['rename-safely', 'A', 'B', '--no-checks', '--json']);
-        expect(rename.code).not.toBe(0);
-        const renameError = JSON.parse(rename.stdout.trim() || '{}');
-        expect(renameError.success).toBe(false);
-        expect(renameError.error?.code).toBe('InvalidParams');
-        expect(renameError.error?.message).toContain('not available');
+    test('rename_safely is reachable through generic workflow and direct CLI alias without mutating files', async () => {
+        const workspace = await mkdtemp(path.join(tmpdir(), 'sci-cli-rename-'));
+        const target = 'target.ts';
+        const initial = 'export const oldName = 1;\nconsole.log(oldName);\n';
+        try {
+            await writeFile(path.join(workspace, target), initial, 'utf8');
 
+            const generic = await workflow(
+                'rename_safely',
+                { oldName: 'oldName', newName: 'newName', file: target, runChecks: false },
+                { cwd: workspace }
+            );
+            expect(generic.payload).toMatchObject({ workflow: 'rename_safely', ok: true, filesAffected: 1 });
+            expect(generic.payload.snapshot).toMatch(/^[0-9a-f-]{8,}$/i);
+
+            const alias = await runCli(['rename-safely', 'oldName', 'newName', '-f', target, '--no-checks', '--json'], {
+                cwd: workspace,
+            });
+            expect(alias.code, alias.stderr).toBe(0);
+            const parsedAlias = parseWorkflow(alias.stdout);
+            expect(parsedAlias.payload).toMatchObject({ workflow: 'rename_safely', ok: true, filesAffected: 1 });
+            expect(await readFile(path.join(workspace, target), 'utf8')).toBe(initial);
+        } finally {
+            await rm(workspace, { recursive: true, force: true });
+        }
+    }, 60000);
+
+    test('CLI aliases cannot bypass the Alpha workflow membrane', async () => {
         const pipelines = await runCli(['pipelines', 'list', '--json']);
         expect(pipelines.code).not.toBe(0);
         const pipelinesError = JSON.parse(pipelines.stdout.trim() || '{}');

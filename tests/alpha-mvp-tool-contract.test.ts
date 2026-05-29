@@ -32,7 +32,6 @@ const alphaMvpTools = [...ALPHA_MVP_TOOL_NAMES];
 
 const nonAlphaToolNames = [
     'workflow_safe_rename',
-    'rename_safely',
     'plan_rename',
     'apply_rename',
     'rename_symbol',
@@ -79,7 +78,7 @@ describe('Alpha MVP tool contract', () => {
         expect(() => assertAlphaMvpToolAllowed('no_such_tool', {}, { allowedToolNames: ['no_such_tool'] })).toThrow(
             /Unknown tool/
         );
-        expect(() => assertAlphaMvpToolAllowed('rename_safely', {}, { allowedToolNames: ['rename_safely'] })).toThrow(
+        expect(() => assertAlphaMvpToolAllowed('plan_rename', {}, { allowedToolNames: ['plan_rename'] })).toThrow(
             /not available/
         );
         expect(() =>
@@ -93,9 +92,9 @@ describe('Alpha MVP tool contract', () => {
     test('HTTP adapter allowlist narrows the Alpha membrane instead of widening it', () => {
         expect(() =>
             assertHttpToolAllowed(
-                'rename_safely',
+                'plan_rename',
                 {},
-                { surface: 'HTTP adapter surface', allowedToolNames: ['rename_safely'] }
+                { surface: 'HTTP adapter surface', allowedToolNames: ['plan_rename'] }
             )
         ).toThrow(/not available/);
         expect(() =>

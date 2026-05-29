@@ -19,6 +19,7 @@ export const ALPHA_MVP_TOOL_NAMES = [
     'structural_search',
     'structural_patch_checks',
     'safe_write',
+    'rename_safely',
 ] as const;
 
 export type AlphaMvpToolName = (typeof ALPHA_MVP_TOOL_NAMES)[number];
@@ -45,7 +46,11 @@ export function assertAlphaMvpToolAllowed(
     const normalized = String(name || '').trim();
     const surface = opts.surface || 'Alpha MVP tool surface';
     const allowed = opts.allowedToolNames
-        ? new Set([...opts.allowedToolNames].filter((toolName) => ALPHA_MVP_TOOL_NAME_SET.has(String(toolName || '').trim())))
+        ? new Set(
+              [...opts.allowedToolNames].filter((toolName) =>
+                  ALPHA_MVP_TOOL_NAME_SET.has(String(toolName || '').trim())
+              )
+          )
         : ALPHA_MVP_TOOL_NAME_SET;
     if (!allowed.has(normalized)) {
         const known = ToolRegistry.list().some((tool) => tool.name === normalized);
@@ -60,7 +65,10 @@ export function assertAlphaMvpToolAllowed(
 
     const env = opts.env || process.env;
     if (normalized === 'apply_snapshot' && env.ALLOW_SNAPSHOT_APPLY !== '1') {
-        throw new CoreError('InvalidParams', `Tool 'apply_snapshot' requires ALLOW_SNAPSHOT_APPLY=1 through ${surface}`);
+        throw new CoreError(
+            'InvalidParams',
+            `Tool 'apply_snapshot' requires ALLOW_SNAPSHOT_APPLY=1 through ${surface}`
+        );
     }
     if (normalized === 'safe_write' && args?.apply === true && env.ALLOW_SNAPSHOT_APPLY !== '1') {
         throw new CoreError('InvalidParams', `safe_write apply requires ALLOW_SNAPSHOT_APPLY=1 through ${surface}`);
