@@ -29,6 +29,16 @@ function exitForBlocker(): never {
   process.exit(failOnBlocker ? 2 : 0);
 }
 
+function normalizedTaskId(value: string): string | null {
+  const trimmed = value.trim();
+  const match = /^(?:AK-)?(\d+)$/.exec(trimmed);
+  return match ? match[1] : null;
+}
+
+function displayValue(value: string): string {
+  return value.replace(/[^A-Za-z0-9_-]/g, '?');
+}
+
 function dirtyPaths(): string[] {
   const proc = spawnSync('git', ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--', '.'], {
     encoding: 'buffer',
@@ -76,13 +86,15 @@ function matches(patterns: string[], filePath: string): boolean {
 
 const dirty = dirtyPaths();
 
-if (dirty.length === 0 && !selectedTaskId) {
+if (dirty.length === 0) {
   const snapshots = snapshotPaths();
   if (snapshots.length > 0) {
-    process.stdout.write('task_scope_snapshot=not-required reason=no-dirty-paths\n');
+    const selectedSuffix = selectedTaskId ? ` selected_ignored=${displayValue(selectedTaskId)}` : '';
+    process.stdout.write(`task_scope_snapshot=not-required reason=no-dirty-paths${selectedSuffix}\n`);
     for (const snapshot of snapshots) process.stdout.write(`- ${snapshot}\n`);
   } else {
-    process.stdout.write('task_scope_snapshot=absent\n');
+    const selectedSuffix = selectedTaskId ? ` selected_ignored=${displayValue(selectedTaskId)}` : '';
+    process.stdout.write(`task_scope_snapshot=absent reason=no-dirty-paths${selectedSuffix}\n`);
   }
   process.stdout.write('scope_check=pass\n');
   process.exit(0);
@@ -90,9 +102,15 @@ if (dirty.length === 0 && !selectedTaskId) {
 
 let selectedSnapshots: string[];
 if (selectedTaskId) {
-  selectedSnapshots = [join(snapshotDir, `AK-${selectedTaskId}.snapshot.json`)];
+  const taskId = normalizedTaskId(selectedTaskId);
+  if (!taskId) {
+    process.stdout.write(`task_scope_snapshot=invalid selected=${displayValue(selectedTaskId)}\n`);
+    process.stdout.write('scope_check=blocker reason=invalid-task-id-format\n');
+    exitForBlocker();
+  }
+  selectedSnapshots = [join(snapshotDir, `AK-${taskId}.snapshot.json`)];
   if (!existsSync(selectedSnapshots[0])) {
-    process.stdout.write(`task_scope_snapshot=missing selected=AK-${selectedTaskId}\n`);
+    process.stdout.write(`task_scope_snapshot=missing selected=AK-${taskId}\n`);
     process.stdout.write('scope_check=blocker reason=selected-snapshot-missing\n');
     exitForBlocker();
   }
@@ -100,7 +118,11 @@ if (selectedTaskId) {
   selectedSnapshots = snapshotPaths();
   if (selectedSnapshots.length === 0) {
     process.stdout.write('task_scope_snapshot=absent\n');
-    process.stdout.write('scope_check=not-run\n');
+    if (failOnBlocker) {
+      process.stdout.write('scope_check=blocker reason=snapshot-required-for-dirty-paths\n');
+      process.exit(2);
+    }
+    process.stdout.write('scope_check=not-run reason=no-snapshot-for-dirty-paths\n');
     process.exit(0);
   }
   if (selectedSnapshots.length > 1) {

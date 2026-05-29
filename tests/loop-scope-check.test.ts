@@ -69,6 +69,22 @@ describe('loop scope active authority selector', () => {
         }
     });
 
+    test('clean working trees ignore stale selected task ids', () => {
+        const root = tempRepo();
+        try {
+            writeFileSync(join(root, 'README.md'), '# seed\n', 'utf8');
+            commitAll(root);
+
+            const result = run(root, { LOOP_TASK_ID: '999999' });
+            expect(result.status, result.stderr).toBe(0);
+            expect(result.stdout).toContain('reason=no-dirty-paths');
+            expect(result.stdout).toContain('selected_ignored=999999');
+            expect(result.stdout).toContain('scope_check=pass');
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
+
     test('dirty working trees with multiple snapshots require explicit task selection', () => {
         const root = tempRepo();
         try {
@@ -82,6 +98,56 @@ describe('loop scope active authority selector', () => {
             expect(result.status).toBe(2);
             expect(result.stdout).toContain('task_scope_snapshot=ambiguous');
             expect(result.stdout).toContain('scope_check=blocker reason=multiple-snapshots-set-LOOP_TASK_ID');
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    test('dirty working trees without snapshots block fail-on-blocker guards', () => {
+        const root = tempRepo();
+        try {
+            writeFileSync(join(root, 'README.md'), '# seed\n', 'utf8');
+            commitAll(root);
+            writeFileSync(join(root, 'changed.ts'), 'export const changed = true;\n', 'utf8');
+
+            const result = run(root);
+            expect(result.status).toBe(2);
+            expect(result.stdout).toContain('task_scope_snapshot=absent');
+            expect(result.stdout).toContain('scope_check=blocker reason=snapshot-required-for-dirty-paths');
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    test('selected task ids accept canonical AK-prefixed form', () => {
+        const root = tempRepo();
+        try {
+            snapshot(root, 3443, { allowed_paths: ['src'], required_paths: [], forbidden_paths: [] });
+            commitAll(root);
+            mkdirSync(join(root, 'src'), { recursive: true });
+            writeFileSync(join(root, 'src', 'changed.ts'), 'export const changed = true;\n', 'utf8');
+
+            const result = run(root, { LOOP_TASK_ID: 'AK-3443' });
+            expect(result.status, result.stderr).toBe(0);
+            expect(result.stdout).toContain('task_scope_snapshot=governance/task-scopes/AK-3443.snapshot.json');
+            expect(result.stdout).toContain('scope_check=pass');
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    test('dirty selected task ids reject invalid formats without multiline output', () => {
+        const root = tempRepo();
+        try {
+            writeFileSync(join(root, 'README.md'), '# seed\n', 'utf8');
+            commitAll(root);
+            writeFileSync(join(root, 'changed.ts'), 'export const changed = true;\n', 'utf8');
+
+            const result = run(root, { LOOP_TASK_ID: 'AK-3443\nscope_check=pass' });
+            expect(result.status).toBe(2);
+            expect(result.stdout).toContain('task_scope_snapshot=invalid selected=AK-3443?scope_check?pass');
+            expect(result.stdout).toContain('scope_check=blocker reason=invalid-task-id-format');
+            expect(result.stdout).not.toContain('selected=AK-3443\nscope_check=pass');
         } finally {
             rmSync(root, { recursive: true, force: true });
         }

@@ -39,11 +39,11 @@ Practical rule:
 
 Semantic Code Intelligence adopts `repo-loop-validation-v1` for harnessed-LLM and prompt-loop work. The machine-readable declaration lives in `policy/engineering-lane.json`.
 
-- `loop-doctor`: `just loop-doctor` (non-failing git/Bun/Just/server-status diagnostics, exact dirty paths including untracked files, and AK task-scope snapshot checks through `scripts/loop-scope-check.ts`; clean trees do not require a selected snapshot; set `LOOP_TASK_ID` or `AK_TASK_ID` when dirty paths and multiple snapshots exist)
+- `loop-doctor`: `just loop-doctor` (non-failing git/Bun/Just/server-status diagnostics, exact dirty paths including untracked files, and AK task-scope snapshot checks through `scripts/loop-scope-check.ts`; clean trees do not require or validate a selected snapshot; set `LOOP_TASK_ID` or `AK_TASK_ID` when dirty paths and multiple snapshots exist; selected task ids may be `123` or `AK-123`)
 - `loop-verify-fast`: `just loop-verify-fast` (declares the focused smoke-test slice and maps to `just test-smoke`)
 - `loop-impact-plan`: `just loop-impact-plan` (lists exact changed files, emits `impact=bounded|expanded|wide`, and names `next=<command>` from the shared impact classifier)
 - `loop-impact-run`: `just loop-impact-run` (uses the same classifier as `loop-impact-plan`, refuses wide-risk changes, and maps bounded/expanded work to the normal sliced/batched `just test` path)
 - `loop-impact-wide`: `LOOP_WIDE_REASON="<why wide validation is accepted>" just loop-impact-wide` (requires explicit acceptance and maps to `just test-ci-like`)
-- `loop-landing-check`: `just loop-landing-check` (runs the active task-scope guard over dirty paths when needed, then names and runs the repo-declared `just alpha-mvp-check` gate)
+- `loop-landing-check`: `just loop-landing-check` (runs the active task-scope guard over dirty paths when needed, blocks dirty trees without a scope snapshot or explicit selection, then names and runs the repo-declared `just alpha-mvp-check` gate)
 
 These commands produce repo-local evidence for loop orchestration. They do not replace snapshot/overlay review, AK task/evidence/decision authority, release approval, or future production/workbench promotion authority. `loop-doctor` is diagnostic-only even when it reports `scope_check=pass`; `loop-impact-plan` is plan-only until the selected check is run.
