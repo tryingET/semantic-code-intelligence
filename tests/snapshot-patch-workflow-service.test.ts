@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -55,6 +56,36 @@ describe('SnapshotPatchWorkflowService', () => {
         expect(artifacts.links.map((link: any) => link.uri)).toContain(`snapshot://${snap.snapshot}/overlay.diff`);
         expect(artifacts.contents.overlayDiff.text.length).toBeLessThanOrEqual(20);
         expect(artifacts.contents.overlayDiff.truncated).toBe(true);
+    });
+
+    test('patch_checks_in_snapshot forwards onlyTouched to snapshot checks', async () => {
+        const hasBunx = spawnSync('bash', ['-lc', 'command -v bunx >/dev/null 2>&1'], { stdio: 'ignore' }).status === 0;
+        if (!hasBunx) return;
+
+        const workspaceRoot = tempWorkspace();
+        writeFileSync(join(workspaceRoot, 'package.json'), '{"type":"module"}\n', 'utf8');
+        writeFileSync(join(workspaceRoot, 'target.ts'), 'export const value: number = 1;\n', 'utf8');
+        const service = new SnapshotPatchWorkflowService({ workspaceRoot: () => workspaceRoot });
+        const patch = `diff --git a/target.ts b/target.ts
+--- a/target.ts
++++ b/target.ts
+@@ -1 +1 @@
+-export const value: number = 1;
++export const value: number = 2;
+`;
+
+        const checked = payload(
+            await service.patchChecksInSnapshot({
+                patch,
+                commands: ['true'],
+                onlyTouched: true,
+                timeoutSec: 30,
+            })
+        );
+
+        expect(checked.checks.commands.map((command: any) => command.command)).toContain(
+            "bunx tsgo --noEmit --pretty false --ignoreConfig 'target.ts'"
+        );
     });
 
     test('stages sequential apply_patch updates against snapshot overlay state', async () => {

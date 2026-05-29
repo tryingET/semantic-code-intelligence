@@ -694,7 +694,7 @@ class CLI {
                         min: 1,
                         max: 3600,
                     }),
-                    onlyTouched: !!options.onlyTouched,
+                    ...(options.onlyTouched ? { onlyTouched: true } : {}),
                 };
                 await this.printToolWorkflowAndExit('patch_checks_in_snapshot', args, !!options.json);
             });

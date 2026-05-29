@@ -823,6 +823,7 @@ export class SnapshotPatchWorkflowService {
             snapshot: snapId,
             commands,
             timeoutSec,
+            ...(typeof args?.onlyTouched === 'boolean' ? { onlyTouched: !!args.onlyTouched } : {}),
         });
         const checksOut = asPayload(checks);
         const ok = !!checksOut?.ok;
