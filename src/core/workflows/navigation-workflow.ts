@@ -49,7 +49,8 @@ export class NavigationWorkflowService {
         }
 
         await this.initializeCoreBestEffort();
-        const maxResults = typeof args.maxResults === 'number' && args.maxResults > 0 ? args.maxResults : this.deps.maxResults();
+        const maxResults =
+            typeof args.maxResults === 'number' && args.maxResults > 0 ? args.maxResults : this.deps.maxResults();
 
         if (!uri) {
             const workspaceRequest = buildFindDefinitionRequest({
@@ -84,17 +85,28 @@ export class NavigationWorkflowService {
                     const name = String(args.symbol || '').toLowerCase();
                     const likelyTop = top ? toBase(top.uri).toLowerCase().includes(name) : false;
                     if (!likelyTop) {
-                        const fallbackDefs = await fallbackScanForDefinition(this.deps.workspaceRoot(), args.symbol, 300);
-                        const match = fallbackDefs.find((definition) => toBase(definition.uri).toLowerCase().includes(name));
+                        const fallbackDefs = await fallbackScanForDefinition(
+                            this.deps.workspaceRoot(),
+                            args.symbol,
+                            300
+                        );
+                        const match = fallbackDefs.find((definition) =>
+                            toBase(definition.uri).toLowerCase().includes(name)
+                        );
                         if (match) {
                             prioritized = [match, ...prioritized];
                         }
                         if (Array.isArray(prioritized) && prioritized.length) {
-                            const declRe = new RegExp(`\\b(class|function|interface|type)\\s+${escapeRegExp(args.symbol)}\\b`);
+                            const declRe = new RegExp(
+                                `\\b(class|function|interface|type)\\s+${escapeRegExp(args.symbol)}\\b`
+                            );
                             for (const definition of prioritized.slice(0, 200)) {
                                 try {
                                     const filePath = filePathFromUriLike(definition.uri);
-                                    const containedUri = await this.deps.containedUriOrNull(filePath, 'find_definition result uri');
+                                    const containedUri = await this.deps.containedUriOrNull(
+                                        filePath,
+                                        'find_definition result uri'
+                                    );
                                     if (!containedUri) continue;
                                     const containedPath = fileURLToPath(containedUri);
                                     let opened: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
@@ -107,7 +119,10 @@ export class NavigationWorkflowService {
                                         const lines = text.split(/\r?\n/);
                                         const line = lines[definition.range?.start?.line ?? 0] || '';
                                         if (declRe.test(line)) {
-                                            prioritized = [definition, ...prioritized.filter((item: any) => item !== definition)];
+                                            prioritized = [
+                                                definition,
+                                                ...prioritized.filter((item: any) => item !== definition),
+                                            ];
                                             break;
                                         }
                                     } finally {
@@ -142,7 +157,9 @@ export class NavigationWorkflowService {
                 return {
                     payload: {
                         schemaVersion: 2,
-                        definitions: containedFallbackDefs.map((definition: any) => definitionToApiResponse(definition)),
+                        definitions: containedFallbackDefs.map((definition: any) =>
+                            definitionToApiResponse(definition)
+                        ),
                         performance: { layer1: 0, layer2: 0, layer3: 0, layer4: 0, layer5: 0, total: 0 },
                         requestId: undefined,
                         count: containedFallbackDefs.length,
@@ -159,6 +176,7 @@ export class NavigationWorkflowService {
             identifier: symbol,
             maxResults,
             includeDeclaration: true,
+            precise: !!args.precise,
         });
         const result = await this.deps.coreAnalyzer.findDefinitionAsync(request);
         const prioritized = prioritizeDefinitions(Array.isArray(result.data) ? result.data : result.data, args.symbol);
@@ -185,15 +203,25 @@ export class NavigationWorkflowService {
         if (!args || typeof args !== 'object') {
             throw new CoreError('InvalidParams', 'Arguments must be an object');
         }
-        if (args.symbol === undefined || args.symbol === null || (typeof args.symbol === 'string' && args.symbol.trim() === '')) {
+        if (
+            args.symbol === undefined ||
+            args.symbol === null ||
+            (typeof args.symbol === 'string' && args.symbol.trim() === '')
+        ) {
             throw new CoreError('InvalidParams', 'Missing required parameter: symbol');
         }
 
         await this.initializeCoreBestEffort();
-        const maxResults = typeof args.maxResults === 'number' && args.maxResults > 0 ? args.maxResults : this.deps.maxResults();
+        const maxResults =
+            typeof args.maxResults === 'number' && args.maxResults > 0 ? args.maxResults : this.deps.maxResults();
 
         if (!args.file && !args.uri) {
-            const fallbackRefs = await fallbackScanForReferences(this.deps.workspaceRoot(), String(args.symbol), maxResults, !!args.includeDeclaration);
+            const fallbackRefs = await fallbackScanForReferences(
+                this.deps.workspaceRoot(),
+                String(args.symbol),
+                maxResults,
+                !!args.includeDeclaration
+            );
             const containedFallbackRefs = await this.filterWorkspaceItemsByUri(
                 fallbackRefs,
                 'find_references fallback result uri'
@@ -278,13 +306,17 @@ function escapeRegExp(value: unknown): string {
 
 function declarationRegexForSymbol(symbol: unknown, flags = ''): RegExp {
     const escaped = escapeRegExp(symbol);
-    return new RegExp(`\\b(?:export\\s+)?(?:class|function|interface|type|const|let|var|def|fn|struct|func)\\s+${escaped}\\b`, flags);
+    return new RegExp(
+        `\\b(?:export\\s+)?(?:class|function|interface|type|const|let|var|def|fn|struct|func)\\s+${escaped}\\b`,
+        flags
+    );
 }
 
 function definitionKindForLine(line: string): DefinitionKind {
     if (/\\bclass\\s+/.test(line) || /\\bstruct\\s+/.test(line)) return DefinitionKind.Class;
     if (/\\binterface\\s+/.test(line)) return DefinitionKind.Interface;
-    if (/\\bfunction\\s+/.test(line) || /\\bdef\\s+/.test(line) || /\\bfn\\s+/.test(line) || /\\bfunc\\s+/.test(line)) return DefinitionKind.Function;
+    if (/\\bfunction\\s+/.test(line) || /\\bdef\\s+/.test(line) || /\\bfn\\s+/.test(line) || /\\bfunc\\s+/.test(line))
+        return DefinitionKind.Function;
     if (/\\btype\\s+/.test(line)) return DefinitionKind.Type;
     return DefinitionKind.Variable;
 }
@@ -346,7 +378,13 @@ export async function fallbackScanForDefinition(root: string, symbol: string, ma
     return results;
 }
 
-export async function fallbackScanForReferences(root: string, symbol: string, maxResults: number, includeDeclaration = false, maxFiles = 500) {
+export async function fallbackScanForReferences(
+    root: string,
+    symbol: string,
+    maxResults: number,
+    includeDeclaration = false,
+    maxFiles = 500
+) {
     const results: any[] = [];
     const queue: string[] = [root];
     const visited: Set<string> = new Set();
@@ -382,7 +420,9 @@ export async function fallbackScanForReferences(root: string, symbol: string, ma
                         let match: RegExpExecArray | null = null;
                         while ((match = occurrenceRe.exec(line)) && results.length < maxResults) {
                             const column = match.index;
-                            const isDeclaration = declarationSpans.some(([start, end]) => column >= start && column < end);
+                            const isDeclaration = declarationSpans.some(
+                                ([start, end]) => column >= start && column < end
+                            );
                             if (!includeDeclaration && isDeclaration) continue;
                             results.push({
                                 identifier: symbol,
@@ -548,11 +588,21 @@ function buildFindReferencesRequest(params: {
 }
 
 function definitionToApiResponse(definition: any) {
-    return { uri: normalizeUri(definition.uri), range: normalizeRange(definition.range), kind: definition.kind, name: definition.name };
+    return {
+        uri: normalizeUri(definition.uri),
+        range: normalizeRange(definition.range),
+        kind: definition.kind,
+        name: definition.name,
+    };
 }
 
 function referenceToApiResponse(reference: any) {
-    return { uri: normalizeUri(reference.uri), range: normalizeRange(reference.range), kind: reference.kind, name: reference.name };
+    return {
+        uri: normalizeUri(reference.uri),
+        range: normalizeRange(reference.range),
+        kind: reference.kind,
+        name: reference.name,
+    };
 }
 
 function normalizeUri(uri: string): string {
@@ -585,15 +635,18 @@ function normalizePosition(position: any): Position {
         if (typeof position.line === 'number' && typeof position.character === 'number') {
             return createPosition(position.line, position.character);
         }
-        if (typeof position.line === 'number' && typeof position.col === 'number') return createPosition(position.line, position.col);
-        if (typeof position.row === 'number' && typeof position.column === 'number') return createPosition(position.row, position.column);
+        if (typeof position.line === 'number' && typeof position.col === 'number')
+            return createPosition(position.line, position.col);
+        if (typeof position.row === 'number' && typeof position.column === 'number')
+            return createPosition(position.row, position.column);
     }
     throw new Error(`Invalid position format: ${JSON.stringify(position)}`);
 }
 
 function normalizeRange(range: any): Range {
     if (typeof range === 'object' && range) {
-        if (range.start && range.end) return { start: normalizePosition(range.start), end: normalizePosition(range.end) };
+        if (range.start && range.end)
+            return { start: normalizePosition(range.start), end: normalizePosition(range.end) };
         if (
             typeof range.startLine === 'number' &&
             typeof range.startChar === 'number' &&

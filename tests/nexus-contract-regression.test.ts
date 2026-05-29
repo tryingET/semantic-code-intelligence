@@ -1219,6 +1219,43 @@ describe('nexus contract regressions', () => {
         }
     });
 
+    test('astOnly definition search does not fall back to unvalidated text hits', async () => {
+        const workspaceRoot = tempWorkspace();
+        writeFileSync(join(workspaceRoot, 'target.ts'), '// TargetOnlyInComment is not a declaration\n', 'utf8');
+        const analyzer = await createCodeAnalyzer({ ...createDefaultCoreConfig(), workspaceRoot });
+        await analyzer.initialize();
+        try {
+            const result = await analyzer.findDefinitionAsync({
+                identifier: 'TargetOnlyInComment',
+                uri: 'file://workspace',
+                position: { line: 0, character: 3 },
+                astOnly: true,
+                precise: true,
+                maxResults: 10,
+            } as any);
+            expect(result.data).toEqual([]);
+        } finally {
+            await analyzer.dispose?.();
+        }
+    });
+
+    test('workspace-wide symbol map candidate scan includes non-TypeScript supported files', async () => {
+        const workspaceRoot = tempWorkspace();
+        writeFileSync(join(workspaceRoot, 'target.py'), 'def target_symbol():\n    return 1\n', 'utf8');
+        const analyzer = await createCodeAnalyzer({ ...createDefaultCoreConfig(), workspaceRoot });
+        await analyzer.initialize();
+        try {
+            const result = await analyzer.buildSymbolMap({
+                identifier: 'target_symbol',
+                uri: 'file://workspace',
+                maxFiles: 10,
+            });
+            expect(result.files).toBe(1);
+        } finally {
+            await analyzer.dispose?.();
+        }
+    });
+
     test('symbol map parsing preserves file paths containing colons', async () => {
         const workspaceRoot = tempWorkspace('sci:colon-');
         writeFileSync(join(workspaceRoot, 'a.ts'), "import { Foo } from './b';\nexport const Foo = 1;\n", 'utf8');

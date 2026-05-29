@@ -13,12 +13,38 @@ type GraphExpandDependencies = {
 
 export function inferGraphLanguage(seed: string | undefined) {
     const value = String(seed || '').toLowerCase();
-    if (/\.(ts|tsx)$/.test(value)) return { language: 'typescript', support: 'tree_sitter_best_effort', supportedEdges: ['imports', 'exports', 'callers', 'callees'] };
-    if (/\.(js|jsx)$/.test(value)) return { language: 'javascript', support: 'tree_sitter_best_effort', supportedEdges: ['imports', 'exports', 'callers', 'callees'] };
-    if (/\.py$/.test(value)) return { language: 'python', support: 'tree_sitter_best_effort', supportedEdges: ['imports', 'exports', 'callers', 'callees'] };
-    if (/\.rs$/.test(value)) return { language: 'rust', support: 'tree_sitter_best_effort', supportedEdges: ['imports', 'exports', 'callers', 'callees'] };
-    if (/\.go$/.test(value)) return { language: 'go', support: 'tree_sitter_best_effort', supportedEdges: ['imports', 'exports', 'callers', 'callees'] };
-    if (/\.(clj|cljs|cljc|java|rb|php|cs|cpp|c|h|hpp)$/.test(value)) return { language: value.replace(/^.*\./, ''), support: 'unsupported_extension', supportedEdges: [] };
+    if (/\.(ts|tsx)$/.test(value))
+        return {
+            language: 'typescript',
+            support: 'tree_sitter_best_effort',
+            supportedEdges: ['imports', 'exports', 'callers', 'callees'],
+        };
+    if (/\.(js|jsx)$/.test(value))
+        return {
+            language: 'javascript',
+            support: 'tree_sitter_best_effort',
+            supportedEdges: ['imports', 'exports', 'callers', 'callees'],
+        };
+    if (/\.py$/.test(value))
+        return {
+            language: 'python',
+            support: 'tree_sitter_best_effort',
+            supportedEdges: ['imports', 'exports', 'callers', 'callees'],
+        };
+    if (/\.rs$/.test(value))
+        return {
+            language: 'rust',
+            support: 'tree_sitter_best_effort',
+            supportedEdges: ['imports', 'exports', 'callers', 'callees'],
+        };
+    if (/\.go$/.test(value))
+        return {
+            language: 'go',
+            support: 'tree_sitter_best_effort',
+            supportedEdges: ['imports', 'exports', 'callers', 'callees'],
+        };
+    if (/\.(clj|cljs|cljc|java|rb|php|cs|cpp|c|h|hpp)$/.test(value))
+        return { language: value.replace(/^.*\./, ''), support: 'unsupported_extension', supportedEdges: [] };
     return seed
         ? { language: 'unknown', support: 'unknown_extension', supportedEdges: [] }
         : { language: 'symbol_seed', support: 'symbol_seed_best_effort', supportedEdges: ['callers', 'callees'] };
@@ -27,12 +53,22 @@ export function inferGraphLanguage(seed: string | undefined) {
 export function summarizeGraphImpact(out: any, args: Record<string, any>, workspaceRoot: string) {
     const neighbors = out?.neighbors && typeof out.neighbors === 'object' ? out.neighbors : {};
     const counts = Object.fromEntries(
-        ['imports', 'exports', 'callers', 'callees'].map((edge) => [edge, Array.isArray(neighbors[edge]) ? neighbors[edge].length : 0])
+        ['imports', 'exports', 'callers', 'callees'].map((edge) => [
+            edge,
+            Array.isArray(neighbors[edge]) ? neighbors[edge].length : 0,
+        ])
     );
     const hasFileSeed = typeof args?.file === 'string' && args.file.trim().length > 0;
     const hasSymbolSeed = typeof args?.symbol === 'string' && args.symbol.trim().length > 0;
-    const requestedEdges = Array.isArray(args?.edges) ? args.edges.map(String) : hasFileSeed ? ['imports', 'exports'] : ['callers', 'callees'];
-    const languageSupport = out?.languageSupport && typeof out.languageSupport === 'object' ? out.languageSupport : inferGraphLanguage(hasFileSeed ? args.file : undefined);
+    const requestedEdges = Array.isArray(args?.edges)
+        ? args.edges.map(String)
+        : hasFileSeed
+          ? ['imports', 'exports']
+          : ['callers', 'callees'];
+    const languageSupport =
+        out?.languageSupport && typeof out.languageSupport === 'object'
+            ? out.languageSupport
+            : inferGraphLanguage(hasFileSeed ? args.file : undefined);
     const note = typeof out?.note === 'string' ? out.note : '';
     const noteLimitations = note
         ? note
@@ -41,13 +77,24 @@ export function summarizeGraphImpact(out: any, args: Record<string, any>, worksp
               .filter(Boolean)
         : [];
     const languageLimitations = requestedEdges
-        .filter((edge: string) => !languageSupport.supportedEdges.includes(edge) && languageSupport.support !== 'symbol_seed_best_effort')
-        .map((edge: string) => `${edge}: ${languageSupport.language} graph extraction is ${languageSupport.support}; supported edges: ${languageSupport.supportedEdges.join(', ') || 'none'}`);
-    const depthLimitations = Number(args?.depth || 1) > 1 ? ['depth: recursive graph expansion is not implemented; returned evidence is one-hop best effort'] : [];
+        .filter(
+            (edge: string) =>
+                !languageSupport.supportedEdges.includes(edge) && languageSupport.support !== 'symbol_seed_best_effort'
+        )
+        .map(
+            (edge: string) =>
+                `${edge}: ${languageSupport.language} graph extraction is ${languageSupport.support}; supported edges: ${languageSupport.supportedEdges.join(', ') || 'none'}`
+        );
+    const depthLimitations =
+        Number(args?.depth || 1) > 1
+            ? ['depth: recursive graph expansion is not implemented; returned evidence is one-hop best effort']
+            : [];
     const limitations = noteLimitations.concat(languageLimitations, depthLimitations);
     const evidence = requestedEdges.map((edge: string) => {
         const count = Number((counts as any)[edge] || 0);
-        const edgeLimitations = limitations.filter((item: string) => item.toLowerCase().startsWith(`${edge.toLowerCase()}:`));
+        const edgeLimitations = limitations.filter((item: string) =>
+            item.toLowerCase().startsWith(`${edge.toLowerCase()}:`)
+        );
         return {
             edge,
             count,
@@ -55,8 +102,12 @@ export function summarizeGraphImpact(out: any, args: Record<string, any>, worksp
             limitations: edgeLimitations,
         };
     });
-    const callerContextCount = Array.isArray(neighbors.callers) ? neighbors.callers.filter((item: any) => typeof item?.caller === 'string' && item.caller).length : 0;
-    const fallbackUnavailable = noteLimitations.some((item: string) => item.toLowerCase().startsWith('fallback: graph expand unavailable'));
+    const callerContextCount = Array.isArray(neighbors.callers)
+        ? neighbors.callers.filter((item: any) => typeof item?.caller === 'string' && item.caller).length
+        : 0;
+    const fallbackUnavailable = noteLimitations.some((item: string) =>
+        item.toLowerCase().startsWith('fallback: graph expand unavailable')
+    );
     const backend = out?.provenance?.backend
         ? String(out.provenance.backend)
         : fallbackUnavailable
@@ -68,8 +119,17 @@ export function summarizeGraphImpact(out: any, args: Record<string, any>, worksp
               : 'fallback';
     const provenance = {
         backend,
-        freshness: out?.provenance?.freshness ? String(out.provenance.freshness) : backend === 'tree_sitter' ? 'current' : 'unknown',
-        discoveryBackend: out?.provenance?.discoveryBackend !== undefined ? out.provenance.discoveryBackend : !hasFileSeed && hasSymbolSeed ? 'rg' : null,
+        freshness: out?.provenance?.freshness
+            ? String(out.provenance.freshness)
+            : backend === 'tree_sitter'
+              ? 'current'
+              : 'unknown',
+        discoveryBackend:
+            out?.provenance?.discoveryBackend !== undefined
+                ? out.provenance.discoveryBackend
+                : !hasFileSeed && hasSymbolSeed
+                  ? 'rg'
+                  : null,
         indexPath: out?.provenance?.indexPath ?? null,
         generatedAt: out?.provenance?.generatedAt ?? null,
         workspaceRoot: out?.provenance?.workspaceRoot ?? workspaceRoot,
@@ -108,7 +168,8 @@ export class GraphExpandWorkflowService {
     }
 
     private async expandGraphFromScip(args: Record<string, any>, edges: string[], file?: string, symbol?: string) {
-        const scipIndexPath = typeof args?.scipIndexPath === 'string' && args.scipIndexPath.trim() ? args.scipIndexPath.trim() : '';
+        const scipIndexPath =
+            typeof args?.scipIndexPath === 'string' && args.scipIndexPath.trim() ? args.scipIndexPath.trim() : '';
         if (!scipIndexPath) return null;
 
         const { loadScipIndex } = await import('../scip-reader.js');
@@ -129,21 +190,33 @@ export class GraphExpandWorkflowService {
 
         if (file) {
             const fileOccurrences = reader.occurrencesForFile(file);
-            if (edges.includes('imports')) neighbors.imports = fileOccurrences.filter((occurrence) => occurrence.roles.import).slice(0, limit).map(toItem);
-            if (edges.includes('exports')) neighbors.exports = fileOccurrences.filter((occurrence) => occurrence.roles.definition).slice(0, limit).map(toItem);
+            if (edges.includes('imports'))
+                neighbors.imports = fileOccurrences
+                    .filter((occurrence) => occurrence.roles.import)
+                    .slice(0, limit)
+                    .map(toItem);
+            if (edges.includes('exports'))
+                neighbors.exports = fileOccurrences
+                    .filter((occurrence) => occurrence.roles.definition)
+                    .slice(0, limit)
+                    .map(toItem);
         } else {
             if (edges.includes('imports')) notes.push('imports: SCIP import extraction requires a file seed');
-            if (edges.includes('exports') && !symbol) notes.push('exports: SCIP definition extraction requires a file or symbol seed');
+            if (edges.includes('exports') && !symbol)
+                notes.push('exports: SCIP definition extraction requires a file or symbol seed');
         }
 
         if (symbol) {
             if (edges.includes('exports')) neighbors.exports = reader.definitions(symbol).slice(0, limit).map(toItem);
             if (edges.includes('callers')) {
-                neighbors.callers = reader.references(symbol).slice(0, limit).map((occurrence) => ({
-                    ...toItem(occurrence),
-                    caller: null,
-                    callerKind: null,
-                }));
+                neighbors.callers = reader
+                    .references(symbol)
+                    .slice(0, limit)
+                    .map((occurrence) => ({
+                        ...toItem(occurrence),
+                        caller: null,
+                        callerKind: null,
+                    }));
                 notes.push('callers: SCIP backend returns symbol references, not proven call sites');
             }
         } else if (edges.includes('callers')) {
@@ -175,7 +248,11 @@ export class GraphExpandWorkflowService {
     async graphExpand(args: Record<string, any>): Promise<SnapshotWorkflowResult> {
         const rawFile = typeof args?.file === 'string' ? (args.file as string) : undefined;
         const symbol = typeof args?.symbol === 'string' ? (args.symbol as string) : undefined;
-        const edges = Array.isArray(args?.edges) ? (args.edges as string[]) : rawFile ? ['imports', 'exports'] : ['callers', 'callees'];
+        const edges = Array.isArray(args?.edges)
+            ? (args.edges as string[])
+            : rawFile
+              ? ['imports', 'exports']
+              : ['callers', 'callees'];
         if (!rawFile && !symbol) return { text: 'file or symbol required', isError: true };
         let file: string | undefined;
         let scipFile: string | undefined;
@@ -188,7 +265,14 @@ export class GraphExpandWorkflowService {
             }
             const scipOut = await this.expandGraphFromScip(args, edges, scipFile || file, symbol);
             if (scipOut) {
-                return { payload: { schemaVersion: 2, ...scipOut, impactSummary: summarizeGraphImpact(scipOut, args, this.workspaceRoot) }, isError: false };
+                return {
+                    payload: {
+                        schemaVersion: 2,
+                        ...scipOut,
+                        impactSummary: summarizeGraphImpact(scipOut, args, this.workspaceRoot),
+                    },
+                    isError: false,
+                };
             }
 
             const { expandNeighbors } = await import('../code-graph.js');
@@ -196,12 +280,18 @@ export class GraphExpandWorkflowService {
             if (symbol && this.deps.buildSymbolMap) {
                 try {
                     const sm = await this.deps.buildSymbolMap({
+                        symbol,
                         identifier: symbol,
                         maxFiles: 50,
                         astOnly: true,
                     });
+                    const declarations = Array.isArray(sm?.payload?.declarations)
+                        ? sm.payload.declarations
+                        : Array.isArray(sm?.declarations)
+                          ? sm.declarations
+                          : [];
                     const containedSeedFiles: string[] = [];
-                    for (const declaration of sm?.declarations || []) {
+                    for (const declaration of declarations) {
                         const uri = typeof declaration?.uri === 'string' ? declaration.uri : '';
                         const contained = uri ? await this.deps.containedUriOrNull(uri, 'graph_expand seedFile') : null;
                         if (contained) containedSeedFiles.push(fileURLToPath(contained));
@@ -221,7 +311,14 @@ export class GraphExpandWorkflowService {
                 seedFiles,
                 workspaceRoot: this.workspaceRoot,
             });
-            return { payload: { schemaVersion: 2, ...out, impactSummary: summarizeGraphImpact(out, args, this.workspaceRoot) }, isError: false };
+            return {
+                payload: {
+                    schemaVersion: 2,
+                    ...out,
+                    impactSummary: summarizeGraphImpact(out, args, this.workspaceRoot),
+                },
+                isError: false,
+            };
         } catch (error) {
             if (error instanceof CoreError || (typeof args?.scipIndexPath === 'string' && args.scipIndexPath.trim())) {
                 throw error;
@@ -229,7 +326,14 @@ export class GraphExpandWorkflowService {
             const neighbors: Record<string, any[]> = { imports: [], exports: [], callers: [], callees: [] };
             const note = 'fallback: graph expand unavailable; returning empty neighbors';
             const out = file ? { file, neighbors, note } : { symbol: symbol || '', neighbors, note };
-            return { payload: { schemaVersion: 2, ...out, impactSummary: summarizeGraphImpact(out, args, this.workspaceRoot) }, isError: false };
+            return {
+                payload: {
+                    schemaVersion: 2,
+                    ...out,
+                    impactSummary: summarizeGraphImpact(out, args, this.workspaceRoot),
+                },
+                isError: false,
+            };
         }
     }
 }

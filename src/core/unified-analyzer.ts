@@ -342,7 +342,7 @@ export class CodeAnalyzer {
                 maxResults: request.maxResults ?? 50,
                 timeout: asyncTimeout,
                 caseInsensitive: true,
-                fileType: this.getFileTypeFromUri(request.uri) || 'typescript',
+                fileType: this.getFileTypeFromUri(request.uri),
                 excludePaths: [
                     'node_modules',
                     'dist',
@@ -379,7 +379,7 @@ export class CodeAnalyzer {
                             timeout: Math.min((asyncOptions.timeout ?? 0) + 500, 5000),
                             caseInsensitive: true,
                             useRegex: true,
-                            fileType: this.getFileTypeFromUri(request.uri) || 'typescript',
+                            fileType: this.getFileTypeFromUri(request.uri),
                             excludePaths: asyncOptions.excludePaths,
                         });
                     } catch {
@@ -547,8 +547,9 @@ export class CodeAnalyzer {
                 }
                 finalDefs = preferred;
             }
-            // Fallback: if AST-only requested and nothing remains, keep the best L1 item
-            if ((astOnly || preciseRequested) && finalDefs.length === 0 && definitions.length > 0) {
+            // Fallback: precise search may keep the best L1 item for recoverability, but
+            // astOnly must remain strict and return only AST-validated definitions.
+            if (!astOnly && preciseRequested && finalDefs.length === 0 && definitions.length > 0) {
                 const best = [...definitions].sort((a, b) => (b.confidence || 0) - (a.confidence || 0))[0];
                 finalDefs = [best];
             }
@@ -773,7 +774,7 @@ export class CodeAnalyzer {
                 maxResults: request.maxResults ?? 200,
                 timeout: asyncTimeout,
                 caseInsensitive: true,
-                fileType: this.getFileTypeFromUri(request.uri) || 'typescript',
+                fileType: this.getFileTypeFromUri(request.uri),
                 excludePaths: [
                     'node_modules',
                     'dist',
@@ -807,7 +808,7 @@ export class CodeAnalyzer {
                             timeout: Math.min(asyncTimeout + 500, 5000),
                             caseInsensitive: true,
                             useRegex: true,
-                            fileType: this.getFileTypeFromUri(request.uri) || 'typescript',
+                            fileType: this.getFileTypeFromUri(request.uri),
                             excludePaths: asyncOptions.excludePaths,
                         });
                     } catch {}
@@ -2126,7 +2127,7 @@ export class CodeAnalyzer {
         if (files.length < 1) {
             try {
                 const { glob } = await import('glob');
-                const candidates = glob.sync('**/*.{ts,tsx,js,jsx}', {
+                const candidates = glob.sync('**/*.{ts,tsx,js,jsx,py,go,rs}', {
                     cwd: workspaceRoot,
                     ignore: ['**/node_modules/**', '**/dist/**', '**/.git/**', '**/coverage/**'],
                     nodir: true,

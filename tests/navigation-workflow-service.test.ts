@@ -46,14 +46,21 @@ describe('NavigationWorkflowService', () => {
             },
             resolveWorkspaceFile: async (value, inputLabel) => {
                 const resolved = await resolveWorkspacePath(value, { workspaceRoot, inputLabel });
-                return { path: resolved.realPath, uri: pathToFileURL(resolved.realPath).href, relativePath: resolved.relativePath };
+                return {
+                    path: resolved.realPath,
+                    uri: pathToFileURL(resolved.realPath).href,
+                    relativePath: resolved.relativePath,
+                };
             },
             containedUriOrNull: async (value, inputLabel) => {
                 try {
-                    const resolved = await resolveWorkspacePath(value.startsWith('file://') ? new URL(value).pathname : value, {
-                        workspaceRoot,
-                        inputLabel,
-                    });
+                    const resolved = await resolveWorkspacePath(
+                        value.startsWith('file://') ? new URL(value).pathname : value,
+                        {
+                            workspaceRoot,
+                            inputLabel,
+                        }
+                    );
                     return pathToFileURL(resolved.realPath).href;
                 } catch {
                     return null;
@@ -64,6 +71,39 @@ describe('NavigationWorkflowService', () => {
         const result = payload(await service.findDefinition({ symbol: 'Target', file: 'target.ts' }));
         expect(result.count).toBe(1);
         expect(result.definitions[0].uri).toBe(pathToFileURL(insideFile).href);
+    });
+
+    test('file-scoped find_definition propagates precise requests to the core analyzer', async () => {
+        const workspaceRoot = tempWorkspace();
+        const insideFile = join(workspaceRoot, 'target.ts');
+        writeFileSync(insideFile, 'export class Target {}\n', 'utf8');
+        const seen: any[] = [];
+        const service = new NavigationWorkflowService({
+            workspaceRoot: () => workspaceRoot,
+            maxResults: () => 50,
+            coreAnalyzer: {
+                findDefinitionAsync: async (request: any) => {
+                    seen.push(request);
+                    return {
+                        data: [definition(insideFile, 'Target')],
+                        performance: { total: 1 },
+                        requestId: 'req-precise',
+                    };
+                },
+            },
+            resolveWorkspaceFile: async (value, inputLabel) => {
+                const resolved = await resolveWorkspacePath(value, { workspaceRoot, inputLabel });
+                return {
+                    path: resolved.realPath,
+                    uri: pathToFileURL(resolved.realPath).href,
+                    relativePath: resolved.relativePath,
+                };
+            },
+            containedUriOrNull: async (value) => value,
+        });
+
+        await service.findDefinition({ symbol: 'Target', file: 'target.ts', precise: true });
+        expect(seen[0]?.precise).toBe(true);
     });
 
     test('workspace path containment accepts in-workspace names that begin with dot-dot text', async () => {
@@ -89,7 +129,13 @@ describe('NavigationWorkflowService', () => {
         });
 
         const result = payload(await service.findReferences({ symbol: 'Target' }));
-        expect(result).toMatchObject({ schemaVersion: 2, references: [], count: 0, scope: 'workspace', fallback: true });
+        expect(result).toMatchObject({
+            schemaVersion: 2,
+            references: [],
+            count: 0,
+            scope: 'workspace',
+            fallback: true,
+        });
     });
 
     test('find_references fallback keeps same-line references when declarations are excluded', async () => {
