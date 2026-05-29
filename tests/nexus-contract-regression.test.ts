@@ -1073,20 +1073,13 @@ describe('nexus contract regressions', () => {
         expect(JSON.parse(response.body)).toMatchObject({ success: false, error: 'Internal server error' });
     });
 
-    test('HTTP stream search routes to text search rather than definition lookup', async () => {
+    test('HTTP stream search uses bounded search rather than definition lookup', async () => {
         const workspaceRoot = tempWorkspace();
         writeFileSync(join(workspaceRoot, 'sample.ts'), 'const haystack = "needle";\n', 'utf8');
-        const calls: any[] = [];
         const adapter = new HTTPAdapter(
             {
                 config: { workspaceRoot },
-                textSearch: async (query: string, options: any) => {
-                    calls.push({ query, options });
-                    return {
-                        count: 1,
-                        results: [{ file: join(workspaceRoot, 'sample.ts'), line: 1, column: 20, text: 'needle' }],
-                    };
-                },
+                async initialize() {},
                 findDefinitionAsync: async () => {
                     throw new Error('definition lookup should not be used for stream search');
                 },
@@ -1104,8 +1097,6 @@ describe('nexus contract regressions', () => {
 
         expect(response.status).toBe(200);
         expect(response.headers['Access-Control-Allow-Origin']).toBeUndefined();
-        expect(calls).toHaveLength(1);
-        expect(calls[0]).toMatchObject({ query: 'needle', options: { maxResults: 5 } });
         expect(response.body).toContain('event: search-data');
         expect(response.body).toContain('needle');
     });

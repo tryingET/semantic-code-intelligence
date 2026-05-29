@@ -216,25 +216,24 @@ describe('WorkspaceQueryWorkflowService', () => {
         expect(out.symbols[0].uri).toBe(pathToFileURL(join(workspaceRoot, '..foo.ts')).href);
     });
 
-    test('delegates text search to the configured analyzer with bounded path resolution', async () => {
+    test('text search uses bounded workspace traversal without requiring analyzer search', async () => {
         const workspaceRoot = tempWorkspace();
         writeFileSync(join(workspaceRoot, 'sample.ts'), 'needle\n', 'utf8');
-        const calls: any[] = [];
         const service = new WorkspaceQueryWorkflowService({
             workspaceRoot: () => workspaceRoot,
             coreAnalyzer: {
                 async initialize() {},
-                async textSearch(pattern: string, options: any) {
-                    calls.push({ pattern, options });
-                    return { count: 1, results: [{ file: 'sample.ts', line: 1, text: 'needle' }] };
-                },
             },
             pathInputFromToolFile: (value) => value,
         });
 
         const out = payload(await service.textSearch({ query: 'needle', path: '.', kind: 'literal' }));
         expect(out.count).toBe(1);
-        expect(calls[0].pattern).toBe('needle');
-        expect(calls[0].options.path).toBe(workspaceRoot);
+        expect(out.results[0]).toMatchObject({
+            file: join(workspaceRoot, 'sample.ts'),
+            line: 1,
+            column: 1,
+            text: 'needle',
+        });
     });
 });

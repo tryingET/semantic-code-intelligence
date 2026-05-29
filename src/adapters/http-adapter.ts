@@ -1054,27 +1054,30 @@ export class HTTPAdapter {
                     ? String(body.path || body.file || body.uri)
                     : '.';
             const requestedPath = this.pathInputFromHttpUri(rawPath, workspaceRoot);
-            const searchRoot = await resolveWorkspacePath(requestedPath, {
-                workspaceRoot,
-                inputLabel: 'stream search path',
-                allowRoot: true,
-            });
-            const searchPath = searchRoot.realPath;
             const maxResults = parseIntegerOption(body.maxResults, 'maxResults', {
                 defaultValue: 100,
                 min: 1,
                 max: 1000,
             });
 
-            const result = await withAdapterTimeout(
-                (this.coreAnalyzer as any).textSearch(String(body.pattern), {
-                    path: searchPath,
+            const workflowResult = await withAdapterTimeout(
+                this.executeToolWorkflow('text_search', {
+                    query: String(body.pattern),
+                    path: requestedPath,
                     maxResults,
                     caseInsensitive: !!body.caseInsensitive,
+                    kind: body.kind || 'literal',
                 }),
                 this.config.timeout,
                 'http.streamSearch.textSearch'
             );
+            if (workflowResult.isError) {
+                throw new CoreError(
+                    'InvalidParams',
+                    this.toolWorkflowErrorPayload(workflowResult, 'stream search failed').message
+                );
+            }
+            const result = this.normalizeToolWorkflowResultForHttp(workflowResult);
 
             // Convert to SSE format (simplified for now)
             const sseData = this.formatAsSSE(result, 'search');

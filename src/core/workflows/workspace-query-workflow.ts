@@ -1,12 +1,17 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { AsyncEnhancedGrep } from '../../layers/enhanced-search-tools-async.js';
 import { CoreError } from '../errors.js';
 import { parseBoundedInteger } from '../input-validation.js';
 import { overlayStore } from '../overlay-store.js';
-import { isOutsideWorkspaceRelative, openWorkspaceFileForRead, resolveWorkspacePath } from '../workspace-path.js';
-import { escapeRegex, textSearchPattern } from './request-semantics.js';
+import {
+    isOutsideWorkspaceRelative,
+    openWorkspaceDirectoryForRead,
+    openWorkspaceFileForRead,
+    resolveWorkspacePath,
+    walkWorkspaceFilesForRead,
+} from '../workspace-path.js';
+import { textSearchPattern } from './request-semantics.js';
 import type { SnapshotWorkflowResult } from './snapshot-patch-workflow.js';
 
 type WorkspaceQueryDependencies = {
@@ -225,57 +230,87 @@ export class WorkspaceQueryWorkflowService {
         const files: Array<{ path: string; type: 'file' | 'directory'; size?: number }> = [];
         let capped = false;
 
-        const visit = async (absoluteDir: string, relativeDir: string, depth: number): Promise<void> => {
+        const visit = async (relativeDir: string, depth: number): Promise<void> => {
             if (files.length >= maxFiles) {
                 capped = true;
                 return;
             }
             if (depth > maxDepth) return;
-            const entries = await fs.readdir(absoluteDir, { withFileTypes: true }).catch((error) => {
+            let openedDir: Awaited<ReturnType<typeof openWorkspaceDirectoryForRead>> | null = null;
+            let entries: Array<{ name: string; isDirectory(): boolean; isFile(): boolean }> = [];
+            try {
+                openedDir = await openWorkspaceDirectoryForRead(relativeDir, {
+                    workspaceRoot: this.workspaceRoot,
+                    inputLabel: 'list_files directory',
+                    allowRoot: relativeDir === '.',
+                });
+                entries = ((await fs.readdir(openedDir.fdPath, { withFileTypes: true } as any)) as Array<any>).sort(
+                    (a, b) => a.name.localeCompare(b.name)
+                );
+            } catch (error) {
                 throw new CoreError(
                     'InvalidParams',
                     `Failed to list workspace files: ${error instanceof Error ? error.message : String(error)}`,
                     { path: requestedPath }
                 );
-            });
-            for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+            } finally {
+                await openedDir?.handle.close().catch(() => undefined);
+            }
+
+            for (const entry of entries) {
                 if (files.length >= maxFiles) {
                     capped = true;
                     return;
                 }
                 if (ignore.has(entry.name)) continue;
                 const childRel = relativeDir === '.' ? entry.name : `${relativeDir}/${entry.name}`;
-                let childResolved;
                 try {
-                    childResolved = await resolveWorkspacePath(childRel, {
+                    const openedChildDir = await openWorkspaceDirectoryForRead(childRel, {
                         workspaceRoot: this.workspaceRoot,
                         inputLabel: 'list_files entry',
-                        allowRoot: false,
                     });
+                    await openedChildDir.handle.close().catch(() => undefined);
+                    files.push({ path: openedChildDir.relativePath, type: 'directory' });
+                    await visit(openedChildDir.relativePath, depth + 1);
+                    continue;
+                } catch {}
+
+                let openedFile: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
+                try {
+                    openedFile = await openWorkspaceFileForRead(childRel, {
+                        workspaceRoot: this.workspaceRoot,
+                        inputLabel: 'list_files entry',
+                    });
+                    const stat = await openedFile.handle.stat();
+                    if (stat.isFile()) {
+                        files.push({ path: openedFile.relativePath, type: 'file', size: stat.size });
+                    }
                 } catch {
                     continue;
-                }
-                const stat = await fs.stat(childResolved.realPath).catch(() => null);
-                if (!stat) continue;
-                if (stat.isDirectory()) {
-                    files.push({ path: childResolved.relativePath, type: 'directory' });
-                    await visit(childResolved.realPath, childResolved.relativePath, depth + 1);
-                } else if (stat.isFile()) {
-                    files.push({ path: childResolved.relativePath, type: 'file', size: stat.size });
+                } finally {
+                    await openedFile?.handle.close().catch(() => undefined);
                 }
             }
         };
 
-        const stat = await fs.stat(root.realPath).catch(() => null);
-        if (!stat) throw new CoreError('InvalidParams', 'list_files path does not exist', { path: requestedPath });
-        if (stat.isFile()) {
-            files.push({ path: root.relativePath, type: 'file', size: stat.size });
-        } else if (stat.isDirectory()) {
-            await visit(root.realPath, root.relativePath, 0);
-        } else {
-            throw new CoreError('InvalidParams', 'list_files path must be a file or directory', {
-                path: requestedPath,
+        let openedRootFile: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
+        try {
+            openedRootFile = await openWorkspaceFileForRead(root.relativePath, {
+                workspaceRoot: this.workspaceRoot,
+                inputLabel: 'list_files path',
             });
+            const stat = await openedRootFile.handle.stat();
+            files.push({ path: openedRootFile.relativePath, type: 'file', size: stat.size });
+        } catch {
+            const openedRootDir = await openWorkspaceDirectoryForRead(root.relativePath, {
+                workspaceRoot: this.workspaceRoot,
+                inputLabel: 'list_files path',
+                allowRoot: root.relativePath === '.',
+            });
+            await openedRootDir.handle.close().catch(() => undefined);
+            await visit(openedRootDir.relativePath, 0);
+        } finally {
+            await openedRootFile?.handle.close().catch(() => undefined);
         }
 
         return { payload: { path: root.relativePath, count: files.length, capped, files }, isError: false };
@@ -434,82 +469,99 @@ export class WorkspaceQueryWorkflowService {
             const searchPath = snapshotRoot
                 ? this.snapshotReadPath(requestedPath, snapshotRoot)
                 : this.pathInputFromToolFile(requestedPath, workspaceRoot);
-            const searchRoot = await resolveWorkspacePath(searchPath, {
+            await resolveWorkspacePath(searchPath, {
                 workspaceRoot,
                 inputLabel: 'text_search path',
                 allowRoot: true,
             });
-            const searchRootPath = searchRoot.realPath;
 
             const searchSpec = textSearchPattern(query, kind);
-            const searchQuery = kind === 'literal' ? escapeRegex(query) : searchSpec.pattern;
-
-            if (searchSpec.useRegex) {
-                const asyncGrep = new AsyncEnhancedGrep({ cacheSize: 500, cacheTTL: 30000 });
-                const results = await asyncGrep.search({
-                    pattern: searchSpec.pattern,
-                    path: searchRootPath,
-                    maxResults,
-                    timeout: timeoutMs,
-                    caseInsensitive,
-                    useRegex: true,
-                });
-                const normalized = normalizeGrepResults(results);
-                return { payload: { count: normalized.length, results: normalized }, isError: false };
-            }
-
-            const result = await this.deps.coreAnalyzer.textSearch(searchQuery, {
-                path: searchRootPath,
+            const result = await this.safeTextSearch({
+                query,
+                pattern: searchSpec.pattern,
+                useRegex: searchSpec.useRegex,
+                workspaceRoot,
+                rootPath: searchPath,
                 maxResults,
+                timeoutMs,
                 caseInsensitive,
             });
-
-            if (Number(result?.count || 0) === 0 && typeof query === 'string' && query.length > 0) {
-                const asyncGrep = new AsyncEnhancedGrep({ cacheSize: 500, cacheTTL: 30000 });
-                const results = await asyncGrep.search({
-                    pattern: searchSpec.pattern,
-                    path: searchRootPath,
-                    maxResults,
-                    timeout: timeoutMs,
-                    caseInsensitive,
-                    useRegex: false,
-                });
-                if (results.length > 0) {
-                    const normalized = normalizeGrepResults(results);
-                    return { payload: { count: normalized.length, results: normalized }, isError: false };
-                }
-            }
 
             return { payload: result, isError: false };
         } catch (error) {
             if (error instanceof CoreError) throw error;
-            const kind = (args?.kind as string) || 'literal';
-            const caseInsensitive = !!args?.caseInsensitive;
-            const snapshotRoot = await this.materializedSnapshotRoot(args);
-            const workspaceRoot = snapshotRoot || this.workspaceRoot;
-            const requestedPath = typeof args?.path === 'string' && args.path.trim() ? String(args.path) : '.';
-            const searchPath = snapshotRoot
-                ? this.snapshotReadPath(requestedPath, snapshotRoot)
-                : this.pathInputFromToolFile(requestedPath, workspaceRoot);
-            const searchRoot = await resolveWorkspacePath(searchPath, {
-                workspaceRoot,
-                inputLabel: 'text_search path',
-                allowRoot: true,
-            });
-            const searchRootPath = searchRoot.realPath;
-            const asyncGrep = new AsyncEnhancedGrep({ cacheSize: 500, cacheTTL: 30000 });
-            const searchSpec = textSearchPattern(query, kind);
-            const results = await asyncGrep.search({
-                pattern: searchSpec.pattern,
-                path: searchRootPath,
-                maxResults,
-                timeout: timeoutMs,
-                caseInsensitive,
-                useRegex: searchSpec.useRegex,
-            });
-            const normalized = normalizeGrepResults(results);
-            return { payload: { count: normalized.length, results: normalized }, isError: false };
+            throw new CoreError(
+                'Internal',
+                `text_search failed: ${error instanceof Error ? error.message : String(error)}`
+            );
         }
+    }
+
+    private async safeTextSearch(args: {
+        query: string;
+        pattern: string;
+        useRegex: boolean;
+        workspaceRoot: string;
+        rootPath: string;
+        maxResults: number;
+        timeoutMs: number;
+        caseInsensitive: boolean;
+    }): Promise<{ count: number; results: Array<{ file: string; line: number; column: number; text: string }> }> {
+        const started = Date.now();
+        const results: Array<{ file: string; line: number; column: number; text: string }> = [];
+        const flags = args.caseInsensitive ? 'i' : '';
+        let regex: RegExp | null = null;
+        if (args.useRegex) {
+            try {
+                regex = new RegExp(args.pattern, flags);
+            } catch (error) {
+                throw new CoreError(
+                    'InvalidParams',
+                    `Invalid text_search regex: ${error instanceof Error ? error.message : String(error)}`
+                );
+            }
+        }
+        const literalNeedle = args.caseInsensitive ? args.query.toLowerCase() : args.query;
+
+        for await (const entry of walkWorkspaceFilesForRead({
+            workspaceRoot: args.workspaceRoot,
+            rootPath: args.rootPath,
+            maxFiles: 20_000,
+            maxDepth: 10,
+        })) {
+            if (results.length >= args.maxResults || Date.now() - started > args.timeoutMs) break;
+            if (entry.size > 2 * 1024 * 1024) continue;
+            let opened: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
+            try {
+                opened = await openWorkspaceFileForRead(entry.relativePath, {
+                    workspaceRoot: args.workspaceRoot,
+                    inputLabel: 'text_search file',
+                });
+                const text = await opened.handle.readFile('utf8');
+                const lines = text.split(/\r?\n/);
+                for (let index = 0; index < lines.length && results.length < args.maxResults; index++) {
+                    const line = lines[index];
+                    let column = -1;
+                    if (regex) {
+                        regex.lastIndex = 0;
+                        const match = regex.exec(line);
+                        column = match ? match.index : -1;
+                    } else {
+                        const haystack = args.caseInsensitive ? line.toLowerCase() : line;
+                        column = haystack.indexOf(literalNeedle);
+                    }
+                    if (column >= 0) {
+                        results.push({ file: entry.realPath, line: index + 1, column: column + 1, text: line });
+                    }
+                }
+            } catch {
+                continue;
+            } finally {
+                await opened?.handle.close().catch(() => undefined);
+            }
+        }
+
+        return { count: results.length, results };
     }
 
     async symbolSearch(args: Record<string, any>): Promise<SnapshotWorkflowResult> {
@@ -649,13 +701,4 @@ export class WorkspaceQueryWorkflowService {
                   );
         }
     }
-}
-
-function normalizeGrepResults(results: any[]) {
-    return results.map((r) => ({
-        file: r.file,
-        line: r.line ?? 0,
-        column: r.column ?? 0,
-        text: r.text,
-    }));
 }

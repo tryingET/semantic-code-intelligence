@@ -1,9 +1,8 @@
-import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { CoreError } from '../errors.js';
 import { DefinitionKind } from '../types.js';
-import { openWorkspaceFileForRead } from '../workspace-path.js';
+import { openWorkspaceFileForRead, walkWorkspaceFilesForRead } from '../workspace-path.js';
 import type { SnapshotWorkflowResult } from './snapshot-patch-workflow.js';
 
 type WorkspaceFileContext = { path: string; uri: string; relativePath: string };
@@ -323,57 +322,40 @@ function definitionKindForLine(line: string): DefinitionKind {
 
 export async function fallbackScanForDefinition(root: string, symbol: string, maxFiles: number) {
     const results: any[] = [];
-    const queue: string[] = [root];
-    const visited: Set<string> = new Set();
     const re = declarationRegexForSymbol(symbol);
     let filesScanned = 0;
 
-    while (queue.length && filesScanned < maxFiles && results.length === 0) {
-        const dir = queue.shift()!;
-        if (visited.has(dir)) continue;
-        visited.add(dir);
-        let entries: any[] = [];
-        try {
-            entries = await fs.readdir(dir, { withFileTypes: true } as any);
-        } catch {
-            continue;
-        }
-        for (const entry of entries) {
-            const candidate = path.join(dir, entry.name);
-            if (entry.isDirectory()) {
-                if (/node_modules|\.git|dist|coverage|out|build|venv|\.venv|\.ontology/.test(entry.name)) continue;
-                queue.push(candidate);
-            } else if (entry.isFile() && /\.(ts|tsx|js|jsx|py|rs|go)$/.test(entry.name)) {
-                filesScanned++;
-                try {
-                    const text = await fs.readFile(candidate, 'utf8');
-                    const lines = text.split(/\r?\n/);
-                    for (let index = 0; index < lines.length; index++) {
-                        if (re.test(lines[index])) {
-                            results.push({
-                                identifier: symbol,
-                                uri: `file://${candidate}`,
-                                range: {
-                                    start: { line: index, character: Math.max(0, lines[index].indexOf(symbol)) },
-                                    end: {
-                                        line: index,
-                                        character: Math.max(0, lines[index].indexOf(symbol)) + String(symbol).length,
-                                    },
-                                },
-                                kind: definitionKindForLine(lines[index]),
-                                name: symbol,
-                                source: 'exact',
-                                confidence: 0.5,
-                                layer: 'async-layer1',
-                            });
-                            break;
-                        }
-                    }
-                } catch {}
-                if (results.length > 0) break;
+    for await (const candidate of walkWorkspaceFilesForRead({
+        workspaceRoot: root,
+        maxFiles,
+        extensionPattern: /\.(ts|tsx|js|jsx|py|rs|go)$/,
+    })) {
+        filesScanned++;
+        const text = await readSafeWorkspaceFile(root, candidate.relativePath);
+        if (text === null) continue;
+        const lines = text.split(/\r?\n/);
+        for (let index = 0; index < lines.length; index++) {
+            if (re.test(lines[index])) {
+                results.push({
+                    identifier: symbol,
+                    uri: pathToFileURL(candidate.realPath).href,
+                    range: {
+                        start: { line: index, character: Math.max(0, lines[index].indexOf(symbol)) },
+                        end: {
+                            line: index,
+                            character: Math.max(0, lines[index].indexOf(symbol)) + String(symbol).length,
+                        },
+                    },
+                    kind: definitionKindForLine(lines[index]),
+                    name: symbol,
+                    source: 'exact',
+                    confidence: 0.5,
+                    layer: 'async-layer1',
+                });
+                break;
             }
-            if (filesScanned >= maxFiles || results.length > 0) break;
         }
+        if (results.length > 0 || filesScanned >= maxFiles) break;
     }
     return results;
 }
@@ -386,63 +368,45 @@ export async function fallbackScanForReferences(
     maxFiles = 500
 ) {
     const results: any[] = [];
-    const queue: string[] = [root];
-    const visited: Set<string> = new Set();
     const escaped = String(symbol).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const occurrenceRe = new RegExp(`\\b${escaped}\\b`, 'g');
     const declarationRe = new RegExp(`\\b(class|function|interface|type|const|let|var)\\s+${escaped}\\b`, 'g');
     let filesScanned = 0;
 
-    while (queue.length && filesScanned < maxFiles && results.length < maxResults) {
-        const dir = queue.shift()!;
-        if (visited.has(dir)) continue;
-        visited.add(dir);
-        let entries: any[] = [];
-        try {
-            entries = await fs.readdir(dir, { withFileTypes: true } as any);
-        } catch {
-            continue;
-        }
-        for (const entry of entries) {
-            const candidate = path.join(dir, entry.name);
-            if (entry.isDirectory()) {
-                if (/node_modules|\.git|dist|coverage|out|build|venv|\.venv|\.ontology/.test(entry.name)) continue;
-                queue.push(candidate);
-            } else if (entry.isFile() && /\.(ts|tsx|js|jsx|py|rs|go|md)$/.test(entry.name)) {
-                filesScanned++;
-                try {
-                    const text = await fs.readFile(candidate, 'utf8');
-                    const lines = text.split(/\r?\n/);
-                    for (let index = 0; index < lines.length && results.length < maxResults; index++) {
-                        const line = lines[index];
-                        const declarationSpans = declarationSymbolSpans(line, symbol, declarationRe);
-                        occurrenceRe.lastIndex = 0;
-                        let match: RegExpExecArray | null = null;
-                        while ((match = occurrenceRe.exec(line)) && results.length < maxResults) {
-                            const column = match.index;
-                            const isDeclaration = declarationSpans.some(
-                                ([start, end]) => column >= start && column < end
-                            );
-                            if (!includeDeclaration && isDeclaration) continue;
-                            results.push({
-                                identifier: symbol,
-                                uri: pathToFileURL(candidate).href,
-                                range: {
-                                    start: { line: index, character: column },
-                                    end: { line: index, character: column + String(symbol).length },
-                                },
-                                kind: isDeclaration ? 'declaration' : 'reference',
-                                name: symbol,
-                                source: 'fallback-scan',
-                                confidence: 0.5,
-                                layer: 'async-layer1',
-                            });
-                        }
-                    }
-                } catch {}
+    for await (const candidate of walkWorkspaceFilesForRead({
+        workspaceRoot: root,
+        maxFiles,
+        extensionPattern: /\.(ts|tsx|js|jsx|py|rs|go|md)$/,
+    })) {
+        filesScanned++;
+        const text = await readSafeWorkspaceFile(root, candidate.relativePath);
+        if (text === null) continue;
+        const lines = text.split(/\r?\n/);
+        for (let index = 0; index < lines.length && results.length < maxResults; index++) {
+            const line = lines[index];
+            const declarationSpans = declarationSymbolSpans(line, symbol, declarationRe);
+            occurrenceRe.lastIndex = 0;
+            let match: RegExpExecArray | null = null;
+            while ((match = occurrenceRe.exec(line)) && results.length < maxResults) {
+                const column = match.index;
+                const isDeclaration = declarationSpans.some(([start, end]) => column >= start && column < end);
+                if (!includeDeclaration && isDeclaration) continue;
+                results.push({
+                    identifier: symbol,
+                    uri: pathToFileURL(candidate.realPath).href,
+                    range: {
+                        start: { line: index, character: column },
+                        end: { line: index, character: column + String(symbol).length },
+                    },
+                    kind: isDeclaration ? 'declaration' : 'reference',
+                    name: symbol,
+                    source: 'fallback-scan',
+                    confidence: 0.5,
+                    layer: 'async-layer1',
+                });
             }
-            if (filesScanned >= maxFiles || results.length >= maxResults) break;
         }
+        if (filesScanned >= maxFiles || results.length >= maxResults) break;
     }
     return results;
 }
@@ -459,55 +423,55 @@ function declarationSymbolSpans(line: string, symbol: string, declarationRe: Reg
 }
 
 export async function scanForExplicitDeclaration(root: string, symbol: string, maxFiles = 300) {
-    const queue: string[] = [root];
-    const visited: Set<string> = new Set();
     const declRe = declarationRegexForSymbol(symbol);
     let filesScanned = 0;
 
-    while (queue.length && filesScanned < maxFiles) {
-        const dir = queue.shift()!;
-        if (visited.has(dir)) continue;
-        visited.add(dir);
-        let entries: any[] = [];
-        try {
-            entries = await fs.readdir(dir, { withFileTypes: true } as any);
-        } catch {
-            continue;
-        }
-        for (const entry of entries) {
-            const candidate = path.join(dir, entry.name);
-            if (entry.isDirectory()) {
-                if (/node_modules|\.git|dist|coverage|out|build|venv|\.venv|\.ontology/.test(entry.name)) continue;
-                queue.push(candidate);
-            } else if (entry.isFile() && /\.(ts|tsx|js|jsx|py|rs|go)$/.test(entry.name)) {
-                filesScanned++;
-                try {
-                    const text = await fs.readFile(candidate, 'utf8');
-                    const lines = text.split(/\r?\n/);
-                    for (let index = 0; index < lines.length; index++) {
-                        const line = lines[index];
-                        if (declRe.test(line)) {
-                            const column = Math.max(0, line.indexOf(symbol));
-                            return {
-                                identifier: symbol,
-                                uri: `file://${candidate}`,
-                                range: {
-                                    start: { line: index, character: column },
-                                    end: { line: index, character: column + symbol.length },
-                                },
-                                kind: definitionKindForLine(line),
-                                name: symbol,
-                                source: 'exact',
-                                confidence: 0.95,
-                                layer: 'async-layer1',
-                            };
-                        }
-                    }
-                } catch {}
+    for await (const candidate of walkWorkspaceFilesForRead({
+        workspaceRoot: root,
+        maxFiles,
+        extensionPattern: /\.(ts|tsx|js|jsx|py|rs|go)$/,
+    })) {
+        filesScanned++;
+        const text = await readSafeWorkspaceFile(root, candidate.relativePath);
+        if (text === null) continue;
+        const lines = text.split(/\r?\n/);
+        for (let index = 0; index < lines.length; index++) {
+            const line = lines[index];
+            if (declRe.test(line)) {
+                const column = Math.max(0, line.indexOf(symbol));
+                return {
+                    identifier: symbol,
+                    uri: pathToFileURL(candidate.realPath).href,
+                    range: {
+                        start: { line: index, character: column },
+                        end: { line: index, character: column + symbol.length },
+                    },
+                    kind: definitionKindForLine(line),
+                    name: symbol,
+                    source: 'exact',
+                    confidence: 0.95,
+                    layer: 'async-layer1',
+                };
             }
         }
+        if (filesScanned >= maxFiles) break;
     }
     return null;
+}
+
+async function readSafeWorkspaceFile(workspaceRoot: string, relativePath: string): Promise<string | null> {
+    let opened: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
+    try {
+        opened = await openWorkspaceFileForRead(relativePath, {
+            workspaceRoot,
+            inputLabel: 'navigation fallback file',
+        });
+        return await opened.handle.readFile('utf8');
+    } catch {
+        return null;
+    } finally {
+        await opened?.handle.close().catch(() => undefined);
+    }
 }
 
 function emptyReferencesPayload() {
