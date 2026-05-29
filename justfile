@@ -188,8 +188,17 @@ process-management-info:
 # === PORT REGISTRY ===
 
 ports:
-    @echo "📡 Global Port Registry (~/.ontology/ports.json)"
-    @bun run ~/programming/port-registry/src/cli.ts list
+    @echo "📡 Port configuration"
+    @if [ -f "$HOME/programming/port-registry/src/cli.ts" ]; then \
+        bun run "$HOME/programming/port-registry/src/cli.ts" list; \
+    else \
+        echo "port_registry=unavailable path=$HOME/programming/port-registry/src/cli.ts"; \
+        echo "fallback=current .env/default ports (run 'just sync-ports' to refresh)"; \
+        HTTP_PORT=$(grep -E '^HTTP_API_PORT=' .env 2>/dev/null | cut -d= -f2- || true); \
+        MCP_PORT=$(grep -E '^MCP_HTTP_PORT=' .env 2>/dev/null | cut -d= -f2- || true); \
+        echo "HTTP_API_PORT=${HTTP_PORT:-7000}"; \
+        echo "MCP_HTTP_PORT=${MCP_PORT:-7001}"; \
+    fi
 
 sync-ports:
     @echo "🔌 Syncing ports into .env (prefers registry; falls back to local scan)"
