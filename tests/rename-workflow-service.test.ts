@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { overlayStore } from '../src/core/overlay-store.js';
@@ -202,6 +202,94 @@ describe('RenameWorkflowService', () => {
         const result = await service.safeRename({ oldName: 'oldName', newName: 'newName', runChecks: false });
         expect(result.isError).toBe(true);
         expect(payload(result)).toMatchObject({ ok: false, reason: 'invalid_plan_path' });
+    });
+
+    test('safe rename preserves executable source mode when generating preview diffs', async () => {
+        const workspaceRoot = tempWorkspace();
+        const target = join(workspaceRoot, 'target.ts');
+        writeFileSync(target, 'export const oldName = 1;\n', 'utf8');
+        chmodSync(target, 0o755);
+
+        const service = new RenameWorkflowService({
+            workspaceRoot: () => workspaceRoot,
+            planRename: async () => ({
+                changes: {
+                    [`file://${target}`]: [
+                        {
+                            range: { start: { line: 0, character: 13 }, end: { line: 0, character: 20 } },
+                            newText: 'newName',
+                        },
+                    ],
+                },
+            }),
+        });
+
+        const result = payload(await service.safeRename({ oldName: 'oldName', newName: 'newName', runChecks: false }));
+        expect(result).toMatchObject({ workflow: 'rename_safely', ok: true, filesAffected: 1, totalEdits: 1 });
+        const diff = overlayStore.getOverlayDiffText(result.snapshot, { workspaceRoot }) || '';
+        expect(diff).not.toContain('old mode 100755');
+        expect(diff).not.toContain('new mode 100644');
+    });
+
+    test('safe rename rejects unreadable plan targets instead of staging partial renames', async () => {
+        const workspaceRoot = tempWorkspace();
+        const target = join(workspaceRoot, 'target.ts');
+        const unreadableTarget = join(workspaceRoot, 'not-a-file');
+        writeFileSync(target, 'export const oldName = 1;\n', 'utf8');
+        mkdirSync(unreadableTarget);
+
+        const service = new RenameWorkflowService({
+            workspaceRoot: () => workspaceRoot,
+            planRename: async () => ({
+                changes: {
+                    [`file://${target}`]: [
+                        {
+                            range: { start: { line: 0, character: 13 }, end: { line: 0, character: 20 } },
+                            newText: 'newName',
+                        },
+                    ],
+                    [`file://${unreadableTarget}`]: [
+                        {
+                            range: { start: { line: 0, character: 0 }, end: { line: 0, character: 7 } },
+                            newText: 'newName',
+                        },
+                    ],
+                },
+            }),
+        });
+
+        const result = await service.safeRename({ oldName: 'oldName', newName: 'newName', runChecks: false });
+        expect(result.isError).toBe(true);
+        expect(payload(result)).toMatchObject({ ok: false, reason: 'plan_file_read_failed' });
+        expect(payload(result).paths).toEqual([`file://${unreadableTarget}`]);
+    });
+
+    test('safe rename does not write through symlinked workspace temp-diff roots', async () => {
+        const workspaceRoot = tempWorkspace();
+        const outsideRoot = tempWorkspace();
+        const ontologyDir = join(workspaceRoot, '.ontology');
+        const target = join(workspaceRoot, 'target.ts');
+        mkdirSync(ontologyDir);
+        writeFileSync(target, 'export const oldName = 1;\n', 'utf8');
+        symlinkSync(outsideRoot, join(ontologyDir, 'tmp-diffs'), 'dir');
+
+        const service = new RenameWorkflowService({
+            workspaceRoot: () => workspaceRoot,
+            planRename: async () => ({
+                changes: {
+                    [`file://${target}`]: [
+                        {
+                            range: { start: { line: 0, character: 13 }, end: { line: 0, character: 20 } },
+                            newText: 'newName',
+                        },
+                    ],
+                },
+            }),
+        });
+
+        const result = payload(await service.safeRename({ oldName: 'oldName', newName: 'newName', runChecks: false }));
+        expect(result).toMatchObject({ workflow: 'rename_safely', ok: true, filesAffected: 1, totalEdits: 1 });
+        expect(existsSync(join(outsideRoot, '.sci-work'))).toBe(false);
     });
 
     test('safe rename accepts in-workspace paths with names that start with dot-dot text', async () => {

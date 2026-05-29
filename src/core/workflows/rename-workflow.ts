@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs/promises';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CoreError } from '../errors.js';
@@ -155,132 +156,144 @@ export class RenameWorkflowService {
             };
         }
         const invalidPlanPaths: string[] = [];
+        const unreadablePlanPaths: string[] = [];
         const snap = overlayStore.createSnapshot(false, { workspaceRoot: root });
-        const tmpRootBase = runChecksFlag
-            ? (await (overlayStore as any).ensureMaterialized?.(snap.id, { workspaceRoot: root })) || ''
-            : path.resolve(root, '.ontology', 'tmp-diffs');
-        if (!tmpRootBase) {
-            return {
-                payload: { ok: false, reason: 'snapshot_failed', message: 'Failed to prepare snapshot' },
-                isError: true,
-            };
-        }
+        const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'sci-rename-diff-'));
 
-        const tmpRoot = path.join(tmpRootBase, '.sci-work');
-        await fs.mkdir(tmpRoot, { recursive: true }).catch(() => {});
+        try {
+            const diffParts: string[] = [];
+            for (const uri of files) {
+                const fileEdits = changes[uri] as TextEdit[];
+                if (!Array.isArray(fileEdits) || !fileEdits.length) continue;
 
-        const diffParts: string[] = [];
-        for (const uri of files) {
-            const fileEdits = changes[uri] as TextEdit[];
-            if (!Array.isArray(fileEdits) || !fileEdits.length) continue;
-
-            let resolvedPath: Awaited<ReturnType<typeof resolveWorkspacePath>>;
-            try {
-                resolvedPath = await resolveWorkspacePath(filePathFromUriLike(uri), {
-                    workspaceRoot: root,
-                    inputLabel: 'rename plan path',
-                });
-            } catch {
-                invalidPlanPaths.push(uri);
-                continue;
-            }
-            const rel = resolvedPath.relativePath;
-            const srcPath = resolvedPath.realPath;
-            let orig = '';
-            try {
-                orig = await fs.readFile(srcPath, 'utf8');
-            } catch {
-                continue;
-            }
-
-            const mod = applyTextEdits(orig, fileEdits);
-            const tmpPath = path.join(tmpRoot, rel);
-            await fs.mkdir(path.dirname(tmpPath), { recursive: true }).catch(() => {});
-            await fs.writeFile(tmpPath, mod, 'utf8');
-
-            const proc = spawnSync(
-                'git',
-                ['diff', '--no-index', '--src-prefix=a/', '--dst-prefix=b/', '--', srcPath, tmpPath],
-                {
-                    stdio: 'pipe',
-                    encoding: 'utf8',
+                let resolvedPath: Awaited<ReturnType<typeof resolveWorkspacePath>>;
+                try {
+                    resolvedPath = await resolveWorkspacePath(filePathFromUriLike(uri), {
+                        workspaceRoot: root,
+                        inputLabel: 'rename plan path',
+                    });
+                } catch {
+                    invalidPlanPaths.push(uri);
+                    continue;
                 }
-            );
-            const out = rewriteNoIndexDiffHeaders(String(proc.stdout || ''), rel);
-            if (out && out.trim().length > 0) {
-                diffParts.push(out);
+                const rel = resolvedPath.relativePath;
+                const srcPath = resolvedPath.realPath;
+                let orig = '';
+                let sourceMode: number | undefined;
+                try {
+                    const sourceStat = await fs.stat(srcPath);
+                    if (!sourceStat.isFile()) throw new Error('rename plan path is not a regular file');
+                    sourceMode = sourceStat.mode;
+                    orig = await fs.readFile(srcPath, 'utf8');
+                } catch {
+                    unreadablePlanPaths.push(uri);
+                    continue;
+                }
+
+                const mod = applyTextEdits(orig, fileEdits);
+                const tmpPath = path.join(tmpRoot, rel);
+                await fs.mkdir(path.dirname(tmpPath), { recursive: true }).catch(() => {});
+                await fs.writeFile(tmpPath, mod, 'utf8');
+                if (sourceMode !== undefined) await fs.chmod(tmpPath, sourceMode);
+
+                const proc = spawnSync(
+                    'git',
+                    ['diff', '--no-index', '--src-prefix=a/', '--dst-prefix=b/', '--', srcPath, tmpPath],
+                    {
+                        stdio: 'pipe',
+                        encoding: 'utf8',
+                    }
+                );
+                const out = rewriteNoIndexDiffHeaders(String(proc.stdout || ''), rel);
+                if (out && out.trim().length > 0) {
+                    diffParts.push(out);
+                }
             }
-        }
 
-        if (invalidPlanPaths.length > 0) {
-            return {
-                payload: {
-                    ok: false,
-                    reason: 'invalid_plan_path',
-                    message: 'Rename plan included paths outside the workspace',
-                    paths: invalidPlanPaths,
-                },
-                isError: true,
-            };
-        }
+            if (invalidPlanPaths.length > 0) {
+                return {
+                    payload: {
+                        ok: false,
+                        reason: 'invalid_plan_path',
+                        message: 'Rename plan included paths outside the workspace',
+                        paths: invalidPlanPaths,
+                    },
+                    isError: true,
+                };
+            }
 
-        const unifiedDiff = diffParts.join('\n');
-        const stage = overlayStore.stagePatch(snap.id, unifiedDiff);
-        if (!stage.accepted) {
-            return {
-                payload: { ok: false, reason: 'stage_failed', message: stage.message || 'Failed to stage diff' },
-                isError: true,
-            };
-        }
+            if (unreadablePlanPaths.length > 0) {
+                return {
+                    payload: {
+                        ok: false,
+                        reason: 'plan_file_read_failed',
+                        message: 'Rename plan included files that could not be read safely',
+                        paths: unreadablePlanPaths,
+                    },
+                    isError: true,
+                };
+            }
 
-        const totalEdits = files.reduce((acc, f) => acc + (Array.isArray(changes[f]) ? changes[f].length : 0), 0);
-        if (!runChecksFlag) {
+            const unifiedDiff = diffParts.join('\n');
+            const stage = overlayStore.stagePatch(snap.id, unifiedDiff);
+            if (!stage.accepted) {
+                return {
+                    payload: { ok: false, reason: 'stage_failed', message: stage.message || 'Failed to stage diff' },
+                    isError: true,
+                };
+            }
+
+            const totalEdits = files.reduce((acc, f) => acc + (Array.isArray(changes[f]) ? changes[f].length : 0), 0);
+            if (!runChecksFlag) {
+                return {
+                    payload: {
+                        workflow: 'rename_safely',
+                        ok: true,
+                        snapshot: snap.id,
+                        filesAffected: files.length,
+                        totalEdits,
+                        next_actions: [
+                            'Run checks when ready',
+                            'Open snapshot diff: snapshot://' + snap.id + '/overlay.diff',
+                        ],
+                    },
+                    isError: false,
+                };
+            }
+
+            const onlyTouchedEnv = (process.env.FAST_STDIO_CHECKS || '').toLowerCase() === 'touched';
+            const onlyTouched = typeof args?.onlyTouched === 'boolean' ? !!args.onlyTouched : onlyTouchedEnv;
+            const checks = await overlayStore.runChecks(snap.id, commands, timeoutSec, {
+                onlyTouched,
+                workspaceRoot: root,
+            });
+            const ok = !!checks.ok;
             return {
                 payload: {
                     workflow: 'rename_safely',
-                    ok: true,
+                    ok,
                     snapshot: snap.id,
                     filesAffected: files.length,
                     totalEdits,
-                    next_actions: [
-                        'Run checks when ready',
-                        'Open snapshot diff: snapshot://' + snap.id + '/overlay.diff',
-                    ],
-                },
-                isError: false,
-            };
-        }
-
-        const onlyTouchedEnv = (process.env.FAST_STDIO_CHECKS || '').toLowerCase() === 'touched';
-        const onlyTouched = typeof args?.onlyTouched === 'boolean' ? !!args.onlyTouched : onlyTouchedEnv;
-        const checks = await overlayStore.runChecks(snap.id, commands, timeoutSec, {
-            onlyTouched,
-            workspaceRoot: root,
-        });
-        const ok = !!checks.ok;
-        return {
-            payload: {
-                workflow: 'rename_safely',
-                ok,
-                snapshot: snap.id,
-                filesAffected: files.length,
-                totalEdits,
-                elapsedMs: checks.elapsedMs,
-                checks: {
-                    ok,
-                    commands: Array.isArray(checks.commands) ? checks.commands : [],
                     elapsedMs: checks.elapsedMs,
+                    checks: {
+                        ok,
+                        commands: Array.isArray(checks.commands) ? checks.commands : [],
+                        elapsedMs: checks.elapsedMs,
+                    },
+                    outputTail: (checks.output || '').slice(-4000),
+                    next_actions: ok
+                        ? [
+                              'Optionally apply this patch to working tree',
+                              'Open snapshot diff: snapshot://' + snap.id + '/overlay.diff',
+                          ]
+                        : ['Review failing checks in outputTail', 'Adjust plan and retry'],
                 },
-                outputTail: (checks.output || '').slice(-4000),
-                next_actions: ok
-                    ? [
-                          'Optionally apply this patch to working tree',
-                          'Open snapshot diff: snapshot://' + snap.id + '/overlay.diff',
-                      ]
-                    : ['Review failing checks in outputTail', 'Adjust plan and retry'],
-            },
-            isError: !ok,
-        };
+                isError: !ok,
+            };
+        } finally {
+            await fs.rm(tmpRoot, { recursive: true, force: true }).catch(() => {});
+        }
     }
 
     private get coreAnalyzer() {
