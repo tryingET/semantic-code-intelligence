@@ -162,15 +162,28 @@ export class MCPServer {
 
 export async function runMCPServer(): Promise<void> {
     const server = new MCPServer();
+    let shutdownStarted = false;
+
+    const shutdownAndExit = async (code = 0): Promise<void> => {
+        if (shutdownStarted) return;
+        shutdownStarted = true;
+        await server.shutdown();
+        process.exit(code);
+    };
 
     process.on('SIGINT', async () => {
-        await server.shutdown();
-        process.exit(0);
+        await shutdownAndExit(0);
     });
 
     process.on('SIGTERM', async () => {
-        await server.shutdown();
-        process.exit(0);
+        await shutdownAndExit(0);
+    });
+
+    process.stdin.once('end', async () => {
+        await shutdownAndExit(0);
+    });
+    process.stdin.once('close', async () => {
+        await shutdownAndExit(0);
     });
 
     await server.run();

@@ -28,6 +28,44 @@ function parseToolContent(response: any) {
     return JSON.parse(text);
 }
 
+describe('MCP stdio lifecycle', () => {
+    const bun = process.env.BUN_PATH || `${process.env.HOME}/.bun/bin/bun`;
+
+    test('exits when stdin reaches EOF', async () => {
+        const proc = spawn(bun, ['run', 'src/servers/mcp-stdio-entry.ts'], {
+            env: {
+                ...process.env,
+                SILENT_MODE: 'true',
+                STDIO_MODE: 'true',
+                WORKSPACE_ROOT: process.cwd(),
+            },
+            stdio: ['pipe', 'pipe', 'pipe'],
+        });
+        let stderr = '';
+        proc.stderr.on('data', (chunk) => {
+            stderr += String(chunk);
+        });
+        proc.stdin.end();
+
+        const code = await new Promise<number | null>((resolve, reject) => {
+            const timer = setTimeout(() => {
+                proc.kill('SIGTERM');
+                reject(new Error(`MCP stdio server did not exit after stdin EOF. stderr=${stderr.slice(-1000)}`));
+            }, 5000);
+            proc.on('close', (exitCode) => {
+                clearTimeout(timer);
+                resolve(exitCode);
+            });
+            proc.on('error', (error) => {
+                clearTimeout(timer);
+                reject(error);
+            });
+        });
+
+        expect(code).toBe(0);
+    }, 10000);
+});
+
 describe('Alpha MVP MCP stdio protocol', () => {
     const bun = process.env.BUN_PATH || `${process.env.HOME}/.bun/bin/bun`;
     let proc: ChildProcessWithoutNullStreams;
