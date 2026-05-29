@@ -168,12 +168,23 @@ export function buildValidationPlan(args: {
               limitations: Array.isArray(item?.limitations) ? item.limitations.map(String) : [],
           }))
         : [];
+    const executedCommands = Array.isArray(args.checkCommands)
+        ? args.checkCommands.map((item) => String(item?.command || '').trim()).filter(Boolean)
+        : [];
+    const selectedCommands = executedCommands.length ? executedCommands : args.commands.map(String);
+    const status = !args.checksOk
+        ? 'checks_failed'
+        : args.mode === 'apply_after_checks' && !args.applied
+          ? args.applyGuardSatisfied
+              ? 'apply_failed'
+              : 'apply_refused'
+          : 'checks_passed';
     return {
         schema: 'semantic-code-intelligence.validation_plan.v1',
         workflow: args.workflow,
         mode: args.mode,
         snapshot: args.snapshot || null,
-        status: args.checksOk ? 'checks_passed' : 'checks_failed',
+        status,
         touchedFiles: Array.isArray(args.risk?.files) ? args.risk.files : [],
         risk: args.risk
             ? {
@@ -183,7 +194,8 @@ export function buildValidationPlan(args: {
               }
             : null,
         commands: {
-            selected: args.commands,
+            selected: selectedCommands,
+            requested: args.commands.map(String),
             recommendedMinimum,
             recommendedBroader,
             recommendationsAppliedToSelected: false,
@@ -865,6 +877,7 @@ export class SnapshotPatchWorkflowService {
         const commands = Array.isArray(args?.commands) ? (args.commands as string[]) : ['bun run typecheck'];
         const timeoutSec = typeof args?.timeoutSec === 'number' ? args.timeoutSec : 240;
         const reverse = !!args?.reverse;
+        const apply = args?.apply === true;
         const requested = typeof args?.snapshot === 'string' ? String(args.snapshot).trim() : '';
         let snapshot: string | undefined = requested || undefined;
         if (!snapshot) {
@@ -891,7 +904,7 @@ export class SnapshotPatchWorkflowService {
         }
         const checks = await this.runChecks({ snapshot, commands, timeoutSec });
         const chk = asPayload(checks) || {};
-        if (chk?.ok && process.env.ALLOW_SNAPSHOT_APPLY === '1') {
+        if (chk?.ok && apply && process.env.ALLOW_SNAPSHOT_APPLY === '1') {
             const app = await this.applySnapshot({ snapshot, check: false, reverse });
             const appOut = asPayload(app) || {};
             const applied = !!appOut?.ok;
@@ -908,11 +921,14 @@ export class SnapshotPatchWorkflowService {
                 isError: false,
             };
         }
+        const reason = !chk?.ok ? 'checks_failed' : !apply ? 'apply_not_requested' : 'ALLOW_SNAPSHOT_APPLY=1 required';
         return {
             payload: {
-                ok: !!chk?.ok,
+                ok: false,
+                reason,
                 snapshot,
                 applied: false,
+                checks: chk,
                 output_tail: chk?.output?.slice?.(-4000) || '',
             },
             isError: false,

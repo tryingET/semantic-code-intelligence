@@ -553,7 +553,7 @@ app.post('/mcp', async (req, res) => {
             const core = new CoreError('InvalidParams', 'Missing required parameters: params');
             if (Array.isArray(body)) {
                 const invalid = body.filter(invalidToolsCall);
-                if (invalid.length > 0 && invalid.length === body.length) {
+                if (invalid.length > 0) {
                     const payloads = invalid.map((item) => buildJsonRpcErrorPayload(core, item.id ?? null));
                     res.status(400).json(payloads);
                     return;

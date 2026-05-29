@@ -778,6 +778,11 @@ export class ToolRegistry {
                         default: ['bun run typecheck'],
                     },
                     timeoutSec: { type: 'number', default: 240 },
+                    apply: {
+                        type: 'boolean',
+                        default: false,
+                        description: 'Required explicit per-call intent to mutate after checks pass',
+                    },
                     reverse: { type: 'boolean', default: false },
                 },
                 required: ['patch'],

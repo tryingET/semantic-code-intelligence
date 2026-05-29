@@ -239,6 +239,30 @@ describe('validation plan comparison graph context', () => {
         ).toBe(true);
     });
 
+    test('fails closed when command receipts contradict selected-command aggregate success', () => {
+        const root = makeRoot();
+        writeEvidence(
+            root,
+            validationPlan({
+                commands: {
+                    selected: ['BUN_JOBS=1 false'],
+                    recommendedMinimum: ['bun run typecheck'],
+                    recommendationsAppliedToSelected: false,
+                },
+                checks: { ok: true, commands: [{ command: 'BUN_JOBS=1 false', ok: false, exitCode: 1 }] },
+            })
+        );
+
+        const result = runComparison(root);
+        expect(result.status).toBe(1);
+        const report = JSON.parse(readFileSync(join(root, 'validation-plan-comparison.json'), 'utf8'));
+
+        expect(report.ok).toBe(false);
+        expect(
+            report.drift.some((item: any) => item.failures.includes('checks_outcome_changed_for_selected_commands'))
+        ).toBe(true);
+    });
+
     test('fails closed when no generated validationPlan carries graph context', () => {
         const root = makeRoot();
         writeEvidence(root, validationPlan({ graphImpact: null }));

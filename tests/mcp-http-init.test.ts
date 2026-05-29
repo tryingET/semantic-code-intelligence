@@ -66,6 +66,73 @@ bindTest('MCP HTTP initialize returns 200 and sets session id', async () => {
     throw lastError ?? new Error('Failed to start MCP HTTP server after retries');
 });
 
+bindTest('MCP HTTP mixed batch reports invalid tools/call params as InvalidParams', async () => {
+    const host = '127.0.0.1';
+    let lastError: unknown = null;
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+        const port = pickRandomPort(7091, 7999);
+        const env = {
+            ...process.env,
+            MCP_HTTP_HOST: host,
+            MCP_HTTP_PORT: String(port),
+            HTTP_API_PORT: String(port + 9),
+        };
+        const server = spawn(
+            process.env.BUN_PATH || `${process.env.HOME}/.bun/bin/bun`,
+            ['run', 'src/servers/mcp-http.ts'],
+            { env }
+        );
+
+        try {
+            await wait(500);
+            const init = await fetch(`http://${host}:${port}/mcp`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+                body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 1,
+                    method: 'initialize',
+                    params: {
+                        protocolVersion: '2024-11-05',
+                        capabilities: {},
+                        clientInfo: { name: 'test', version: '1.0.0' },
+                    },
+                }),
+            });
+            const sid = init.headers.get('Mcp-Session-Id');
+            if (init.status >= 500 || !sid) continue;
+
+            const batch = await fetch(`http://${host}:${port}/mcp`, {
+                method: 'POST',
+                headers: {
+                    'content-type': 'application/json',
+                    accept: 'application/json, text/event-stream',
+                    'mcp-session-id': sid,
+                },
+                body: JSON.stringify([
+                    { jsonrpc: '2.0', id: 2, method: 'tools/call' },
+                    { jsonrpc: '2.0', id: 3, method: 'tools/list', params: {} },
+                ]),
+            });
+            if (batch.status < 500) {
+                expect(batch.status).toBe(400);
+                const payload = await batch.json();
+                expect(payload[0].id).toBe(2);
+                expect(payload[0].error.code).toBe(-32602);
+                server.kill('SIGTERM');
+                return;
+            }
+        } catch (err) {
+            lastError = err;
+        } finally {
+            server.kill('SIGTERM');
+        }
+    }
+
+    throw lastError ?? new Error('Failed to start MCP HTTP server after retries');
+});
+
 bindTest('MCP HTTP CORS preflight allows MCP protocol version header', async () => {
     const host = '127.0.0.1';
     let lastError: unknown = null;

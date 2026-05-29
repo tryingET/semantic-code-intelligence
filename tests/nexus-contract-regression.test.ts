@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -319,6 +319,51 @@ describe('nexus contract regressions', () => {
         }
     });
 
+    test('HTTP pipeline endpoints are explicit legacy surface, not default Alpha HTTP surface', async () => {
+        const workspaceRoot = tempWorkspace();
+        const port = 7159;
+        const previousPort = process.env.HTTP_API_PORT;
+        const previousLegacy = process.env.SCI_ENABLE_LEGACY_HTTP_PIPELINES;
+        delete process.env.SCI_ENABLE_LEGACY_HTTP_PIPELINES;
+        process.env.HTTP_API_PORT = String(port);
+        const server = new HTTPServer({ host: '127.0.0.1', port, workspaceRoot });
+        await server.start();
+        try {
+            const response = await fetch(`http://127.0.0.1:${port}/api/v1/pipelines`);
+            const body = await response.json();
+            expect(response.status).toBe(404);
+            expect(body.success).toBe(false);
+            expect(body.error.message).toContain('Legacy pipeline HTTP endpoints are disabled');
+        } finally {
+            await server.stop();
+            if (previousPort === undefined) delete process.env.HTTP_API_PORT;
+            else process.env.HTTP_API_PORT = previousPort;
+            if (previousLegacy === undefined) delete process.env.SCI_ENABLE_LEGACY_HTTP_PIPELINES;
+            else process.env.SCI_ENABLE_LEGACY_HTTP_PIPELINES = previousLegacy;
+        }
+    });
+
+    test('HTTP pipeline runs rejects nonnumeric limit as caller input', async () => {
+        const workspaceRoot = tempWorkspace();
+        const port = 7158;
+        const previousPort = process.env.HTTP_API_PORT;
+        process.env.HTTP_API_PORT = String(port);
+        const server = new HTTPServer({ host: '127.0.0.1', port, workspaceRoot, enableOpenAPI: false });
+        await server.start();
+        try {
+            const response = await fetch(`http://127.0.0.1:${port}/api/v1/pipelines/runs?id=x&limit=abc`);
+            const body = await response.json();
+            expect(response.status).toBe(400);
+            expect(body.success).toBe(false);
+            expect(body.error.code).toBe('InvalidParams');
+            expect(body.error.message).toContain('limit');
+        } finally {
+            await server.stop();
+            if (previousPort === undefined) delete process.env.HTTP_API_PORT;
+            else process.env.HTTP_API_PORT = previousPort;
+        }
+    });
+
     test('tree-sitter factory detection recognizes exported factory declarations', async () => {
         const workspaceRoot = tempWorkspace();
         const target = join(workspaceRoot, 'factory.ts');
@@ -479,6 +524,25 @@ describe('nexus contract regressions', () => {
             expect(body.success).toBe(false);
             expect(body.error?.message).toContain('identifier required');
         }
+    });
+
+    test('CLI workflow --json initialization failures return JSON error envelopes', () => {
+        const proc = spawnSync(process.execPath, ['run', 'src/servers/cli.ts', 'workflow', 'get_snapshot', '--json'], {
+            cwd: process.cwd(),
+            encoding: 'utf8',
+            env: { ...process.env, SILENT_MODE: 'true', SEMANTIC_CODE_WORKSPACE: '/definitely/not/exist' },
+        });
+        expect(proc.status).not.toBe(0);
+        expect(proc.stderr.trim()).toBe('');
+        const body = JSON.parse(proc.stdout || '{}');
+        expect(body.success).toBe(false);
+        expect(body.error?.message).toContain('Failed to initialize');
+    });
+
+    test('dogfood harden path does not self-enable snapshot apply guard', () => {
+        const script = readFileSync(join(process.cwd(), 'scripts/dogfood-harden-path.ts'), 'utf8');
+        expect(script).not.toContain("process.env.ALLOW_SNAPSHOT_APPLY = '1'");
+        expect(script).toContain('Refusing to apply without ALLOW_SNAPSHOT_APPLY=1 already set by the caller');
     });
 
     test('CLI file URI word extraction decodes encoded paths', () => {
@@ -959,11 +1023,67 @@ describe('nexus contract regressions', () => {
         const previousAllow = process.env.ALLOW_SNAPSHOT_APPLY;
         process.env.ALLOW_SNAPSHOT_APPLY = '1';
         try {
-            const result = await service.applyAfterChecks({ patch, commands: ['true'], timeoutSec: 5, reverse: true });
+            const result = await service.applyAfterChecks({
+                patch,
+                commands: ['true'],
+                timeoutSec: 5,
+                reverse: true,
+                apply: true,
+            });
             expect(result.payload).toMatchObject({ ok: false, applied: false });
         } finally {
             if (previousAllow === undefined) delete process.env.ALLOW_SNAPSHOT_APPLY;
             else process.env.ALLOW_SNAPSHOT_APPLY = previousAllow;
+        }
+    });
+
+    test('apply_after_checks requires explicit per-call apply intent even when env guard is set', async () => {
+        const workspaceRoot = tempWorkspace();
+        initGitWorkspace(workspaceRoot, { ignoreOntology: true });
+        const service = new SnapshotPatchWorkflowService({ workspaceRoot: () => workspaceRoot });
+        const patch =
+            'diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-base\n+changed\n';
+        const previousAllow = process.env.ALLOW_SNAPSHOT_APPLY;
+        process.env.ALLOW_SNAPSHOT_APPLY = '1';
+        try {
+            const result = await service.applyAfterChecks({ patch, commands: ['true'], timeoutSec: 5 });
+            expect(result.payload).toMatchObject({ ok: false, applied: false, reason: 'apply_not_requested' });
+            expect(readFileSync(join(workspaceRoot, 'README.md'), 'utf8')).toBe('base\n');
+        } finally {
+            if (previousAllow === undefined) delete process.env.ALLOW_SNAPSHOT_APPLY;
+            else process.env.ALLOW_SNAPSHOT_APPLY = previousAllow;
+        }
+    });
+
+    test('validationPlan selected commands reflect actual run_checks receipts after touched-file injection', async () => {
+        const workspaceRoot = tempWorkspace();
+        initGitWorkspace(workspaceRoot, { ignoreOntology: true });
+        writeFileSync(join(workspaceRoot, 'a.ts'), 'export const x = 1;\n', 'utf8');
+        runGit(workspaceRoot, ['add', '.']);
+        runGit(workspaceRoot, ['commit', '-q', '-m', 'add-ts']);
+        const fakeBin = join(tempWorkspace('sci-fake-bin-'), 'bin');
+        mkdirSync(fakeBin, { recursive: true });
+        writeFileSync(join(fakeBin, 'bunx'), '#!/usr/bin/env bash\nexit 0\n', 'utf8');
+        chmodSync(join(fakeBin, 'bunx'), 0o755);
+        const previousPath = process.env.PATH;
+        process.env.PATH = `${fakeBin}:${previousPath || ''}`;
+        try {
+            const service = new SnapshotPatchWorkflowService({ workspaceRoot: () => workspaceRoot });
+            const patch =
+                'diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-export const x = 1;\n+export const x = 2;\n';
+            const result = await service.patchChecksInSnapshot({
+                patch,
+                commands: ['true'],
+                onlyTouched: true,
+                timeoutSec: 5,
+            });
+            const payload: any = result.payload;
+            expect(payload.checks.commands[0].command).toContain('bunx tsgo');
+            expect(payload.validationPlan.commands.selected[0]).toContain('bunx tsgo');
+            expect(payload.validationPlan.commands.requested).toEqual(['true']);
+        } finally {
+            if (previousPath === undefined) delete process.env.PATH;
+            else process.env.PATH = previousPath;
         }
     });
 

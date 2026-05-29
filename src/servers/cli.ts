@@ -1014,7 +1014,13 @@ class CLI {
             this.fmtRef = formatReferenceForCli as any;
             this.initialized = true;
         } catch (error) {
-            console.error(`Failed to initialize: ${error instanceof Error ? error.message : String(error)}`);
+            this.markCommandFailed();
+            if (options?.json) {
+                const message = `Failed to initialize: ${error instanceof Error ? error.message : String(error)}`;
+                console.log(this.formatToolError(new CoreError('Internal', message), true));
+            } else {
+                console.error(`Failed to initialize: ${error instanceof Error ? error.message : String(error)}`);
+            }
             process.exit(1);
         }
     }

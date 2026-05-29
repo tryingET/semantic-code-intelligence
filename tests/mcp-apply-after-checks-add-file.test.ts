@@ -50,6 +50,7 @@ describe('MCP apply_after_checks add-new-file (unified)', () => {
             patch,
             commands: ['true'],
             timeoutSec: 60,
+            apply: true,
         });
         const out = unwrap(res);
         expect(out).toBeDefined();

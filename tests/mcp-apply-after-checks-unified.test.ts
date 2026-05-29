@@ -48,6 +48,7 @@ describe('MCP apply_after_checks with unified diff (applied=true)', () => {
             patch,
             commands: ['true'],
             timeoutSec: 60,
+            apply: true,
         });
         const out = unwrap(res);
         expect(out).toBeDefined();

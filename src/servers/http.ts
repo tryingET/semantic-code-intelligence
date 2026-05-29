@@ -67,6 +67,7 @@ interface HTTPServerConfig {
     workspaceRoot?: string;
     enableCors?: boolean;
     enableOpenAPI?: boolean;
+    enableLegacyPipelines?: boolean;
 }
 
 async function readSnapshotArtifactText(dir: string | undefined, file: string, fallback: string): Promise<string> {
@@ -133,6 +134,9 @@ export class HTTPServer {
             workspaceRoot: resolveConfiguredWorkspaceRoot(config.workspaceRoot),
             enableCors: config.enableCors ?? true,
             enableOpenAPI: config.enableOpenAPI ?? true,
+            enableLegacyPipelines:
+                config.enableLegacyPipelines ??
+                (process.env.SCI_ENABLE_LEGACY_HTTP_PIPELINES === '1' || config.enableOpenAPI === false),
         };
     }
 
@@ -460,6 +464,23 @@ export class HTTPServer {
                         }
                     }
 
+                    if (url.pathname.startsWith('/api/v1/pipelines') && !this.legacyPipelinesEnabled()) {
+                        return new Response(
+                            JSON.stringify({
+                                success: false,
+                                error: {
+                                    code: 'InvalidParams',
+                                    message:
+                                        'Legacy pipeline HTTP endpoints are disabled; use the Alpha tools/call surface or set SCI_ENABLE_LEGACY_HTTP_PIPELINES=1 for explicit legacy access',
+                                },
+                            }),
+                            {
+                                status: 404,
+                                headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
+                            }
+                        );
+                    }
+
                     // Pipelines: run with streamable HTTP tail (NDJSON)
                     if (url.pathname === '/api/v1/pipelines/run-stream' && request.method === 'POST') {
                         const encoder = new TextEncoder();
@@ -730,7 +751,14 @@ export class HTTPServer {
                     if (url.pathname === '/api/v1/pipelines/runs' && request.method === 'GET') {
                         try {
                             const pipelineId = String(url.searchParams.get('id') || '').trim();
-                            const limit = Math.max(1, Math.min(100, Number(url.searchParams.get('limit') || '10')));
+                            const rawLimit = url.searchParams.get('limit') || '10';
+                            const parsedLimit = Number(rawLimit);
+                            if (!Number.isFinite(parsedLimit)) {
+                                throw new CoreError('InvalidParams', 'limit must be a finite number', {
+                                    field: 'limit',
+                                });
+                            }
+                            const limit = Math.max(1, Math.min(100, Math.floor(parsedLimit)));
                             if (!pipelineId) {
                                 return new Response(JSON.stringify({ success: false, error: 'id required' }), {
                                     status: 400,
@@ -747,10 +775,17 @@ export class HTTPServer {
                                 headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                             });
                         } catch (err) {
-                            return new Response(JSON.stringify({ success: false, error: 'runs failed' }), {
-                                status: 500,
-                                headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
-                            });
+                            const status = statusForThrownError(err);
+                            return new Response(
+                                JSON.stringify({
+                                    success: false,
+                                    error: isCoreError(err) ? envelopeForThrownError(err) : 'runs failed',
+                                }),
+                                {
+                                    status,
+                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
+                                }
+                            );
                         }
                     }
 
@@ -1514,6 +1549,10 @@ export class HTTPServer {
 
     private async getRequestBody(request: Request): Promise<string | undefined> {
         return readLimitedJsonBody(request);
+    }
+
+    private legacyPipelinesEnabled(): boolean {
+        return this.config.enableLegacyPipelines === true || process.env.SCI_ENABLE_LEGACY_HTTP_PIPELINES === '1';
     }
 
     private extractQuery(url: string): Record<string, string> {

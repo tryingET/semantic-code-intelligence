@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CoreError } from '../errors.js';
 import { overlayStore } from '../overlay-store.js';
-import { resolveWorkspacePath } from '../workspace-path.js';
+import { openWorkspaceFileForRead, resolveWorkspacePath } from '../workspace-path.js';
 import { normalizeWorkspaceUri, uriToWorkspacePath } from './request-semantics.js';
 import type { SnapshotWorkflowResult } from './snapshot-patch-workflow.js';
 
@@ -157,39 +157,53 @@ export class RenameWorkflowService {
                 const fileEdits = changes[uri] as TextEdit[];
                 if (!Array.isArray(fileEdits) || !fileEdits.length) continue;
 
-                let resolvedPath: Awaited<ReturnType<typeof resolveWorkspacePath>>;
+                let opened: Awaited<ReturnType<typeof openWorkspaceFileForRead>>;
                 try {
-                    resolvedPath = await resolveWorkspacePath(filePathFromUriLike(uri), {
+                    opened = await openWorkspaceFileForRead(filePathFromUriLike(uri), {
                         workspaceRoot: root,
                         inputLabel: 'rename plan path',
                     });
-                } catch {
-                    invalidPlanPaths.push(uri);
+                } catch (error: any) {
+                    if (
+                        error?.code === 'InvalidParams' &&
+                        /must stay within the workspace/.test(String(error?.message || ''))
+                    ) {
+                        invalidPlanPaths.push(uri);
+                    } else {
+                        unreadablePlanPaths.push(uri);
+                    }
                     continue;
                 }
-                const rel = resolvedPath.relativePath;
-                const srcPath = resolvedPath.realPath;
+                const rel = opened.relativePath;
                 let orig = '';
                 let sourceMode: number | undefined;
                 try {
-                    const sourceStat = await fs.stat(srcPath);
+                    const sourceStat = await opened.handle.stat();
                     if (!sourceStat.isFile()) throw new Error('rename plan path is not a regular file');
                     sourceMode = sourceStat.mode;
-                    orig = await fs.readFile(srcPath, 'utf8');
+                    orig = await opened.handle.readFile('utf8');
                 } catch {
                     unreadablePlanPaths.push(uri);
                     continue;
+                } finally {
+                    await opened.handle.close().catch(() => undefined);
                 }
 
                 const mod = applyTextEdits(orig, fileEdits);
-                const tmpPath = path.join(tmpRoot, rel);
+                const tmpOrigPath = path.join(tmpRoot, '__orig__', rel);
+                const tmpPath = path.join(tmpRoot, '__mod__', rel);
+                await fs.mkdir(path.dirname(tmpOrigPath), { recursive: true }).catch(() => {});
                 await fs.mkdir(path.dirname(tmpPath), { recursive: true }).catch(() => {});
+                await fs.writeFile(tmpOrigPath, orig, 'utf8');
                 await fs.writeFile(tmpPath, mod, 'utf8');
-                if (sourceMode !== undefined) await fs.chmod(tmpPath, sourceMode);
+                if (sourceMode !== undefined) {
+                    await fs.chmod(tmpOrigPath, sourceMode);
+                    await fs.chmod(tmpPath, sourceMode);
+                }
 
                 const proc = spawnSync(
                     'git',
-                    ['diff', '--no-index', '--src-prefix=a/', '--dst-prefix=b/', '--', srcPath, tmpPath],
+                    ['diff', '--no-index', '--src-prefix=a/', '--dst-prefix=b/', '--', tmpOrigPath, tmpPath],
                     {
                         stdio: 'pipe',
                         encoding: 'utf8',

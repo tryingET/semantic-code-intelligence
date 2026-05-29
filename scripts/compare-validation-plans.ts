@@ -29,18 +29,39 @@ function minimum(plan: any): string[] {
   return Array.isArray(plan?.commands?.recommendedMinimum) ? plan.commands.recommendedMinimum.map(String) : [];
 }
 
+function commandReceipts(plan: any): Array<{ command: string; ok: boolean | null }> {
+  return Array.isArray(plan?.checks?.commands)
+    ? plan.checks.commands.map((item: any) => ({
+        command: String(item?.command || ''),
+        ok: typeof item?.ok === 'boolean' ? item.ok : null,
+      }))
+    : [];
+}
+
+function selectedCommandImpliesFailure(command: string): boolean {
+  return /(?:^|\s)(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*false(?:\s|$)/.test(command);
+}
+
+function expectedChecksOk(item: { selectedCommands: string[]; checkCommandReceipts: Array<{ ok: boolean | null }> }): boolean {
+  const decisiveReceipts = item.checkCommandReceipts.filter((receipt) => typeof receipt.ok === 'boolean');
+  if (decisiveReceipts.length > 0) return decisiveReceipts.every((receipt) => receipt.ok === true);
+  return item.selectedCommands.some(selectedCommandImpliesFailure) ? false : true;
+}
+
 function normalize(plan: any) {
   const graphImpact = validateGraphImpactContext(plan?.graphImpact);
   const verification = plan?.verification && typeof plan.verification === 'object' ? plan.verification : null;
   const applied = plan?.apply?.applied === true;
   const verificationAppliedDiffMatchesSnapshot = typeof verification?.appliedDiffMatchesSnapshot === 'boolean' ? verification.appliedDiffMatchesSnapshot : null;
   const semantic = validateValidationPlanSemantics(plan);
+  const receipts = commandReceipts(plan);
   return {
     schema: plan?.schema || null,
     workflow: plan?.workflow || null,
     mode: plan?.mode || null,
     status: plan?.status || null,
     selectedCommands: selected(plan),
+    checkCommandReceipts: receipts,
     recommendedMinimum: minimum(plan),
     recommendationsAppliedToSelected: plan?.commands?.recommendationsAppliedToSelected === true,
     checksOk: plan?.checks?.ok === true,
@@ -142,16 +163,16 @@ function explainFailures(failures: string[]) {
 }
 
 const comparisons = normalized.map((item) => {
-  const expectedChecksOk = item.selectedCommands.includes('false') ? false : true;
+  const expectedOk = expectedChecksOk(item);
   const expected: Record<string, unknown> = {
     schema: 'semantic-code-intelligence.validation_plan.v1',
     recommendationsAppliedToSelected: false,
-    checksOk: expectedChecksOk,
+    checksOk: expectedOk,
   };
   const failures: string[] = [];
   if (item.schema !== expected.schema) failures.push('schema_changed');
   if (item.recommendationsAppliedToSelected !== false) failures.push('recommendations_started_mutating_selected_commands');
-  if (item.checksOk !== expectedChecksOk) failures.push('checks_outcome_changed_for_selected_commands');
+  if (item.checksOk !== expectedOk) failures.push('checks_outcome_changed_for_selected_commands');
   if (!item.selectedCommands.length) failures.push('selected_commands_missing');
   if (!item.hasArtifacts) failures.push('snapshot_artifact_link_missing');
   if (item.workflow === 'safe_write' && !item.hasRollback) failures.push('safe_write_rollback_missing');

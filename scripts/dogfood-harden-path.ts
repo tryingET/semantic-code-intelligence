@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 /**
  * Dogfood: Harden uriToPath() to support file://workspace and subpaths.
- * Flow: compute diff -> get_snapshot -> propose_patch -> run_checks (tsgo/typecheck) -> apply_snapshot.
+ * Flow: compute diff -> get_snapshot -> propose_patch -> run_checks (tsgo/typecheck) -> optional guarded apply_snapshot.
+ * By default this script is preview/check only. To mutate the working tree, pass --apply with ALLOW_SNAPSHOT_APPLY=1 already set.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -20,6 +21,7 @@ async function parse(res: ToolResult): Promise<any> {
 
 async function main() {
   const repoRoot = process.cwd();
+  const applyRequested = process.argv.includes('--apply');
   const targetRel = 'src/adapters/utils.ts';
   const targetAbs = path.join(repoRoot, targetRel);
   const original = await fs.readFile(targetAbs, 'utf8');
@@ -109,8 +111,20 @@ async function main() {
     }
   }
 
-  // Allow apply for this process
-  process.env.ALLOW_SNAPSHOT_APPLY = '1';
+  if (!applyRequested) {
+    console.log(JSON.stringify({
+      snapshotId,
+      staged: true,
+      checksOk: true,
+      applied: false,
+      next: 'Review snapshot artifacts, then rerun with --apply and ALLOW_SNAPSHOT_APPLY=1 if mutation is intended.',
+    }, null, 2));
+    return;
+  }
+
+  if (process.env.ALLOW_SNAPSHOT_APPLY !== '1') {
+    throw new Error('Refusing to apply without ALLOW_SNAPSHOT_APPLY=1 already set by the caller');
+  }
   const apply = await mcp.handleToolCall('apply_snapshot', { snapshot: snapshotId, check: false });
   const applyParsed = await parse(apply);
   if (!applyParsed || applyParsed.ok === false) {
