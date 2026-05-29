@@ -33,6 +33,7 @@ export class CodeAnalysisWorkflowService {
         const request = buildCompletionRequest({
             uri: file.uri,
             position: normalizePosition(args.position),
+            triggerCharacter: typeof args.triggerCharacter === 'string' ? args.triggerCharacter : undefined,
             maxResults: parseBoundedInteger(args.maxResults, 'maxResults', { defaultValue: 20, min: 1, max: 200 }),
         });
         const result = await this.deps.coreAnalyzer.getCompletions(request);
@@ -91,8 +92,14 @@ export class CodeAnalysisWorkflowService {
     async exploreCodebase(args: Record<string, any>): Promise<SnapshotWorkflowResult> {
         validateRequired(args, ['symbol']);
         const defaultMaxResultsRaw = this.deps.maxResults();
-        const defaultMaxResults = Number.isFinite(defaultMaxResultsRaw) ? Math.max(1, Math.min(1000, Math.floor(defaultMaxResultsRaw))) : 100;
-        const maxResults = parseBoundedInteger(args.maxResults, 'maxResults', { defaultValue: defaultMaxResults, min: 1, max: 1000 });
+        const defaultMaxResults = Number.isFinite(defaultMaxResultsRaw)
+            ? Math.max(1, Math.min(1000, Math.floor(defaultMaxResultsRaw)))
+            : 100;
+        const maxResults = parseBoundedInteger(args.maxResults, 'maxResults', {
+            defaultValue: defaultMaxResults,
+            min: 1,
+            max: 1000,
+        });
         const includeDeclaration = args.includeDeclaration ?? true;
         const uri = args.file
             ? (await this.deps.resolveWorkspaceFile(args.file, 'explore_codebase file')).uri
@@ -121,8 +128,12 @@ export class CodeAnalysisWorkflowService {
                 schemaVersion: 2,
                 symbol: coreResult.symbol,
                 contextUri: coreResult.contextUri,
-                definitions: containedDefinitions.map((definition: any) => definitionToApiResponse(definition, this.deps.workspaceRoot?.() || process.cwd())),
-                references: containedReferences.map((reference: any) => referenceToApiResponse(reference, this.deps.workspaceRoot?.() || process.cwd())),
+                definitions: containedDefinitions.map((definition: any) =>
+                    definitionToApiResponse(definition, this.deps.workspaceRoot?.() || process.cwd())
+                ),
+                references: containedReferences.map((reference: any) =>
+                    referenceToApiResponse(reference, this.deps.workspaceRoot?.() || process.cwd())
+                ),
                 performance: coreResult.performance,
                 diagnostics: coreResult.diagnostics,
                 timestamp: coreResult.timestamp,
@@ -185,8 +196,32 @@ function completionToWireCompletion(item: any) {
     return { label, kind, detail, documentation, insertText, sortText, filterText, confidence };
 }
 
+function normalizeCompletionKindKey(kind: string): string {
+    const trimmed = kind.trim();
+    if (!trimmed) return '';
+    if (/^[a-z][a-zA-Z0-9]*$/.test(trimmed)) return trimmed;
+    if (/^[A-Z][a-zA-Z0-9]*$/.test(trimmed)) return trimmed[0].toLowerCase() + trimmed.slice(1);
+
+    const parts = trimmed
+        .replace(/[-_\s]+/g, ' ')
+        .split(' ')
+        .filter(Boolean);
+    if (parts.length === 0) return '';
+    const [head, ...rest] = parts;
+    return (
+        head.toLowerCase() +
+        rest.map((part) => (part ? part[0].toUpperCase() + part.slice(1).toLowerCase() : '')).join('')
+    );
+}
+
 function completionKindToLspKind(kind: unknown): number | undefined {
-    const key = String(kind ?? '').toLowerCase();
+    if (typeof kind === 'number' && Number.isFinite(kind)) {
+        const numericKind = Math.trunc(kind);
+        return numericKind >= 1 && numericKind <= 25 ? numericKind : undefined;
+    }
+    if (typeof kind !== 'string') return undefined;
+
+    const key = normalizeCompletionKindKey(kind);
     const kindMap: Record<string, number> = {
         text: 1,
         method: 2,

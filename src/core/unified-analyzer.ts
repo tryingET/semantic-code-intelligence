@@ -155,13 +155,18 @@ export class CodeAnalyzer {
 
         // Initialize learning orchestrator
         const learningStart = Date.now();
+        const layer5Enabled = this.config.layers.layer5?.enabled ?? true;
         this.learningOrchestrator = new LearningOrchestrator(this.sharedServices, this.eventBus, {
             enabledComponents: {
-                patternLearning: this.config.layers.layer5?.enabled || true,
-                feedbackLoop: true,
-                evolutionTracking: true,
-                teamKnowledge: true,
+                patternLearning: layer5Enabled,
+                feedbackLoop: layer5Enabled,
+                evolutionTracking: layer5Enabled,
+                teamKnowledge: layer5Enabled,
             },
+            patternDbPath:
+                this.config.layers.layer5?.dbPath ||
+                this.config.layers.layer4?.dbPath ||
+                this.config.layers.layer3?.dbPath,
         });
         await this.learningOrchestrator.initialize();
 
@@ -3206,13 +3211,18 @@ export class CodeAnalyzer {
         } catch {}
 
         // Add learning-specific diagnostics
-        if (this.learningOrchestrator) {
+        const enabledComponents = this.learningOrchestrator?.getDiagnostics?.().enabledComponents;
+        if (enabledComponents) {
+            const patternLearning = !!enabledComponents.patternLearning;
+            const feedbackCollection = !!enabledComponents.feedbackLoop;
+            const evolutionTracking = !!enabledComponents.evolutionTracking;
+            const teamKnowledge = !!enabledComponents.teamKnowledge;
             diagnostics.learningCapabilities = {
-                patternLearning: true,
-                feedbackCollection: true,
-                evolutionTracking: true,
-                teamKnowledge: true,
-                comprehensiveAnalysis: true,
+                patternLearning,
+                feedbackCollection,
+                evolutionTracking,
+                teamKnowledge,
+                comprehensiveAnalysis: patternLearning && feedbackCollection && evolutionTracking && teamKnowledge,
             };
         } else {
             diagnostics.learningCapabilities = {

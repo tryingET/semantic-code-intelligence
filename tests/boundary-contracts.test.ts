@@ -1,10 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { writeFileSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { AnalyzerFactory } from '../src/core/analyzer-factory.js';
+import { CodeAnalysisWorkflowService } from '../src/core/workflows/code-analysis-workflow.js';
 import { LSPAdapter } from '../src/adapters/lsp-adapter.js';
 import { HTTPAdapter } from '../src/adapters/http-adapter.js';
 import { TreeSitterLayer } from '../src/layers/tree-sitter.js';
@@ -55,6 +56,114 @@ describe('boundary contracts', () => {
             await created.layerManager.dispose().catch(() => undefined);
             await created.sharedServices.dispose().catch(() => undefined);
         }
+    });
+
+    test('disabled learning layers do not claim capabilities or create disabled DBs', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'sci-disabled-layers-'));
+        const created = await AnalyzerFactory.createAnalyzer({
+            workspaceRoot: dir,
+            layers: {
+                layer3: { dbPath: join(dir, 'l3', 'symbols.db') } as any,
+                layer4: { enabled: false, dbPath: join(dir, 'l4', 'ontology.db') } as any,
+                layer5: { enabled: false, dbPath: join(dir, 'l5', 'patterns.db') } as any,
+            } as any,
+            monitoring: { enabled: false } as any,
+        });
+        try {
+            expect(created.layerManager.getLayer('layer4')).toBeTruthy();
+            expect(created.layerManager.getLayer('layer5')).toBeTruthy();
+            expect(created.analyzer.getDiagnostics().learningCapabilities).toMatchObject({
+                patternLearning: false,
+                feedbackCollection: false,
+                evolutionTracking: false,
+                teamKnowledge: false,
+                comprehensiveAnalysis: false,
+            });
+            expect(existsSync(join(dir, 'l4', 'ontology.db'))).toBe(false);
+            expect(existsSync(join(dir, 'l5', 'patterns.db'))).toBe(false);
+        } finally {
+            await created.analyzer.dispose().catch(() => undefined);
+            await created.layerManager.dispose().catch(() => undefined);
+            await created.sharedServices.dispose().catch(() => undefined);
+            await rm(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('Layer 5 adapter honors its own DB path instead of the Layer 4 ontology DB', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'sci-layer5-db-'));
+        const layer5DbPath = join(dir, 'l5', 'patterns.db');
+        const created = await AnalyzerFactory.createAnalyzer({
+            workspaceRoot: dir,
+            layers: {
+                layer3: { dbPath: join(dir, 'l3', 'symbols.db') } as any,
+                layer4: { dbPath: join(dir, 'l4', 'ontology.db') } as any,
+                layer5: { dbPath: layer5DbPath } as any,
+            } as any,
+            monitoring: { enabled: false } as any,
+        });
+        try {
+            const layer5: any = created.layerManager.getLayer('layer5');
+            expect(layer5.getPatternLearner().storage.dbPath).toBe(layer5DbPath);
+        } finally {
+            await created.analyzer.dispose().catch(() => undefined);
+            await created.layerManager.dispose().catch(() => undefined);
+            await created.sharedServices.dispose().catch(() => undefined);
+            await rm(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('workspace analyzer scopes default Layer 5 and shared DB paths to the workspace', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'sci-workspace-db-'));
+        const workspaceDbPath = join(dir, '.ontology', 'ontology.db');
+        const created = await AnalyzerFactory.createWorkspaceAnalyzer(dir, { monitoring: { enabled: false } as any });
+        try {
+            const layer5: any = created.layerManager.getLayer('layer5');
+            expect(layer5.getPatternLearner().storage.dbPath).toBe(workspaceDbPath);
+            expect((created.sharedServices.database as any).config.path).toBe(workspaceDbPath);
+            expect((created.analyzer as any).learningOrchestrator.patternLearner.storage.dbPath).toBe(workspaceDbPath);
+        } finally {
+            await created.analyzer.dispose().catch(() => undefined);
+            await created.layerManager.dispose().catch(() => undefined);
+            await created.sharedServices.dispose().catch(() => undefined);
+            await rm(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('workflow completions preserve trigger context and camelCase LSP kinds', async () => {
+        let capturedRequest: any;
+        const service = new CodeAnalysisWorkflowService({
+            coreAnalyzer: {
+                getCompletions: async (request: any) => {
+                    capturedRequest = request;
+                    return {
+                        data: [
+                            { label: 'EnumMemberItem', kind: 'enumMember' },
+                            { label: 'TypeParameterItem', kind: 'typeParameter' },
+                        ],
+                        performance: {},
+                        requestId: 'completion-test',
+                    };
+                },
+            },
+            maxResults: () => 20,
+            resolveWorkspaceFile: async () => ({
+                path: join(process.cwd(), 'sample.ts'),
+                uri: 'file://workspace/sample.ts',
+                relativePath: 'sample.ts',
+            }),
+            resolveWorkspaceLexicalPath: (value: string) => ({ path: value, relativePath: value }),
+            filterWorkspaceItemsByUri: async (items: any[]) => items,
+            workspaceRoot: () => process.cwd(),
+        });
+
+        const result = await service.getCompletions({
+            file: 'sample.ts',
+            position: { line: 0, character: 1 },
+            triggerCharacter: '.',
+        });
+
+        expect(capturedRequest.context).toEqual({ triggerKind: 2, triggerCharacter: '.' });
+        expect((result.payload as any).completions.map((item: any) => item.kind)).toEqual([20, 25]);
     });
 
     test('LSP adapter seeds didOpen text before applying ranged incremental changes', async () => {

@@ -18,7 +18,13 @@ import {
 import { FeedbackEvent, FeedbackLoopSystem, type FeedbackStats, type LearningInsight } from './feedback-loop.js';
 import { KnowledgeGraph, SharedPattern, TeamInsight, TeamKnowledgeSystem, TeamMember } from './team-knowledge.js';
 
-const PIPELINE_COMPONENTS = ['pattern_learning', 'feedback_loop', 'evolution_tracking', 'team_knowledge', 'noop'] as const;
+const PIPELINE_COMPONENTS = [
+    'pattern_learning',
+    'feedback_loop',
+    'evolution_tracking',
+    'team_knowledge',
+    'noop',
+] as const;
 type PipelineComponent = (typeof PIPELINE_COMPONENTS)[number];
 const PIPELINE_COMPONENT_SET = new Set<string>(PIPELINE_COMPONENTS);
 
@@ -81,6 +87,7 @@ export interface LearningConfiguration {
         evolutionTracking: boolean;
         teamKnowledge: boolean;
     };
+    patternDbPath?: string;
     performanceTargets: {
         maxLearningTime: number; // ms
         maxPipelineTime: number; // ms
@@ -151,6 +158,7 @@ export class LearningOrchestrator {
             evolutionTracking: true,
             teamKnowledge: true,
         },
+        patternDbPath: ':memory:',
         performanceTargets: {
             maxLearningTime: 100, // 100ms
             maxPipelineTime: 500, // 500ms
@@ -171,7 +179,26 @@ export class LearningOrchestrator {
     constructor(sharedServices: SharedServices, eventBus: EventBus, config?: Partial<LearningConfiguration>) {
         this.sharedServices = sharedServices;
         this.eventBus = eventBus;
-        this.config = { ...this.defaultConfig, ...config };
+        this.config = {
+            ...this.defaultConfig,
+            ...config,
+            enabledComponents: {
+                ...this.defaultConfig.enabledComponents,
+                ...config?.enabledComponents,
+            },
+            performanceTargets: {
+                ...this.defaultConfig.performanceTargets,
+                ...config?.performanceTargets,
+            },
+            learningThresholds: {
+                ...this.defaultConfig.learningThresholds,
+                ...config?.learningThresholds,
+            },
+            dataRetention: {
+                ...this.defaultConfig.dataRetention,
+                ...config?.dataRetention,
+            },
+        };
 
         this.setupEventListeners();
     }
@@ -929,7 +956,7 @@ export class LearningOrchestrator {
 
         if (!this.patternLearner) return { ok: false, added: 0, reason: 'pattern_learner_unavailable' };
 
-        const before = await this.patternLearner.getStatistics().catch(() => ({ totalPatterns: 0 } as any));
+        const before = await this.patternLearner.getStatistics().catch(() => ({ totalPatterns: 0 }) as any);
         const beforeCount = Number((before as any)?.totalPatterns || 0);
 
         const hashSeed = (value: string): string => {
@@ -952,7 +979,7 @@ export class LearningOrchestrator {
             return { ok: false, added: 0, reason: 'seed_failed' };
         }
 
-        const after = await this.patternLearner.getStatistics().catch(() => ({ totalPatterns: beforeCount } as any));
+        const after = await this.patternLearner.getStatistics().catch(() => ({ totalPatterns: beforeCount }) as any);
         const afterCount = Number((after as any)?.totalPatterns || 0);
         return { ok: true, added: Math.max(0, afterCount - beforeCount) };
     }
@@ -1039,13 +1066,10 @@ export class LearningOrchestrator {
     private async initializeLearningComponents(): Promise<void> {
         // Initialize Pattern Learner
         if (this.config.enabledComponents.patternLearning) {
-            this.patternLearner = new PatternLearner(
-                ':memory:', // Will be replaced with proper DB path
-                {
-                    learningThreshold: this.config.learningThresholds.minFeedbackCount,
-                    confidenceThreshold: this.config.learningThresholds.minPatternConfidence,
-                }
-            );
+            this.patternLearner = new PatternLearner(this.config.patternDbPath || ':memory:', {
+                learningThreshold: this.config.learningThresholds.minFeedbackCount,
+                confidenceThreshold: this.config.learningThresholds.minPatternConfidence,
+            });
             await this.patternLearner.ensureInitialized();
 
             // Dev/E2E learning seed: ensure at least one pattern exists when enabled
@@ -1448,31 +1472,34 @@ export class LearningOrchestrator {
 
         const delayMs = Math.max(0, nextRunAt * 1000 - Date.now());
         const maxDelayMs = 2_147_483_647;
-        const timer = setTimeout(async () => {
-            this.scheduledTimers.delete(pipelineId);
+        const timer = setTimeout(
+            async () => {
+                this.scheduledTimers.delete(pipelineId);
 
-            if (!this.initialized) return;
-            const p = this.pipelines.get(pipelineId);
-            if (!p || !p.enabled) return;
-            if (this.activePipelines.has(pipelineId)) {
-                if (p.schedule) this.setupScheduledPipeline(pipelineId, String(p.schedule));
-                return;
-            }
+                if (!this.initialized) return;
+                const p = this.pipelines.get(pipelineId);
+                if (!p || !p.enabled) return;
+                if (this.activePipelines.has(pipelineId)) {
+                    if (p.schedule) this.setupScheduledPipeline(pipelineId, String(p.schedule));
+                    return;
+                }
 
-            const context: LearningContext = {
-                requestId: uuidv4(),
-                operation: 'scheduled_pipeline',
-                timestamp: new Date(),
-                metadata: { pipelineId },
-            };
-            try {
-                await this.runPipeline(pipelineId, context);
-            } catch {
-                // non-fatal
-            } finally {
-                if (p.schedule) this.setupScheduledPipeline(pipelineId, String(p.schedule));
-            }
-        }, Math.min(maxDelayMs, delayMs));
+                const context: LearningContext = {
+                    requestId: uuidv4(),
+                    operation: 'scheduled_pipeline',
+                    timestamp: new Date(),
+                    metadata: { pipelineId },
+                };
+                try {
+                    await this.runPipeline(pipelineId, context);
+                } catch {
+                    // non-fatal
+                } finally {
+                    if (p.schedule) this.setupScheduledPipeline(pipelineId, String(p.schedule));
+                }
+            },
+            Math.min(maxDelayMs, delayMs)
+        );
 
         this.scheduledTimers.set(pipelineId, timer);
     }

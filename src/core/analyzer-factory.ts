@@ -49,6 +49,17 @@ abstract class LayerAdapter implements Layer {
     }
 }
 
+class DisabledLayerAdapter extends LayerAdapter {
+    version = 'disabled';
+
+    constructor(
+        public name: string,
+        public targetLatency: number
+    ) {
+        super();
+    }
+}
+
 /**
  * Adapter for existing ClaudeToolsLayer
  */
@@ -194,6 +205,10 @@ class Layer4Adapter extends LayerAdapter {
         } catch (e) {
             return { error: (e as Error)?.message || String(e) };
         }
+    }
+
+    async dispose(): Promise<void> {
+        await this.patternLearner.dispose();
     }
 }
 
@@ -372,13 +387,18 @@ export class AnalyzerFactory {
         });
 
         const ontologyDbPath = fullConfig.layers.layer4?.dbPath || fullConfig.layers.layer3.dbPath;
+        const patternDbPath = fullConfig.layers.layer5?.dbPath || ontologyDbPath;
         const layer3Planner = new PlannerLayer();
-        const storage = createStorageAdapter({
-            enabled: fullConfig.layers.layer4?.enabled ?? true,
-            adapter: fullConfig.layers.layer4?.adapter ?? 'sqlite',
-            dbPath: ontologyDbPath,
-        } as any);
-        const layer4Ont = new Layer3Adapter(storage);
+        const layer4Enabled = fullConfig.layers.layer4?.enabled ?? true;
+        const layer5Enabled = fullConfig.layers.layer5?.enabled ?? true;
+        const storage = layer4Enabled
+            ? createStorageAdapter({
+                  enabled: true,
+                  adapter: fullConfig.layers.layer4?.adapter ?? 'sqlite',
+                  dbPath: ontologyDbPath,
+              } as any)
+            : undefined;
+        const layer4Ont = layer4Enabled ? new Layer3Adapter(storage) : new DisabledLayerAdapter('layer4', 10);
 
         // Pass null initially if using lazy init for Layer 4
         // Layer 2 can work without ontology engine
@@ -389,13 +409,17 @@ export class AnalyzerFactory {
                 languages: fullConfig.layers.layer2.languages,
                 maxFileSize: fullConfig.layers.layer2.maxFileSize.toString(),
             },
-            process.env.EAGER_L4_INIT === '1' ? layer4Ont.getOntologyEngine() : undefined
+            process.env.EAGER_L4_INIT === '1' && layer4Enabled
+                ? (layer4Ont as Layer3Adapter).getOntologyEngine()
+                : undefined
         );
 
-        const layer5Pat = new Layer4Adapter(ontologyDbPath, {
-            learningThreshold: (fullConfig.layers as any).layer5?.learningThreshold ?? 3,
-            confidenceThreshold: (fullConfig.layers as any).layer5?.confidenceThreshold ?? 0.7,
-        });
+        const layer5Pat = layer5Enabled
+            ? new Layer4Adapter(patternDbPath, {
+                  learningThreshold: (fullConfig.layers as any).layer5?.learningThreshold ?? 3,
+                  confidenceThreshold: (fullConfig.layers as any).layer5?.confidenceThreshold ?? 0.7,
+              })
+            : new DisabledLayerAdapter('layer5', 10);
 
         // Register all layers
         layerManager.registerLayer(layer1);
@@ -428,18 +452,23 @@ export class AnalyzerFactory {
         layerManager: LayerManager;
         sharedServices: SharedServices;
     }> {
+        const workspaceDbPath = `${workspacePath}/.ontology/ontology.db`;
         const workspaceConfig: any = {
             ...config,
             layers: {
                 ...config?.layers,
                 layer3: {
                     ...config?.layers?.layer3,
-                    dbPath: `${workspacePath}/.ontology/ontology.db`,
+                    dbPath: workspaceDbPath,
                 },
                 layer4: {
                     ...config?.layers?.layer4,
                     adapter: (config?.layers as any)?.layer4?.adapter ?? 'sqlite',
-                    dbPath: `${workspacePath}/.ontology/ontology.db`,
+                    dbPath: workspaceDbPath,
+                },
+                layer5: {
+                    ...config?.layers?.layer5,
+                    dbPath: (config?.layers as any)?.layer5?.dbPath ?? workspaceDbPath,
                 },
             },
             // Provide workspaceRoot to downstream analyzer config for correct path resolution

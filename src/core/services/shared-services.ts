@@ -330,7 +330,9 @@ export class SharedServices {
         // This keeps tests and legacy callers isolated when they already provided a
         // bounded layer DB path but have not yet adopted the shared database block.
         const layerDbPath =
-            config.layers?.layer5?.dbPath || config.layers?.layer4?.dbPath || config.layers?.layer3?.dbPath;
+            (config.layers?.layer5?.enabled ? config.layers.layer5.dbPath : undefined) ||
+            (config.layers?.layer4?.enabled ? config.layers.layer4.dbPath : undefined) ||
+            config.layers?.layer3?.dbPath;
         if (layerDbPath) {
             return layerDbPath;
         }
