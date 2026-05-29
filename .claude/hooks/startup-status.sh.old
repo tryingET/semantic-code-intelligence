@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
-# ║  Ontology MCP Server - Delayed Status Display                            ║
+# ║  Semantic Code Intelligence MCP Server - Delayed Status Display                            ║
 # ║  Shows startup status after a brief delay without blocking               ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 
@@ -9,11 +9,11 @@
 sleep 3
 
 # Configuration
-MCP_PORT="${MCP_SSE_PORT:-7001}"
-MCP_HOST="${MCP_SSE_HOST:-localhost}"
-HTTP_API_PORT="${ONTOLOGY_API_PORT:-7000}"
+MCP_PORT="${MCP_HTTP_PORT:-7001}"
+MCP_HOST="${MCP_HTTP_HOST:-localhost}"
+HTTP_API_PORT="${HTTP_API_PORT:-7000}"
 MCP_PID_FILE="/tmp/semantic-code-mcp-server-${MCP_PORT}.pid"
-API_PID_FILE="/tmp/ontology-api-server-${HTTP_API_PORT}.pid"
+API_PID_FILE="/tmp/semantic-code-http-api-server-${HTTP_API_PORT}.pid"
 LSP_PID_FILE="/tmp/semantic-code-intelligence-server.pid"
 
 # ANSI color codes
@@ -77,7 +77,7 @@ elif [ $servers_running -gt 0 ]; then
     echo -e "   ${DIM}$servers_running of $servers_total servers running${NC}"
 else
     echo -e "${BRIGHT_RED}${CROSS_MARK}${NC} ${BOLD}${BRIGHT_RED}Semantic Code Intelligence Suite Not Started${NC}"
-    echo -e "   ${DIM}Check /tmp/ontology-*.log for details${NC}"
+    echo -e "   ${DIM}Check /tmp/semantic-code-*.log for details${NC}"
 fi
 
 # Show available endpoints if any servers are running
@@ -86,7 +86,7 @@ if [ $servers_running -gt 0 ]; then
     echo -e "${BRIGHT_CYAN}${LIGHTNING} Available Services:${NC}"
     
     if is_server_running "$MCP_PID_FILE" || is_port_in_use "$MCP_HOST" "$MCP_PORT"; then
-        echo -e "   • MCP Server: ${DIM}http://$MCP_HOST:$MCP_PORT/mcp/sse${NC}"
+        echo -e "   • MCP Server: ${DIM}http://$MCP_HOST:$MCP_PORT/mcp${NC}"
     fi
     
     if is_server_running "$API_PID_FILE" || is_port_in_use "localhost" "$HTTP_API_PORT"; then

@@ -20,9 +20,9 @@ curl -fsSL https://bun.sh/install | bash
 # Start all servers
 ./.claude/hooks/session-start.sh
 
-# Or start manually:
-bun run src/api/http-server.ts &  # LSP API Server on port 7000
-cd semantic-code-intelligence && bun run dist/mcp-http/mcp-http.js &  # MCP Server (Streamable HTTP) on port 7001
+# Or start manually from the repo root:
+HTTP_API_PORT=7000 bun run src/servers/http.ts &        # HTTP API server
+MCP_HTTP_PORT=7001 bun run src/servers/mcp-http.ts &    # MCP Streamable HTTP server
 ```
 
 3. **Add to Claude Desktop configuration**:
@@ -34,17 +34,16 @@ Copy the following to your Claude Desktop config file:
 ```json
 {
   "mcpServers": {
-    "ontology": {
+    "semantic-code-intelligence": {
       "command": "bun",
-      "args": ["run", "/path/to/semantic-code-intelligence/dist/mcp-http/mcp-http.js"],
-      "env": {
-        "MCP_HTTP_HOST": "localhost",
-        "MCP_HTTP_PORT": "7001",
-        "SEMANTIC_CODE_INTELLIGENCE_HOST": "localhost",
-        "SEMANTIC_CODE_INTELLIGENCE_PORT": "7000",
-        "SEMANTIC_CODE_DB_PATH": "/path/to/semantic-code-intelligence/.ontology/ontology.db",
-        "SEMANTIC_CODE_WORKSPACE": "/path/to/your/workspace"
-      }
+      "args": ["run", "/path/to/semantic-code-intelligence/dist/mcp/mcp.js"],
+      "type": "stdio",
+      "description": "Semantic Code Intelligence MCP stdio server"
+    },
+    "semantic-code-intelligence-http": {
+      "type": "streamable-http",
+      "url": "http://localhost:7001/mcp",
+      "description": "Semantic Code Intelligence MCP Streamable HTTP server (requires the MCP HTTP server to be running)"
     }
   }
 }
@@ -65,33 +64,28 @@ Once configured, you can verify the setup by asking Claude:
 
 ## Available MCP Tools
 
-The Ontology MCP server provides 16 intelligent tools:
+The default MCP surface exposes the Alpha MVP tools documented in `docs/project/alpha-mvp-contract.md`.
 
-### Search & Navigation
-- `find_definition` - Find symbol definitions with fuzzy matching
-- `find_references` - Find all references to a symbol
-- `search_semantic` - Semantic code search
+### Navigation and bounded reads
+- `get_snapshot`
+- `read_file`
+- `text_search`
+- `symbol_search`
+- `ast_query`
+- `find_definition`
+- `find_references`
+- `graph_expand`
 
-### Code Understanding
-- `get_concept` - Get detailed information about a code concept
-- `get_hierarchy` - Get inheritance/dependency hierarchy
-- `analyze_workspace` - Full codebase analysis
-
-### Pattern Recognition
-- `get_patterns` - Get learned code patterns
-- `suggest_refactoring` - Get refactoring suggestions
-- `detect_violations` - Find architectural violations
-
-### Knowledge Management
-- `export_ontology` - Export knowledge graph
-- `import_ontology` - Import knowledge data
-- `get_statistics` - Get codebase statistics
-
-### Advanced Features
-- `rename_symbol` - Intelligent rename with propagation
-- `extract_component` - Extract code into new component
-- `inline_variable` - Inline variable with safety checks
-- `optimize_imports` - Optimize and organize imports
+### Patch planning and validation
+- `recommend_checks`
+- `propose_patch`
+- `run_checks`
+- `patch_checks_in_snapshot`
+- `extract_snapshot_artifacts`
+- `structural_search`
+- `structural_patch_checks`
+- `safe_write`
+- `rename_safely`
 
 ## Troubleshooting
 

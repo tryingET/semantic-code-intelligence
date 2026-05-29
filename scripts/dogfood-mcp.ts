@@ -2,10 +2,10 @@
 /**
  * Dogfood (stdio MCP) quick workflow with ms timings.
  * Steps:
- *  - explore_codebase (off/on)
- *  - plan_rename (preview)
+ *  - find_definition + find_references + graph_expand
+ *  - rename_safely (preview)
  *  - get_snapshot + propose_patch (no run_checks by default)
- * Optional (--full): run workflow_quick_patch_checks with typecheck.
+ * Optional (--full): run patch_checks_in_snapshot with typecheck.
  */
 
 import { MCPAdapter } from '../src/adapters/mcp-adapter.js';
@@ -53,32 +53,35 @@ async function main() {
 
   const times: Record<string, number> = {};
 
-  // explore_codebase (off)
-  log(`explore_codebase (conceptual=false), file=${file}, symbol=${symbol} ...`);
-  t0(times, 'explore_off');
-  const off = await mcp.handleToolCall('explore_codebase', { symbol, file, conceptual: false });
-  t1(times, 'explore_off');
-  const offParsed = await parse(off);
-  log(`done in ${ms(times['explore_off'])}: defs=${offParsed?.definitions?.length ?? 0}, refs=${offParsed?.references?.length ?? 0}`);
+  log(`find_definition, file=${file}, symbol=${symbol} ...`);
+  t0(times, 'find_definition');
+  const definition = await mcp.handleToolCall('find_definition', { symbol, file, maxResults: 20, precise: true });
+  t1(times, 'find_definition');
+  const definitionParsed = await parse(definition);
+  log(`done in ${ms(times['find_definition'])}: candidates=${definitionParsed?.results?.length ?? definitionParsed?.definitions?.length ?? 0}`);
 
-  // explore_codebase (on)
-  process.env.L4_AUGMENT_EXPLORE = '1';
-  log('explore_codebase (conceptual=true) ...');
-  t0(times, 'explore_on');
-  const on = await mcp.handleToolCall('explore_codebase', { symbol, file, conceptual: true });
-  t1(times, 'explore_on');
-  const onParsed = await parse(on);
-  log(`done in ${ms(times['explore_on'])}: defs=${onParsed?.definitions?.length ?? 0}, refs=${onParsed?.references?.length ?? 0}`);
+  log('find_references ...');
+  t0(times, 'find_references');
+  const references = await mcp.handleToolCall('find_references', { symbol, file, includeDeclaration: true, maxResults: 50 });
+  t1(times, 'find_references');
+  const referencesParsed = await parse(references);
+  log(`done in ${ms(times['find_references'])}: candidates=${referencesParsed?.results?.length ?? referencesParsed?.references?.length ?? 0}`);
 
-  // plan_rename preview
-  log(`plan_rename preview: ${renameTarget} -> ${renameTarget}X ...`);
-  t0(times, 'plan_rename');
-  const plan = await mcp.handleToolCall('plan_rename', { oldName: renameTarget, newName: `${renameTarget}X`, file, dryRun: true });
-  t1(times, 'plan_rename');
+  log('graph_expand ...');
+  t0(times, 'graph_expand');
+  const graph = await mcp.handleToolCall('graph_expand', { symbol, file, edges: ['imports', 'exports', 'callers', 'callees'], depth: 1, limit: 50 });
+  t1(times, 'graph_expand');
+  const graphParsed = await parse(graph);
+  log(`done in ${ms(times['graph_expand'])}: neighbors=${graphParsed?.neighbors?.length ?? 0}`);
+
+  log(`rename_safely preview: ${renameTarget} -> ${renameTarget}X ...`);
+  t0(times, 'rename_safely');
+  const plan = await mcp.handleToolCall('rename_safely', { oldName: renameTarget, newName: `${renameTarget}X`, file, runChecks: false });
+  t1(times, 'rename_safely');
   const planParsed = await parse(plan);
-  const planFiles = Object.keys(planParsed?.changes || {}).length;
-  const planEdits = Object.values(planParsed?.changes || {}).reduce((a: number, v: any) => a + (Array.isArray(v) ? v.length : 0), 0);
-  log(`done in ${ms(times['plan_rename'])}: files=${planFiles}, edits=${planEdits}`);
+  const planFiles = Array.isArray(planParsed?.affectedFiles) ? planParsed.affectedFiles.length : Object.keys(planParsed?.changes || {}).length;
+  const planEdits = typeof planParsed?.edits === 'number' ? planParsed.edits : Object.values(planParsed?.changes || {}).reduce((a: number, v: any) => a + (Array.isArray(v) ? v.length : 0), 0);
+  log(`done in ${ms(times['rename_safely'])}: files=${planFiles}, edits=${planEdits}`);
 
   // get_snapshot + propose_patch (no checks)
   log('get_snapshot ...');
@@ -107,9 +110,9 @@ async function main() {
 
   // Optional full checks (fast default)
   if (full) {
-    log('workflow_quick_patch_checks (typecheck) ...');
+    log('patch_checks_in_snapshot (typecheck) ...');
     t0(times, 'quick_checks');
-    const quick = await mcp.handleToolCall('workflow_quick_patch_checks', { patch, commands: ['bun run typecheck'], timeoutSec: 180 });
+    const quick = await mcp.handleToolCall('patch_checks_in_snapshot', { patch, commands: ['bun run typecheck'], timeoutSec: 180 });
     t1(times, 'quick_checks');
     const quickParsed = await parse(quick);
     log(`done in ${ms(times['quick_checks'])}: ok=${!!quickParsed?.ok}, snapshot=${quickParsed?.snapshot}`);
@@ -118,11 +121,12 @@ async function main() {
   // Summary
   console.log(JSON.stringify({
     timingsMs: times,
-    explore: {
-      off: { defs: offParsed?.definitions?.length ?? 0, refs: offParsed?.references?.length ?? 0 },
-      on: { defs: onParsed?.definitions?.length ?? 0, refs: onParsed?.references?.length ?? 0 },
+    navigation: {
+      definitions: definitionParsed?.results?.length ?? definitionParsed?.definitions?.length ?? 0,
+      references: referencesParsed?.results?.length ?? referencesParsed?.references?.length ?? 0,
+      graphNeighbors: graphParsed?.neighbors?.length ?? 0,
     },
-    planRename: { files: planFiles, totalEdits: planEdits },
+    renameSafely: { files: planFiles, totalEdits: planEdits },
     proposedPatch: { accepted: !!stageParsed?.accepted, snapshot: snapshotId },
   }, null, 2));
   try { await (analyzer as any)?.dispose?.(); } catch {}

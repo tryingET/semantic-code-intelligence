@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { alphaMvpToolNameSet } from '../src/core/tools/alpha-surface.js';
 
 interface Violation {
   file: string;
@@ -12,6 +13,7 @@ interface Violation {
 
 const violations: Violation[] = [];
 const json = process.argv.includes('--json');
+const alphaToolNames = alphaMvpToolNameSet();
 
 function readText(path: string): string {
   return readFileSync(path, 'utf8');
@@ -31,6 +33,15 @@ function workflowFiles(): string[] {
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
     .filter((name) => name.endsWith('.yml') || name.endsWith('.yaml'))
+    .map((name) => join(dir, name))
+    .sort();
+}
+
+function claudeHookFiles(): string[] {
+  const dir = '.claude/hooks';
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((name) => name.endsWith('.sh') || name.endsWith('.sh.old'))
     .map((name) => join(dir, name))
     .sort();
 }
@@ -66,6 +77,21 @@ function scanTextSurface(file: string): void {
 
     if (/^run:\s*bun\s+install\s*$/.test(surface) && !lineHasNearbyWorkingDirectory(lines, index)) {
       add(file, lineNo, 'root-bun-install-must-be-frozen', line, 'Use `bun install --frozen-lockfile` for root workflow installs.');
+    }
+
+    if (line.includes('mcp-ontology-server')) {
+      add(file, lineNo, 'no-stale-mcp-ontology-server-path', line, 'Use in-repo Semantic Code Intelligence server paths such as `src/servers/mcp-http.ts`.');
+    }
+
+    if (line.includes('src/api/http-server.ts')) {
+      add(file, lineNo, 'no-stale-http-api-server-path', line, 'Use the current HTTP server path: `src/servers/http.ts`.');
+    }
+
+    const dogfoodToolCall = file === 'bin/dogfood-workflows.sh' ? line.match(/^\s*call\s+([A-Za-z0-9_]+)/) : null;
+    const adapterToolCall = file === 'scripts/dogfood-mcp.ts' ? line.match(/handleToolCall\(['"]([A-Za-z0-9_]+)['"]/) : null;
+    const toolCall = dogfoodToolCall?.[1] ?? adapterToolCall?.[1];
+    if (toolCall && !alphaToolNames.has(toolCall)) {
+      add(file, lineNo, 'dogfood-tool-must-be-alpha', line, `Use an Alpha MVP tool name; '${toolCall}' is not exposed on the default MCP/CLI alpha surface.`);
     }
   });
 }
@@ -108,7 +134,8 @@ function main(): void {
   checkPackageScripts();
 
   for (const file of workflowFiles()) scanTextSurface(file);
-  for (const file of ['.github/pull_request_template.md', 'README.md', 'TESTING_STRATEGY.md', 'tests/README.md', 'justfile']) scanTextSurface(file);
+  for (const file of claudeHookFiles()) scanTextSurface(file);
+  for (const file of ['.github/pull_request_template.md', 'README.md', 'TESTING_STRATEGY.md', 'tests/README.md', 'justfile', 'CLAUDE_DESKTOP_SETUP.md', 'bin/dogfood-workflows.sh', 'scripts/dogfood-mcp.ts']) scanTextSurface(file);
 
   const report = { ok: violations.length === 0, violations };
   if (json) {

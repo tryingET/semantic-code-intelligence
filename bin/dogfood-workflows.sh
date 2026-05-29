@@ -39,11 +39,12 @@ call() {
     -d "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"$name\",\"arguments\":$args}}"
 }
 
-echo "→ investigate-symbol (explore_codebase → build_symbol_map → graph_expand)"
-call workflow_locate_confirm_definition "{\"symbol\":\"$SYMBOL\",\"file\":\"$FILE\"}" | jq -r '.result.content[0].text' | head -c 400; echo; echo
+echo "→ investigate-symbol (find_definition → graph_expand)"
+call find_definition "{\"symbol\":\"$SYMBOL\",\"file\":\"$FILE\",\"maxResults\":20,\"precise\":true}" | jq -r '.result.content[0].text' | head -c 400; echo; echo
+call graph_expand "{\"symbol\":\"$SYMBOL\",\"file\":\"$FILE\",\"edges\":[\"imports\",\"exports\",\"callers\",\"callees\"],\"depth\":1,\"limit\":20}" | jq -r '.result.content[0].text' | head -c 400; echo; echo
 
-echo "→ plan-safe-rename (plan_rename → snapshot → checks)"
-RESP=$(call workflow_safe_rename "{\"oldName\":\"HTTPServer\",\"newName\":\"HTTPServerX\",\"file\":\"src/servers/http.ts\",\"runChecks\":false}")
+echo "→ plan-safe-rename (rename_safely → snapshot → checks)"
+RESP=$(call rename_safely "{\"oldName\":\"HTTPServer\",\"newName\":\"HTTPServerX\",\"file\":\"src/servers/http.ts\",\"runChecks\":false}")
 echo "$RESP" | jq -r '.result.content[0].text' | head -c 400; echo; echo
 
 echo "→ quick-patch-checks (get_snapshot → propose_patch → run_checks)"
@@ -57,6 +58,6 @@ PATCH=$(cat << 'EOF'
 *** End Patch
 EOF
 )
-call workflow_quick_patch_checks "{\"patch\":$(jq -Rs . <<< "$PATCH"),\"timeoutSec\": 120}" | jq -r '.result.content[0].text' | head -c 400; echo
+call patch_checks_in_snapshot "{\"patch\":$(jq -Rs . <<< "$PATCH"),\"timeoutSec\": 120}" | jq -r '.result.content[0].text' | head -c 400; echo
 
 exit 0

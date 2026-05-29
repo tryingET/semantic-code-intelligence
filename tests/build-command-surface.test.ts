@@ -260,14 +260,40 @@ describe('build command surface', () => {
         expect(workflow).not.toContain('analyze --path');
     });
 
-    test('CI integration startup uses current build artifact paths', () => {
+    test('CI integration startup uses current build and source server paths', () => {
         const workflow = readText('.github/workflows/ci.yml');
+        const ciCdWorkflow = readText('.github/workflows/ci-cd.yml');
 
         expect(workflow).toContain('bun run dist/http/http.js --port 7000');
         expect(workflow).toContain('bun run dist/mcp-http/mcp-http.js --port 7001');
         expect(workflow).not.toContain('dist/api/http.js');
         expect(workflow).not.toContain('dist/mcp-sse/mcp-sse.js');
         expect(workflow).not.toContain('MCP SSE');
+        expect(ciCdWorkflow).toContain('HTTP_API_PORT=7010 bun run src/servers/http.ts');
+        expect(ciCdWorkflow).toContain('MCP_HTTP_PORT=7011 bun run src/servers/mcp-http.ts');
+        expect(ciCdWorkflow).not.toContain('mcp-ontology-server');
+        expect(ciCdWorkflow).not.toContain('src/api/http-server.ts');
+        expect(ciCdWorkflow).not.toContain('MCP_SSE_PORT');
+    });
+
+    test('Claude setup surfaces use current MCP HTTP paths and Alpha tools', () => {
+        const setup = readText('CLAUDE_DESKTOP_SETUP.md');
+        const startHook = readText('.claude/hooks/start-mcp-server.sh.old');
+
+        expect(setup).toContain('MCP_HTTP_PORT=7001 bun run src/servers/mcp-http.ts');
+        expect(setup).toContain('"type": "streamable-http"');
+        expect(setup).toContain('"url": "http://localhost:7001/mcp"');
+        expect(setup).toContain('patch_checks_in_snapshot');
+        expect(setup).not.toContain('src/api/http-server.ts');
+        expect(setup).not.toContain('mcp-ontology-server');
+        expect(setup).not.toContain('rename_symbol');
+        expect(setup).not.toContain('search_semantic');
+        expect(startHook).toContain('MCP_HTTP_PORT');
+        expect(startHook).toContain('src/servers/mcp-http.ts');
+        expect(startHook).toContain('http://$MCP_HOST:$MCP_PORT/mcp');
+        expect(startHook).not.toContain('MCP_SSE_PORT');
+        expect(startHook).not.toContain('src/sse-server.ts');
+        expect(startHook).not.toContain('mcp-ontology-server');
     });
 
     test('README quick start only advertises supported packaged commands', () => {

@@ -111,7 +111,7 @@ export class MCPServer {
         // Create MCP adapter
         this.mcpAdapter = new MCPAdapter(this.coreAnalyzer);
 
-        console.error('Ontology MCP Server initialized');
+        console.error('Semantic Code Intelligence MCP Server initialized');
 
         // Start metrics endpoint on loopback only when explicitly requested.
         // Stdio protocol servers should not open a TCP listener by default.
@@ -149,14 +149,14 @@ export class MCPServer {
 
         // Connect and listen
         await this.server.connect(transport);
-        console.error('Ontology MCP Server running on stdio');
+        console.error('Semantic Code Intelligence MCP Server running on stdio');
     }
 
     async shutdown(): Promise<void> {
         if (this.coreAnalyzer) {
             await this.coreAnalyzer.dispose();
         }
-        console.error('Ontology MCP Server shut down');
+        console.error('Semantic Code Intelligence MCP Server shut down');
     }
 }
 

@@ -181,7 +181,7 @@ export class FastMCPServer {
             this.initialized = true;
             // Only log in debug mode, never in stdio mode
             if (process.env.DEBUG && !process.env.STDIO_MODE) {
-                console.error('Ontology MCP Server core initialized');
+                console.error('Semantic Code Intelligence MCP Server core initialized');
             }
         } catch (error) {
             // Always send initialization errors to stderr in stdio mode
@@ -241,7 +241,7 @@ export class FastMCPServer {
 
             // Only log in debug mode, never in stdio mode to prevent protocol pollution
             if (process.env.DEBUG && !process.env.STDIO_MODE) {
-                console.error('Ontology Fast MCP Server running on stdio');
+                console.error('Semantic Code Intelligence Fast MCP Server running on stdio');
             }
         } catch (error) {
             // Ensure errors go to stderr in stdio mode
@@ -258,7 +258,7 @@ export class FastMCPServer {
         }
         // Only log in debug mode, never in stdio mode
         if (process.env.DEBUG && !process.env.STDIO_MODE) {
-            console.error('Ontology MCP Server shut down');
+            console.error('Semantic Code Intelligence MCP Server shut down');
         }
     }
 }

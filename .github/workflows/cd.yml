@@ -214,7 +214,7 @@ jobs:
           
           ## What's New
           
-          This release includes the latest improvements to the Ontology-Enhanced LSP system:
+          This release includes the latest improvements to the Semantic Code Intelligence system:
           
           - 🧠 **Unified Core Architecture**: Protocol-agnostic analysis engine
           - ⚡ **Performance Optimized**: <100ms response time for 95% of requests

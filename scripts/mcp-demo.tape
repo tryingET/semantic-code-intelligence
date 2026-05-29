@@ -6,7 +6,7 @@ Set Theme "Dracula"
 Set TypingSpeed 30ms
 
 Clear
-Type "echo '📦 Ontology MCP (stdio) demo with VHS'"
+Type "echo '📦 Semantic Code Intelligence MCP (stdio) demo with VHS'"
 Enter
 Sleep 500ms
 Type "echo 'Repo: $(basename $(pwd))'"

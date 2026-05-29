@@ -41,7 +41,7 @@ else
   info "no stale owner/path placeholders"
 fi
 
-old_identity_hits="$(git grep -n -E '(ontology-lsp|ontology_mcp|ontology-mcp|ontology_lsp|Ontology-LSP|Ontology LSP|ontologyLSP|ONTOLOGY_LSP|ONTOLOGY_WORKSPACE|ONTOLOGY_DB_PATH|ontology-team|@ontology-lsp)' -- ':!.git/**' ':!scripts/migration-hygiene.sh' ':!docs/project/identity-and-compatibility.md' || true)"
+old_identity_hits="$(git grep -n -E '(ontology-lsp|ontology_mcp|ontology-mcp|ontology_lsp|Ontology-LSP|Ontology LSP|ontologyLSP|Ontology MCP|Ontology Fast MCP|Ontology-Enhanced LSP system|ONTOLOGY_LSP|ONTOLOGY_WORKSPACE|ONTOLOGY_DB_PATH|ontology-team|@ontology-lsp)' -- ':!.git/**' ':!scripts/migration-hygiene.sh' ':!docs/project/identity-and-compatibility.md' || true)"
 if [[ -n "$old_identity_hits" ]]; then
   fail "old ontology-lsp identity strings found:\n$old_identity_hits"
 else
