@@ -80,6 +80,12 @@ describe('McpToolWorkflowRunner', () => {
 
         expect(runner.errorHandlingOptionsForTool('read_file', {})).toBeUndefined();
         expect(
+            runner.errorHandlingOptionsForTool('propose_patch', { patch: '--- a/a\n+++ b/a\n@@ -1 +1 @@\n-a\n+b\n' })
+        ).toEqual({
+            timeoutMs: 600_000,
+            maxRetries: 0,
+        });
+        expect(
             runner.errorHandlingOptionsForTool('patch_checks_in_snapshot', {
                 commands: ['bun run typecheck', 'bun test tests/mcp-tool-workflow-runner.test.ts'],
                 timeoutSec: 120,

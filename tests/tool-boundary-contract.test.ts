@@ -312,11 +312,8 @@ describe('tool boundary contract', () => {
         symlinkSync(outside, join(root, '.ontology'));
         writeFileSync(join(root, 'package.json'), '{"type":"module"}\n', 'utf8');
         const store = new OverlayStore();
-        const snap = store.createSnapshot(false, { workspaceRoot: root });
 
-        await expect(store.runChecks(snap.id, ['true'], 5, { workspaceRoot: root })).rejects.toThrow(
-            '.ontology must not be a symlink'
-        );
+        expect(() => store.createSnapshot(false, { workspaceRoot: root })).toThrow('.ontology must not be a symlink');
     });
 
     test('server config rejects non-numeric ports and NaN validation', () => {

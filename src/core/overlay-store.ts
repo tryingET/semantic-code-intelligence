@@ -537,8 +537,8 @@ export class OverlayStore {
     private persistSnapshotSync(snap: Snapshot): void {
         try {
             this.writeSnapshotMetadataSync(snap);
-        } catch {
-            // Snapshot metadata is best-effort; in-memory behavior remains authoritative for current process.
+        } catch (error) {
+            throw new Error(`Failed to persist snapshot metadata: ${errorMessage(error)}`);
         }
     }
 
@@ -551,12 +551,21 @@ export class OverlayStore {
             args: { check: boolean; reverse: boolean };
             at: number;
         }
-    ): void {
+    ): { ok: boolean; message?: string } {
         try {
             const snap = this.ensureSnapshot(snapshotId);
+            const previousLastApply = snap.lastApply;
             snap.lastApply = receipt;
-            this.persistSnapshotSync(snap);
-        } catch {}
+            try {
+                this.persistSnapshotSync(snap);
+            } catch (error) {
+                snap.lastApply = previousLastApply;
+                return { ok: false, message: `Failed to persist snapshot apply receipt: ${errorMessage(error)}` };
+            }
+            return { ok: true };
+        } catch (error) {
+            return { ok: false, message: `Failed to record snapshot apply receipt: ${errorMessage(error)}` };
+        }
     }
 
     private loadSnapshotFromDisk(id: string, workspaceRoot?: string): Snapshot | null {
@@ -622,7 +631,12 @@ export class OverlayStore {
         const id = randomUUID();
         const snap: Snapshot = { id, createdAt: Date.now(), diffs: [], baseFingerprint, workspaceRoot };
         this.snapshots.set(id, snap);
-        this.persistSnapshotSync(snap);
+        try {
+            this.persistSnapshotSync(snap);
+        } catch (error) {
+            this.snapshots.delete(id);
+            throw error;
+        }
         return snap;
     }
 
@@ -891,6 +905,11 @@ export class OverlayStore {
         const unsafeMode = this.rejectUnsafePatchFileModes(normalizedDiff);
         if (unsafeMode) return { accepted: false, message: unsafeMode };
         const snap = this.ensureSnapshot(snapshotId);
+        const freshness = this.validateSnapshotBaseFresh(snap);
+        if (!freshness.ok) return { accepted: false, message: freshness.message };
+        if (snap.diffs.includes(normalizedDiff)) {
+            return { accepted: true, message: 'Patch already staged in snapshot' };
+        }
         const currentBytes = Buffer.byteLength(snap.diffs.join('\n'), 'utf8');
         const separatorBytes = snap.diffs.length ? 1 : 0;
         const nextBytes = currentBytes + separatorBytes + Buffer.byteLength(normalizedDiff, 'utf8');
@@ -900,21 +919,34 @@ export class OverlayStore {
         }
         const validation = this.validatePatchAppliesAgainstSnapshot(normalizedDiff, snap);
         if (!validation.ok) return { accepted: false, message: validation.message };
+        const previousTouched = snap.touchedFiles ? new Set(snap.touchedFiles) : undefined;
         snap.diffs.push(normalizedDiff);
         if (touched.length) {
             if (!snap.touchedFiles) snap.touchedFiles = new Set<string>();
             for (const f of touched) snap.touchedFiles.add(f);
         }
-        this.persistSnapshotSync(snap);
+        try {
+            this.persistSnapshotSync(snap);
+        } catch (error) {
+            snap.diffs.pop();
+            snap.touchedFiles = previousTouched;
+            return { accepted: false, message: errorMessage(error) };
+        }
         return { accepted: true };
+    }
+
+    private validateSnapshotBaseFresh(snap: Snapshot): { ok: boolean; message?: string } {
+        if (snap.baseFingerprint && this.workspaceBaseFingerprint(snap.workspaceRoot) !== snap.baseFingerprint) {
+            return { ok: false, message: 'Workspace changed since snapshot creation; create a fresh snapshot' };
+        }
+        return { ok: true };
     }
 
     private validatePatchAppliesAgainstSnapshot(diff: string, snap: Snapshot): { ok: boolean; message?: string } {
         const root = path.resolve(snap.workspaceRoot || process.cwd());
         const materializedDir = path.join(this.snapshotsRoot(snap.workspaceRoot), snap.id);
-        if (snap.baseFingerprint && this.workspaceBaseFingerprint(snap.workspaceRoot) !== snap.baseFingerprint) {
-            return { ok: false, message: 'Workspace changed since snapshot creation; create a fresh snapshot' };
-        }
+        const freshness = this.validateSnapshotBaseFresh(snap);
+        if (!freshness.ok) return freshness;
         if (snap.diffs.length === 0) {
             const materializedMarker = path.join(materializedDir, '.materialized');
             const canUseMaterialized =
@@ -2099,6 +2131,11 @@ export class OverlayStore {
             workspaceRoot;
         const diffFile = await this.effectiveApplyDiffFile(snap, dir, workspaceRoot, reverse);
         let output = '';
+        const outputWithReceiptStatus = (
+            currentOutput: string,
+            receiptStatus: { ok: boolean; message?: string }
+        ): string =>
+            receiptStatus.ok ? currentOutput : `${currentOutput}${currentOutput ? '\n' : ''}${receiptStatus.message}`;
         let applyCreatedDirs: string[] = [];
         let applyPreExistingDirs: string[] = [];
         if (
@@ -2108,14 +2145,14 @@ export class OverlayStore {
         ) {
             const elapsedMs = Date.now() - start;
             const message = 'Workspace changed since snapshot creation before apply; create a fresh snapshot';
-            this.recordLastApply(snapshotId, {
+            const receiptStatus = this.recordLastApply(snapshotId, {
                 ok: false,
                 elapsedMs,
                 outputTail: message,
                 args: { check, reverse },
                 at: Date.now(),
             });
-            return { ok: false, output: message, elapsedMs };
+            return { ok: false, output: outputWithReceiptStatus(message, receiptStatus), elapsedMs };
         }
         // Validate caller-controlled diff paths before invoking apply tools. Non-check apply
         // may need parent directories for newly added nested files; check/dry-run must not
@@ -2136,7 +2173,7 @@ export class OverlayStore {
         } catch {
             const elapsedMs = Date.now() - start;
             const message = 'Invalid apply_snapshot patch paths or missing overlay diff';
-            this.recordLastApply(snapshotId, {
+            const receiptStatus = this.recordLastApply(snapshotId, {
                 ok: false,
                 elapsedMs,
                 outputTail: message,
@@ -2145,7 +2182,7 @@ export class OverlayStore {
             });
             return {
                 ok: false,
-                output: message,
+                output: outputWithReceiptStatus(message, receiptStatus),
                 elapsedMs,
             };
         }
@@ -2159,14 +2196,14 @@ export class OverlayStore {
                 const message =
                     `${String(reversePreflight.stdout || '')}${String(reversePreflight.stderr || '')}` ||
                     'Reverse apply preflight failed';
-                this.recordLastApply(snapshotId, {
+                const receiptStatus = this.recordLastApply(snapshotId, {
                     ok: false,
                     elapsedMs,
                     outputTail: message.slice(-4000),
                     args: { check, reverse },
                     at: Date.now(),
                 });
-                return { ok: false, output: message, elapsedMs };
+                return { ok: false, output: outputWithReceiptStatus(message, receiptStatus), elapsedMs };
             }
         }
         const argsGit = ['apply'];
@@ -2187,25 +2224,29 @@ export class OverlayStore {
                 snap.applyCreatedDirs = [];
                 snap.applyPreExistingDirs = [];
             }
-            this.recordLastApply(snapshotId, {
+            const receiptStatus = this.recordLastApply(snapshotId, {
                 ok: true,
                 elapsedMs: elapsed,
                 outputTail: output.slice(-4000),
                 args: { check, reverse },
                 at: Date.now(),
             });
-            return { ok: true, output, elapsedMs: elapsed };
+            return {
+                ok: true,
+                output: outputWithReceiptStatus(output, receiptStatus),
+                elapsedMs: elapsed,
+            };
         }
         if (!check && !reverse)
             await this.removeRecordedApplyDirs(applyCreatedDirs, workspaceRoot).catch(() => undefined);
-        this.recordLastApply(snapshotId, {
+        const receiptStatus = this.recordLastApply(snapshotId, {
             ok: false,
             elapsedMs: Date.now() - start,
             outputTail: output.slice(-4000),
             args: { check, reverse },
             at: Date.now(),
         });
-        return { ok: false, output, elapsedMs: Date.now() - start };
+        return { ok: false, output: outputWithReceiptStatus(output, receiptStatus), elapsedMs: Date.now() - start };
     }
 
     getStatus(snapshotId: string, opts: { workspaceRoot?: string } = {}): any {
@@ -2220,6 +2261,10 @@ export class OverlayStore {
             lastApply: s.lastApply || null,
         };
     }
+}
+
+function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
 }
 
 export const overlayStore = new OverlayStore();

@@ -289,6 +289,7 @@ export class ToolRegistry {
         {
             name: 'propose_patch',
             description: 'Validate and stage a patch against a snapshot (diff-only, no write to disk)',
+            execution: { longRunning: true, disableRetries: true },
             inputSchema: {
                 type: 'object',
                 properties: {

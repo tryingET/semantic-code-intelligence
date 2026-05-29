@@ -242,6 +242,121 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
         }
     }, 30000);
 
+    test('does not report patch acceptance when snapshot metadata persistence fails', async () => {
+        const root = await fs.mkdtemp(path.join(tmpdir(), 'sci-overlay-persist-fail-'));
+        try {
+            await fs.writeFile(path.join(root, 'file.txt'), 'one\n', 'utf8');
+            const store = new OverlayStore();
+            const snap = store.createSnapshot(false, { workspaceRoot: root });
+            const originalWrite = (store as any).writeSnapshotMetadataSync;
+            (store as any).writeSnapshotMetadataSync = () => {
+                throw new Error('simulated metadata write failure');
+            };
+            const staged = store.stagePatch(
+                snap.id,
+                'diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-one\n+two\n'
+            );
+
+            expect(staged.accepted).toBe(false);
+            expect(staged.message).toContain('Failed to persist snapshot metadata');
+            expect(store.ensureSnapshot(snap.id, { workspaceRoot: root }).diffs).toHaveLength(0);
+            (store as any).writeSnapshotMetadataSync = originalWrite;
+        } finally {
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    });
+
+    test('repeated identical patch staging is idempotent within a snapshot', async () => {
+        const root = await fs.mkdtemp(path.join(tmpdir(), 'sci-overlay-idempotent-'));
+        try {
+            await fs.writeFile(path.join(root, 'file.txt'), 'one\n', 'utf8');
+            const store = new OverlayStore();
+            const snap = store.createSnapshot(false, { workspaceRoot: root });
+            const patch = 'diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-one\n+two\n';
+
+            expect(store.stagePatch(snap.id, patch).accepted).toBe(true);
+            const repeated = store.stagePatch(snap.id, patch);
+            expect(repeated.accepted).toBe(true);
+            expect(repeated.message).toContain('already staged');
+            expect(store.ensureSnapshot(snap.id, { workspaceRoot: root }).diffs).toHaveLength(1);
+        } finally {
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    });
+
+    test('duplicate patch staging still fails closed after workspace drift', async () => {
+        const root = await fs.mkdtemp(path.join(tmpdir(), 'sci-overlay-idempotent-drift-'));
+        try {
+            await fs.writeFile(path.join(root, 'file.txt'), 'one\n', 'utf8');
+            spawnSync('git', ['init', '-q'], { cwd: root });
+            spawnSync('git', ['add', 'file.txt'], { cwd: root });
+            const store = new OverlayStore();
+            const snap = store.createSnapshot(false, { workspaceRoot: root });
+            const patch = 'diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-one\n+two\n';
+
+            expect(store.stagePatch(snap.id, patch).accepted).toBe(true);
+            await fs.writeFile(path.join(root, 'file.txt'), 'workspace drift\n', 'utf8');
+            const repeated = store.stagePatch(snap.id, patch);
+            expect(repeated.accepted).toBe(false);
+            expect(repeated.message).toContain('Workspace changed since snapshot creation');
+            expect(store.ensureSnapshot(snap.id, { workspaceRoot: root }).diffs).toHaveLength(1);
+        } finally {
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    });
+
+    test('apply check surfaces snapshot metadata persistence failures without changing apply result', async () => {
+        const root = await fs.mkdtemp(path.join(tmpdir(), 'sci-overlay-apply-receipt-fail-'));
+        try {
+            await fs.writeFile(path.join(root, 'file.txt'), 'one\n', 'utf8');
+            const store = new OverlayStore();
+            const snap = store.createSnapshot(false, { workspaceRoot: root });
+            const patch = 'diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-one\n+two\n';
+            expect(store.stagePatch(snap.id, patch).accepted).toBe(true);
+            const originalWrite = (store as any).writeSnapshotMetadataSync;
+            (store as any).writeSnapshotMetadataSync = () => {
+                throw new Error('simulated apply receipt write failure');
+            };
+
+            try {
+                const checked = await store.applyToWorkingTree(snap.id, { check: true, workspaceRoot: root });
+                expect(checked.ok).toBe(true);
+                expect(checked.output).toContain('Failed to persist snapshot apply receipt');
+                expect(await fs.readFile(path.join(root, 'file.txt'), 'utf8')).toBe('one\n');
+            } finally {
+                (store as any).writeSnapshotMetadataSync = originalWrite;
+            }
+        } finally {
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    }, 30000);
+
+    test('mutating apply receipt persistence failures do not falsely report an unapplied patch', async () => {
+        const root = await fs.mkdtemp(path.join(tmpdir(), 'sci-overlay-apply-receipt-mutating-fail-'));
+        try {
+            await fs.writeFile(path.join(root, 'file.txt'), 'one\n', 'utf8');
+            const store = new OverlayStore();
+            const snap = store.createSnapshot(false, { workspaceRoot: root });
+            const patch = 'diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-one\n+two\n';
+            expect(store.stagePatch(snap.id, patch).accepted).toBe(true);
+            const originalWrite = (store as any).writeSnapshotMetadataSync;
+            (store as any).writeSnapshotMetadataSync = () => {
+                throw new Error('simulated apply receipt write failure');
+            };
+
+            try {
+                const applied = await store.applyToWorkingTree(snap.id, { workspaceRoot: root });
+                expect(applied.ok).toBe(true);
+                expect(applied.output).toContain('Failed to persist snapshot apply receipt');
+                expect(await fs.readFile(path.join(root, 'file.txt'), 'utf8')).toBe('two\n');
+            } finally {
+                (store as any).writeSnapshotMetadataSync = originalWrite;
+            }
+        } finally {
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    }, 30000);
+
     test('refreshes materialized snapshot when new staged diffs are added', async () => {
         const rel = `.tmp-overlay-rematerialize-${Date.now()}-${Math.random().toString(16).slice(2)}.txt`;
         const abs = path.join(process.cwd(), rel);

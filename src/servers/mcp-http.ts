@@ -51,6 +51,9 @@ type SessionRecord = {
     transport: StreamableHTTPServerTransport;
     analyzer: CodeAnalyzer;
     adapter: MCPAdapter;
+    createdAt: number;
+    lastSeenAt: number;
+    activeConsumers: number;
     disposing?: boolean;
     disposed?: boolean;
     disposePromise?: Promise<void>;
@@ -61,16 +64,38 @@ type McpEventPayload = { sessionId?: string; ts?: number; [key: string]: unknown
 type TransportRequest = Parameters<StreamableHTTPServerTransport['handleRequest']>[0];
 type TransportResponse = Parameters<StreamableHTTPServerTransport['handleRequest']>[1];
 
-const cfg = getEnvironmentConfig();
-const HOST = process.env.MCP_HTTP_HOST || cfg.host || 'localhost';
-const PORT = Number(process.env.MCP_HTTP_PORT || cfg.ports.mcpHTTP || 7001);
-const CORS_ORIGIN = resolveMcpHttpCorsOrigin(HOST);
+export type McpHttpServerStartOptions = {
+    host?: string;
+    port?: number;
+};
 
-const app = express();
+let activeCorsHost: string | undefined;
+
+function resolveMcpHttpRuntimeConfig(options: McpHttpServerStartOptions = {}): { host: string; port: number } {
+    const cfg = getEnvironmentConfig();
+    return {
+        host: options.host ?? process.env.MCP_HTTP_HOST ?? cfg.host ?? 'localhost',
+        port: Number(options.port ?? process.env.MCP_HTTP_PORT ?? cfg.ports.mcpHTTP ?? 7001),
+    };
+}
+
+function dynamicMcpHttpCorsOrigin(
+    origin: string | undefined,
+    callback: (err: Error | null, allow?: boolean | string | string[]) => void
+): void {
+    const policy = resolveMcpHttpCorsOrigin(activeCorsHost ?? resolveMcpHttpRuntimeConfig().host);
+    if (typeof policy === 'function') {
+        policy(origin, callback);
+        return;
+    }
+    callback(null, policy);
+}
+
+export const app = express();
 app.use(express.json({ limit: maxJsonBodyBytes() }));
 app.use(
     cors({
-        origin: CORS_ORIGIN,
+        origin: dynamicMcpHttpCorsOrigin,
         exposedHeaders: ['Mcp-Session-Id'],
         allowedHeaders: ['Content-Type', 'mcp-session-id', 'mcp-protocol-version'],
     })
@@ -230,6 +255,75 @@ app.get('/metrics', (_req, res) => {
 // In-memory session map
 const sessions: Record<string, SessionRecord> = {};
 const mcpEvents = new EventEmitter();
+let sessionSweepTimer: ReturnType<typeof setInterval> | null = null;
+let activeServer: HttpServer | null = null;
+
+function parsePositiveIntegerEnv(name: string, fallback: number): number {
+    const raw = process.env[name];
+    if (!raw) return fallback;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
+function sessionTtlMs(): number {
+    return parsePositiveIntegerEnv('MCP_HTTP_SESSION_TTL_MS', 30 * 60 * 1000);
+}
+
+function sessionSweepIntervalMs(): number {
+    return parsePositiveIntegerEnv('MCP_HTTP_SESSION_SWEEP_INTERVAL_MS', 60 * 1000);
+}
+
+function touchSession(record: SessionRecord | undefined, now = Date.now()): void {
+    if (record && !record.disposed) record.lastSeenAt = now;
+}
+
+function beginSessionConsumer(record: SessionRecord | undefined): void {
+    if (!record || record.disposed) return;
+    record.activeConsumers += 1;
+    touchSession(record);
+}
+
+function endSessionConsumer(record: SessionRecord | undefined): void {
+    if (!record) return;
+    record.activeConsumers = Math.max(0, record.activeConsumers - 1);
+    touchSession(record);
+}
+
+function clearSessionSweeperIfIdle(): void {
+    if (sessionSweepTimer && Object.keys(sessions).length === 0) {
+        clearInterval(sessionSweepTimer);
+        sessionSweepTimer = null;
+    }
+}
+
+function ensureSessionSweeper(): void {
+    if (sessionSweepTimer) return;
+    sessionSweepTimer = setInterval(() => {
+        void disposeExpiredSessions(Date.now());
+    }, sessionSweepIntervalMs());
+    sessionSweepTimer.unref?.();
+}
+
+async function disposeExpiredSessions(now = Date.now()): Promise<void> {
+    const ttl = sessionTtlMs();
+    const expired = Object.entries(sessions).filter(
+        ([, record]) => record.activeConsumers === 0 && now - record.lastSeenAt > ttl
+    );
+    await Promise.all(expired.map(([sessionId, record]) => disposeSession(record, sessionId)));
+}
+
+export function mcpHttpSessionCount(): number {
+    return Object.keys(sessions).length;
+}
+
+export async function disposeExpiredMcpHttpSessions(now = Date.now()): Promise<void> {
+    await disposeExpiredSessions(now);
+}
+
+export async function disposeAllMcpHttpSessions(): Promise<void> {
+    await Promise.all(Object.entries(sessions).map(([sessionId, record]) => disposeSession(record, sessionId)));
+    clearSessionSweeperIfIdle();
+}
 
 async function disposeSession(record: SessionRecord | undefined, sessionId?: string): Promise<void> {
     if (!record) return;
@@ -256,6 +350,7 @@ async function disposeSession(record: SessionRecord | undefined, sessionId?: str
         } finally {
             record.disposed = true;
             record.disposing = false;
+            clearSessionSweeperIfIdle();
         }
     });
 
@@ -263,6 +358,7 @@ async function disposeSession(record: SessionRecord | undefined, sessionId?: str
 }
 
 async function createMcpServer(desiredSid?: string, enableJsonResponse = false): Promise<SessionRecord> {
+    ensureSessionSweeper();
     // Initialize core analyzer
     const coreConfig = createDefaultCoreConfig();
     coreConfig.monitoring.enabled = false; // disable periodic metrics for MCP HTTP dogfooding
@@ -334,7 +430,8 @@ async function createMcpServer(desiredSid?: string, enableJsonResponse = false):
         console.warn('[MCP HTTP] Resources registration skipped:', (e as Error)?.message || String(e));
     }
 
-    return { server, transport, analyzer, adapter };
+    const now = Date.now();
+    return { server, transport, analyzer, adapter, createdAt: now, lastSeenAt: now, activeConsumers: 0 };
 }
 
 // POST /mcp - client -> server
@@ -380,6 +477,7 @@ app.post('/mcp', async (req, res) => {
         let provisionalSessionId: string | undefined;
         if (sessionId && sessions[sessionId]) {
             record = sessions[sessionId];
+            touchSession(record);
         } else if (!sessionId && containsInitializeRequest(req.body)) {
             try {
                 const preSid = randomUUID();
@@ -404,6 +502,7 @@ app.post('/mcp', async (req, res) => {
             const transport = initializedRecord.transport;
             // When session is initialized, store it
             transport.onsessioninitialized = (sid: string) => {
+                touchSession(initializedRecord);
                 sessions[sid] = initializedRecord;
                 try {
                     res.setHeader('Mcp-Session-Id', sid);
@@ -454,7 +553,12 @@ app.post('/mcp', async (req, res) => {
         } catch {}
 
         try {
-            await activeRecord.transport.handleRequest(req as TransportRequest, res as TransportResponse, req.body);
+            beginSessionConsumer(activeRecord);
+            try {
+                await activeRecord.transport.handleRequest(req as TransportRequest, res as TransportResponse, req.body);
+            } finally {
+                endSessionConsumer(activeRecord);
+            }
             if (provisionalSessionId && res.statusCode >= 400) {
                 try {
                     if (!res.headersSent) res.removeHeader('Mcp-Session-Id');
@@ -487,6 +591,7 @@ app.post('/mcp', async (req, res) => {
         // a prior GET /mcp handshake (fixes chicken-and-egg for list/call via HTTP)
         const sid = (activeRecord.transport as { sessionId?: string }).sessionId;
         if (sid && !sessions[sid]) {
+            touchSession(activeRecord);
             sessions[sid] = activeRecord;
             try {
                 if (!res.headersSent) res.setHeader('Mcp-Session-Id', sid);
@@ -516,8 +621,14 @@ app.get('/mcp', async (req, res) => {
         sendMissingSession(res);
         return;
     }
+    const record = sessions[sessionId];
     try {
-        await sessions[sessionId].transport.handleRequest(req as TransportRequest, res as TransportResponse);
+        beginSessionConsumer(record);
+        try {
+            await record.transport.handleRequest(req as TransportRequest, res as TransportResponse);
+        } finally {
+            endSessionConsumer(record);
+        }
     } catch (error) {
         // eslint-disable-next-line no-console
         console.error('[MCP HTTP] GET handleRequest error:', error);
@@ -534,6 +645,8 @@ app.get('/mcp-events', (req, res) => {
         sendMissingSession(res);
         return;
     }
+    const record = sessions[sessionId];
+    beginSessionConsumer(record);
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -560,13 +673,17 @@ app.get('/mcp-events', (req, res) => {
     mcpEvents.on('toolError', onErr);
 
     // heartbeat
-    const hb = setInterval(() => send('heartbeat', {}), 15000);
+    const hb = setInterval(() => {
+        touchSession(record);
+        send('heartbeat', {});
+    }, 15000);
     hb?.unref?.();
 
     req.on('close', () => {
         clearInterval(hb);
         mcpEvents.off('toolCall', onCall);
         mcpEvents.off('toolError', onErr);
+        endSessionConsumer(record);
         res.end();
     });
 });
@@ -591,15 +708,53 @@ app.get('/health', (_req, res) => {
     res.json({ status: 'healthy', sessions: Object.keys(sessions).length, timestamp: new Date().toISOString() });
 });
 
-// Start server
-let server: HttpServer | null = null;
-(async () => {
-    server = app.listen(PORT, HOST, () => {
-        const address = server?.address();
-        const boundPort = typeof address === 'object' && address ? (address as AddressInfo).port : PORT;
-        console.log(`MCP Streamable HTTP server listening at http://${HOST}:${boundPort}`);
+export async function stopMcpHttpServer(server: HttpServer): Promise<void> {
+    await disposeAllMcpHttpSessions();
+    await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+            if (error) reject(error);
+            else resolve();
+        });
     });
-})().catch((e) => {
-    console.error('Failed to start MCP HTTP server:', e);
-    process.exit(1);
-});
+}
+
+function installSessionDisposingClose(server: HttpServer): HttpServer {
+    const originalClose = server.close.bind(server);
+    let closeStarted = false;
+    server.close = ((callback?: (err?: Error) => void) => {
+        const closeCallback = (error?: Error) => {
+            if (activeServer === server) activeServer = null;
+            activeCorsHost = undefined;
+            callback?.(error);
+        };
+        if (closeStarted) return originalClose(closeCallback);
+        closeStarted = true;
+        void disposeAllMcpHttpSessions().finally(() => originalClose(closeCallback));
+        return server;
+    }) as typeof server.close;
+    return server;
+}
+
+export function startMcpHttpServer(options: McpHttpServerStartOptions = {}): HttpServer {
+    if (activeServer) throw new Error('MCP HTTP server is already running in this process');
+    ensureSessionSweeper();
+    const { host, port } = resolveMcpHttpRuntimeConfig(options);
+    activeCorsHost = host;
+    const server = app.listen(port, host, () => {
+        const address = server.address();
+        const boundPort = typeof address === 'object' && address ? (address as AddressInfo).port : port;
+        console.log(`MCP Streamable HTTP server listening at http://${host}:${boundPort}`);
+    });
+    activeServer = installSessionDisposingClose(server);
+    return activeServer;
+}
+
+let server: HttpServer | null = null;
+if (import.meta.main) {
+    try {
+        server = startMcpHttpServer();
+    } catch (e) {
+        console.error('Failed to start MCP HTTP server:', e);
+        process.exit(1);
+    }
+}

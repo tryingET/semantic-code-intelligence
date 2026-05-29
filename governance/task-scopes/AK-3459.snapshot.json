@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-05-29T16:29:12.155172435+00:00",
+  "task_id": 3459,
+  "entity_version": 2,
+  "commit_sha": null,
+  "scope": {
+    "allowed_paths": [
+      "governance/task-scopes/AK-3459.snapshot.json",
+      "src/core/overlay-store.ts",
+      "src/core/tools/registry.ts",
+      "src/servers/mcp-http.ts",
+      "tests/mcp-http-entrypoint-lifecycle.test.ts",
+      "tests/mcp-tool-workflow-runner.test.ts",
+      "tests/overlay-store-apply.test.ts",
+      "tests/tool-boundary-contract.test.ts"
+    ],
+    "required_paths": [
+      "governance/task-scopes/AK-3459.snapshot.json",
+      "src/core/overlay-store.ts",
+      "src/core/tools/registry.ts",
+      "src/servers/mcp-http.ts",
+      "tests/mcp-http-entrypoint-lifecycle.test.ts",
+      "tests/mcp-tool-workflow-runner.test.ts",
+      "tests/overlay-store-apply.test.ts",
+      "tests/tool-boundary-contract.test.ts"
+    ],
+    "forbidden_paths": []
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}
