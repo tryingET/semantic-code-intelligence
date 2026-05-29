@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { constants } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { overlayStore } from '../overlay-store.js';
@@ -443,21 +444,26 @@ export class SnapshotPatchWorkflowService {
 
             if (includeContent && dir) {
                 const readBounded = async (file: string) => {
+                    let handle: fs.FileHandle | null = null;
                     try {
-                        const filePath = path.join(dir, file);
-                        const stat = await fs.lstat(filePath);
-                        if (!stat.isFile() || stat.isSymbolicLink()) {
+                        const realDir = await fs.realpath(dir);
+                        const filePath = path.join(realDir, file);
+                        handle = await fs.open(filePath, constants.O_RDONLY | constants.O_NOFOLLOW);
+                        const stat = await handle.stat();
+                        if (!stat.isFile()) {
                             return { text: '', truncated: false };
                         }
-                        const [realDir, realFile] = await Promise.all([fs.realpath(dir), fs.realpath(filePath)]);
-                        const relative = path.relative(realDir, realFile);
+                        const openedPath = await fs.realpath(`/proc/self/fd/${handle.fd}`).catch(() => filePath);
+                        const relative = path.relative(realDir, openedPath);
                         if (relative.startsWith('..') || path.isAbsolute(relative)) {
                             return { text: '', truncated: false };
                         }
-                        const text = await fs.readFile(filePath, 'utf8');
+                        const text = await handle.readFile('utf8');
                         return truncateUtf8WholeCodePoints(text, maxBytes);
                     } catch {
                         return { text: '', truncated: false };
+                    } finally {
+                        await handle?.close().catch(() => undefined);
                     }
                 };
                 contents = {
