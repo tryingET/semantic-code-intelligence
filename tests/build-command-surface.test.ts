@@ -43,7 +43,10 @@ describe('build command surface', () => {
         expect(gitignore).toContain('.pi-subagent-sessions/');
         expect(gitignore).toContain('.pi-subagent-sessions.self-memory.json');
 
-        for (const artifactPath of ['.pi-subagent-sessions/self-memory.jsonl', '.pi-subagent-sessions.self-memory.json']) {
+        for (const artifactPath of [
+            '.pi-subagent-sessions/self-memory.jsonl',
+            '.pi-subagent-sessions.self-memory.json',
+        ]) {
             const ignored = spawnSync('git', ['check-ignore', '--quiet', artifactPath], {
                 cwd: process.cwd(),
                 encoding: 'utf8',
@@ -60,10 +63,14 @@ describe('build command surface', () => {
             writeFileSync(join(dir, '.pi-subagent-sessions.self-memory.json'), '{"local":"session"}\n');
             writeFileSync(join(dir, '.pi-subagent-sessions', 'session.jsonl'), '{"local":"trace"}\n');
 
-            const add = spawnSync('git', ['add', '-f', '.pi-subagent-sessions.self-memory.json', '.pi-subagent-sessions/session.jsonl'], {
-                cwd: dir,
-                encoding: 'utf8',
-            });
+            const add = spawnSync(
+                'git',
+                ['add', '-f', '.pi-subagent-sessions.self-memory.json', '.pi-subagent-sessions/session.jsonl'],
+                {
+                    cwd: dir,
+                    encoding: 'utf8',
+                }
+            );
             expect(add.status, add.stderr || add.stdout).toBe(0);
 
             const proc = spawnSync('bash', [join(process.cwd(), 'scripts/migration-hygiene.sh')], {
@@ -90,6 +97,8 @@ describe('build command surface', () => {
         expect(packageJson.scripts?.['test:raw']).toBe('bun test');
         expect(packageJson.scripts?.['test:coverage']).toBe('scripts/run-coverage-tests.sh');
         expect(packageJson.scripts?.['command-surface:check']).toBe('bun run scripts/check-command-surface.ts');
+        expect(packageJson.scripts?.['alpha:evidence:check']).toContain('mkdir -p .test-results &&');
+        expect(packageJson.scripts?.['alpha:evidence:packet']).toContain('mkdir -p .test-results &&');
         expect(packageJson.scripts?.lint).toBe(
             'bunx @biomejs/biome lint --diagnostic-level=error --files-ignore-unknown=true src tests scripts package.json biome.json'
         );
@@ -118,6 +127,37 @@ describe('build command surface', () => {
         expect(slicer).toContain('BASE_GIT_FINGERPRINT="$(git_tree_fingerprint)"');
         expect(slicer).toContain('AFTER_GIT_FINGERPRINT="$(git_tree_fingerprint)"');
         expect(slicer).toContain('Test slice changed git working tree content');
+    });
+
+    test('slice analysis tolerates missing roots and labels local slice directories', () => {
+        const missing = spawnSync(
+            'bun',
+            ['run', 'scripts/analyze-slices.ts', join(tmpdir(), `sci-missing-${Date.now()}`)],
+            {
+                cwd: process.cwd(),
+                encoding: 'utf8',
+            }
+        );
+        expect(missing.status, missing.stderr).toBe(0);
+        expect(missing.stdout).toContain('No slice batch-report artifacts found');
+
+        const dir = mkdtempSync(join(tmpdir(), 'sci-local-slices-'));
+        try {
+            mkdirSync(join(dir, 'slice-1-of-2'), { recursive: true });
+            writeFileSync(
+                join(dir, 'slice-1-of-2', 'batch-report.jsonl'),
+                '{"batch":1,"start":0,"end":1,"duration_ms":2345,"exit_code":0,"files":["tests/b.test.ts"]}\n'
+            );
+            const local = spawnSync('bun', ['run', 'scripts/analyze-slices.ts', dir], {
+                cwd: process.cwd(),
+                encoding: 'utf8',
+            });
+            expect(local.status, local.stderr).toBe(0);
+            expect(local.stdout).toContain('[slice-1-of-2] Batch 1');
+            expect(local.stdout).not.toContain('[unknown]');
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
     });
 
     test('normal test runners fail closed for invalid batch sizing', () => {
@@ -169,7 +209,10 @@ describe('build command surface', () => {
             });
 
             expect(proc.status).toBe(1);
-            const rows = readFileSync(report, 'utf8').trim().split(/\r?\n/).map((line) => JSON.parse(line));
+            const rows = readFileSync(report, 'utf8')
+                .trim()
+                .split(/\r?\n/)
+                .map((line) => JSON.parse(line));
             expect(rows).toHaveLength(1);
             expect(rows[0].files).toEqual([weirdPath]);
 
@@ -283,7 +326,9 @@ describe('build command surface', () => {
         expect(packageJson.scripts?.['build:mcp-stdio']).toBe('bun run scripts/build-server.ts mcp-stdio');
         expect(packageJson.scripts?.['build:mcp-http']).toBe('bun run scripts/build-server.ts mcp-http');
         expect(packageJson.scripts?.['build:mcp-enhanced']).toBe('bun run scripts/build-server.ts mcp-enhanced');
-        expect(packageJson.scripts?.['public-surface:check']).toBe('bun run build:all && bun run scripts/check-public-runtime-surface.ts');
+        expect(packageJson.scripts?.['public-surface:check']).toBe(
+            'bun run build:all && bun run scripts/check-public-runtime-surface.ts'
+        );
         expect(packageJson.scripts?.prepack).toBe('bun run public-surface:check');
     });
 
@@ -301,7 +346,15 @@ describe('build command surface', () => {
         const packageJson = JSON.parse(readText('package.json')) as { scripts?: Record<string, string> };
         const helper = readText('scripts/build-server.ts');
 
-        for (const script of ['build:core', 'build:lsp', 'build:mcp-stdio', 'build:mcp-http', 'build:mcp-enhanced', 'build:http', 'build:cli']) {
+        for (const script of [
+            'build:core',
+            'build:lsp',
+            'build:mcp-stdio',
+            'build:mcp-http',
+            'build:mcp-enhanced',
+            'build:http',
+            'build:cli',
+        ]) {
             expect(packageJson.scripts?.[script]).toStartWith('bun run scripts/build-server.ts ');
             expect(packageJson.scripts?.[script]).not.toContain('--external');
         }

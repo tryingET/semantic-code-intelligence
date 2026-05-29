@@ -5,8 +5,8 @@
  * Expects structure like: slices/slice-1/.test-results/batch-report.jsonl
  */
 
-import { readdirSync, readFileSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { basename, dirname, join, relative } from 'node:path'
 
 type BatchRec = {
   batch: number
@@ -55,6 +55,10 @@ function human(ms: number): string {
 
 async function main() {
   const slicesRoot = process.argv[2] || 'slices'
+  if (!existsSync(slicesRoot)) {
+    console.log('\n## Aggregate Slice Analysis\n- No slice batch-report artifacts found')
+    return
+  }
   let batchFiles = findFiles(slicesRoot, 'batch-report.jsonl')
   if (batchFiles.length === 0) {
     console.log('\n## Aggregate Slice Analysis\n- No slice batch-report artifacts found')
@@ -63,8 +67,9 @@ async function main() {
 
   let all: BatchRec[] = []
   for (const f of batchFiles) {
-    const m = f.match(/slices\/(.+?)\//)
-    const slice = m?.[1] || 'unknown'
+    const relDir = relative(slicesRoot, dirname(f))
+    const firstSegment = relDir && relDir !== '.' ? relDir.split(/[\\/]/)[0] : basename(slicesRoot)
+    const slice = firstSegment || 'unknown'
     all = all.concat(parseJsonl(f, slice))
   }
   if (all.length === 0) {

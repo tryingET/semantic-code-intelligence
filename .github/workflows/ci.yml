@@ -213,9 +213,9 @@ jobs:
           echo "- Batch size: ${BATCH_SIZE}" >> $GITHUB_STEP_SUMMARY
           echo "- Timeout (per bun): ${TIMEOUT} ms" >> $GITHUB_STEP_SUMMARY
           echo "- Files: $(wc -l < .test-results/slice-${SLICE}-of-6/files.lst 2>/dev/null || echo 0)" >> $GITHUB_STEP_SUMMARY
-          PASSES=$(grep -c "^(pass)" .test-results/slice-${SLICE}.log 2>/dev/null || echo 0)
-          SKIPS=$(grep -c "^(skip)" .test-results/slice-${SLICE}.log 2>/dev/null || echo 0)
-          FAILS=$(grep -c "^(fail)" .test-results/slice-${SLICE}.log 2>/dev/null || echo 0)
+          PASSES=$(grep -c "^(pass)" .test-results/slice-${SLICE}.log 2>/dev/null || true); PASSES=${PASSES:-0}
+          SKIPS=$(grep -c "^(skip)" .test-results/slice-${SLICE}.log 2>/dev/null || true); SKIPS=${SKIPS:-0}
+          FAILS=$(grep -c "^(fail)" .test-results/slice-${SLICE}.log 2>/dev/null || true); FAILS=${FAILS:-0}
           echo "- Results: ${PASSES} pass, ${SKIPS} skip, ${FAILS} fail" >> $GITHUB_STEP_SUMMARY
       - name: Analyze batch report (slice)
         env:
