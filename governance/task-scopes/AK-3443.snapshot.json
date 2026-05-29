@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-05-29T03:37:12.510908469+00:00",
+  "task_id": 3443,
+  "entity_version": 2,
+  "commit_sha": null,
+  "scope": {
+    "allowed_paths": [
+      "docs/engineering.local.md",
+      "governance/task-scopes",
+      "justfile",
+      "scripts/loop-scope-check.ts",
+      "tests/loop-scope-check.test.ts"
+    ],
+    "required_paths": [
+      "justfile",
+      "scripts/loop-scope-check.ts",
+      "tests/loop-scope-check.test.ts"
+    ],
+    "forbidden_paths": []
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}
