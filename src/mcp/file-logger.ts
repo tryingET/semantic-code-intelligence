@@ -5,8 +5,19 @@
  * which are used for MCP protocol communication.
  */
 
-import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
-import { dirname, join } from 'path';
+import {
+    closeSync,
+    constants,
+    existsSync,
+    lstatSync,
+    mkdirSync,
+    openSync,
+    realpathSync,
+    renameSync,
+    statSync,
+    writeSync,
+} from 'fs';
+import { dirname, isAbsolute, join, parse, relative, resolve } from 'path';
 
 export interface LogEntry {
     timestamp: string;
@@ -45,35 +56,65 @@ export class FileLogger {
         this.ensureLogDir();
 
         // Set current log file
-        this.currentLogFile = join(this.config.logDir, `mcp-server-${new Date().toISOString().split('T')[0]}.log`);
+        this.currentLogFile = this.config.logDir
+            ? join(this.config.logDir, `mcp-server-${new Date().toISOString().split('T')[0]}.log`)
+            : '';
 
         // Rotate logs if needed
         this.rotateLogs();
     }
 
+    private assertNoExistingSymlinkInPath(targetDir: string): void {
+        const absolute = resolve(targetDir);
+        const { root } = parse(absolute);
+        let current = root;
+        for (const part of absolute
+            .slice(root.length)
+            .split(/[\\/]+/)
+            .filter(Boolean)) {
+            current = join(current, part);
+            if (!existsSync(current)) continue;
+            const stat = lstatSync(current);
+            if (stat.isSymbolicLink()) {
+                throw new Error(`Refusing MCP log path with symlink component: ${current}`);
+            }
+        }
+    }
+
     private ensureLogDir(): void {
         try {
-            if (!existsSync(this.config.logDir)) {
-                mkdirSync(this.config.logDir, { recursive: true });
+            const resolved = resolve(this.config.logDir);
+            this.assertNoExistingSymlinkInPath(dirname(resolved));
+            if (!existsSync(resolved)) {
+                mkdirSync(resolved, { recursive: true });
             }
+            this.assertNoExistingSymlinkInPath(resolved);
+            const stat = lstatSync(resolved);
+            if (!stat.isDirectory() || stat.isSymbolicLink()) {
+                throw new Error('MCP log directory must be a non-symlink directory');
+            }
+            this.config.logDir = resolved;
         } catch (error) {
-            // Fallback to current directory if can't create log dir
-            this.config.logDir = process.cwd();
+            // Disable file logging rather than falling through symlinked workspace paths.
+            this.config.logDir = '';
         }
     }
 
     private rotateLogs(): void {
+        if (!this.currentLogFile) return;
         try {
             if (existsSync(this.currentLogFile)) {
-                const stats = require('fs').statSync(this.currentLogFile);
+                const linkStat = lstatSync(this.currentLogFile);
+                if (linkStat.isSymbolicLink() || !linkStat.isFile()) return;
+                const stats = statSync(this.currentLogFile);
                 if (stats.size > this.config.maxFileSize) {
                     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
                     const rotatedFile = this.currentLogFile.replace('.log', `-${timestamp}.log`);
-                    require('fs').renameSync(this.currentLogFile, rotatedFile);
+                    renameSync(this.currentLogFile, rotatedFile);
                 }
             }
         } catch (error) {
-            // Ignore rotation errors - we'll overwrite the file instead
+            // Ignore rotation errors; later writes still use O_NOFOLLOW.
         }
     }
 
@@ -85,27 +126,53 @@ export class FileLogger {
             message: entry.message,
         };
 
-        if (entry.data) {
-            return JSON.stringify({ ...baseEntry, data: entry.data }) + '\n';
-        }
-
-        if (entry.error) {
-            return JSON.stringify({ ...baseEntry, error: entry.error }) + '\n';
-        }
-
-        return JSON.stringify(baseEntry) + '\n';
+        const fullEntry: Record<string, any> = { ...baseEntry };
+        if (entry.data !== undefined) fullEntry.data = entry.data;
+        if (entry.error) fullEntry.error = entry.error;
+        return JSON.stringify(fullEntry) + '\n';
     }
 
     private writeToFile(entry: LogEntry): void {
+        if (!this.currentLogFile) return;
+        let fd: number | undefined;
         try {
             const logLine = this.formatLogEntry(entry);
-            appendFileSync(this.currentLogFile, logLine, 'utf8');
+            const logDir = dirname(this.currentLogFile);
+            this.assertNoExistingSymlinkInPath(logDir);
+            const logDirReal = realpathSync(logDir);
+            fd = openSync(
+                this.currentLogFile,
+                constants.O_CREAT | constants.O_APPEND | constants.O_WRONLY | constants.O_NOFOLLOW,
+                0o600
+            );
+            const stat = lstatSync(this.currentLogFile);
+            if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('MCP log file must be a non-symlink file');
+            const openedReal = this.realpathOpenFileDescriptor(fd);
+            const openedRelative = relative(logDirReal, openedReal);
+            if (!openedRelative || openedRelative.startsWith('..') || isAbsolute(openedRelative)) {
+                throw new Error('MCP log file descriptor escaped log directory');
+            }
+            writeSync(fd, logLine, undefined, 'utf8');
         } catch (error) {
             // Fallback to console if file writing fails
             if (this.config.enableConsole) {
                 console.error('Failed to write to log file:', error);
                 console.error('Original log entry:', entry);
             }
+        } finally {
+            if (fd !== undefined) {
+                try {
+                    closeSync(fd);
+                } catch {}
+            }
+        }
+    }
+
+    private realpathOpenFileDescriptor(fd: number): string {
+        try {
+            return realpathSync(`/proc/self/fd/${fd}`);
+        } catch {
+            return realpathSync(`/dev/fd/${fd}`);
         }
     }
 

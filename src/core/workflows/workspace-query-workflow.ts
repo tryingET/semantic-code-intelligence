@@ -245,7 +245,6 @@ export class WorkspaceQueryWorkflowService {
                 }
                 if (ignore.has(entry.name)) continue;
                 const childRel = relativeDir === '.' ? entry.name : `${relativeDir}/${entry.name}`;
-                const childAbs = path.join(absoluteDir, entry.name);
                 let childResolved;
                 try {
                     childResolved = await resolveWorkspacePath(childRel, {
@@ -260,7 +259,7 @@ export class WorkspaceQueryWorkflowService {
                 if (!stat) continue;
                 if (stat.isDirectory()) {
                     files.push({ path: childResolved.relativePath, type: 'directory' });
-                    await visit(childAbs, childResolved.relativePath, depth + 1);
+                    await visit(childResolved.realPath, childResolved.relativePath, depth + 1);
                 } else if (stat.isFile()) {
                     files.push({ path: childResolved.relativePath, type: 'file', size: stat.size });
                 }

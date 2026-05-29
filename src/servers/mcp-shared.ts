@@ -10,6 +10,7 @@ import {
     ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
+import { isCoreError } from '../core/errors.js';
 
 type PromptArgumentSpec = { name: string; description?: string; required?: boolean };
 type PromptRenderResult = {
@@ -395,10 +396,7 @@ export function registerCommonResources(
                 }
                 if (tail === 'status') {
                     const { overlayStore } = await import('../core/overlay-store.js');
-                    let snap: any = null;
-                    try {
-                        snap = (overlayStore as any).getStatus?.(id, { workspaceRoot: opts.workspaceRoot }) || null;
-                    } catch {}
+                    const snap = (overlayStore as any).getStatus?.(id, { workspaceRoot: opts.workspaceRoot }) || null;
                     const body = JSON.stringify(
                         {
                             id,
@@ -414,12 +412,8 @@ export function registerCommonResources(
                 }
                 if (tail === 'progress') {
                     const { overlayStore } = await import('../core/overlay-store.js');
-                    let snapshotDir = '';
-                    try {
-                        snapshotDir =
-                            (overlayStore as any).getSnapshotDirectory?.(id, { workspaceRoot: opts.workspaceRoot }) ||
-                            '';
-                    } catch {}
+                    const snapshotDir =
+                        (overlayStore as any).getSnapshotDirectory?.(id, { workspaceRoot: opts.workspaceRoot }) || '';
                     const text = await readSnapshotArtifactText(
                         snapshotDir,
                         'progress.log',
@@ -431,6 +425,9 @@ export function registerCommonResources(
             throw new McpError(ErrorCode.InvalidParams, `Unsupported resource ${uriStr}`);
         } catch (e) {
             if (e instanceof McpError) throw e;
+            if (isCoreError(e) && (e.code === 'InvalidParams' || e.code === 'UnknownTool')) {
+                throw new McpError(ErrorCode.InvalidParams, e.message);
+            }
             throw new McpError(ErrorCode.InternalError, e instanceof Error ? e.message : String(e));
         }
     });

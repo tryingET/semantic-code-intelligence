@@ -65,4 +65,14 @@ describe('CLI workflow error envelopes', () => {
         expect(body.error?.code).toBe('InvalidParams');
         expect(String(body.error?.message || '')).toContain('Invalid snapshot id');
     });
+
+    test('generic workflow run_checks preserves InvalidParams for invalid snapshots', async () => {
+        const res = await runCli(['workflow', 'run_checks', '--args', '{"snapshot":"not-a-real-snapshot"}', '--json']);
+        expect(res.code).toBe(1);
+        expect(res.stderr.trim()).toBe('');
+        const body = parseJson(res.stdout);
+        expect(body.success).toBe(false);
+        expect(body.error?.code).toBe('InvalidParams');
+        expect(String(body.error?.message || '')).toContain('Invalid snapshot id');
+    });
 });

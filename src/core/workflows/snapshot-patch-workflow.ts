@@ -4,6 +4,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { overlayStore } from '../overlay-store.js';
 import { openWorkspaceFileForRead } from '../workspace-path.js';
+import { workflowErrorResult } from './tool-result-normalizer.js';
 
 export type SnapshotWorkflowResult = { payload: unknown; isError?: boolean } | { text: string; isError?: boolean };
 
@@ -696,7 +697,7 @@ export class SnapshotPatchWorkflowService {
     async runChecks(args: Record<string, any>): Promise<SnapshotWorkflowResult> {
         const snapshot = String(args?.snapshot || '');
         if (!snapshot) {
-            return { text: 'Missing snapshot', isError: true };
+            return workflowErrorResult('InvalidParams', 'Missing snapshot');
         }
         const cmds = Array.isArray(args?.commands) ? (args?.commands as string[]) : [];
         const timeoutSec = typeof args?.timeoutSec === 'number' ? args.timeoutSec : 120;
@@ -710,7 +711,7 @@ export class SnapshotPatchWorkflowService {
             });
         } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
-            return { text: `Invalid snapshot: ${msg}`, isError: true };
+            return workflowErrorResult('InvalidParams', `Invalid snapshot: ${msg}`);
         }
         return {
             payload: {
@@ -729,7 +730,7 @@ export class SnapshotPatchWorkflowService {
         const check = !!args?.check;
         const reverse = !!args?.reverse;
         if (!snapshot) {
-            return { text: 'Missing snapshot', isError: true };
+            return workflowErrorResult('InvalidParams', 'Missing snapshot');
         }
         if (process.env.ALLOW_SNAPSHOT_APPLY !== '1') {
             return {

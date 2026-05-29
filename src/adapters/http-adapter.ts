@@ -20,6 +20,7 @@ import { ToolExecutor } from '../core/tools/executor.js';
 import type { CodeAnalyzer } from '../core/unified-analyzer.js';
 import { assertHttpToolAllowed as assertSharedHttpToolAllowed } from '../core/workflows/http-tool-policy.js';
 import type { SnapshotWorkflowResult } from '../core/workflows/snapshot-patch-workflow.js';
+import { normalizeWorkflowResult, workflowErrorPayload } from '../core/workflows/tool-result-normalizer.js';
 import { ToolWorkflowRouter } from '../core/workflows/tool-workflow-router.js';
 import { workspaceInputToPath } from '../core/workspace-input.js';
 import { resolveWorkspacePath } from '../core/workspace-path.js';
@@ -1247,58 +1248,12 @@ export class HTTPAdapter {
         });
     }
 
-    private toolWorkflowPayload(result: SnapshotWorkflowResult, fallback: any = {}): any {
-        try {
-            if (result && 'payload' in result) return result.payload;
-            if (result && 'text' in result) {
-                try {
-                    return JSON.parse(result.text);
-                } catch {
-                    return fallback;
-                }
-            }
-        } catch {}
-        return fallback;
-    }
-
     private toolWorkflowErrorPayload(result: SnapshotWorkflowResult, fallbackMessage: string) {
-        const payload = this.toolWorkflowPayload(result, undefined);
-        if (payload && typeof payload === 'object' && 'error' in payload && payload.error) return payload.error;
-        if (payload && typeof payload === 'object') {
-            return {
-                code: (payload as any).code || 'Internal',
-                message: (payload as any).message || fallbackMessage,
-                data: payload,
-            };
-        }
-        const message = result && 'text' in result && result.text ? result.text.slice(0, 2000) : fallbackMessage;
-        const lower = message.toLowerCase();
-        const code =
-            lower.includes('invalid') ||
-            lower.includes('missing') ||
-            lower.includes('unknown snapshot') ||
-            lower.includes('not available')
-                ? 'InvalidParams'
-                : 'Internal';
-        return { code, message };
+        return workflowErrorPayload(result, fallbackMessage);
     }
 
     private normalizeToolWorkflowResultForHttp(result: SnapshotWorkflowResult): any {
-        try {
-            if (result?.isError)
-                return { ok: false, error: this.toolWorkflowErrorPayload(result, 'Tool execution failed') };
-            if (result && 'payload' in result) return result.payload;
-            if (result && 'text' in result) {
-                try {
-                    return JSON.parse(result.text);
-                } catch {
-                    return { ok: true, content: result.text };
-                }
-            }
-            return { ok: true, value: result };
-        } catch {
-            return { ok: false, error: { code: 'Internal', message: 'Failed to normalize tool result' } };
-        }
+        return normalizeWorkflowResult(result);
     }
 
     private statusForCoreErrorCode(code: unknown, fallback = 500): number {

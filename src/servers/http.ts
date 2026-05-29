@@ -23,6 +23,11 @@ import { ToolExecutor } from '../core/tools/executor.js';
 import type { CodeAnalyzer } from '../core/unified-analyzer';
 import { assertHttpToolAllowed as assertSharedHttpToolAllowed } from '../core/workflows/http-tool-policy.js';
 import type { SnapshotWorkflowResult } from '../core/workflows/snapshot-patch-workflow.js';
+import {
+    normalizeWorkflowResult,
+    workflowErrorPayload,
+    workflowPayload,
+} from '../core/workflows/tool-result-normalizer.js';
 import { ToolWorkflowRouter } from '../core/workflows/tool-workflow-router.js';
 import { resolveConfiguredWorkspaceRoot } from '../core/workspace-root.js';
 import { metricsRegistry, recordLayerLatency, recordToolEnd, recordToolStart } from '../instrumentation/metrics.js';
@@ -1036,13 +1041,10 @@ export class HTTPServer {
                                     headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 });
                             const { overlayStore } = await import('../core/overlay-store.js');
-                            let snapshotDir = '';
-                            try {
-                                snapshotDir =
-                                    (overlayStore as any).getSnapshotDirectory?.(id, {
-                                        workspaceRoot: this.config.workspaceRoot,
-                                    }) || '';
-                            } catch {}
+                            const snapshotDir =
+                                (overlayStore as any).getSnapshotDirectory?.(id, {
+                                    workspaceRoot: this.config.workspaceRoot,
+                                }) || '';
                             const text = await readSnapshotArtifactText(snapshotDir || undefined, 'progress.log', '');
                             return new Response(JSON.stringify({ success: true, data: { id, progress: text } }), {
                                 status: 200,
@@ -1499,53 +1501,15 @@ export class HTTPServer {
     }
 
     private toolWorkflowPayload(result: SnapshotWorkflowResult, fallback: any = {}): any {
-        try {
-            if (result && 'payload' in result) return result.payload;
-            if (result && 'text' in result) {
-                try {
-                    return JSON.parse(result.text);
-                } catch {
-                    return fallback;
-                }
-            }
-        } catch {}
-        return fallback;
+        return workflowPayload(result, fallback);
     }
 
     private toolWorkflowErrorPayload(result: SnapshotWorkflowResult, fallbackMessage: string) {
-        const payload = this.toolWorkflowPayload(result, undefined);
-        if (payload && typeof payload === 'object' && 'error' in payload && payload.error) {
-            return payload.error;
-        }
-        if (payload && typeof payload === 'object') {
-            return {
-                code: (payload as any).code || 'Internal',
-                message: (payload as any).message || fallbackMessage,
-                data: payload,
-            };
-        }
-        const message = result && 'text' in result && result.text ? result.text.slice(0, 2000) : fallbackMessage;
-        return { code: 'Internal', message };
+        return workflowErrorPayload(result, fallbackMessage);
     }
 
     private normalizeToolWorkflowResultForHttp(result: SnapshotWorkflowResult): any {
-        try {
-            if (result?.isError) {
-                const error = this.toolWorkflowErrorPayload(result, 'Tool execution failed');
-                return { ok: false, error };
-            }
-            if (result && 'payload' in result) return result.payload;
-            if (result && 'text' in result) {
-                try {
-                    return JSON.parse(result.text);
-                } catch {
-                    return { ok: true, content: result.text };
-                }
-            }
-            return { ok: true, value: result };
-        } catch {
-            return { ok: false, error: { message: 'Failed to normalize tool result' } };
-        }
+        return normalizeWorkflowResult(result);
     }
 
     private async getRequestBody(request: Request): Promise<string | undefined> {

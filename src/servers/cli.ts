@@ -28,6 +28,7 @@ import { parseIntegerOption, strictJsonParse } from '../adapters/utils.js';
 import { CoreError, isCoreError } from '../core/errors.js';
 import { assertAlphaMvpToolAllowed } from '../core/tools/alpha-surface.js';
 import { SCI_VERSION } from '../core/version.js';
+import { workflowErrorPayload } from '../core/workflows/tool-result-normalizer.js';
 import { workspaceInputToPath } from '../core/workspace-input.js';
 import { openWorkspaceFileForRead } from '../core/workspace-path.js';
 import { getPushgatewayUrl, pushToGateway, recordToolEnd, recordToolStart } from '../instrumentation/metrics.js';
@@ -877,23 +878,10 @@ class CLI {
                 data: res.error.data,
             };
         }
-        if (res && typeof res === 'object' && 'payload' in res && res.payload && typeof res.payload === 'object') {
-            const payload = res.payload as any;
-            if (payload.error && typeof payload.error === 'object') {
-                return {
-                    code: String(payload.error.code || 'Internal'),
-                    message: String(payload.error.message || 'Tool execution failed'),
-                    data: payload.error.data,
-                };
-            }
-            return {
-                code: String(payload.code || 'Internal'),
-                message: String(payload.message || 'Tool execution failed'),
-                data: payload,
-            };
+        if (res && typeof res === 'object' && ('payload' in res || 'text' in res)) {
+            return workflowErrorPayload(res, 'Tool execution failed');
         }
-        const message = res && typeof res === 'object' && 'text' in res ? String(res.text) : 'Tool execution failed';
-        return { code: 'Internal', message };
+        return { code: 'Internal', message: 'Tool execution failed' };
     }
 
     private formatWorkflowResultForCli(res: any): any {

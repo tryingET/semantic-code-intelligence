@@ -176,6 +176,16 @@ bindDescribe('Alpha MVP MCP HTTP protocol', () => {
         expect(text).not.toContain('commands: ["bun test "tests/weird test.ts""]');
     });
 
+    test('unknown snapshot resources return InvalidParams consistently', async () => {
+        const missingSnapshot = '00000000-0000-4000-8000-000000000000';
+        for (const [index, tail] of ['overlay.diff', 'status', 'progress'].entries()) {
+            const res = await resourcesRead(120 + index, `snapshot://${missingSnapshot}/${tail}`);
+            expect(res.status).toBe(200);
+            expect(res.body?.error?.code).toBe(-32602);
+            expect(String(res.body?.error?.message || '')).toContain('Unknown snapshot id');
+        }
+    });
+
     test('snapshot progress resource refuses symlinked artifacts', async () => {
         const snapshotCall = await toolsCall(91, 'get_snapshot', { preferExisting: false });
         const snapshot = JSON.parse(snapshotCall.body?.result?.content?.[0]?.text || '{}');

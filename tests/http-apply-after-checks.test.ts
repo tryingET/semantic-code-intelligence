@@ -10,16 +10,20 @@ const port = 7019;
 const canBind = await canBindTcp(host, port);
 const bindDescribe = canBind ? describe : describe.skip;
 
-async function callTool(base: string, name: string, args: Record<string, any>) {
+async function callToolRaw(base: string, name: string, args: Record<string, any>) {
     const res = await fetch(`${base}/api/v1/tools/call`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ name, arguments: args }),
     });
+    return { status: res.status, body: await res.json() };
+}
+
+async function callTool(base: string, name: string, args: Record<string, any>) {
+    const res = await callToolRaw(base, name, args);
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.success).toBe(true);
-    return body.result;
+    expect(res.body.success).toBe(true);
+    return res.body.result;
 }
 
 // Helper to unwrap MCP-style result content
@@ -143,5 +147,18 @@ export class TestClass {
         expect(out).toBeDefined();
         expect(out.ok).toBe(false);
         expect(out.commands?.[0]?.ok).toBe(false);
+    }, 30000);
+
+    test('returns InvalidParams for invalid snapshot through HTTP tools/call', async () => {
+        const res = await callToolRaw(base, 'run_checks', {
+            snapshot: 'not-a-real-snapshot',
+            commands: ['true'],
+            timeoutSec: 60,
+        });
+
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+        expect(res.body.error?.code).toBe('InvalidParams');
+        expect(String(res.body.error?.message || '')).toContain('Invalid snapshot id');
     }, 30000);
 });

@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
+import { CoreError } from './errors.js';
 import { isOutsideWorkspaceRelative } from './workspace-path.js';
 
 export type CheckCommandReceipt = {
@@ -601,7 +602,7 @@ export class OverlayStore {
 
     private assertValidId(id: string): void {
         if (!id || !this.isValidSnapshotId(id)) {
-            throw new Error('Invalid snapshot id');
+            throw new CoreError('InvalidParams', 'Invalid snapshot id');
         }
     }
 
@@ -649,11 +650,11 @@ export class OverlayStore {
         const workspaceRoot = opts.workspaceRoot ? this.resolveWorkspaceBase(opts.workspaceRoot) : undefined;
         const inMemory = this.snapshots.get(trimmed);
         if (inMemory && workspaceRoot && this.resolveWorkspaceBase(inMemory.workspaceRoot) !== workspaceRoot) {
-            throw new Error('Unknown snapshot id');
+            throw new CoreError('InvalidParams', 'Unknown snapshot id');
         }
         const found = inMemory || this.loadSnapshotFromDisk(trimmed, workspaceRoot);
         if (!found || (workspaceRoot && this.resolveWorkspaceBase(found.workspaceRoot) !== workspaceRoot)) {
-            throw new Error('Unknown snapshot id');
+            throw new CoreError('InvalidParams', 'Unknown snapshot id');
         }
         return found;
     }
@@ -1995,30 +1996,64 @@ export class OverlayStore {
         return Array.from(dirs).sort((a, b) => a.length - b.length);
     }
 
-    private collectApplyDirState(dirs: string[], workspaceRoot?: string): { missing: string[]; existing: string[] } {
+    private applyTargetDirPrefixes(
+        dirs: string[],
+        workspaceRoot?: string
+    ): Array<{ absolutePath: string; relativePath: string }> {
         const root = this.resolveWorkspaceBase(workspaceRoot);
-        const missing = new Set<string>();
-        const existing = new Set<string>();
+        const prefixes: Array<{ absolutePath: string; relativePath: string }> = [];
+        const seen = new Set<string>();
         for (const dir of dirs) {
             let current = '';
             for (const part of dir.split('/').filter(Boolean)) {
                 current = current ? `${current}/${part}` : part;
-                const { absolutePath, relativePath } = this.containedPath(root, current, 'apply_snapshot directory');
-                if (!fs.existsSync(absolutePath)) {
-                    missing.add(relativePath);
-                    continue;
-                }
-                const stat = fs.lstatSync(absolutePath);
-                if (!stat.isDirectory() || stat.isSymbolicLink()) {
-                    throw new Error('apply_snapshot directory must be a non-symlink directory');
-                }
-                existing.add(relativePath);
+                const contained = this.containedPath(root, current, 'apply_snapshot directory');
+                if (seen.has(contained.relativePath)) continue;
+                seen.add(contained.relativePath);
+                prefixes.push(contained);
             }
+        }
+        return prefixes;
+    }
+
+    private collectApplyDirState(dirs: string[], workspaceRoot?: string): { missing: string[]; existing: string[] } {
+        const missing = new Set<string>();
+        const existing = new Set<string>();
+        for (const { absolutePath, relativePath } of this.applyTargetDirPrefixes(dirs, workspaceRoot)) {
+            if (!fs.existsSync(absolutePath)) {
+                missing.add(relativePath);
+                continue;
+            }
+            const stat = fs.lstatSync(absolutePath);
+            if (!stat.isDirectory() || stat.isSymbolicLink()) {
+                throw new Error('apply_snapshot directory must be a non-symlink directory');
+            }
+            existing.add(relativePath);
         }
         return {
             missing: Array.from(missing).sort((a, b) => b.length - a.length),
             existing: Array.from(existing).sort((a, b) => a.length - b.length),
         };
+    }
+
+    private collectApplyDirFingerprints(dirs: string[], workspaceRoot?: string): Map<string, string> {
+        const fingerprints = new Map<string, string>();
+        for (const { absolutePath, relativePath } of this.applyTargetDirPrefixes(dirs, workspaceRoot)) {
+            const stat = fs.lstatSync(absolutePath);
+            if (!stat.isDirectory() || stat.isSymbolicLink()) {
+                throw new Error('apply_snapshot directory must be a non-symlink directory');
+            }
+            fingerprints.set(relativePath, `${stat.dev}:${stat.ino}:${stat.mode}:${stat.uid}:${stat.gid}`);
+        }
+        return fingerprints;
+    }
+
+    private applyDirFingerprintsMatch(left: Map<string, string>, right: Map<string, string>): boolean {
+        if (left.size !== right.size) return false;
+        for (const [key, value] of left) {
+            if (right.get(key) !== value) return false;
+        }
+        return true;
     }
 
     private async removeRecordedApplyDirs(dirs: string[] | undefined, workspaceRoot?: string): Promise<void> {
@@ -2138,6 +2173,8 @@ export class OverlayStore {
             receiptStatus.ok ? currentOutput : `${currentOutput}${currentOutput ? '\n' : ''}${receiptStatus.message}`;
         let applyCreatedDirs: string[] = [];
         let applyPreExistingDirs: string[] = [];
+        let applyEnsureDirs: string[] = [];
+        let applyDirFingerprints = new Map<string, string>();
         if (
             !reverse &&
             snap?.baseFingerprint &&
@@ -2159,16 +2196,17 @@ export class OverlayStore {
         // create workspace directories before proving preview-only behavior.
         try {
             const diffText = await fsp.readFile(diffFile, 'utf8');
-            const ensureDirs = this.collectApplyTargetDirs(diffText);
+            applyEnsureDirs = this.collectApplyTargetDirs(diffText);
             if (!check && !reverse) {
-                const dirState = this.collectApplyDirState(ensureDirs, workspaceRoot);
+                const dirState = this.collectApplyDirState(applyEnsureDirs, workspaceRoot);
                 applyCreatedDirs = dirState.missing;
                 applyPreExistingDirs = dirState.existing;
-                for (const rel of ensureDirs) {
+                for (const rel of applyEnsureDirs) {
                     if (!rel || rel === '.' || rel === '/') continue;
                     const { absolutePath } = this.containedPath(workspaceRoot, rel, 'apply_snapshot directory');
                     await fsp.mkdir(absolutePath, { recursive: true });
                 }
+                applyDirFingerprints = this.collectApplyDirFingerprints(applyEnsureDirs, workspaceRoot);
             }
         } catch {
             const elapsedMs = Date.now() - start;
@@ -2200,6 +2238,25 @@ export class OverlayStore {
                     ok: false,
                     elapsedMs,
                     outputTail: message.slice(-4000),
+                    args: { check, reverse },
+                    at: Date.now(),
+                });
+                return { ok: false, output: outputWithReceiptStatus(message, receiptStatus), elapsedMs };
+            }
+        }
+        if (!check && !reverse) {
+            try {
+                const latestFingerprints = this.collectApplyDirFingerprints(applyEnsureDirs, workspaceRoot);
+                if (!this.applyDirFingerprintsMatch(applyDirFingerprints, latestFingerprints)) {
+                    throw new Error('apply_snapshot target directories changed before apply');
+                }
+            } catch {
+                const elapsedMs = Date.now() - start;
+                const message = 'apply_snapshot target directories changed before apply';
+                const receiptStatus = this.recordLastApply(snapshotId, {
+                    ok: false,
+                    elapsedMs,
+                    outputTail: message,
                     args: { check, reverse },
                     at: Date.now(),
                 });

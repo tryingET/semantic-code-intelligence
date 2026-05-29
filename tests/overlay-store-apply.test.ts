@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
@@ -101,6 +101,23 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
         expect(status.lastApply).toMatchObject({ ok: false, args: { check: true, reverse: false } });
         expect(status.lastApply.outputTail).toBe('Invalid apply_snapshot patch paths or missing overlay diff');
     }, 30000);
+
+    test('apply target directory fingerprints detect recreated normal directories', () => {
+        const nestedDir = `.tmp-overlay-dir-fingerprint-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        const childDir = path.join(nestedDir, 'child');
+        try {
+            rmSync(nestedDir, { recursive: true, force: true });
+            mkdirSync(childDir, { recursive: true });
+            const before = (overlayStore as any).collectApplyDirFingerprints([`${nestedDir}/child`]);
+            rmSync(childDir, { recursive: true, force: true });
+            mkdirSync(childDir, { recursive: true });
+            const after = (overlayStore as any).collectApplyDirFingerprints([`${nestedDir}/child`]);
+
+            expect((overlayStore as any).applyDirFingerprintsMatch(before, after)).toBe(false);
+        } finally {
+            rmSync(nestedDir, { recursive: true, force: true });
+        }
+    });
 
     test('nested add-file apply reverses file and empty parent directory', async () => {
         const nestedDir = `.tmp-overlay-apply-${Date.now()}-${Math.random().toString(16).slice(2)}`;
