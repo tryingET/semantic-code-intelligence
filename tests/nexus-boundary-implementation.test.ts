@@ -137,7 +137,8 @@ describe('nexus boundary regressions', () => {
             const index = await (server as any).findWebUiFile('index.html', ['dist', null]);
 
             expect(index?.filePath).toContain(`${path.sep}web-ui${path.sep}index.html`);
-            expect(await index.file.exists()).toBe(true);
+            expect(Buffer.isBuffer(index.file)).toBe(true);
+            expect(index.file.length).toBeGreaterThan(0);
         } finally {
             process.chdir(originalCwd);
         }

@@ -1740,9 +1740,9 @@ export class OverlayStore {
                     // Prefer a quick tsgo typecheck against touched TS files
                     const limited = tsFiles
                         .slice(0, 50) // cap to avoid overly long cmdlines
-                        .map((f) => this.shellQuote(f))
+                        .map((f) => this.shellQuote(f.startsWith('-') ? `./${f}` : f))
                         .join(' ');
-                    const quick = `bunx tsgo --noEmit --pretty false -- ${limited}`;
+                    const quick = `bunx tsgo --noEmit --pretty false --ignoreConfig ${limited}`;
                     // Prepend quick check if no explicit commands were provided, or if it fits within the command cap.
                     if (!(commands && commands.length)) {
                         cmdList = [quick];

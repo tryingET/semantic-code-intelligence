@@ -650,6 +650,7 @@ describe('nexus contract regressions', () => {
         });
 
         expect(response.status).toBe(200);
+        expect(response.headers['Access-Control-Allow-Origin']).toBeUndefined();
         expect(calls[0].position).toEqual({ line: 0, character: 0 });
         expect(calls[0].uri).toContain(workspaceRoot);
     });
@@ -1102,6 +1103,7 @@ describe('nexus contract regressions', () => {
         });
 
         expect(response.status).toBe(200);
+        expect(response.headers['Access-Control-Allow-Origin']).toBeUndefined();
         expect(calls).toHaveLength(1);
         expect(calls[0]).toMatchObject({ query: 'needle', options: { maxResults: 5 } });
         expect(response.body).toContain('event: search-data');

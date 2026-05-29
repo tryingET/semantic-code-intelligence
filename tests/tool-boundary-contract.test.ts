@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { getConfig, validatePorts } from '../src/core/config/server-config';
+import { getConfig, getEnvironmentConfig, validatePorts } from '../src/core/config/server-config';
 import { OverlayStore } from '../src/core/overlay-store';
 import { ToolRegistry } from '../src/core/tools/registry';
 
@@ -249,8 +249,9 @@ describe('tool boundary contract', () => {
         expect(store.stagePatch(snap.id, diff).accepted).toBe(true);
 
         const result = await store.runChecks(snap.id, [], 5, { workspaceRoot: root, onlyTouched: true });
-        expect(result.commands[0]?.command).toContain("-- '--help.ts'");
+        expect(result.commands[0]?.command).toContain("--ignoreConfig './--help.ts'");
         expect(result.output).not.toContain("Unknown compiler option '--help.ts'");
+        expect(result.output).not.toContain("Unknown compiler option '--'");
     });
 
     test('run_checks rejects oversized individual command strings before execution', async () => {
@@ -322,6 +323,16 @@ describe('tool boundary contract', () => {
         rememberEnv('HTTP_API_PORT');
         process.env.HTTP_API_PORT = 'abc';
         expect(() => getConfig()).toThrow('Invalid numeric environment variable HTTP_API_PORT');
+
+        rememberEnv('BUN_ENV');
+        rememberEnv('TEST_API_PORT');
+        rememberEnv('TEST_MCP_PORT');
+        rememberEnv('TEST_LSP_PORT');
+        process.env.BUN_ENV = 'test';
+        process.env.TEST_API_PORT = '7999';
+        process.env.TEST_MCP_PORT = '7998';
+        process.env.TEST_LSP_PORT = '7997';
+        expect(getEnvironmentConfig().ports).toMatchObject({ testAPI: 7999, testMCP: 7998, testLSP: 7997 });
 
         expect(() =>
             validatePorts({

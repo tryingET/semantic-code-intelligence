@@ -92,7 +92,7 @@ export function getConfig(): ServerConfig {
  * Test configuration with different ports to avoid conflicts
  */
 export function getTestConfig(): ServerConfig {
-    return {
+    const config: ServerConfig = {
         ...DEFAULT_CONFIG,
         ports: {
             httpAPI: 7010, // Test instance of HTTP API
@@ -106,6 +106,19 @@ export function getTestConfig(): ServerConfig {
         maxRetries: 1, // Fewer retries for tests
         cacheEnabled: false, // Disable cache for tests
     };
+
+    if (process.env.TEST_API_PORT) {
+        config.ports.testAPI = parseIntegerEnv('TEST_API_PORT', process.env.TEST_API_PORT);
+    }
+    if (process.env.TEST_MCP_PORT) {
+        config.ports.testMCP = parseIntegerEnv('TEST_MCP_PORT', process.env.TEST_MCP_PORT);
+    }
+    if (process.env.TEST_LSP_PORT) {
+        config.ports.testLSP = parseIntegerEnv('TEST_LSP_PORT', process.env.TEST_LSP_PORT);
+    }
+
+    validatePorts(config);
+    return config;
 }
 
 /**

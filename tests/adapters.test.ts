@@ -536,7 +536,7 @@ describe('Protocol Adapters Integration', () => {
                 method: 'OPTIONS',
                 url: '/api/definition',
                 headers: {
-                    origin: 'https://example.com',
+                    origin: 'http://localhost:7000',
                     'access-control-request-method': 'POST',
                     'access-control-request-headers': 'content-type',
                 },
@@ -545,9 +545,17 @@ describe('Protocol Adapters Integration', () => {
             const response = await context.adapters.http.handleRequest(corsRequest);
 
             expect(response.status).toBe(200);
-            expect(response.headers['Access-Control-Allow-Origin']).toBe('*');
+            expect(response.headers['Access-Control-Allow-Origin']).toBe('http://localhost:7000');
             expect(response.headers['Access-Control-Allow-Methods']).toContain('POST');
-            expect(response.headers['Access-Control-Allow-Headers']).toContain('Content-Type');
+            expect(response.headers['Access-Control-Allow-Headers']).toContain('content-type');
+            expect(response.headers.Vary).toBe('Origin');
+
+            const rejected = await context.adapters.http.handleRequest({
+                ...corsRequest,
+                headers: { ...corsRequest.headers, origin: 'https://example.com' },
+            });
+            expect(rejected.status).toBe(403);
+            expect(rejected.headers['Access-Control-Allow-Origin']).toBe('null');
         });
 
         test('should handle HTTP errors gracefully', async () => {

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -83,6 +83,14 @@ bindDescribe('Nexus HTTP ingress regressions', () => {
         const body = await res.json();
         expect(body.success).toBe(false);
         expect(body.error?.code).toBe('InvalidParams');
+    });
+
+    test('adapter fallback GET routes do not grant wildcard CORS to non-loopback origins', async () => {
+        const res = await fetch(`${base}/api/v1/stats`, {
+            headers: { origin: 'https://attacker.example' },
+        });
+        expect(res.status).toBe(200);
+        expect(res.headers.get('access-control-allow-origin')).toBe('null');
     });
 
     test('HTTP snapshot progress refuses symlinked progress artifacts', async () => {
@@ -182,6 +190,42 @@ bindDescribe('Nexus HTTP ingress regressions', () => {
         expect(body.success).toBe(true);
         expect(body.data.count).toBeGreaterThan(0);
         expect(JSON.stringify(body.data)).toContain('WorkspaceOnlyNexus');
+    });
+
+    test('direct HTTP ast-query rejects non-numeric limits instead of disabling caps', async () => {
+        const res = await fetch(`${base}/api/v1/ast-query`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+                language: 'typescript',
+                query: '(identifier) @id',
+                paths: ['target.ts'],
+                limit: 'not-a-number',
+            }),
+        });
+        expect(res.status).toBe(400);
+        const body = await res.json();
+        expect(body.success).toBe(false);
+        expect(body.error?.code).toBe('InvalidParams');
+        expect(body.error?.message).toContain('limit must be an integer');
+    });
+
+    test('web UI static lookup refuses symlink escapes from dist root', async () => {
+        const root = mkdtempSync(join(tmpdir(), 'sci-ui-symlink-'));
+        const oldCwd = process.cwd();
+        try {
+            mkdirSync(join(root, 'web-ui', 'dist'), { recursive: true });
+            const outside = join(root, 'outside-secret.txt');
+            writeFileSync(outside, 'web-ui-symlink-secret\n');
+            symlinkSync(outside, join(root, 'web-ui', 'dist', 'leak.txt'));
+            process.chdir(root);
+            const localServer = new HTTPServer({ host, port: 0, workspaceRoot: root, enableOpenAPI: false });
+            const found = await (localServer as any).findWebUiFile('leak.txt', ['dist']);
+            expect(found).toBeNull();
+        } finally {
+            process.chdir(oldCwd);
+            rmSync(root, { recursive: true, force: true });
+        }
     });
 });
 

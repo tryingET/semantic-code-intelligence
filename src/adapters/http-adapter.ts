@@ -190,6 +190,36 @@ export class HTTPAdapter {
         }
     }
 
+    private requestHeader(request: HTTPRequest, name: string): string | undefined {
+        const lower = name.toLowerCase();
+        for (const [key, value] of Object.entries(request.headers || {})) {
+            if (key.toLowerCase() === lower) return value;
+        }
+        return undefined;
+    }
+
+    private isLoopbackOrigin(origin: string | undefined): boolean {
+        if (!origin) return true;
+        try {
+            const hostname = new URL(origin).hostname.replace(/^\[/, '').replace(/\]$/, '').toLowerCase();
+            if (hostname === 'localhost' || hostname === '::1' || hostname === '0:0:0:0:0:0:0:1') return true;
+            return /^127\.\d+\.\d+\.\d+$/.test(hostname);
+        } catch {
+            return false;
+        }
+    }
+
+    private corsHeadersForRequest(request: HTTPRequest): Record<string, string> {
+        const origin = this.requestHeader(request, 'origin');
+        const requestHeaders = this.requestHeader(request, 'access-control-request-headers');
+        return {
+            'Access-Control-Allow-Origin': origin && this.isLoopbackOrigin(origin) ? origin : 'null',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': requestHeaders || 'Content-Type, Authorization',
+            Vary: 'Origin',
+        };
+    }
+
     /**
      * Handle HTTP request and route to appropriate handler
      */
@@ -205,14 +235,13 @@ export class HTTPAdapter {
             };
 
             if (this.config.enableCors) {
-                headers['Access-Control-Allow-Origin'] = '*';
-                headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS';
-                headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization';
+                Object.assign(headers, this.corsHeadersForRequest(request));
             }
 
             // Handle preflight requests
             if (method === 'OPTIONS') {
-                return { status: 200, headers, body: '' };
+                const origin = this.requestHeader(request, 'origin');
+                return { status: origin && !this.isLoopbackOrigin(origin) ? 403 : 200, headers, body: '' };
             }
 
             // Route requests
@@ -1059,8 +1088,7 @@ export class HTTPAdapter {
                     'Content-Type': 'text/event-stream',
                     'Cache-Control': 'no-cache',
                     Connection: 'keep-alive',
-                    'Access-Control-Allow-Origin': '*',
-                    'Access-Control-Allow-Headers': 'Cache-Control',
+                    ...(this.config.enableCors ? this.corsHeadersForRequest(request) : {}),
                 },
                 body: sseData,
             };
@@ -1105,8 +1133,7 @@ export class HTTPAdapter {
                     'Content-Type': 'text/event-stream',
                     'Cache-Control': 'no-cache',
                     Connection: 'keep-alive',
-                    'Access-Control-Allow-Origin': '*',
-                    'Access-Control-Allow-Headers': 'Cache-Control',
+                    ...(this.config.enableCors ? this.corsHeadersForRequest(request) : {}),
                 },
                 body: sseData,
             };

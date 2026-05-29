@@ -2,6 +2,7 @@ import { glob } from 'glob';
 import * as path from 'path';
 import Parser, { Query } from 'tree-sitter';
 import { CoreError } from './errors.js';
+import { parseBoundedInteger } from './input-validation.js';
 import { openWorkspaceFileForRead } from './workspace-path.js';
 
 async function loadLanguage(language: 'typescript' | 'javascript' | 'python') {
@@ -81,7 +82,7 @@ export async function runAstQuery(inp: AstQueryInput) {
         matches.slice(0, 2000).forEach((m) => fileSet.add(String(m)));
     }
     const files = Array.from(fileSet).slice(0, 2000);
-    const resultLimit = Math.max(1, Math.min(inp.limit || 2000, 2000));
+    const resultLimit = parseBoundedInteger(inp.limit, 'limit', { defaultValue: 2000, min: 1, max: 2000 });
 
     const results: any[] = [];
     for (const requestedFile of files) {

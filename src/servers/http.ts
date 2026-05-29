@@ -1259,7 +1259,7 @@ export class HTTPServer {
     private async findWebUiFile(
         relPath: string,
         subdirs: Array<'dist' | null>
-    ): Promise<{ filePath: string; file: ReturnType<typeof Bun.file> } | null> {
+    ): Promise<{ filePath: string; file: Buffer } | null> {
         const safeRel = this.safeStaticRelativePath(relPath);
         if (!safeRel) return null;
 
@@ -1270,10 +1270,27 @@ export class HTTPServer {
                 const relative = path.relative(base, candidate);
                 if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) continue;
 
-                const file = Bun.file(candidate);
-                if (await file.exists()) {
-                    return { filePath: candidate, file };
-                }
+                try {
+                    const stat = await fs.lstat(candidate);
+                    if (!stat.isFile() || stat.isSymbolicLink()) continue;
+                    const [realBase, realCandidate] = await Promise.all([fs.realpath(base), fs.realpath(candidate)]);
+                    const realRelative = path.relative(realBase, realCandidate);
+                    if (!realRelative || realRelative.startsWith('..') || path.isAbsolute(realRelative)) continue;
+                    const noFollow = typeof fsSync.constants.O_NOFOLLOW === 'number' ? fsSync.constants.O_NOFOLLOW : 0;
+                    const handle = await fs.open(candidate, fsSync.constants.O_RDONLY | noFollow);
+                    try {
+                        const openedReal = await fs
+                            .realpath(`/proc/self/fd/${handle.fd}`)
+                            .catch(() => fs.realpath(`/dev/fd/${handle.fd}`));
+                        const openedRelative = path.relative(realBase, openedReal);
+                        if (!openedRelative || openedRelative.startsWith('..') || path.isAbsolute(openedRelative)) {
+                            continue;
+                        }
+                        return { filePath: candidate, file: await handle.readFile() };
+                    } finally {
+                        await handle.close().catch(() => undefined);
+                    }
+                } catch {}
             }
         }
 
