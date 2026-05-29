@@ -12,6 +12,7 @@
 import * as fsSync from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { serve } from 'bun';
 import { HTTPAdapter, type HTTPRequest } from '../adapters/http-adapter.js';
 import { createDefaultCoreConfig, definitionToApiResponse, strictJsonParse } from '../adapters/utils.js';
@@ -28,6 +29,8 @@ import { metricsRegistry, recordLayerLatency, recordToolEnd, recordToolStart } f
 import type { FastSearchLayer } from '../layers/layer1-fast-search.js';
 import type { SearchQuery } from '../types/core.js';
 import { assertAllowedBrowserOrigin, corsHeadersForRequest, readLimitedJsonBody } from './http-ingress.js';
+
+const HTTP_MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 interface HTTPServerConfig {
     port?: number;
@@ -165,21 +168,22 @@ export class HTTPServer {
 
                     // Serve static web UI from web-ui/dist under /ui; fallback to unbundled web-ui/index.html
                     if (url.pathname === '/ui' || url.pathname === '/ui/') {
-                        const dist = Bun.file('web-ui/dist/index.html');
-                        if (await dist.exists()) {
-                            return new Response(dist, { status: 200, headers: { 'Content-Type': 'text/html' } });
-                        }
-                        const fallback = Bun.file('web-ui/index.html');
-                        if (await fallback.exists()) {
-                            return new Response(fallback, { status: 200, headers: { 'Content-Type': 'text/html' } });
+                        const index = await this.findWebUiFile('index.html', ['dist', null]);
+                        if (index) {
+                            return new Response(index.file, { status: 200, headers: { 'Content-Type': 'text/html' } });
                         }
                         return new Response('Not found', { status: 404 });
                     }
                     if (url.pathname.startsWith('/ui/')) {
-                        const rel = url.pathname.replace(/^\/ui\//, '');
-                        const filePath = `web-ui/dist/${rel}`;
-                        const contentType = this.contentTypeFor(filePath);
-                        return await this.serveStaticFile(filePath, contentType);
+                        const rel = this.decodeStaticPath(url.pathname.replace(/^\/ui\//, ''));
+                        if (rel === null) return new Response('Bad request', { status: 400 });
+                        const asset = await this.findWebUiFile(rel, ['dist']);
+                        if (!asset) return new Response('Not found', { status: 404 });
+                        const contentType = this.contentTypeFor(asset.filePath);
+                        return new Response(asset.file, {
+                            status: 200,
+                            headers: { 'Content-Type': contentType, 'Cache-Control': 'no-cache' },
+                        });
                     }
 
                     // Let adapter handle streaming endpoints for now
@@ -1197,17 +1201,59 @@ export class HTTPServer {
         return 'application/octet-stream';
     }
 
-    private async serveStaticFile(relPath: string, contentType: string): Promise<Response> {
+    private webUiRoots(): string[] {
+        return Array.from(
+            new Set([
+                path.resolve(HTTP_MODULE_DIR, '../../web-ui'),
+                path.resolve(HTTP_MODULE_DIR, '../web-ui'),
+                path.resolve(process.cwd(), 'web-ui'),
+            ])
+        );
+    }
+
+    private decodeStaticPath(encodedPath: string): string | null {
         try {
-            const file = Bun.file(relPath);
-            if (!(await file.exists())) return new Response('Not found', { status: 404 });
-            return new Response(file, {
-                status: 200,
-                headers: { 'Content-Type': contentType, 'Cache-Control': 'no-cache' },
-            });
+            return decodeURIComponent(encodedPath);
         } catch {
-            return new Response('Not found', { status: 404 });
+            return null;
         }
+    }
+
+    private safeStaticRelativePath(relPath: string): string | null {
+        const normalized = path.normalize(relPath);
+        if (
+            !normalized ||
+            path.isAbsolute(normalized) ||
+            normalized === '..' ||
+            normalized.startsWith(`..${path.sep}`)
+        ) {
+            return null;
+        }
+        return normalized;
+    }
+
+    private async findWebUiFile(
+        relPath: string,
+        subdirs: Array<'dist' | null>
+    ): Promise<{ filePath: string; file: ReturnType<typeof Bun.file> } | null> {
+        const safeRel = this.safeStaticRelativePath(relPath);
+        if (!safeRel) return null;
+
+        for (const root of this.webUiRoots()) {
+            for (const subdir of subdirs) {
+                const base = subdir ? path.resolve(root, subdir) : root;
+                const candidate = path.resolve(base, safeRel);
+                const relative = path.relative(base, candidate);
+                if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) continue;
+
+                const file = Bun.file(candidate);
+                if (await file.exists()) {
+                    return { filePath: candidate, file };
+                }
+            }
+        }
+
+        return null;
     }
 
     /**

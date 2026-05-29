@@ -277,6 +277,8 @@ export interface NodeMetadata {
     semanticType?: string;
     functionName?: string;
     className?: string;
+    variableName?: string;
+    exportName?: string;
     parameters?: string[];
     returnType?: string;
     imports?: Import[];

@@ -9,10 +9,6 @@
  * All analysis work is delegated to the MCP adapter and core analyzer.
  */
 
-// CRITICAL: side-effect import runs before the remaining server dependencies so
-// imported modules cannot pollute MCP stdio stdout during ESM evaluation.
-import './mcp-stdio-bootstrap.js';
-
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ErrorCode, ListToolsRequestSchema, McpError } from '@modelcontextprotocol/sdk/types.js';
@@ -164,22 +160,25 @@ export class MCPServer {
     }
 }
 
-// Create and run server
-const server = new MCPServer();
+export async function runMCPServer(): Promise<void> {
+    const server = new MCPServer();
 
-// Handle shutdown gracefully
-process.on('SIGINT', async () => {
-    await server.shutdown();
-    process.exit(0);
-});
+    process.on('SIGINT', async () => {
+        await server.shutdown();
+        process.exit(0);
+    });
 
-process.on('SIGTERM', async () => {
-    await server.shutdown();
-    process.exit(0);
-});
+    process.on('SIGTERM', async () => {
+        await server.shutdown();
+        process.exit(0);
+    });
 
-// Start server
-server.run().catch((error) => {
-    console.error('Failed to start MCP server:', error);
-    process.exit(1);
-});
+    await server.run();
+}
+
+if (import.meta.main) {
+    runMCPServer().catch((error) => {
+        console.error('Failed to start MCP server:', error);
+        process.exit(1);
+    });
+}

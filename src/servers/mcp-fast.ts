@@ -5,10 +5,6 @@
  * to prevent timeout issues with MCP clients like Claude.
  */
 
-// CRITICAL: Set silent mode BEFORE any imports to prevent stdio pollution
-process.env.SILENT_MODE = 'true';
-process.env.STDIO_MODE = 'true';
-
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ErrorCode, ListToolsRequestSchema, McpError } from '@modelcontextprotocol/sdk/types.js';
@@ -267,61 +263,65 @@ export class FastMCPServer {
     }
 }
 
-// Create and run server
-const server = new FastMCPServer();
+export async function runFastMCPServer(): Promise<void> {
+    const server = new FastMCPServer();
 
-// Handle shutdown gracefully
-process.on('SIGINT', async () => {
-    try {
-        await server.shutdown();
-    } catch (error) {
-        if (process.env.STDIO_MODE) {
-            process.stderr.write(`Shutdown error: ${error instanceof Error ? error.message : String(error)}\n`);
-        } else {
-            console.error('Shutdown error:', error);
+    process.on('SIGINT', async () => {
+        try {
+            await server.shutdown();
+        } catch (error) {
+            if (process.env.STDIO_MODE) {
+                process.stderr.write(`Shutdown error: ${error instanceof Error ? error.message : String(error)}\n`);
+            } else {
+                console.error('Shutdown error:', error);
+            }
         }
-    }
-    process.exit(0);
-});
+        process.exit(0);
+    });
 
-process.on('SIGTERM', async () => {
-    try {
-        await server.shutdown();
-    } catch (error) {
-        if (process.env.STDIO_MODE) {
-            process.stderr.write(`Shutdown error: ${error instanceof Error ? error.message : String(error)}\n`);
-        } else {
-            console.error('Shutdown error:', error);
+    process.on('SIGTERM', async () => {
+        try {
+            await server.shutdown();
+        } catch (error) {
+            if (process.env.STDIO_MODE) {
+                process.stderr.write(`Shutdown error: ${error instanceof Error ? error.message : String(error)}\n`);
+            } else {
+                console.error('Shutdown error:', error);
+            }
         }
-    }
-    process.exit(0);
-});
+        process.exit(0);
+    });
 
-// Handle unhandled errors gracefully
-process.on('uncaughtException', (error) => {
-    if (process.env.STDIO_MODE) {
-        process.stderr.write(`Uncaught exception: ${error.message}\n`);
-    } else {
-        console.error('Uncaught exception:', error);
-    }
-    process.exit(1);
-});
+    process.on('uncaughtException', (error) => {
+        if (process.env.STDIO_MODE) {
+            process.stderr.write(`Uncaught exception: ${error.message}\n`);
+        } else {
+            console.error('Uncaught exception:', error);
+        }
+        process.exit(1);
+    });
 
-process.on('unhandledRejection', (reason, promise) => {
-    if (process.env.STDIO_MODE) {
-        process.stderr.write(`Unhandled rejection: ${reason}\n`);
-    } else {
-        console.error('Unhandled rejection at:', promise, 'reason:', reason);
-    }
-    process.exit(1);
-});
+    process.on('unhandledRejection', (reason, promise) => {
+        if (process.env.STDIO_MODE) {
+            process.stderr.write(`Unhandled rejection: ${reason}\n`);
+        } else {
+            console.error('Unhandled rejection at:', promise, 'reason:', reason);
+        }
+        process.exit(1);
+    });
 
-// Start server immediately - no heavy initialization
-server.run().catch((error) => {
-    if (process.env.STDIO_MODE) {
-        process.stderr.write(`Failed to start MCP server: ${error instanceof Error ? error.message : String(error)}\n`);
-    } else {
-        console.error('Failed to start MCP server:', error);
-    }
-    process.exit(1);
-});
+    await server.run();
+}
+
+if (import.meta.main) {
+    runFastMCPServer().catch((error) => {
+        if (process.env.STDIO_MODE) {
+            process.stderr.write(
+                `Failed to start MCP server: ${error instanceof Error ? error.message : String(error)}\n`
+            );
+        } else {
+            console.error('Failed to start MCP server:', error);
+        }
+        process.exit(1);
+    });
+}

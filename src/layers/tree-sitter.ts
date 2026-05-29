@@ -300,6 +300,16 @@ export class TreeSitterLayer implements Layer<EnhancedMatches, TreeSitterResult>
                     body: (class_body) @class.body)
             `,
 
+            variables: `
+                (lexical_declaration
+                    (variable_declarator
+                        name: (_) @var.pattern))
+
+                (variable_declaration
+                    (variable_declarator
+                        name: (_) @var.pattern))
+            `,
+
             imports: `
                 (import_statement
                     source: (string) @import.source
@@ -319,6 +329,9 @@ export class TreeSitterLayer implements Layer<EnhancedMatches, TreeSitterResult>
                         name: (identifier) @export.func)?
                     (class_declaration
                         name: (type_identifier) @export.class)?
+                    (lexical_declaration
+                        (variable_declarator
+                            name: (identifier) @export.var))?
                     (variable_declaration
                         (variable_declarator
                             name: (identifier) @export.var))?
@@ -389,6 +402,16 @@ export class TreeSitterLayer implements Layer<EnhancedMatches, TreeSitterResult>
                     body: (class_body) @class.body)
             `,
 
+            variables: `
+                (lexical_declaration
+                    (variable_declarator
+                        name: (_) @var.pattern))
+
+                (variable_declaration
+                    (variable_declarator
+                        name: (_) @var.pattern))
+            `,
+
             imports: `
                 (import_statement
                     source: (string) @import.source
@@ -408,6 +431,9 @@ export class TreeSitterLayer implements Layer<EnhancedMatches, TreeSitterResult>
                         name: (identifier) @export.func)?
                     (class_declaration
                         name: (identifier) @export.class)?
+                    (lexical_declaration
+                        (variable_declarator
+                            name: (identifier) @export.var))?
                     (variable_declaration
                         (variable_declarator
                             name: (identifier) @export.var))?
@@ -659,6 +685,9 @@ export class TreeSitterLayer implements Layer<EnhancedMatches, TreeSitterResult>
         // Process classes (now async)
         await this.processClasses(allCaptures.get('classes') || [], filePath, result);
 
+        // Process variables (now async)
+        await this.processVariables(allCaptures.get('variables') || [], filePath, result);
+
         // Process imports/exports
         this.processImportsExports(
             allCaptures.get('imports') || [],
@@ -766,6 +795,25 @@ export class TreeSitterLayer implements Layer<EnhancedMatches, TreeSitterResult>
         }
     }
 
+    private async processVariables(captures: any[], filePath: string, result: TreeSitterResult): Promise<void> {
+        for (const capture of captures) {
+            if (!capture?.name || !/var\.pattern$/.test(capture.name)) {
+                continue;
+            }
+            const bindingNodes = this.collectBindingIdentifierNodes(capture.node);
+            for (const node of bindingNodes) {
+                const astNode = this.createASTNode(node, filePath);
+                astNode.metadata = {
+                    ...(astNode.metadata || {}),
+                    variableName: node.text,
+                };
+
+                await this.enrichNodeWithConcept(astNode);
+                result.nodes.push(astNode);
+            }
+        }
+    }
+
     private processImportsExports(imports: any[], exports: any[], filePath: string, result: TreeSitterResult): void {
         // Process imports
         for (const capture of imports) {
@@ -786,15 +834,30 @@ export class TreeSitterLayer implements Layer<EnhancedMatches, TreeSitterResult>
         }
 
         // Process exports
+        const exportsByStatementAndName = new Map<string, ReturnType<typeof this.extractExportInfoFromCapture>>();
         for (const capture of exports) {
-            const node = capture.node;
-            const exportInfo = this.extractExportInfo(node);
+            const exportInfo = this.extractExportInfoFromCapture(capture);
+            if (!exportInfo) continue;
 
-            if (exportInfo) {
-                const astNode = this.createASTNode(node, filePath);
-                astNode.metadata.exports = [exportInfo];
-                result.nodes.push(astNode);
+            const key = `${exportInfo.name}:${exportInfo.statement.startPosition.row}:${exportInfo.statement.startPosition.column}`;
+            const existing = exportsByStatementAndName.get(key);
+            if (!existing || (existing.node.type === 'identifier' && exportInfo.node.type !== 'identifier')) {
+                exportsByStatementAndName.set(key, exportInfo);
             }
+        }
+
+        for (const exportInfo of exportsByStatementAndName.values()) {
+            if (!exportInfo) continue;
+            const astNode = this.createASTNode(exportInfo.node, filePath);
+            astNode.metadata = {
+                ...(astNode.metadata || {}),
+                exportName: exportInfo.name,
+                exports: [{ name: exportInfo.name, type: exportInfo.type }],
+            };
+            if (this.nodeDeclaresVariable(exportInfo.node)) {
+                astNode.metadata.variableName = exportInfo.name;
+            }
+            result.nodes.push(astNode);
         }
     }
 
@@ -1091,6 +1154,63 @@ export class TreeSitterLayer implements Layer<EnhancedMatches, TreeSitterResult>
         return null;
     }
 
+    private findDescendantByType(node: SyntaxNode, type: string): SyntaxNode | null {
+        if (node.type === type) return node;
+        for (const child of node.children) {
+            const found = this.findDescendantByType(child, type);
+            if (found) return found;
+        }
+        return null;
+    }
+
+    private hasAncestorType(node: SyntaxNode, type: string): boolean {
+        let current: SyntaxNode | null = node.parent;
+        while (current) {
+            if (current.type === type) return true;
+            current = current.parent;
+        }
+        return false;
+    }
+
+    private findAncestorByType(node: SyntaxNode, type: string): SyntaxNode | null {
+        let current: SyntaxNode | null = node;
+        while (current) {
+            if (current.type === type) return current;
+            current = current.parent;
+        }
+        return null;
+    }
+
+    private nodeDeclaresVariable(node: SyntaxNode): boolean {
+        return (
+            node.type === 'lexical_declaration' ||
+            node.type === 'variable_declaration' ||
+            node.type === 'variable_declarator' ||
+            this.hasAncestorType(node, 'variable_declarator') ||
+            !!this.findDescendantByType(node, 'variable_declarator')
+        );
+    }
+
+    private collectBindingIdentifierNodes(node: SyntaxNode): SyntaxNode[] {
+        if (!node) return [];
+        if (node.type === 'identifier' || node.type === 'shorthand_property_identifier_pattern') {
+            return [node];
+        }
+        if (node.type === 'property_identifier') {
+            return [];
+        }
+        if (node.type === 'assignment_pattern' || node.type === 'object_assignment_pattern') {
+            const [bindingSide] = (node as any).namedChildren || [];
+            return bindingSide ? this.collectBindingIdentifierNodes(bindingSide) : [];
+        }
+
+        const nodes: SyntaxNode[] = [];
+        for (const child of node.children) {
+            nodes.push(...this.collectBindingIdentifierNodes(child));
+        }
+        return nodes;
+    }
+
     private extractParameters(node: SyntaxNode): string[] {
         const params: string[] = [];
         const paramsNode = this.findChildByType(node, 'formal_parameters') || this.findChildByType(node, 'parameters');
@@ -1166,17 +1286,31 @@ export class TreeSitterLayer implements Layer<EnhancedMatches, TreeSitterResult>
         return { source, specifiers };
     }
 
-    private extractExportInfo(node: SyntaxNode): { name: string; type: 'default' | 'named' } | null {
-        // This is a simplified implementation
-        const nameNode = this.findChildByType(node, 'identifier') || this.findChildByType(node, 'type_identifier');
+    private extractExportInfoFromCapture(
+        capture: any
+    ): { name: string; type: 'default' | 'named'; node: SyntaxNode; statement: SyntaxNode } | null {
+        const node = capture?.node as SyntaxNode | undefined;
+        if (!node) return null;
+
+        const statement = this.findAncestorByType(node, 'export_statement');
+        if (!statement) return null;
+
+        const captureName = String(capture?.name || '');
+        const nameNode =
+            captureName === 'export.func' || captureName === 'export.class' || captureName === 'export.var'
+                ? node
+                : this.findDescendantByType(node, 'identifier') || this.findDescendantByType(node, 'type_identifier');
 
         if (!nameNode) return null;
 
-        const isDefault = node.text.includes('export default');
-
         return {
             name: nameNode.text,
-            type: isDefault ? 'default' : 'named',
+            type: statement.text.includes('export default') ? 'default' : 'named',
+            node:
+                captureName === 'export.func' || captureName === 'export.class' || captureName === 'export.var'
+                    ? nameNode
+                    : node,
+            statement,
         };
     }
 

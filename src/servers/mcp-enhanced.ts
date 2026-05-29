@@ -5,10 +5,6 @@
  * proper signal handling, and file-based logging for debugging.
  */
 
-// CRITICAL: Set silent mode BEFORE any imports to prevent stdio pollution
-process.env.SILENT_MODE = 'true';
-process.env.STDIO_MODE = 'true';
-
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
@@ -462,14 +458,14 @@ export class EnhancedMCPServer {
     }
 }
 
-// Create and run server
-const server = new EnhancedMCPServer();
+export async function runEnhancedMCPServer(): Promise<void> {
+    const server = new EnhancedMCPServer();
+    await server.run();
+}
 
-// Start server with error handling
-server.run().catch((error) => {
-    mcpLogger.error('Failed to start Enhanced MCP server', error);
-    process.exit(1);
-});
-
-// Export for testing
-export { server as enhancedMcpServer };
+if (import.meta.main) {
+    runEnhancedMCPServer().catch((error) => {
+        mcpLogger.error('Failed to start Enhanced MCP server', error);
+        process.exit(1);
+    });
+}

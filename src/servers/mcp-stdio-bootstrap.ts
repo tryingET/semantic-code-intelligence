@@ -1,5 +1,5 @@
 // Stdio protocol guard must run before MCP server dependencies are evaluated.
-// Keep this module side-effect-only and import it first from src/servers/mcp.ts.
+// Keep this module side-effect-only and import it first from stdio MCP entrypoints.
 process.env.SILENT_MODE = 'true';
 process.env.STDIO_MODE = 'true';
 

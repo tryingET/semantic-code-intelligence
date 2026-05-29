@@ -57,7 +57,7 @@ describe('Alpha MVP MCP stdio protocol', () => {
 
     beforeAll(async () => {
         const port = 19500 + Math.floor(Math.random() * 1000);
-        proc = spawn(bun, ['run', 'src/servers/mcp.ts'], {
+        proc = spawn(bun, ['run', 'src/servers/mcp-stdio-entry.ts'], {
             env: {
                 ...process.env,
                 SILENT_MODE: 'true',

@@ -321,7 +321,7 @@ build:
 build-mcp:
     @echo "🚀 Building MCP fast server..."
     @mkdir -p dist/mcp-fast
-    {{bun}} build src/servers/mcp-fast.ts --target=bun --outdir=dist/mcp-fast --format=esm \
+    {{bun}} build src/servers/mcp-fast-entry.ts --target=bun --outfile=dist/mcp-fast/mcp-fast.js --format=esm \
         --external tree-sitter --external tree-sitter-typescript \
         --external tree-sitter-javascript --external tree-sitter-python \
         --external pg --external bun:sqlite --external express --external cors \
@@ -345,7 +345,7 @@ clean-build:
 # Watch and rebuild MCP server on changes (no minification to preserve symbol names)
 watch-mcp:
     @echo "👀 Watching MCP server for changes..."
-    @{{bun}} build src/servers/mcp-fast.ts --target=bun --outdir=dist/mcp-fast --format=esm \
+    @{{bun}} build src/servers/mcp-fast-entry.ts --target=bun --outfile=dist/mcp-fast/mcp-fast.js --format=esm \
         --watch --sourcemap
 
 # Rebuild MCP server after fixing issues
@@ -710,7 +710,7 @@ dev: stop-quiet
     @echo "Starting HTTP API with hot-reload (port 7000)..."
     @{{bun}} run --watch src/servers/http.ts > .ontology/logs/http-api.log 2>&1 & printf '%s\n' $$! > .ontology/pids/http-api.pid
     @echo "Starting MCP (stdio) with hot-reload (port 7001 for HTTP Alt)..."
-    @{{bun}} run --watch src/servers/mcp.ts > .ontology/logs/mcp-stdio.log 2>&1 & printf '%s\n' $$! > .ontology/pids/mcp-stdio.pid
+    @{{bun}} run --watch src/servers/mcp-stdio-entry.ts > .ontology/logs/mcp-stdio.log 2>&1 & printf '%s\n' $$! > .ontology/pids/mcp-stdio.pid
     
     @sleep 2
     @echo "🧠 Knowledge base loaded with $({{bun}} run src/cli/stats.ts --quiet 2>/dev/null | grep concepts | awk '{print $2}' || echo '0') concepts"
@@ -738,18 +738,23 @@ session: start
 # Run linter
 lint:
     {{bun}} run lint
+    if [ ! -x vscode-client/node_modules/.bin/eslint ]; then echo "Missing vscode-client dependencies. Run: npm --prefix vscode-client ci --ignore-scripts" >&2; exit 2; fi
     cd vscode-client && npm run lint
 
 # Format code
 format:
     {{bun}} run format
 
+# Check formatting for changed source/script files without writing
+format-check:
+    {{bun}} run format:check
+
 # Type check
 typecheck:
     {{bun}} run typecheck
 
-# Run all checks (format, lint, typecheck, test)
-check: format lint typecheck test
+# Run all checks (format check, lint, typecheck, test)
+check: format-check lint typecheck test
 
 # Shared task-scope guard for repo-loop-validation-v1 commands
 _loop-scope-check fail_on_blocker="0":
@@ -923,7 +928,7 @@ build-prod:
     @echo "🔨 Building for production..."
     {{bun}} build src/servers/lsp.ts --target=bun --outdir=dist/lsp --minify
     {{bun}} build src/servers/http.ts --target=bun --outdir=dist/api --minify
-    {{bun}} build src/servers/mcp.ts --target=bun --outdir=dist/mcp --minify
+    {{bun}} build src/servers/mcp-stdio-entry.ts --target=bun --outfile=dist/mcp/mcp.js --minify
     {{bun}} build src/servers/cli.ts --target=bun --outdir=dist/cli --minify --sourcemap
 
 # Build Docker image

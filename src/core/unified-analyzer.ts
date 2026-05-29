@@ -4,7 +4,7 @@
  */
 
 import * as fs from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { EventEmitter } from 'events';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
@@ -1702,9 +1702,7 @@ export class CodeAnalyzer {
 
             if (result.nodes) {
                 for (const node of result.nodes) {
-                    const fn = (node.metadata?.functionName || '').toString();
-                    const cn = (node.metadata?.className || '').toString();
-                    const nodeName = fn || cn;
+                    const nodeName = this.astDefinitionName(node);
                     if (!nodeName) continue;
                     if (!candidateNames.has(nodeName.toLowerCase())) continue;
 
@@ -1719,7 +1717,7 @@ export class CodeAnalyzer {
                         identifier: request.identifier,
                         uri: this.pathToFileUri(this.extractFilePathFromNodeId(node.id)),
                         range: node.range,
-                        kind: this.inferDefinitionKindFromNodeType(node.type),
+                        kind: this.inferDefinitionKindFromAstNode(node),
                         name: nodeName,
                         source: 'fuzzy' as const,
                         confidence: confAst,
@@ -2256,6 +2254,7 @@ export class CodeAnalyzer {
                 uri: this.pathToFileUri(filePath),
                 range: n.range,
                 kind: 'export',
+                type: (exp[0] as any).type,
                 name,
                 text: lineText.trim(),
             });
@@ -2736,10 +2735,36 @@ export class CodeAnalyzer {
             case 'interface_declaration':
                 return 'interface';
             case 'variable_declaration':
+            case 'lexical_declaration':
+            case 'variable_declarator':
                 return 'variable';
             default:
                 return 'function';
         }
+    }
+
+    private astDefinitionName(node: any): string {
+        const metadata = node?.metadata || {};
+        const exported = Array.isArray(metadata.exports) ? metadata.exports[0]?.name : undefined;
+        return (
+            metadata.functionName ||
+            metadata.className ||
+            metadata.variableName ||
+            metadata.exportName ||
+            exported ||
+            ''
+        ).toString();
+    }
+
+    private inferDefinitionKindFromAstNode(node: any): DefinitionKind {
+        const metadata = node?.metadata || {};
+        if (metadata.functionName) return 'function';
+        if (metadata.className) return 'class';
+        if (metadata.variableName) return 'variable';
+        if (metadata.exportName || (Array.isArray(metadata.exports) && metadata.exports.length > 0)) {
+            return this.inferDefinitionKindFromNodeType((node?.type || '').toString());
+        }
+        return this.inferDefinitionKindFromNodeType((node?.type || '').toString());
     }
 
     private definitionToMatch(definition: Definition): any {
@@ -2992,7 +3017,7 @@ export class CodeAnalyzer {
             return filePath;
         }
         const absolutePath = path.isAbsolute(filePath) ? filePath : path.resolve(filePath);
-        return `file://${absolutePath}`;
+        return pathToFileURL(absolutePath).href;
     }
 
     private inferDefinitionKind(text: string): DefinitionKind {
@@ -3030,7 +3055,7 @@ export class CodeAnalyzer {
 
     private scoreAstDefinition(node: any, identifier: string, filePath: string, ambiguous: boolean): number {
         const idlc = (identifier || '').toLowerCase();
-        const name = (node?.metadata?.functionName || node?.metadata?.className || '').toString();
+        const name = this.astDefinitionName(node);
         const namelc = name.toLowerCase();
         let score = 0.8;
         if (idlc && namelc === idlc) score += 0.1;
