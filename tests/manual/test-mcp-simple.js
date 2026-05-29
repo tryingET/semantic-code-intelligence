@@ -5,7 +5,7 @@ import { spawn } from 'child_process';
 
 console.log('Testing MCP server basic functionality...');
 
-const server = spawn('bun', ['dist/mcp-fast/mcp-fast.js'], {
+const server = spawn('bun', ['dist/mcp/mcp.js'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
         ...process.env,
@@ -17,6 +17,29 @@ const server = spawn('bun', ['dist/mcp-fast/mcp-fast.js'], {
 
 let messageId = 1;
 const responses = [];
+let finished = false;
+
+function finish(serverCode = null) {
+    if (finished) return;
+    finished = true;
+    const successfulResponses = responses.filter((r) => r.result && !r.error);
+    const errorResponses = responses.filter((r) => r.error);
+
+    console.log(`\nTest completed. Server exited with code ${serverCode}`);
+    console.log(`Total responses: ${responses.length}`);
+    console.log(`✅ Successful: ${successfulResponses.length}`);
+    console.log(`❌ Errors: ${errorResponses.length}`);
+
+    if (successfulResponses.length >= 2) {
+        console.log('🎉 MCP server is working correctly!');
+        server.kill('SIGTERM');
+        process.exit(0);
+    }
+
+    console.log('⚠️  MCP server may have issues');
+    server.kill('SIGTERM');
+    process.exit(1);
+}
 
 function sendMessage(method, params = {}) {
     const message = {
@@ -66,22 +89,7 @@ server.stderr.on('data', (data) => {
 });
 
 server.on('close', (code) => {
-    console.log(`\nTest completed. Server exited with code ${code}`);
-    console.log(`Total responses: ${responses.length}`);
-
-    // Analyze results
-    const successfulResponses = responses.filter((r) => r.result && !r.error);
-    const errorResponses = responses.filter((r) => r.error);
-
-    console.log(`✅ Successful: ${successfulResponses.length}`);
-    console.log(`❌ Errors: ${errorResponses.length}`);
-
-    if (successfulResponses.length >= 2) {
-        console.log('🎉 MCP server is working correctly!');
-    } else {
-        console.log('⚠️  MCP server may have issues');
-    }
-    process.exit(0);
+    finish(code);
 });
 
 // Test sequence
@@ -98,5 +106,5 @@ setTimeout(() => {
 }, 1000);
 
 setTimeout(() => {
-    server.stdin.end();
+    finish(null);
 }, 3000);

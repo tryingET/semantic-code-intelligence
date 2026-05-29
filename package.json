@@ -14,7 +14,8 @@
     "url": "https://github.com/tryingET/semantic-code-intelligence"
   },
   "files": [
-    "bin/",
+    "bin/semantic-code-intelligence",
+    "bin/semantic-code-mcp",
     "dist/",
     "README.md",
     "CONFIG.md",

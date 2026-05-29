@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test';
-import yaml from 'js-yaml';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import yaml from 'js-yaml';
 
 function readText(path: string): string {
     return readFileSync(path, 'utf8');
@@ -279,12 +279,15 @@ describe('build command surface', () => {
         expect(readme).not.toContain('semantic-code-intelligence analyze');
     });
 
-    test('packaged README references are included in package files allowlist', () => {
+    test('packaged README references and runtime bin wrappers are included in package files allowlist', () => {
         const packageJson = JSON.parse(readText('package.json')) as { files?: string[] };
         const readme = readText('README.md');
 
         expect(readme).toContain('CONFIG.md');
         expect(packageJson.files).toContain('CONFIG.md');
+        expect(packageJson.files).toContain('bin/semantic-code-intelligence');
+        expect(packageJson.files).toContain('bin/semantic-code-mcp');
+        expect(packageJson.files).not.toContain('bin/');
     });
 
     test('CLI init --force refuses symlink config clobbering', () => {

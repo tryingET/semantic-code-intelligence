@@ -404,7 +404,7 @@ cli-init:
 # Analyze codebase for refactoring opportunities
 analyze-refactor path="src":
     @echo "🔍 Analyzing {{path}} for refactoring opportunities..."
-    @just cli find "*" --path {{path}} --verbose || true
+    @just cli text-search TODO --kind literal --path "{{path}}" --max-results 20 --json || true
     @just cli stats --verbose
 
 # Build the VS Code extension
@@ -905,18 +905,16 @@ clean-all: stop
 
 # === ANALYSIS & LEARNING (VISION.md) ===
 
-# Analyze codebase and learn patterns
-analyze:
-    @echo "🧠 Learning from your code..."
-    @{{bun}} run src/cli/analyze.ts {{workspace}}
-    @echo ""
-    @echo "📊 Analysis complete! New patterns discovered:"
-    @{{bun}} run src/cli/stats.ts --patterns
+# Analyze codebase using the supported CLI surface
+analyze path=workspace:
+    @echo "🧠 Analyzing {{path}} with supported SCI CLI commands..."
+    @just analyze-refactor "{{path}}"
 
 # Analyze pull request for quality
 analyze-pr pr="":
-    @echo "🔍 Analyzing pull request..."
-    @{{bun}} run src/cli/analyze.ts --pr {{pr}}
+    @echo "🔍 Pull-request analysis is not wired to a supported CLI command."
+    @echo "Use targeted commands such as: just analyze-refactor src"
+    @exit 2
 
 # === DEPLOYMENT (VISION.md) ===
 

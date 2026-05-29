@@ -40,7 +40,7 @@ function checkPackageEntrypoints(): void {
     requireExisting(pkg.main, 'package-main-missing', 'Run bun run build:core or fix the package main path.');
   }
 
-  const requiredFiles = ['bin/', 'dist/', 'README.md', 'LICENSE'];
+  const requiredFiles = ['bin/semantic-code-intelligence', 'bin/semantic-code-mcp', 'dist/', 'README.md', 'LICENSE'];
   for (const required of requiredFiles) {
     if (!pkg.files?.includes(required)) {
       add('package.json', 'package-files-missing-required-entry', `files lacks ${required}`, `Keep ${required} in package.json files.`);
