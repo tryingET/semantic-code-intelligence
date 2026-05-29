@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { canBindTcp } from './helpers/bind-utils';
@@ -195,6 +195,26 @@ bindDescribe('Alpha MVP MCP HTTP protocol', () => {
         } finally {
             rmSync(progressPath, { force: true });
             rmSync(outside, { recursive: true, force: true });
+        }
+    });
+
+    test('snapshot progress resource truncates large multibyte artifacts on UTF-8 boundaries', async () => {
+        const snapshotCall = await toolsCall(93, 'get_snapshot', { preferExisting: false });
+        const snapshot = JSON.parse(snapshotCall.body?.result?.content?.[0]?.text || '{}');
+        const snapshotId = snapshot.id || snapshot.snapshot;
+        expect(snapshotId).toBeDefined();
+
+        const progressPath = join(process.cwd(), '.ontology', 'snapshots', snapshotId, 'progress.log');
+        try {
+            writeFileSync(progressPath, '😀'.repeat(80_000), 'utf8');
+            const progressResource = await resourcesRead(94, `snapshot://${snapshotId}/progress`);
+            const text = progressResource.body?.result?.contents?.[0]?.text || '';
+            expect(progressResource.status).toBe(200);
+            expect(Buffer.byteLength(text, 'utf8')).toBeLessThanOrEqual(256 * 1024);
+            expect(text).toContain('[truncated at 262144 bytes]');
+            expect(text).not.toContain('\uFFFD');
+        } finally {
+            rmSync(progressPath, { force: true });
         }
     });
 

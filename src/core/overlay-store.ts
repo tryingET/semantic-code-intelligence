@@ -47,6 +47,24 @@ const RESERVED_PATCH_ROOT_NAMES = new Set([
     'progress.log',
 ]);
 const RESERVED_PATCH_ROOT_PREFIXES = ['.git', '.ontology'];
+const DEFAULT_SNAPSHOT_DIFF_MAX_BYTES = 2 * 1024 * 1024;
+const SNAPSHOT_RESOURCE_MAX_BYTES = 256 * 1024;
+
+function truncateUtf8WithMarker(text: string, maxBytes: number): string {
+    if (Buffer.byteLength(text, 'utf8') <= maxBytes) return text;
+    const marker = `\n[truncated at ${maxBytes} bytes]\n`;
+    const markerBytes = Buffer.byteLength(marker, 'utf8');
+    const limit = Math.max(0, maxBytes - markerBytes);
+    let bytes = 0;
+    const out: string[] = [];
+    for (const char of text) {
+        const charBytes = Buffer.byteLength(char, 'utf8');
+        if (bytes + charBytes > limit) break;
+        out.push(char);
+        bytes += charBytes;
+    }
+    return out.join('') + marker;
+}
 
 export class OverlayStore {
     private snapshots = new Map<string, Snapshot>();
@@ -54,6 +72,19 @@ export class OverlayStore {
     private wantProgress(): boolean {
         const env = process.env;
         return env.DOGFOOD_PROGRESS === '1' || env.PROGRESS_LOGS === '1';
+    }
+
+    private maxSnapshotDiffBytes(): number {
+        const parsed = Number(process.env.SCI_SNAPSHOT_MAX_DIFF_BYTES || DEFAULT_SNAPSHOT_DIFF_MAX_BYTES);
+        if (!Number.isFinite(parsed)) return DEFAULT_SNAPSHOT_DIFF_MAX_BYTES;
+        return Math.max(1024, Math.min(16 * 1024 * 1024, Math.floor(parsed)));
+    }
+
+    private resourceMaxBytes(value: unknown): number {
+        const parsed = Number(value ?? SNAPSHOT_RESOURCE_MAX_BYTES);
+        return Number.isFinite(parsed)
+            ? Math.max(1, Math.min(SNAPSHOT_RESOURCE_MAX_BYTES, Math.floor(parsed)))
+            : SNAPSHOT_RESOURCE_MAX_BYTES;
     }
 
     private assertSafeSnapshotStoragePath(base: string, target: string, label: string): void {
@@ -640,10 +671,10 @@ export class OverlayStore {
         return diffPath;
     }
 
-    getOverlayDiffText(snapshotId: string, opts: { workspaceRoot?: string } = {}): string | null {
+    getOverlayDiffText(snapshotId: string, opts: { workspaceRoot?: string; maxBytes?: number } = {}): string | null {
         const snap = this.ensureSnapshot(snapshotId, opts);
         if (!snap.diffs.length) return null;
-        return snap.diffs.join('\n');
+        return truncateUtf8WithMarker(snap.diffs.join('\n'), this.resourceMaxBytes(opts.maxBytes));
     }
 
     private isSafeMaterializedSnapshotDir(dir: string, snap: Snapshot): boolean {
@@ -860,6 +891,13 @@ export class OverlayStore {
         const unsafeMode = this.rejectUnsafePatchFileModes(normalizedDiff);
         if (unsafeMode) return { accepted: false, message: unsafeMode };
         const snap = this.ensureSnapshot(snapshotId);
+        const currentBytes = Buffer.byteLength(snap.diffs.join('\n'), 'utf8');
+        const separatorBytes = snap.diffs.length ? 1 : 0;
+        const nextBytes = currentBytes + separatorBytes + Buffer.byteLength(normalizedDiff, 'utf8');
+        const maxSnapshotBytes = this.maxSnapshotDiffBytes();
+        if (nextBytes > maxSnapshotBytes) {
+            return { accepted: false, message: `Snapshot diff too large (> ${maxSnapshotBytes} bytes)` };
+        }
         const validation = this.validatePatchAppliesAgainstSnapshot(normalizedDiff, snap);
         if (!validation.ok) return { accepted: false, message: validation.message };
         snap.diffs.push(normalizedDiff);
@@ -1099,6 +1137,90 @@ export class OverlayStore {
         return this.isPackageScriptCommand(words) || words[0] === 'just';
     }
 
+    private packageScriptName(words: string[]): string | null {
+        if (!this.isPackageScriptCommand(words)) return null;
+        const candidate = words[2];
+        if (!candidate || candidate === '--') return null;
+        if (candidate.startsWith('-')) return null;
+        // `bun run ./script.ts` and similar file execution has an explicit path operand;
+        // only package-script names hide a second command body behind the runner.
+        if (candidate.includes('/') || candidate.includes('\\')) return null;
+        return candidate;
+    }
+
+    private readPackageScripts(cwd: string): Record<string, string> | null {
+        try {
+            const raw = fs.readFileSync(path.join(cwd, 'package.json'), 'utf8');
+            const parsed = JSON.parse(raw);
+            const scripts = parsed?.scripts;
+            if (!scripts || typeof scripts !== 'object') return null;
+            const out: Record<string, string> = {};
+            for (const [key, value] of Object.entries(scripts)) {
+                if (typeof value === 'string') out[key] = value;
+            }
+            return out;
+        } catch {
+            return null;
+        }
+    }
+
+    private splitCheckScriptBody(script: string): string[] | null {
+        const raw = String(script || '').trim();
+        if (!raw) return [];
+        const withoutAnd = raw.replace(/&&/g, '');
+        if (/[;&|<>`\r\n]/.test(withoutAnd) || /\$\s*\(/.test(raw)) return null;
+        return raw
+            .split(/\s*&&\s*/)
+            .map((part) => part.trim())
+            .filter(Boolean);
+    }
+
+    private validatePackageScriptBody(
+        cwd: string,
+        scripts: Record<string, string>,
+        scriptName: string,
+        seen: Set<string>
+    ): string | null {
+        const script = scripts[scriptName];
+        if (typeof script !== 'string') return null;
+        const key = `${cwd}:${scriptName}`;
+        if (seen.has(key)) return `package script cycle detected for ${scriptName}`;
+        const parts = this.splitCheckScriptBody(script);
+        if (!parts) return `package script ${scriptName} uses unsupported shell syntax`;
+        const nextSeen = new Set(seen);
+        nextSeen.add(key);
+        for (const part of parts) {
+            const resolved = this.resolveCheckCommand(part);
+            if (!resolved.ok) return `package script ${scriptName} is not validation-safe: ${resolved.message}`;
+            const pathViolation = this.checkCommandPathBoundaryViolation(resolved.words, resolved.env, cwd);
+            if (pathViolation) return `package script ${scriptName} is not validation-safe: ${pathViolation}`;
+            const nested = this.validatePackageRunnerScript(resolved.words, cwd, nextSeen);
+            if (nested) return nested;
+        }
+        return null;
+    }
+
+    private validatePackageRunnerScript(words: string[], cwd: string, seen = new Set<string>()): string | null {
+        if (process.env.SCI_ALLOW_CHECK_RUNNER_SCRIPTS === '1') return null;
+        if (words[0] === 'just') {
+            return 'just runner commands require SCI_ALLOW_CHECK_RUNNER_SCRIPTS=1 because justfile recipe bodies are not inspected';
+        }
+        if (this.isPackageScriptCommand(words) && words[2]?.startsWith('-')) {
+            return 'package runner options are not supported for validation-safe script inspection';
+        }
+        const scriptName = this.packageScriptName(words);
+        if (!scriptName) return null;
+        const scripts = this.readPackageScripts(cwd);
+        if (!scripts || typeof scripts[scriptName] !== 'string') {
+            return `package script ${scriptName} must be explicitly declared for validation-safe runner execution`;
+        }
+        for (const lifecycleName of [`pre${scriptName}`, scriptName, `post${scriptName}`]) {
+            const violation = this.validatePackageScriptBody(cwd, scripts, lifecycleName, seen);
+            if (violation) return violation;
+        }
+        return null;
+    }
+
     private resolveCheckCommand(
         command: string
     ): { ok: true; words: string[]; env: Record<string, string> } | { ok: false; message: string } {
@@ -1130,6 +1252,8 @@ export class OverlayStore {
             'grep',
             'rg',
             'git',
+            'rimraf',
+            'test',
         ]);
         if (!allowed.has(executable)) {
             return { ok: false, message: `unsupported validation command: ${executable}` };
@@ -1618,7 +1742,7 @@ export class OverlayStore {
                         .slice(0, 50) // cap to avoid overly long cmdlines
                         .map((f) => this.shellQuote(f))
                         .join(' ');
-                    const quick = `bunx tsgo --noEmit --pretty false ${limited}`;
+                    const quick = `bunx tsgo --noEmit --pretty false -- ${limited}`;
                     // Prepend quick check if no explicit commands were provided, or if it fits within the command cap.
                     if (!(commands && commands.length)) {
                         cmdList = [quick];
@@ -1712,6 +1836,18 @@ export class OverlayStore {
                     }
                 }
                 if (resolvedCommand?.ok) {
+                    const runnerScriptViolation = this.validatePackageRunnerScript(resolvedCommand.words, cwd);
+                    if (runnerScriptViolation) {
+                        const message = `Rejected check command: ${runnerScriptViolation}\n`;
+                        appendOutput(message);
+                        commandResults.push({ command: cmd, ok: false, elapsedMs: 0, exitCode: null, timedOut: false });
+                        return {
+                            ok: false,
+                            output: output.join(''),
+                            elapsedMs: Date.now() - start,
+                            commands: commandResults,
+                        };
+                    }
                     const pathBoundaryViolation = this.checkCommandPathBoundaryViolation(
                         resolvedCommand.words,
                         resolvedCommand.env,

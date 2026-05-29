@@ -2,8 +2,8 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { OverlayStore } from '../src/core/overlay-store';
 import { getConfig, validatePorts } from '../src/core/config/server-config';
+import { OverlayStore } from '../src/core/overlay-store';
 import { ToolRegistry } from '../src/core/tools/registry';
 
 const roots: string[] = [];
@@ -63,7 +63,9 @@ describe('tool boundary contract', () => {
         const store = new OverlayStore();
         const snap = store.createSnapshot(false, { workspaceRoot: root });
 
-        const result = await store.runChecks(snap.id, ['BUN_JOBS=1 true', 'grep -E "foo|bar" sample.txt'], 5, { workspaceRoot: root });
+        const result = await store.runChecks(snap.id, ['BUN_JOBS=1 true', 'grep -E "foo|bar" sample.txt'], 5, {
+            workspaceRoot: root,
+        });
 
         expect(result.ok).toBe(true);
         expect(result.commands.map((command) => command.ok)).toEqual([true, true]);
@@ -78,9 +80,15 @@ describe('tool boundary contract', () => {
         const envResult = await store.runChecks(snap.id, ['env'], 5, { workspaceRoot: root });
         const evalResult = await store.runChecks(snap.id, ['bun -e "console.log(1)"'], 5, { workspaceRoot: root });
         const outsideReadResult = await store.runChecks(snap.id, ['grep root /etc/passwd'], 5, { workspaceRoot: root });
-        const traversalReadResult = await store.runChecks(snap.id, ['grep root ../../../../etc/passwd'], 5, { workspaceRoot: root });
-        const nodeOptionsResult = await store.runChecks(snap.id, ['NODE_OPTIONS=--require=/tmp/pwn.cjs true'], 5, { workspaceRoot: root });
-        const npmConfigResult = await store.runChecks(snap.id, ['npm_config_userconfig=/tmp/npmrc true'], 5, { workspaceRoot: root });
+        const traversalReadResult = await store.runChecks(snap.id, ['grep root ../../../../etc/passwd'], 5, {
+            workspaceRoot: root,
+        });
+        const nodeOptionsResult = await store.runChecks(snap.id, ['NODE_OPTIONS=--require=/tmp/pwn.cjs true'], 5, {
+            workspaceRoot: root,
+        });
+        const npmConfigResult = await store.runChecks(snap.id, ['npm_config_userconfig=/tmp/npmrc true'], 5, {
+            workspaceRoot: root,
+        });
 
         expect(envResult.ok).toBe(false);
         expect(envResult.output).toContain('Rejected check command');
@@ -97,6 +105,58 @@ describe('tool boundary contract', () => {
         expect(nodeOptionsResult.output).toContain('unsupported validation environment variable: NODE_OPTIONS');
         expect(npmConfigResult.ok).toBe(false);
         expect(npmConfigResult.output).toContain('unsupported validation environment variable: npm_config_userconfig');
+    });
+
+    test('run_checks inspects package script bodies instead of trusting runner names', async () => {
+        const root = tempRoot();
+        writeFileSync(
+            join(root, 'package.json'),
+            '{"type":"module","scripts":{"ok":"true","leak":"cat /etc/passwd"}}\n',
+            'utf8'
+        );
+        const store = new OverlayStore();
+        const snap = store.createSnapshot(false, { workspaceRoot: root });
+
+        const okResult = await store.runChecks(snap.id, ['bun run ok'], 5, { workspaceRoot: root });
+        const leakResult = await store.runChecks(snap.id, ['bun run leak'], 5, { workspaceRoot: root });
+
+        expect(okResult.ok).toBe(true);
+        expect(leakResult.ok).toBe(false);
+        expect(leakResult.output).toContain('package script leak is not validation-safe');
+        expect(leakResult.output).not.toContain('root:x:0:0');
+    });
+
+    test('run_checks rejects package runner lifecycle, option, and shell-control bypasses', async () => {
+        const root = tempRoot();
+        writeFileSync(
+            join(root, 'package.json'),
+            JSON.stringify({
+                type: 'module',
+                scripts: {
+                    ok: 'true',
+                    preok: 'cat /etc/passwd',
+                    ampersand: 'true & env',
+                },
+            }) + '\n',
+            'utf8'
+        );
+        const store = new OverlayStore();
+        const snap = store.createSnapshot(false, { workspaceRoot: root });
+
+        const lifecycleResult = await store.runChecks(snap.id, ['npm run ok'], 5, { workspaceRoot: root });
+        const optionResult = await store.runChecks(snap.id, ['npm run --silent ok'], 5, { workspaceRoot: root });
+        const missingScriptResult = await store.runChecks(snap.id, ['npm run env'], 5, { workspaceRoot: root });
+        const shellControlResult = await store.runChecks(snap.id, ['bun run ampersand'], 5, { workspaceRoot: root });
+
+        expect(lifecycleResult.ok).toBe(false);
+        expect(lifecycleResult.output).toContain('package script preok is not validation-safe');
+        expect(lifecycleResult.output).not.toContain('root:x:0:0');
+        expect(optionResult.ok).toBe(false);
+        expect(optionResult.output).toContain('package runner options are not supported');
+        expect(missingScriptResult.ok).toBe(false);
+        expect(missingScriptResult.output).toContain('package script env must be explicitly declared');
+        expect(shellControlResult.ok).toBe(false);
+        expect(shellControlResult.output).toContain('package script ampersand uses unsupported shell syntax');
     });
 
     test('run_checks rejects recursive symlink-following search commands', async () => {
@@ -133,7 +193,9 @@ describe('tool boundary contract', () => {
 
         const evilDiff = `diff --git a/evil.diff b/evil.diff\nnew file mode 100644\nindex 0000000..1111111\n--- /dev/null\n+++ b/evil.diff\n@@ -0,0 +1,4 @@\n+--- /dev/null\n++++ ../../pwned-sci-unsafe\n+@@ -0,0 +1 @@\n++PWNED\n`;
         expect(store.stagePatch(snap.id, evilDiff).accepted).toBe(true);
-        const unsafeApply = await store.runChecks(snap.id, ['git apply --unsafe-paths evil.diff'], 5, { workspaceRoot: root });
+        const unsafeApply = await store.runChecks(snap.id, ['git apply --unsafe-paths evil.diff'], 5, {
+            workspaceRoot: root,
+        });
         expect(unsafeApply.ok).toBe(false);
         expect(unsafeApply.output).toContain('unsupported git apply option: --unsafe-paths');
 
@@ -148,7 +210,12 @@ describe('tool boundary contract', () => {
         const store = new OverlayStore();
         const snap = store.createSnapshot(false, { workspaceRoot: root });
 
-        const result = await store.runChecks(snap.id, Array.from({ length: 21 }, () => 'true'), 5, { workspaceRoot: root });
+        const result = await store.runChecks(
+            snap.id,
+            Array.from({ length: 21 }, () => 'true'),
+            5,
+            { workspaceRoot: root }
+        );
         expect(result.ok).toBe(false);
         expect(result.output).toContain('at most 20 commands');
         expect(result.commands).toEqual([]);
@@ -162,9 +229,28 @@ describe('tool boundary contract', () => {
         const diff = `diff --git a/sample.ts b/sample.ts\nnew file mode 100644\nindex 0000000..1111111\n--- /dev/null\n+++ b/sample.ts\n@@ -0,0 +1 @@\n+export const sample = 1;\n`;
         expect(store.stagePatch(snap.id, diff).accepted).toBe(true);
 
-        const result = await store.runChecks(snap.id, Array.from({ length: 20 }, () => 'true'), 5, { workspaceRoot: root, onlyTouched: true });
+        const result = await store.runChecks(
+            snap.id,
+            Array.from({ length: 20 }, () => 'true'),
+            5,
+            { workspaceRoot: root, onlyTouched: true }
+        );
         expect(result.ok).toBe(true);
         expect(result.commands).toHaveLength(20);
+    });
+
+    test('run_checks generated touched-file tsgo command terminates options before file operands', async () => {
+        const root = tempRoot();
+        writeFileSync(join(root, 'package.json'), '{"type":"module"}\n', 'utf8');
+        writeFileSync(join(root, 'tsconfig.json'), '{"compilerOptions":{"strict":true}}\n', 'utf8');
+        const store = new OverlayStore();
+        const snap = store.createSnapshot(false, { workspaceRoot: root });
+        const diff = `diff --git a/--help.ts b/--help.ts\nnew file mode 100644\nindex 0000000..1111111\n--- /dev/null\n+++ b/--help.ts\n@@ -0,0 +1 @@\n+export const sample = 1;\n`;
+        expect(store.stagePatch(snap.id, diff).accepted).toBe(true);
+
+        const result = await store.runChecks(snap.id, [], 5, { workspaceRoot: root, onlyTouched: true });
+        expect(result.commands[0]?.command).toContain("-- '--help.ts'");
+        expect(result.output).not.toContain("Unknown compiler option '--help.ts'");
     });
 
     test('run_checks rejects oversized individual command strings before execution', async () => {
@@ -176,6 +262,31 @@ describe('tool boundary contract', () => {
         const result = await store.runChecks(snap.id, [`true ${'x'.repeat(9000)}`], 5, { workspaceRoot: root });
         expect(result.ok).toBe(false);
         expect(result.output).toContain('command length must be at most 8192 characters');
+    });
+
+    test('snapshot diff storage and resource text are bounded in aggregate', () => {
+        rememberEnv('SCI_SNAPSHOT_MAX_DIFF_BYTES');
+        process.env.SCI_SNAPSHOT_MAX_DIFF_BYTES = '1024';
+        const root = tempRoot();
+        writeFileSync(join(root, 'package.json'), '{"type":"module"}\n', 'utf8');
+        const store = new OverlayStore();
+        const snap = store.createSnapshot(false, { workspaceRoot: root });
+
+        let rejected: ReturnType<OverlayStore['stagePatch']> | null = null;
+        for (let i = 0; i < 20; i++) {
+            const payload = 'x'.repeat(120);
+            const diff = `diff --git a/file-${i}.txt b/file-${i}.txt\nnew file mode 100644\nindex 0000000..1111111\n--- /dev/null\n+++ b/file-${i}.txt\n@@ -0,0 +1 @@\n+${payload}\n`;
+            const staged = store.stagePatch(snap.id, diff);
+            if (!staged.accepted) {
+                rejected = staged;
+                break;
+            }
+        }
+
+        expect(rejected?.message).toContain('Snapshot diff too large');
+        const text = store.getOverlayDiffText(snap.id, { workspaceRoot: root, maxBytes: 80 }) || '';
+        expect(Buffer.byteLength(text, 'utf8')).toBeLessThanOrEqual(80);
+        expect(text).toContain('[truncated at 80 bytes]');
     });
 
     test('reverse snapshot apply preserves pre-existing empty directories', async () => {
@@ -202,7 +313,9 @@ describe('tool boundary contract', () => {
         const store = new OverlayStore();
         const snap = store.createSnapshot(false, { workspaceRoot: root });
 
-        await expect(store.runChecks(snap.id, ['true'], 5, { workspaceRoot: root })).rejects.toThrow('.ontology must not be a symlink');
+        await expect(store.runChecks(snap.id, ['true'], 5, { workspaceRoot: root })).rejects.toThrow(
+            '.ontology must not be a symlink'
+        );
     });
 
     test('server config rejects non-numeric ports and NaN validation', () => {
@@ -210,15 +323,24 @@ describe('tool boundary contract', () => {
         process.env.HTTP_API_PORT = 'abc';
         expect(() => getConfig()).toThrow('Invalid numeric environment variable HTTP_API_PORT');
 
-        expect(() => validatePorts({
-            ports: { httpAPI: Number.NaN, mcpHTTP: 7001, lspServer: 7002, testAPI: 7010, testMCP: 7011, testLSP: 7012 },
-            host: 'localhost',
-            timeout: 1,
-            maxRetries: 1,
-            cacheEnabled: false,
-            cacheTTL: 1,
-            circuitBreakerThreshold: 1,
-            circuitBreakerResetTimeout: 1,
-        })).toThrow('Invalid port number: NaN');
+        expect(() =>
+            validatePorts({
+                ports: {
+                    httpAPI: Number.NaN,
+                    mcpHTTP: 7001,
+                    lspServer: 7002,
+                    testAPI: 7010,
+                    testMCP: 7011,
+                    testLSP: 7012,
+                },
+                host: 'localhost',
+                timeout: 1,
+                maxRetries: 1,
+                cacheEnabled: false,
+                cacheTTL: 1,
+                circuitBreakerThreshold: 1,
+                circuitBreakerResetTimeout: 1,
+            })
+        ).toThrow('Invalid port number: NaN');
     });
 });

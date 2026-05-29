@@ -31,6 +31,30 @@ import type { SearchQuery } from '../types/core.js';
 import { assertAllowedBrowserOrigin, corsHeadersForRequest, readLimitedJsonBody } from './http-ingress.js';
 
 const HTTP_MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
+const SNAPSHOT_ARTIFACT_MAX_BYTES = 256 * 1024;
+
+function truncateBufferUtf8WithMarker(buffer: Buffer, bytesRead: number, maxBytes: number): string {
+    const marker = `\n[truncated at ${maxBytes} bytes]\n`;
+    const markerBytes = Buffer.byteLength(marker, 'utf8');
+    let end = Math.min(bytesRead, Math.max(0, maxBytes - markerBytes));
+    const decoder = new TextDecoder('utf-8', { fatal: true });
+    while (end > 0) {
+        try {
+            return decoder.decode(buffer.subarray(0, end)) + marker;
+        } catch {
+            end--;
+        }
+    }
+    return markerBytes <= maxBytes ? marker : '';
+}
+
+async function readFileHandleBounded(handle: fs.FileHandle, maxBytes = SNAPSHOT_ARTIFACT_MAX_BYTES): Promise<string> {
+    const stat = await handle.stat();
+    if (stat.size <= maxBytes) return await handle.readFile('utf8');
+    const buffer = Buffer.alloc(maxBytes);
+    const result = await handle.read(buffer, 0, buffer.length, 0);
+    return truncateBufferUtf8WithMarker(buffer, result.bytesRead, maxBytes);
+}
 
 interface HTTPServerConfig {
     port?: number;
@@ -57,7 +81,7 @@ async function readSnapshotArtifactText(dir: string | undefined, file: string, f
                 .catch(() => fs.realpath(`/dev/fd/${handle.fd}`));
             const openedRelative = path.relative(realDir, openedReal);
             if (!openedRelative || openedRelative.startsWith('..') || path.isAbsolute(openedRelative)) return fallback;
-            return await handle.readFile('utf8');
+            return await readFileHandleBounded(handle);
         } finally {
             await handle.close().catch(() => undefined);
         }

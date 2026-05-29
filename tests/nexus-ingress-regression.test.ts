@@ -129,6 +129,25 @@ bindDescribe('Nexus HTTP ingress regressions', () => {
         }
     });
 
+    test('HTTP snapshot progress truncates large multibyte artifacts on UTF-8 boundaries', async () => {
+        const snap = overlayStore.createSnapshot(false, { workspaceRoot: workspace });
+        const snapshotDir = overlayStore.getSnapshotDirectory(snap.id, { workspaceRoot: workspace });
+        const progressPath = join(snapshotDir, 'progress.log');
+        try {
+            writeFileSync(progressPath, '😀'.repeat(80_000), 'utf8');
+
+            const res = await fetch(`${base}/api/v1/snapshots/${snap.id}/progress`);
+            expect(res.status).toBe(200);
+            const body = await res.json();
+            expect(body.success).toBe(true);
+            expect(Buffer.byteLength(body.data.progress, 'utf8')).toBeLessThanOrEqual(256 * 1024);
+            expect(body.data.progress).toContain('[truncated at 262144 bytes]');
+            expect(body.data.progress).not.toContain('\uFFFD');
+        } finally {
+            rmSync(progressPath, { force: true });
+        }
+    });
+
     test('enforces bounded JSON request bodies before parsing', async () => {
         const previous = process.env.SCI_HTTP_MAX_JSON_BODY_BYTES;
         process.env.SCI_HTTP_MAX_JSON_BODY_BYTES = '32';

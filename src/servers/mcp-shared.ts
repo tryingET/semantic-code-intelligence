@@ -256,6 +256,23 @@ export function registerCommonPromptHandlers(server: Server): void {
     });
 }
 
+const SNAPSHOT_ARTIFACT_MAX_BYTES = 256 * 1024;
+
+function truncateBufferUtf8WithMarker(buffer: Buffer, bytesRead: number, maxBytes: number): string {
+    const marker = `\n[truncated at ${maxBytes} bytes]\n`;
+    const markerBytes = Buffer.byteLength(marker, 'utf8');
+    let end = Math.min(bytesRead, Math.max(0, maxBytes - markerBytes));
+    const decoder = new TextDecoder('utf-8', { fatal: true });
+    while (end > 0) {
+        try {
+            return decoder.decode(buffer.subarray(0, end)) + marker;
+        } catch {
+            end--;
+        }
+    }
+    return markerBytes <= maxBytes ? marker : '';
+}
+
 async function readSnapshotArtifactText(dir: string | undefined, file: string, fallback: string): Promise<string> {
     if (!dir) return fallback;
     const fs = await import('node:fs/promises');
@@ -276,7 +293,12 @@ async function readSnapshotArtifactText(dir: string | undefined, file: string, f
                 .catch(() => fs.realpath(`/dev/fd/${handle.fd}`));
             const openedRelative = path.relative(realDir, openedReal);
             if (!openedRelative || openedRelative.startsWith('..') || path.isAbsolute(openedRelative)) return fallback;
-            return await handle.readFile('utf8');
+            const maxBytes = SNAPSHOT_ARTIFACT_MAX_BYTES;
+            const openedStat = await handle.stat();
+            if (openedStat.size <= maxBytes) return await handle.readFile('utf8');
+            const buffer = Buffer.alloc(maxBytes);
+            const result = await handle.read(buffer, 0, buffer.length, 0);
+            return truncateBufferUtf8WithMarker(buffer, result.bytesRead, maxBytes);
         } finally {
             await handle.close().catch(() => undefined);
         }
@@ -356,7 +378,10 @@ export function registerCommonResources(
                 if (tail === 'overlay.diff') {
                     const { overlayStore } = await import('../core/overlay-store.js');
                     let text =
-                        (overlayStore as any).getOverlayDiffText?.(id, { workspaceRoot: opts.workspaceRoot }) || '';
+                        (overlayStore as any).getOverlayDiffText?.(id, {
+                            workspaceRoot: opts.workspaceRoot,
+                            maxBytes: SNAPSHOT_ARTIFACT_MAX_BYTES,
+                        }) || '';
                     if (!text) {
                         const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
                         const dir = ensure ? await ensure(id, { workspaceRoot: opts.workspaceRoot }) : undefined;
