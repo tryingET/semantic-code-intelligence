@@ -767,6 +767,37 @@ _loop-scope-check fail_on_blocker="0":
     snapshot_dir = pathlib.Path("governance/task-scopes")
     selected_task_id = os.environ.get("LOOP_TASK_ID") or os.environ.get("AK_TASK_ID")
 
+    raw = subprocess.run(
+        ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", "."],
+        check=False,
+        stdout=subprocess.PIPE,
+    ).stdout.split(b"\0")
+
+    dirty_paths = []
+    index = 0
+    while index < len(raw):
+        entry = raw[index]
+        if not entry:
+            index += 1
+            continue
+        text = entry.decode("utf-8", "surrogateescape")
+        status = text[:2]
+        path = text[3:] if len(text) > 3 else ""
+        if path:
+            dirty_paths.append(path)
+        index += 2 if ("R" in status or "C" in status) else 1
+
+    if not dirty_paths and not selected_task_id:
+        snapshots = sorted(snapshot_dir.glob("AK-*.snapshot.json"))
+        if snapshots:
+            print("task_scope_snapshot=not-required reason=no-dirty-paths")
+            for snapshot in snapshots:
+                print(f"- {snapshot}")
+        else:
+            print("task_scope_snapshot=absent")
+        print("scope_check=pass")
+        raise SystemExit(0)
+
     if selected_task_id:
         snapshots = [snapshot_dir / f"AK-{selected_task_id}.snapshot.json"]
         if not snapshots[0].exists():
@@ -803,28 +834,13 @@ _loop-scope-check fail_on_blocker="0":
     required = [str(path) for path in (scope.get("required_paths") or [])]
     forbidden = [str(path) for path in (scope.get("forbidden_paths") or [])]
 
-    raw = subprocess.run(
-        ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", "."],
-        check=False,
-        stdout=subprocess.PIPE,
-    ).stdout.split(b"\0")
-
-    dirty_paths = []
-    index = 0
-    while index < len(raw):
-        entry = raw[index]
-        if not entry:
-            index += 1
-            continue
-        text = entry.decode("utf-8", "surrogateescape")
-        status = text[:2]
-        path = text[3:] if len(text) > 3 else ""
-        if path:
-            dirty_paths.append(path)
-        index += 2 if ("R" in status or "C" in status) else 1
-
     def matches(patterns, path):
-        return any(path == pattern or fnmatch.fnmatch(path, pattern) or (pattern.endswith("/") and path.startswith(pattern)) for pattern in patterns)
+        return any(
+            path == pattern
+            or fnmatch.fnmatch(path, pattern)
+            or path.startswith(f"{pattern.rstrip('/')}/")
+            for pattern in patterns
+        )
 
     out_of_scope = [path for path in dirty_paths if not matches(allowed, path)]
     forbidden_dirty = [path for path in dirty_paths if matches(forbidden, path)]
