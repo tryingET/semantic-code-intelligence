@@ -128,12 +128,13 @@ export class HTTPServer {
     // No external port registry; honor env or defaults
 
     constructor(config: HTTPServerConfig = {}) {
-        this.serverConfig = getEnvironmentConfig();
+        const workspaceRoot = resolveConfiguredWorkspaceRoot(config.workspaceRoot);
+        this.serverConfig = getEnvironmentConfig(workspaceRoot);
         this.config = {
             ...config,
             port: config.port ?? this.serverConfig.ports.httpAPI,
             host: config.host ?? this.serverConfig.host,
-            workspaceRoot: resolveConfiguredWorkspaceRoot(config.workspaceRoot),
+            workspaceRoot,
             enableCors: config.enableCors ?? true,
             enableOpenAPI: config.enableOpenAPI ?? true,
             enableLegacyPipelines:
@@ -149,12 +150,13 @@ export class HTTPServer {
         }
 
         // Initialize core analyzer
-        const coreConfig = createDefaultCoreConfig();
+        const workspaceRoot = this.config.workspaceRoot!;
+        const coreConfig = createDefaultCoreConfig(workspaceRoot);
         coreConfig.monitoring.enabled = true; // enable metrics only for HTTP server
 
         this.coreAnalyzer = await createCodeAnalyzer({
             ...coreConfig,
-            workspaceRoot: this.config.workspaceRoot!,
+            workspaceRoot,
         });
 
         await this.coreAnalyzer.initialize();

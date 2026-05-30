@@ -298,8 +298,8 @@ export class EnhancedMCPServer {
                 const { resolveConfiguredWorkspaceRoot } = workspaceRootMod as any;
 
                 // Create optimized config
-                const config = createDefaultCoreConfig();
                 const workspaceRoot = resolveConfiguredWorkspaceRoot();
+                const config = createDefaultCoreConfig(workspaceRoot);
 
                 // Optimize for fast initialization
                 config.optimization = {

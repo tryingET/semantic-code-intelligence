@@ -33,6 +33,24 @@ const ensureExitHook = () => {
     });
 };
 
+function createChunkLineCollector(onLine: (line: string) => void) {
+    let pending = '';
+    return {
+        push(data: Buffer) {
+            const text = pending + data.toString('utf8');
+            const lines = text.split(/\r?\n/);
+            pending = lines.pop() ?? '';
+            for (const line of lines) {
+                if (line) onLine(line);
+            }
+        },
+        flush() {
+            if (pending) onLine(pending);
+            pending = '';
+        },
+    };
+}
+
 // Types
 export interface StreamingGrepResult {
     file: string;
@@ -442,11 +460,9 @@ export class AsyncEnhancedGrep {
         }
 
         return new Promise((resolve) => {
+            const lineCollector = createChunkLineCollector((line) => files.push(line));
             proc.stdout?.on('data', (data: Buffer) => {
-                const lines = data.toString('utf8').split(/\r?\n/).filter(Boolean);
-                for (const line of lines) {
-                    files.push(line);
-                }
+                lineCollector.push(data);
                 // Cap results if requested
                 if (options.maxFiles && files.length >= options.maxFiles) {
                     try {
@@ -456,6 +472,7 @@ export class AsyncEnhancedGrep {
             });
             proc.on('close', () => {
                 if (timeout) clearTimeout(timeout);
+                lineCollector.flush();
                 if (options.maxFiles && files.length > options.maxFiles) {
                     resolve(files.slice(0, options.maxFiles));
                 } else {
@@ -878,19 +895,20 @@ export class AsyncEnhancedGrep {
                         timeout.unref?.();
                     }
 
+                    const lineCollector = createChunkLineCollector((line) => files.push(line));
                     proc.stdout?.on('data', (data: Buffer) => {
                         if (settled) return;
-                        const lines = data.toString('utf8').split(/\r?\n/).filter(Boolean);
-                        for (const line of lines) {
-                            files.push(line);
-                        }
+                        lineCollector.push(data);
                         if (options.maxFiles && files.length >= options.maxFiles) {
                             try {
                                 proc?.kill('SIGTERM');
                             } catch {}
                         }
                     });
-                    proc.on('close', () => settle(cappedFiles()));
+                    proc.on('close', () => {
+                        lineCollector.flush();
+                        settle(cappedFiles());
+                    });
                     proc.on('error', () => settle([]));
                 } catch {
                     settle([]);
@@ -942,12 +960,13 @@ export class AsyncEnhancedGrep {
             }, options.timeout);
         }
         return new Promise<string[]>((resolve) => {
+            const lineCollector = createChunkLineCollector((line) => files.push(line));
             proc.stdout?.on('data', (data: Buffer) => {
-                const lines = data.toString('utf8').split(/\r?\n/).filter(Boolean);
-                for (const line of lines) files.push(line);
+                lineCollector.push(data);
             });
             proc.on('close', () => {
                 if (timeout) clearTimeout(timeout);
+                lineCollector.flush();
                 resolve(files);
             });
             proc.on('error', () => {
@@ -1005,17 +1024,20 @@ export class AsyncEnhancedGrep {
                         timeout.unref?.();
                     }
 
+                    const lineCollector = createChunkLineCollector((line) => files.push(line));
                     proc.stdout?.on('data', (data: Buffer) => {
                         if (settled) return;
-                        const lines = data.toString('utf8').split(/\r?\n/).filter(Boolean);
-                        for (const line of lines) files.push(line);
+                        lineCollector.push(data);
                         if (options.maxFiles && files.length >= options.maxFiles) {
                             try {
                                 proc?.kill('SIGTERM');
                             } catch {}
                         }
                     });
-                    proc.on('close', () => settle(cappedFiles()));
+                    proc.on('close', () => {
+                        lineCollector.flush();
+                        settle(cappedFiles());
+                    });
                     proc.on('error', () => settle([]));
                 } catch {
                     settle([]);

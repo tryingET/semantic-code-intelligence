@@ -9,6 +9,7 @@
  * All analysis work is delegated to the LSP adapter and core analyzer.
  */
 
+import { existsSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { serve } from 'bun';
 import type { Location } from 'vscode-languageserver/node';
@@ -34,6 +35,14 @@ import {
 import { createCodeAnalyzer } from '../core/index.js';
 import type { CodeAnalyzer } from '../core/unified-analyzer.js';
 import { metricsRegistry, recordLayerLatency, recordToolEnd, recordToolStart } from '../instrumentation/metrics.js';
+
+export function resolveLspInitializeWorkspaceRoot(params: InitializeParams & { rootUri?: string | null }): string {
+    const candidates = [params.rootUri, params.workspaceFolders?.[0]?.uri, params.rootPath, process.cwd()].filter(
+        (value): value is string => typeof value === 'string' && value.trim().length > 0
+    );
+    const normalized = candidates.map((value) => (value.startsWith('file://') ? fileURLToPath(value) : value));
+    return normalized.find((value) => existsSync(value)) || normalized[0] || process.cwd();
+}
 
 export class LSPServer {
     private connection = createConnection(ProposedFeatures.all, process.stdin, process.stdout);
@@ -89,11 +98,10 @@ export class LSPServer {
             this.hasConfigurationCapability = !!params.capabilities.workspace?.configuration;
 
             // Initialize core analyzer
-            const config = createDefaultCoreConfig();
-            const rawWorkspaceRoot = params.rootPath || params.workspaceFolders?.[0]?.uri || process.cwd();
-            const workspaceRoot = rawWorkspaceRoot.startsWith('file://')
-                ? fileURLToPath(rawWorkspaceRoot)
-                : rawWorkspaceRoot;
+            const workspaceRoot = resolveLspInitializeWorkspaceRoot(
+                params as InitializeParams & { rootUri?: string | null }
+            );
+            const config = createDefaultCoreConfig(workspaceRoot);
 
             this.coreAnalyzer = await createCodeAnalyzer({
                 ...config,

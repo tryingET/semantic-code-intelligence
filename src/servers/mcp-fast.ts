@@ -142,8 +142,8 @@ export class FastMCPServer {
             const { resolveConfiguredWorkspaceRoot } = workspaceRootMod as any;
 
             // Initialize core analyzer with optimized config for MCP server
-            const config = createDefaultCoreConfig();
             const workspaceRoot = resolveConfiguredWorkspaceRoot();
+            const config = createDefaultCoreConfig(workspaceRoot);
 
             // Disable slow startup operations and set aggressive timeouts
             if (config.optimization) {

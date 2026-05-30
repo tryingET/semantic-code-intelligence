@@ -65,10 +65,18 @@ export class CLIAdapter {
         return nodePath.resolve(typeof configured === 'string' && configured.trim() ? configured : process.cwd());
     }
 
+    private cliRelativeBase(workspaceRoot: string): string {
+        const root = nodePath.resolve(workspaceRoot);
+        const cwd = nodePath.resolve(process.cwd());
+        const relative = nodePath.relative(root, cwd);
+        return !relative || (!relative.startsWith('..') && !nodePath.isAbsolute(relative)) ? cwd : root;
+    }
+
     private pathInputFromCliFile(value: string, workspaceRoot: string): string {
         const raw = String(value || '').trim();
-        if (!raw || raw.startsWith('file://')) return workspaceInputToPath(raw, workspaceRoot);
-        return nodePath.isAbsolute(raw) ? nodePath.resolve(raw) : nodePath.resolve(process.cwd(), raw);
+        if (!raw || raw.startsWith('file://') || nodePath.isAbsolute(raw))
+            return workspaceInputToPath(raw, workspaceRoot);
+        return nodePath.resolve(this.cliRelativeBase(workspaceRoot), raw);
     }
 
     private async workspaceUriForFile(value: string | undefined, inputLabel: string): Promise<string> {

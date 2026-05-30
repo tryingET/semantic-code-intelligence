@@ -72,7 +72,8 @@ export type McpHttpServerStartOptions = {
 let activeCorsHost: string | undefined;
 
 function resolveMcpHttpRuntimeConfig(options: McpHttpServerStartOptions = {}): { host: string; port: number } {
-    const cfg = getEnvironmentConfig();
+    const workspaceRoot = resolveConfiguredWorkspaceRoot();
+    const cfg = getEnvironmentConfig(workspaceRoot);
     return {
         host: options.host ?? process.env.MCP_HTTP_HOST ?? cfg.host ?? 'localhost',
         port: Number(options.port ?? process.env.MCP_HTTP_PORT ?? cfg.ports.mcpHTTP ?? 7001),
@@ -387,9 +388,9 @@ async function disposeSession(record: SessionRecord | undefined, sessionId?: str
 async function createMcpServer(desiredSid?: string, enableJsonResponse = false): Promise<SessionRecord> {
     ensureSessionSweeper();
     // Initialize core analyzer
-    const coreConfig = createDefaultCoreConfig();
-    coreConfig.monitoring.enabled = false; // disable periodic metrics for MCP HTTP dogfooding
     const workspaceRoot = resolveConfiguredWorkspaceRoot();
+    const coreConfig = createDefaultCoreConfig(workspaceRoot);
+    coreConfig.monitoring.enabled = false; // disable periodic metrics for MCP HTTP dogfooding
     const analyzer = await createCodeAnalyzer({ ...coreConfig, workspaceRoot });
     await analyzer.initialize();
 

@@ -171,9 +171,9 @@ export function getTestConfig(): ServerConfig {
 /**
  * Get the appropriate configuration based on environment
  */
-export function getEnvironmentConfig(): ServerConfig {
+export function getEnvironmentConfig(startDir = process.cwd()): ServerConfig {
     const isTest = process.env.NODE_ENV === 'test' || process.env.BUN_ENV === 'test';
-    return isTest ? getTestConfig() : getConfig();
+    return isTest ? getTestConfig() : getConfig(startDir);
 }
 
 /**

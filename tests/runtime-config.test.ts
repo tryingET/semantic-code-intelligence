@@ -3,9 +3,10 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createDefaultCoreConfig } from '../src/adapters/utils.js';
-import { getConfig } from '../src/core/config/server-config.js';
+import { getConfig, getEnvironmentConfig } from '../src/core/config/server-config.js';
 import { createRuntimeCoreConfig } from '../src/core/runtime-config.js';
 import { resolveConfiguredWorkspaceRoot } from '../src/core/workspace-root.js';
+import { resolveLspInitializeWorkspaceRoot } from '../src/servers/lsp.js';
 
 const roots: string[] = [];
 const originalCwd = process.cwd();
@@ -14,6 +15,8 @@ const originalLegacyWorkspace = process.env.WORKSPACE_ROOT;
 const originalHttpPort = process.env.HTTP_API_PORT;
 const originalMcpPort = process.env.MCP_HTTP_PORT;
 const originalLspPort = process.env.LSP_SERVER_PORT;
+const originalNodeEnv = process.env.NODE_ENV;
+const originalBunEnv = process.env.BUN_ENV;
 
 function tempWorkspace(prefix = 'sci-runtime-config-') {
     const root = mkdtempSync(join(tmpdir(), prefix));
@@ -33,6 +36,10 @@ afterEach(() => {
     else process.env.MCP_HTTP_PORT = originalMcpPort;
     if (originalLspPort === undefined) delete process.env.LSP_SERVER_PORT;
     else process.env.LSP_SERVER_PORT = originalLspPort;
+    if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = originalNodeEnv;
+    if (originalBunEnv === undefined) delete process.env.BUN_ENV;
+    else process.env.BUN_ENV = originalBunEnv;
     while (roots.length) rmSync(roots.pop()!, { recursive: true, force: true });
 });
 
@@ -63,6 +70,23 @@ describe('runtime config contract', () => {
         expect(config.layers.layer4.dbPath).toBe(join(root, 'data', 'ontology.db'));
         expect(config.cache.memory.maxSize).toBe(2048);
         expect(config.cache.memory.ttl).toBe(10);
+    });
+
+    test('default core config loads target runtime config from WORKSPACE_ROOT when launched elsewhere', () => {
+        delete process.env.SEMANTIC_CODE_WORKSPACE;
+        const target = tempWorkspace('sci-runtime-config-target-');
+        const supervisor = tempWorkspace('sci-runtime-config-supervisor-');
+        writeFileSync(
+            join(target, '.semantic-code-intelligence-config.yaml'),
+            'database:\n  path: .ontology/custom.db\n',
+            'utf8'
+        );
+        process.env.WORKSPACE_ROOT = target;
+        process.chdir(supervisor);
+
+        const config = createDefaultCoreConfig();
+        expect(config.database?.path).toBe(join(target, '.ontology', 'custom.db'));
+        expect(config.layers.layer4.dbPath).toBe(join(target, '.ontology', 'custom.db'));
     });
 
     test('config-file workspaceRoot cannot escape the config directory through a symlink', () => {
@@ -102,6 +126,39 @@ describe('runtime config contract', () => {
 
         process.env.MCP_HTTP_PORT = '8001';
         expect(getConfig(root).ports.mcpHTTP).toBe(8001);
+    });
+
+    test('environment server config can load from target workspace when launch cwd differs', () => {
+        delete process.env.NODE_ENV;
+        delete process.env.BUN_ENV;
+        delete process.env.HTTP_API_PORT;
+        delete process.env.MCP_HTTP_PORT;
+        delete process.env.LSP_SERVER_PORT;
+        const target = tempWorkspace('sci-runtime-server-target-');
+        const supervisor = tempWorkspace('sci-runtime-server-supervisor-');
+        writeFileSync(
+            join(target, '.semantic-code-intelligence-config.yaml'),
+            'server:\n  host: 127.0.0.42\n  ports:\n    httpAPI: 7996\n    mcpHTTP: 7997\n    lspServer: 7998\n',
+            'utf8'
+        );
+        process.chdir(supervisor);
+
+        expect(getEnvironmentConfig(target)).toMatchObject({
+            host: '127.0.0.42',
+            ports: { httpAPI: 7996, mcpHTTP: 7997, lspServer: 7998 },
+        });
+    });
+
+    test('LSP initialization workspace root prefers rootUri over deprecated rootPath', () => {
+        const rootUriWorkspace = tempWorkspace('sci-runtime-root-uri-');
+        const rootPathWorkspace = tempWorkspace('sci-runtime-root-path-');
+        expect(
+            resolveLspInitializeWorkspaceRoot({
+                capabilities: {},
+                rootUri: `file://${rootUriWorkspace}`,
+                rootPath: rootPathWorkspace,
+            } as any)
+        ).toBe(rootUriWorkspace);
     });
 
     test('server cacheEnabled runtime config is parsed strictly', () => {
@@ -164,5 +221,6 @@ describe('runtime config contract', () => {
         process.env.SEMANTIC_CODE_WORKSPACE = envRoot;
         expect(resolveConfiguredWorkspaceRoot()).toBe(envRoot);
         expect(resolveConfiguredWorkspaceRoot(explicitRoot)).toBe(explicitRoot);
+        expect(createDefaultCoreConfig(root).workspaceRoot).toBe(envRoot);
     });
 });

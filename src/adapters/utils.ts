@@ -241,8 +241,14 @@ export function parseIntegerOption(
 
 export { handleAdapterError, withAdapterTimeout } from './error-mapper.js';
 
-export function createDefaultCoreConfig(): CoreConfig {
-    const cfg = createRuntimeCoreConfig();
+export function createDefaultCoreConfig(
+    startDir = process.env.SEMANTIC_CODE_WORKSPACE || process.env.WORKSPACE_ROOT || process.cwd()
+): CoreConfig {
+    const cfg = createRuntimeCoreConfig(startDir);
+    const envWorkspaceRoot = process.env.SEMANTIC_CODE_WORKSPACE || process.env.WORKSPACE_ROOT;
+    if (envWorkspaceRoot && envWorkspaceRoot.trim()) {
+        (cfg as any).workspaceRoot = nodePath.resolve(envWorkspaceRoot);
+    }
     (cfg as any).monitoring = { ...(cfg as any).monitoring, enabled: false };
 
     // Allow simple env-based overrides for storage without touching callers

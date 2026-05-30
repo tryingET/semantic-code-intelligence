@@ -20,11 +20,11 @@ function tempWorkspaceDir(prefix: string) {
     return dir;
 }
 
-function runCli(args: string[], cwd = repoRoot) {
+function runCli(args: string[], cwd = repoRoot, env: Record<string, string> = {}) {
     return spawnSync('bun', ['run', join(repoRoot, 'src/servers/cli.ts'), ...args], {
         cwd,
         encoding: 'utf8',
-        env: { ...process.env, NO_COLOR: '1' },
+        env: { ...process.env, ...env, NO_COLOR: '1' },
     });
 }
 
@@ -59,6 +59,22 @@ describe('CLI workspace file boundary', () => {
 
         expect(result.status).toBe(0);
         expect(result.stdout).toContain('TestClass');
+    });
+
+    test('explore tree resolves relative context files from explicit workspace when launched outside', () => {
+        const workspace = tempDir('sci-cli-tree-workspace-');
+        const supervisor = tempDir('sci-cli-tree-supervisor-');
+        mkdirSync(join(workspace, 'src'), { recursive: true });
+        writeFileSync(join(workspace, 'src', 'a.ts'), 'export const TreeNeedle = 1;\n', 'utf8');
+
+        const result = runCli(['explore', 'TreeNeedle', '-f', 'src/a.ts', '--tree', '--tree-depth', '1'], supervisor, {
+            WORKSPACE_ROOT: workspace,
+        });
+
+        expect(result.status).toBe(0);
+        expect(result.stdout).toContain('TreeNeedle');
+        expect(result.stdout).toContain('a.ts');
+        expect(result.stdout).not.toContain('No definitions found');
     });
 
     test('patch file options accept cwd-relative files from a nested workspace directory', () => {

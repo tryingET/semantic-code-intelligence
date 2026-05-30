@@ -174,22 +174,20 @@ docs/api/
         const relativePath = path.relative(this.workspaceRoot, path.resolve(filePath)).split(path.sep).join('/');
         if (relativePath === '..' || relativePath.startsWith('../') || path.isAbsolute(relativePath)) return false;
 
+        let ignored = false;
         for (const pattern of this.patterns) {
             if (pattern.startsWith('!')) {
-                // Negation pattern - if it matches, don't ignore
+                // Negation pattern - last matching rule wins, including over defaults.
                 const negPattern = pattern.substring(1);
                 if (minimatch(relativePath, negPattern)) {
-                    return false;
+                    ignored = false;
                 }
-            } else {
-                // Regular pattern - if it matches, ignore
-                if (minimatch(relativePath, pattern)) {
-                    return true;
-                }
+            } else if (minimatch(relativePath, pattern)) {
+                ignored = true;
             }
         }
 
-        return false;
+        return ignored;
     }
 
     public getPatterns(): string[] {

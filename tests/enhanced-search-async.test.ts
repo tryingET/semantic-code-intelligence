@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 const perfOnly = process.env.PERF === '1';
 const perfDescribe = perfOnly ? describe : describe.skip;
 
+import { EventEmitter } from 'node:events';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -25,6 +26,33 @@ async function tempDir(prefix: string): Promise<string> {
 }
 
 describe('Async Enhanced Search correctness', () => {
+    test('listFiles carries partial stdout lines across chunks', async () => {
+        const grep = new AsyncEnhancedGrep({ cacheSize: 0, defaultTimeout: 1000, fileDiscoveryPrefer: 'rg' });
+        try {
+            (grep as any).processPool = {
+                async execute() {
+                    const proc = new EventEmitter() as any;
+                    proc.stdout = new EventEmitter();
+                    proc.kill = () => undefined;
+                    setImmediate(() => {
+                        proc.stdout.emit('data', Buffer.from('src/very'));
+                        proc.stdout.emit('data', Buffer.from('/long.ts\nsrc/next.ts\n'));
+                        proc.emit('close', 0);
+                    });
+                    return proc;
+                },
+                destroy() {},
+            };
+
+            await expect(grep.listFiles({ path: '.', timeout: 1000 })).resolves.toEqual([
+                'src/very/long.ts',
+                'src/next.ts',
+            ]);
+        } finally {
+            grep.destroy();
+        }
+    });
+
     test('separates fixed-string and regex searches in cache keys', async () => {
         const root = await tempDir('sci-grep-regex-');
         const grep = new AsyncEnhancedGrep({ cacheSize: 10, cacheTTL: 60000, defaultTimeout: 1000 });

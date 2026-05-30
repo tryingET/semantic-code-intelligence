@@ -36,8 +36,10 @@ describe('nexus boundary regressions', () => {
         expect(existsSync(ignorePath)).toBe(false);
         expect(missing.shouldIgnore(join(workspace, 'node_modules', 'pkg', 'index.js'))).toBe(true);
 
-        writeFileSync(ignorePath, 'generated/\n', 'utf8');
+        writeFileSync(ignorePath, 'generated/\n!node_modules/pkg/keep.ts\n', 'utf8');
         const manager = new IgnoreFileManager(workspace);
+        expect(manager.shouldIgnore(join(workspace, 'node_modules', 'pkg', 'keep.ts'))).toBe(false);
+        expect(manager.shouldIgnore(join(workspace, 'node_modules', 'other', 'drop.ts'))).toBe(true);
         expect(manager.shouldIgnore(join(workspace, 'generated', 'a.ts'))).toBe(true);
         expect(manager.shouldIgnore(join(workspace, 'src', 'generated', 'a.ts'))).toBe(true);
         expect(manager.shouldIgnore(join(workspace, '..literal-name.ts'))).toBe(false);
@@ -47,6 +49,28 @@ describe('nexus boundary regressions', () => {
         try {
             process.chdir(otherCwd);
             expect(manager.shouldIgnore(join(workspace, 'generated', 'b.ts'))).toBe(true);
+        } finally {
+            process.chdir(previousCwd);
+        }
+    });
+
+    test('CLIAdapter resolves relative file inputs against workspace root, not launch cwd', async () => {
+        const workspace = tempWorkspace();
+        const otherCwd = tempWorkspace('sci-nexus-cli-cwd-');
+        writeFileSync(join(workspace, 'target.ts'), 'export const workspaceNeedle = 1;\n', 'utf8');
+        const adapter = new CLIAdapter({
+            config: { workspaceRoot: workspace },
+            async initialize() {},
+            async findDefinitionAsync(request: any) {
+                return { data: [{ uri: request.uri }] };
+            },
+        } as any);
+
+        const previousCwd = process.cwd();
+        try {
+            process.chdir(otherCwd);
+            const result = await adapter.findDefinition('target.ts', { symbol: 'workspaceNeedle' });
+            expect(result[0].uri).toBe(pathToFileURL(join(workspace, 'target.ts')).href);
         } finally {
             process.chdir(previousCwd);
         }

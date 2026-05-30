@@ -562,7 +562,7 @@ class CLI {
                     });
                     await this.exitIfAdapterError(output, !!options.json);
                     if (options.tree && !options.json) {
-                        const target = options.file ? options.file : this.workspaceRoot;
+                        const target = options.file ? this.resolveCliFileInput(options.file) : this.workspaceRoot;
                         const depth = parseIntegerOption(options.treeDepth, 'tree-depth', {
                             defaultValue: 3,
                             min: 1,
@@ -961,10 +961,18 @@ class CLI {
         }
     }
 
+    private cliRelativeBase(): string {
+        const root = path.resolve(this.workspaceRoot);
+        const cwd = path.resolve(process.cwd());
+        const relative = path.relative(root, cwd);
+        return !relative || (!relative.startsWith('..') && !path.isAbsolute(relative)) ? cwd : root;
+    }
+
     private resolveCliFileInput(requestedPath: string): string {
         const raw = requestedPath.trim();
-        if (raw.startsWith('file://')) return workspaceInputToPath(raw, this.workspaceRoot);
-        return path.isAbsolute(raw) ? path.resolve(raw) : path.resolve(process.cwd(), raw);
+        if (!raw || raw.startsWith('file://') || path.isAbsolute(raw))
+            return workspaceInputToPath(raw, this.workspaceRoot);
+        return path.resolve(this.cliRelativeBase(), raw);
     }
 
     private async ensureInitialized(options: any): Promise<void> {
@@ -988,9 +996,9 @@ class CLI {
                 import('../core/tools/executor.js'),
             ]);
 
-            const config = createDefaultCoreConfig();
             const { resolveConfiguredWorkspaceRoot } = await import('../core/workspace-root.js');
             const workspaceRoot = resolveConfiguredWorkspaceRoot(undefined, this.findWorkspaceRoot());
+            const config = createDefaultCoreConfig(workspaceRoot);
             if (
                 process.env.SCI_ENABLE_CACHE_WARMUP_IN_CLI !== '1' &&
                 process.env.SCI_DISABLE_CACHE_WARMUP === undefined
