@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -69,6 +69,22 @@ async function workflowFailure(name: string, args: Record<string, unknown>, opti
 }
 
 describe('Alpha MVP CLI fallback parity', () => {
+    test('init refuses dangling .semantic-code-ignore symlinks without writing outside cwd', async () => {
+        const workspace = await mkdtemp(path.join(tmpdir(), 'sci-cli-init-symlink-'));
+        const outsideTarget = path.join(tmpdir(), `sci-ignore-target-${Date.now()}-${Math.random()}`);
+        try {
+            await rm(outsideTarget, { force: true });
+            await symlink(outsideTarget, path.join(workspace, '.semantic-code-ignore'));
+            const res = await runCli(['init'], { cwd: workspace });
+            expect(res.code).not.toBe(0);
+            expect(res.stderr).toContain('Ignore path must not be a symlink');
+            await expect(access(outsideTarget)).rejects.toThrow();
+        } finally {
+            await rm(workspace, { recursive: true, force: true });
+            await rm(outsideTarget, { force: true });
+        }
+    }, 60000);
+
     test('generic workflow command rejects registered non-Alpha tools', async () => {
         for (const name of ['plan_rename', 'list_pipelines', 'get_completions']) {
             const refused = await workflowFailure(name, {});
@@ -275,15 +291,22 @@ describe('Alpha MVP CLI fallback parity', () => {
             appliedDiffMatchesSnapshot: null,
         });
 
-        const refusedApply = await workflowFailure('safe_write', {
+        const refusedApply = await workflow('safe_write', {
             patch: patchPlanningDiff,
             commands: ['true'],
             timeoutSec: 30,
             apply: true,
         });
-        expect(refusedApply.success).toBe(false);
-        expect(refusedApply.error?.code).toBe('InvalidParams');
-        expect(refusedApply.error?.message).toContain('safe_write apply requires ALLOW_SNAPSHOT_APPLY=1');
+        expect(refusedApply.payload.ok).toBe(false);
+        expect(refusedApply.payload.reason).toBe('apply_guard_required');
+        expect(refusedApply.payload.applied).toBe(false);
+        expect(refusedApply.payload.applyResult?.message).toBe('ALLOW_SNAPSHOT_APPLY=1 required');
+        expect(refusedApply.payload.validationPlan?.verification).toMatchObject({
+            staged: true,
+            checksPassed: true,
+            applyGuardSatisfied: false,
+            applied: false,
+        });
 
         const after = await Bun.file(patchPlanningTarget).text();
         expect(after).toBe(before);

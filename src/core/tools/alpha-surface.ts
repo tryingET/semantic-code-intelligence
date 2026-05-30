@@ -63,14 +63,9 @@ export function assertAlphaMvpToolAllowed(
         });
     }
 
-    const env = opts.env || process.env;
-    if (normalized === 'apply_snapshot' && env.ALLOW_SNAPSHOT_APPLY !== '1') {
-        throw new CoreError(
-            'InvalidParams',
-            `Tool 'apply_snapshot' requires ALLOW_SNAPSHOT_APPLY=1 through ${surface}`
-        );
-    }
-    if (normalized === 'safe_write' && args?.apply === true && env.ALLOW_SNAPSHOT_APPLY !== '1') {
-        throw new CoreError('InvalidParams', `safe_write apply requires ALLOW_SNAPSHOT_APPLY=1 through ${surface}`);
-    }
+    // The Alpha membrane only owns exposure: unknown or non-Alpha tools are invocation errors.
+    // Guarded mutation refusals for valid Alpha tools are workflow/domain outcomes so callers
+    // receive snapshot/check/rollback evidence instead of losing context at the adapter boundary.
+    void args;
+    void opts.env;
 }

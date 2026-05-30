@@ -1148,9 +1148,20 @@ performance:
             throw error;
         }
 
-        // Create .semantic-code-ignore if it doesn't exist
+        // Create .semantic-code-ignore if it doesn't exist; never follow symlinks.
         const ignorePath = path.join(process.cwd(), '.semantic-code-ignore');
-        if (!fs.existsSync(ignorePath)) {
+        let ignoreExists = false;
+        try {
+            const ignoreStat = fs.lstatSync(ignorePath);
+            if (ignoreStat.isSymbolicLink()) {
+                console.error('Ignore path must not be a symlink.');
+                process.exit(1);
+            }
+            ignoreExists = true;
+        } catch (error: any) {
+            if (error?.code !== 'ENOENT') throw error;
+        }
+        if (!ignoreExists) {
             const ignoreContent = `# Semantic Code Intelligence ignore patterns
 node_modules/
 .git/
@@ -1162,7 +1173,15 @@ build/
 *.min.js
 *.map
 `;
-            fs.writeFileSync(ignorePath, ignoreContent);
+            try {
+                this.writeConfigFileNoFollow(ignorePath, ignoreContent, false);
+            } catch (error: any) {
+                if (error?.code === 'ELOOP') {
+                    console.error('Ignore path must not be a symlink.');
+                    process.exit(1);
+                }
+                throw error;
+            }
         }
 
         console.log('✓ Semantic Code Intelligence initialized');

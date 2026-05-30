@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
+import { mkdir, rm } from 'node:fs/promises';
 import { ALPHA_MVP_TOOL_NAMES, assertAlphaMvpToolAllowed } from '../src/core/tools/alpha-surface';
 import { ToolRegistry } from '../src/core/tools/registry';
 import { assertHttpToolAllowed, defaultHttpToolNames } from '../src/core/workflows/http-tool-policy';
@@ -238,6 +239,35 @@ bindDescribe('Alpha MVP HTTP tools/call contract', () => {
         expect(Array.isArray(results.get('ast_query')?.results)).toBe(true);
         expect(results.get('graph_expand')?.schemaVersion).toBe(2);
         expect(results.get('graph_expand')?.neighbors).toBeDefined();
+    }, 30000);
+
+    test('text_search caps individual result text while preserving match metadata', async () => {
+        const dir = '.tmp-alpha-text-search-bound';
+        const file = `${dir}/huge.txt`;
+        await rm(dir, { recursive: true, force: true });
+        await mkdir(dir, { recursive: true });
+        try {
+            await Bun.write(file, `${'A'.repeat(5000)}NEEDLE${'B'.repeat(5000)}`);
+            const { status, body } = await callTool(base, 'text_search', {
+                query: 'NEEDLE',
+                path: dir,
+                maxResults: 1,
+            });
+            expect(status).toBe(200);
+            expect(body.success).toBe(true);
+            expect(body.result.results).toHaveLength(1);
+            expect(body.result.results[0].text.length).toBeLessThanOrEqual(4096);
+            expect(body.result.results[0]).toMatchObject({
+                line: 1,
+                column: 5001,
+                columnInText: 2049,
+                textTruncated: true,
+                omittedPrefixChars: 2952,
+                originalTextChars: 10006,
+            });
+        } finally {
+            await rm(dir, { recursive: true, force: true });
+        }
     }, 30000);
 
     structuralTest(

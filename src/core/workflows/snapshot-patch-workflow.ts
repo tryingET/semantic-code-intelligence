@@ -1,15 +1,20 @@
 import { spawnSync } from 'node:child_process';
 import { overlayStore } from '../overlay-store.js';
-import { workflowErrorResult } from './tool-result-normalizer.js';
-import { classifyPatchRisk, extractFilesFromPatch, shellQuote } from './patch-analysis.js';
-import { snapshotArtifactLinks } from './snapshot-artifacts.js';
-import { buildValidationPlan, recommendChecksPayload } from './validation-plan.js';
 import { verifyAppliedSnapshotDiff as verifyAppliedSnapshotDiffForWorkspace } from './applied-snapshot-verification.js';
-import { convertApplyPatchToUnified as convertApplyPatchToUnifiedForWorkspace } from './apply-patch-converter.js';
-import { extractSnapshotArtifacts as extractSnapshotArtifactsForWorkspace } from './snapshot-artifact-reader.js';
 import { applyAfterChecks as applyAfterChecksWorkflow } from './apply-after-checks-workflow.js';
+import { convertApplyPatchToUnified as convertApplyPatchToUnifiedForWorkspace } from './apply-patch-converter.js';
+import { classifyPatchRisk, extractFilesFromPatch, shellQuote } from './patch-analysis.js';
+import { extractSnapshotArtifacts as extractSnapshotArtifactsForWorkspace } from './snapshot-artifact-reader.js';
+import { snapshotArtifactLinks } from './snapshot-artifacts.js';
+import { workflowErrorResult } from './tool-result-normalizer.js';
+import { buildValidationPlan, recommendChecksPayload } from './validation-plan.js';
 
-export { classifyPatchRisk, extractFilesFromPatch, normalizeRecommendationFiles, hasGraphImpact } from './patch-analysis.js';
+export {
+    classifyPatchRisk,
+    extractFilesFromPatch,
+    hasGraphImpact,
+    normalizeRecommendationFiles,
+} from './patch-analysis.js';
 export { clampMaxBytes, snapshotArtifactLinks, truncateUtf8WholeCodePoints } from './snapshot-artifacts.js';
 export { buildValidationPlan, recommendChecksPayload } from './validation-plan.js';
 
@@ -143,10 +148,30 @@ export class SnapshotPatchWorkflowService {
         if (!snapshot) {
             return workflowErrorResult('InvalidParams', 'Missing snapshot');
         }
+        try {
+            overlayStore.ensureSnapshot(snapshot, { workspaceRoot: this.workspaceRoot });
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            return workflowErrorResult('InvalidParams', `Invalid snapshot: ${msg}`);
+        }
         if (process.env.ALLOW_SNAPSHOT_APPLY !== '1') {
             return {
-                text: 'apply_snapshot is disabled. Set ALLOW_SNAPSHOT_APPLY=1 to enable.',
-                isError: true,
+                payload: {
+                    workflow: 'apply_snapshot',
+                    snapshot,
+                    ok: false,
+                    applied: false,
+                    reverse,
+                    check,
+                    applyGuardSatisfied: false,
+                    reason: 'apply_guard_required',
+                    message: 'ALLOW_SNAPSHOT_APPLY=1 required',
+                    diagnostics: {
+                        guard: 'ALLOW_SNAPSHOT_APPLY',
+                        requiredValue: '1',
+                    },
+                },
+                isError: false,
             };
         }
         try {
@@ -387,19 +412,33 @@ export class SnapshotPatchWorkflowService {
         }
         const snapshotArtifacts = snapshotArtifactLinks(snapshot);
         const applyVerification = applied ? await this.verifyAppliedSnapshotDiff(snapshot) : null;
+        const applyGuardSatisfied = !apply || process.env.ALLOW_SNAPSHOT_APPLY === '1';
+        const appliedDiffMatchesSnapshot = applied ? applyVerification?.appliedDiffMatchesSnapshot === true : null;
+        const failureReason =
+            apply && !applyGuardSatisfied
+                ? 'apply_guard_required'
+                : !checksOut?.ok
+                  ? 'checks_failed'
+                  : apply && !applied
+                    ? 'apply_failed'
+                    : apply && appliedDiffMatchesSnapshot !== true
+                      ? 'apply_verification_failed'
+                      : null;
         const verification = {
             staged: !!stageOut?.accepted,
             checksPassed: !!checksOut?.ok,
-            applyGuardSatisfied: !apply || process.env.ALLOW_SNAPSHOT_APPLY === '1',
+            applyGuardSatisfied,
             applied,
-            appliedDiffMatchesSnapshot: applied ? applyVerification?.appliedDiffMatchesSnapshot === true : null,
+            appliedDiffMatchesSnapshot,
             method: applied ? applyVerification?.method || 'git_apply_reverse_check_vs_snapshot_overlay' : null,
-            diagnostics: applied ? applyVerification?.diagnostics || null : null,
+            diagnostics: applied
+                ? applyVerification?.diagnostics || null
+                : failureReason
+                  ? { reason: failureReason, applyResultMessage: applyResult?.message || null }
+                  : null,
         };
         const ok =
-            !!stageOut?.accepted &&
-            !!checksOut?.ok &&
-            (apply ? applied && verification.appliedDiffMatchesSnapshot === true : true);
+            !!stageOut?.accepted && !!checksOut?.ok && (apply ? applied && appliedDiffMatchesSnapshot === true : true);
         const rollbackArgs = JSON.stringify({ snapshot, reverse: true });
         const rollback = {
             available: applied,
@@ -432,6 +471,7 @@ export class SnapshotPatchWorkflowService {
         });
         const summary = {
             ok,
+            ...(ok ? {} : { reason: failureReason || 'unknown_failure' }),
             workflow: 'safe_write',
             mode: apply ? 'apply_after_checks' : 'preview_validate',
             risk,

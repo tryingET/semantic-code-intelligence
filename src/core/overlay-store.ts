@@ -1241,6 +1241,12 @@ export class OverlayStore {
         if (this.isPackageScriptCommand(words) && words[2]?.startsWith('-')) {
             return 'package runner options are not supported for validation-safe script inspection';
         }
+        if (words[0] === 'bun' && words[1] === 'run') {
+            const candidate = words[2] || '';
+            if (candidate.includes('/') || candidate.includes('\\')) {
+                return 'bun run file execution is not allowed for validation-safe checks; use bun test or a declared package script';
+            }
+        }
         const scriptName = this.packageScriptName(words);
         if (!scriptName) return null;
         const scripts = this.readPackageScripts(cwd);

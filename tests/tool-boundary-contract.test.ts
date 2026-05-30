@@ -89,6 +89,7 @@ describe('tool boundary contract', () => {
         const npmConfigResult = await store.runChecks(snap.id, ['npm_config_userconfig=/tmp/npmrc true'], 5, {
             workspaceRoot: root,
         });
+        const directBunRunResult = await store.runChecks(snap.id, ['bun run ./pwn.ts'], 5, { workspaceRoot: root });
 
         expect(envResult.ok).toBe(false);
         expect(envResult.output).toContain('Rejected check command');
@@ -105,6 +106,8 @@ describe('tool boundary contract', () => {
         expect(nodeOptionsResult.output).toContain('unsupported validation environment variable: NODE_OPTIONS');
         expect(npmConfigResult.ok).toBe(false);
         expect(npmConfigResult.output).toContain('unsupported validation environment variable: npm_config_userconfig');
+        expect(directBunRunResult.ok).toBe(false);
+        expect(directBunRunResult.output).toContain('bun run file execution is not allowed');
     });
 
     test('run_checks inspects package script bodies instead of trusting runner names', async () => {

@@ -243,23 +243,54 @@ describe('nexus contract regressions', () => {
             expect(body.success).toBe(true);
             expect(JSON.stringify(body.result)).toContain('export const value = 1');
 
-            const deniedApply = await adapter.handleRequest({
+            const snapshot = await adapter.handleRequest({
+                method: 'POST',
+                url: '/api/v1/tools/call',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ name: 'get_snapshot', arguments: { preferExisting: false } }),
+            });
+            expect(snapshot.status).toBe(200);
+            const snapshotId = JSON.parse(snapshot.body).result.snapshot;
+
+            const invalidApply = await adapter.handleRequest({
                 method: 'POST',
                 url: '/api/v1/tools/call',
                 headers: { 'content-type': 'application/json' },
                 body: JSON.stringify({ name: 'apply_snapshot', arguments: { snapshot: 'not-a-snapshot' } }),
             });
-            expect(deniedApply.status).toBe(400);
-            expect(JSON.parse(deniedApply.body).error.code).toBe('InvalidParams');
+            expect(invalidApply.status).toBe(400);
+            expect(JSON.parse(invalidApply.body).error.code).toBe('InvalidParams');
 
+            const deniedApply = await adapter.handleRequest({
+                method: 'POST',
+                url: '/api/v1/tools/call',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ name: 'apply_snapshot', arguments: { snapshot: snapshotId } }),
+            });
+            expect(deniedApply.status).toBe(200);
+            const deniedApplyBody = JSON.parse(deniedApply.body);
+            expect(deniedApplyBody.success).toBe(true);
+            expect(deniedApplyBody.result).toMatchObject({ ok: false, reason: 'apply_guard_required' });
+
+            const safeWriteDiff = `diff --git a/sample.ts b/sample.ts\n--- a/sample.ts\n+++ b/sample.ts\n@@ -1 +1 @@\n-export const value = 1;\n+export const value = 2;\n`;
             const deniedSafeWriteApply = await adapter.handleRequest({
                 method: 'POST',
                 url: '/api/v1/tools/call',
                 headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({ name: 'safe_write', arguments: { apply: true } }),
+                body: JSON.stringify({
+                    name: 'safe_write',
+                    arguments: { patch: safeWriteDiff, commands: ['true'], apply: true },
+                }),
             });
-            expect(deniedSafeWriteApply.status).toBe(400);
-            expect(JSON.parse(deniedSafeWriteApply.body).error.message).toContain('safe_write apply');
+            expect(deniedSafeWriteApply.status).toBe(200);
+            const deniedSafeWriteBody = JSON.parse(deniedSafeWriteApply.body);
+            expect(deniedSafeWriteBody.success).toBe(true);
+            expect(deniedSafeWriteBody.result).toMatchObject({
+                ok: false,
+                reason: 'apply_guard_required',
+                applied: false,
+            });
+            expect(deniedSafeWriteBody.result.applyResult?.message).toBe('ALLOW_SNAPSHOT_APPLY=1 required');
 
             const listed = await adapter.handleRequest({
                 method: 'POST',
@@ -280,7 +311,7 @@ describe('nexus contract regressions', () => {
         expect(error.data?.data).toBeUndefined();
     });
 
-    test('HTTPServer tools/call applies the same mutation capability guard as the adapter', async () => {
+    test('HTTPServer tools/call returns mutation guard refusals as domain outcomes', async () => {
         const workspaceRoot = tempWorkspace();
         const port = 7157;
         const previousPort = process.env.HTTP_API_PORT;
@@ -290,15 +321,24 @@ describe('nexus contract regressions', () => {
         const server = new HTTPServer({ host: '127.0.0.1', port, workspaceRoot, enableOpenAPI: false });
         await server.start();
         try {
+            const snapshot = await fetch(`http://127.0.0.1:${port}/api/v1/tools/call`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ name: 'get_snapshot', arguments: { preferExisting: false } }),
+            });
+            const snapshotBody = await snapshot.json();
+            expect(snapshot.status).toBe(200);
+            expect(snapshotBody.success).toBe(true);
+
             const response = await fetch(`http://127.0.0.1:${port}/api/v1/tools/call`, {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({ name: 'apply_snapshot', arguments: { snapshot: 'not-a-snapshot' } }),
+                body: JSON.stringify({ name: 'apply_snapshot', arguments: { snapshot: snapshotBody.result.snapshot } }),
             });
             const body = await response.json();
-            expect(response.status).toBe(400);
-            expect(body.success).toBe(false);
-            expect(body.error.code).toBe('InvalidParams');
+            expect(response.status).toBe(200);
+            expect(body.success).toBe(true);
+            expect(body.result).toMatchObject({ ok: false, reason: 'apply_guard_required' });
 
             const wrongContentType = await fetch(`http://127.0.0.1:${port}/api/v1/tools/call`, {
                 method: 'POST',

@@ -20,6 +20,20 @@ type WorkspaceQueryDependencies = {
     pathInputFromToolFile: (value: string, workspaceRoot: string) => string;
 };
 
+const TEXT_SEARCH_RESULT_TEXT_MAX_CHARS = 4096;
+
+type TextSearchResult = {
+    file: string;
+    line: number;
+    column: number;
+    columnInText: number;
+    text: string;
+    textTruncated?: boolean;
+    omittedPrefixChars?: number;
+    omittedSuffixChars?: number;
+    originalTextChars?: number;
+};
+
 export class WorkspaceQueryWorkflowService {
     constructor(private readonly deps: WorkspaceQueryDependencies) {}
 
@@ -286,7 +300,6 @@ export class WorkspaceQueryWorkflowService {
                         files.push({ path: openedFile.relativePath, type: 'file', size: stat.size });
                     }
                 } catch {
-                    continue;
                 } finally {
                     await openedFile?.handle.close().catch(() => undefined);
                 }
@@ -506,9 +519,9 @@ export class WorkspaceQueryWorkflowService {
         maxResults: number;
         timeoutMs: number;
         caseInsensitive: boolean;
-    }): Promise<{ count: number; results: Array<{ file: string; line: number; column: number; text: string }> }> {
+    }): Promise<{ count: number; results: TextSearchResult[] }> {
         const started = Date.now();
-        const results: Array<{ file: string; line: number; column: number; text: string }> = [];
+        const results: TextSearchResult[] = [];
         const flags = args.caseInsensitive ? 'i' : '';
         let regex: RegExp | null = null;
         if (args.useRegex) {
@@ -551,11 +564,15 @@ export class WorkspaceQueryWorkflowService {
                         column = haystack.indexOf(literalNeedle);
                     }
                     if (column >= 0) {
-                        results.push({ file: entry.realPath, line: index + 1, column: column + 1, text: line });
+                        results.push({
+                            file: entry.realPath,
+                            line: index + 1,
+                            column: column + 1,
+                            ...boundedTextSearchLine(line, column),
+                        });
                     }
                 }
             } catch {
-                continue;
             } finally {
                 await opened?.handle.close().catch(() => undefined);
             }
@@ -701,4 +718,30 @@ export class WorkspaceQueryWorkflowService {
                   );
         }
     }
+}
+
+function boundedTextSearchLine(
+    line: string,
+    columnZeroBased: number
+): Pick<
+    TextSearchResult,
+    'text' | 'columnInText' | 'textTruncated' | 'omittedPrefixChars' | 'omittedSuffixChars' | 'originalTextChars'
+> {
+    if (line.length <= TEXT_SEARCH_RESULT_TEXT_MAX_CHARS) return { text: line, columnInText: columnZeroBased + 1 };
+
+    const contextBefore = Math.floor(TEXT_SEARCH_RESULT_TEXT_MAX_CHARS / 2);
+    const start = Math.max(
+        0,
+        Math.min(columnZeroBased - contextBefore, line.length - TEXT_SEARCH_RESULT_TEXT_MAX_CHARS)
+    );
+    const end = Math.min(line.length, start + TEXT_SEARCH_RESULT_TEXT_MAX_CHARS);
+
+    return {
+        text: line.slice(start, end),
+        columnInText: columnZeroBased + 1 - start,
+        textTruncated: true,
+        omittedPrefixChars: start,
+        omittedSuffixChars: line.length - end,
+        originalTextChars: line.length,
+    };
 }
