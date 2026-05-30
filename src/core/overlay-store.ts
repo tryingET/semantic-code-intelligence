@@ -40,6 +40,14 @@ type Snapshot = {
     applyPreExistingDirs?: string[];
 };
 
+type SnapshotBaseIndex = {
+    id: string;
+    createdAt: number;
+    baseFingerprint: string;
+};
+
+const SNAPSHOT_BASE_INDEX_FILE = '.base-index.json';
+
 const RESERVED_PATCH_ROOT_NAMES = new Set([
     '.materialized',
     'metadata.json',
@@ -287,6 +295,18 @@ export class OverlayStore {
             }
         }
         return null;
+    }
+
+    private hasFileDeletionWithoutHunks(diff: string): boolean {
+        return diff
+            .split(/\n(?=diff --git )/)
+            .some(
+                (block) =>
+                    /^deleted file mode\s+\d+/m.test(block) &&
+                    /^---\s+\S+/m.test(block) &&
+                    /^\+\+\+\s+\/dev\/null$/m.test(block) &&
+                    !/^@@\s/m.test(block)
+            );
     }
 
     private normalizePatchRelativePath(rawPath: string, inputLabel = 'patch path'): string | null {
@@ -541,6 +561,77 @@ export class OverlayStore {
         } catch (error) {
             throw new Error(`Failed to persist snapshot metadata: ${errorMessage(error)}`);
         }
+        try {
+            this.updateReusableBaseIndexSync(snap);
+        } catch {
+            // The reusable-base index is an optimization; snapshot metadata remains the source of truth.
+        }
+    }
+
+    private baseIndexPath(workspaceRoot?: string): string {
+        return path.join(this.snapshotsRoot(workspaceRoot), SNAPSHOT_BASE_INDEX_FILE);
+    }
+
+    private readReusableBaseIndexSync(workspaceRoot?: string): SnapshotBaseIndex | null {
+        try {
+            const indexPath = this.baseIndexPath(workspaceRoot);
+            const stat = fs.lstatSync(indexPath);
+            if (!stat.isFile() || stat.isSymbolicLink()) return null;
+            const noFollow = typeof fs.constants.O_NOFOLLOW === 'number' ? fs.constants.O_NOFOLLOW : 0;
+            const fd = fs.openSync(indexPath, fs.constants.O_RDONLY | noFollow);
+            try {
+                const parsed = JSON.parse(fs.readFileSync(fd, 'utf8'));
+                if (!this.isValidSnapshotId(String(parsed?.id || ''))) return null;
+                if (typeof parsed?.baseFingerprint !== 'string' || !parsed.baseFingerprint) return null;
+                const createdAt = Number(parsed?.createdAt || 0);
+                return { id: String(parsed.id), baseFingerprint: parsed.baseFingerprint, createdAt };
+            } finally {
+                fs.closeSync(fd);
+            }
+        } catch {
+            return null;
+        }
+    }
+
+    private writeReusableBaseIndexSync(snap: Snapshot): void {
+        if (!snap.baseFingerprint) return;
+        const indexPath = this.baseIndexPath(snap.workspaceRoot);
+        const tmp = `${indexPath}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`;
+        const noFollow = typeof fs.constants.O_NOFOLLOW === 'number' ? fs.constants.O_NOFOLLOW : 0;
+        let fd: number | null = null;
+        try {
+            fd = fs.openSync(tmp, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | noFollow, 0o600);
+            fs.writeFileSync(
+                fd,
+                JSON.stringify(
+                    { id: snap.id, createdAt: snap.createdAt, baseFingerprint: snap.baseFingerprint },
+                    null,
+                    2
+                ),
+                'utf8'
+            );
+            fs.closeSync(fd);
+            fd = null;
+            fs.renameSync(tmp, indexPath);
+        } finally {
+            if (fd !== null) fs.closeSync(fd);
+            try {
+                fs.rmSync(tmp, { force: true });
+            } catch {}
+        }
+    }
+
+    private updateReusableBaseIndexSync(snap: Snapshot): void {
+        if (snap.baseFingerprint && this.isReusableBaseSnapshot(snap, snap.baseFingerprint)) {
+            this.writeReusableBaseIndexSync(snap);
+            return;
+        }
+        const index = this.readReusableBaseIndexSync(snap.workspaceRoot);
+        if (index?.id === snap.id) {
+            try {
+                fs.rmSync(this.baseIndexPath(snap.workspaceRoot), { force: true });
+            } catch {}
+        }
     }
 
     private recordLastApply(
@@ -614,19 +705,76 @@ export class OverlayStore {
         return !Array.isArray(snap.diffs) || snap.diffs.length === 0;
     }
 
-    createSnapshot(preferExisting = true, opts: { workspaceRoot?: string } = {}): Snapshot {
-        const workspaceRoot = opts.workspaceRoot ? this.resolveWorkspaceBase(opts.workspaceRoot) : undefined;
-        const baseFingerprint = this.workspaceBaseFingerprint(workspaceRoot);
-        // Optionally reuse the most recent clean snapshot only when it still matches the current workspace base.
-        if (preferExisting) {
-            this.loadAllSnapshotsFromDisk(workspaceRoot);
-            const reusable = Array.from(this.snapshots.values())
+    private findReusableBaseSnapshotInMemory(
+        workspaceRoot: string | undefined,
+        baseFingerprint: string
+    ): Snapshot | null {
+        return (
+            Array.from(this.snapshots.values())
                 .filter(
                     (candidate) =>
                         candidate.workspaceRoot === workspaceRoot &&
                         this.isReusableBaseSnapshot(candidate, baseFingerprint)
                 )
-                .sort((a, b) => b.createdAt - a.createdAt)[0];
+                .sort((a, b) => b.createdAt - a.createdAt)[0] || null
+        );
+    }
+
+    private loadReusableBaseSnapshotFromIndex(
+        workspaceRoot: string | undefined,
+        baseFingerprint: string
+    ): Snapshot | null {
+        const index = this.readReusableBaseIndexSync(workspaceRoot);
+        if (!index || index.baseFingerprint !== baseFingerprint) return null;
+        const snap = this.loadSnapshotFromDisk(index.id, workspaceRoot);
+        if (!this.isReusableBaseSnapshot(snap, baseFingerprint)) return null;
+        return snap;
+    }
+
+    private loadRecentReusableBaseSnapshotFromDisk(
+        workspaceRoot: string | undefined,
+        baseFingerprint: string,
+        maxCandidates = 200
+    ): Snapshot | null {
+        try {
+            const root = this.snapshotsRoot(workspaceRoot);
+            if (!fs.existsSync(root)) return null;
+            const candidates = fs
+                .readdirSync(root, { withFileTypes: true })
+                .flatMap((ent) => {
+                    if (!ent.isDirectory() || !this.isValidSnapshotId(ent.name) || this.snapshots.has(ent.name)) {
+                        return [];
+                    }
+                    try {
+                        const metadata = path.join(root, ent.name, 'metadata.json');
+                        const mtimeMs = fs.statSync(metadata).mtimeMs;
+                        return [{ id: ent.name, mtimeMs }];
+                    } catch {
+                        return [];
+                    }
+                })
+                .sort((a, b) => b.mtimeMs - a.mtimeMs)
+                .slice(0, Math.max(1, maxCandidates));
+            for (const candidate of candidates) {
+                const snap = this.loadSnapshotFromDisk(candidate.id, workspaceRoot);
+                if (this.isReusableBaseSnapshot(snap, baseFingerprint)) {
+                    this.writeReusableBaseIndexSync(snap);
+                    return snap;
+                }
+            }
+        } catch {}
+        return null;
+    }
+
+    createSnapshot(preferExisting = true, opts: { workspaceRoot?: string } = {}): Snapshot {
+        const workspaceRoot = opts.workspaceRoot ? this.resolveWorkspaceBase(opts.workspaceRoot) : undefined;
+        const baseFingerprint = this.workspaceBaseFingerprint(workspaceRoot);
+        // Optionally reuse the most recent clean snapshot only when it still matches the current workspace base.
+        if (preferExisting) {
+            const reusable =
+                this.findReusableBaseSnapshotInMemory(workspaceRoot, baseFingerprint) ||
+                this.loadReusableBaseSnapshotFromIndex(workspaceRoot, baseFingerprint) ||
+                this.loadRecentReusableBaseSnapshotFromDisk(workspaceRoot, baseFingerprint);
             if (reusable) return reusable;
         }
         const id = randomUUID();
@@ -900,7 +1048,7 @@ export class OverlayStore {
         if (!touched.length) {
             return { accepted: false, message: 'invalid_patch: no workspace files found in diff' };
         }
-        if (!/^@@\s/m.test(normalizedDiff)) {
+        if (!/^@@\s/m.test(normalizedDiff) && !this.hasFileDeletionWithoutHunks(normalizedDiff)) {
             return { accepted: false, message: 'invalid_patch: no patch hunks found in diff' };
         }
         const unsafeMode = this.rejectUnsafePatchFileModes(normalizedDiff);

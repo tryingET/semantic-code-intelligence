@@ -55,6 +55,7 @@ describe('search workspace trust boundary', () => {
 
         expect(result.isError).toBe(false);
         expect(payload.count).toBeGreaterThan(0);
+        expect(payload.results[0].file).toBe('docs/project/product-posture.md');
         expect(JSON.stringify(payload)).toContain('Product posture');
     });
 
@@ -125,6 +126,7 @@ describe('search workspace trust boundary', () => {
 
         expect(snapshotResult.isError).toBe(false);
         expect(snapshotPayload.count).toBeGreaterThan(0);
+        expect(snapshotPayload.results[0].file).toBe(relPath);
         expect(JSON.stringify(snapshotPayload)).toContain(snapshotText);
         expect(Number(livePayload.count || 0)).toBe(0);
     });
@@ -153,6 +155,7 @@ describe('search workspace trust boundary', () => {
 
         expect(result.isError).toBe(false);
         expect(payload.count).toBeGreaterThan(0);
+        expect(payload.results[0].file).toBe(relPath);
         expect(JSON.stringify(payload)).toContain(snapshotText);
     });
 

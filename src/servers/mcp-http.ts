@@ -153,28 +153,42 @@ const missingSessionError = { code: -32000, message: 'Bad Request: No valid sess
 
 function requestJsonRpcId(body: unknown): JsonRpcMessageId {
     if (Array.isArray(body)) return null;
-    if (body && typeof body === 'object') {
+    if (body && typeof body === 'object' && Object.prototype.hasOwnProperty.call(body, 'id')) {
         const id = (body as { id?: unknown }).id;
         if (typeof id === 'string' || typeof id === 'number' || id === null) return id;
     }
     return null;
 }
 
+function jsonRpcIdResponseState(body: unknown): { respond: boolean; id: JsonRpcMessageId } {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return { respond: true, id: null };
+    if (!Object.prototype.hasOwnProperty.call(body, 'id')) return { respond: false, id: null };
+    return { respond: true, id: requestJsonRpcId(body) };
+}
+
 function sendMissingSession(res: express.Response, bodyOrId: unknown = null) {
     if (Array.isArray(bodyOrId)) {
-        const payloads = bodyOrId.map((item) => ({
-            jsonrpc: '2.0',
-            error: { ...missingSessionError },
-            id: requestJsonRpcId(item),
-        }));
-        res.status(400).json(payloads);
+        const payloads = bodyOrId
+            .map((item) => jsonRpcIdResponseState(item))
+            .filter((state) => state.respond)
+            .map((state) => ({
+                jsonrpc: '2.0',
+                error: { ...missingSessionError },
+                id: state.id,
+            }));
+        if (payloads.length) res.status(400).json(payloads);
+        else res.status(400).end();
         return;
     }
-    const id =
+    const state =
         typeof bodyOrId === 'string' || typeof bodyOrId === 'number' || bodyOrId === null
-            ? bodyOrId
-            : requestJsonRpcId(bodyOrId);
-    res.status(400).json({ jsonrpc: '2.0', error: { ...missingSessionError }, id });
+            ? { respond: true, id: bodyOrId }
+            : jsonRpcIdResponseState(bodyOrId);
+    if (!state.respond) {
+        res.status(400).end();
+        return;
+    }
+    res.status(400).json({ jsonrpc: '2.0', error: { ...missingSessionError }, id: state.id });
 }
 
 function isJsonRpcObjectOrBatch(body: unknown): body is Record<string, unknown> | Record<string, unknown>[] {
@@ -426,10 +440,8 @@ async function createMcpServer(desiredSid?: string, enableJsonResponse = false):
         },
     });
 
-    // Connect server to transport
-    await server.connect(transport);
-
-    // Prompts and resources (shared module)
+    // Prompts and resources (shared module) must be registered before connecting so
+    // initialization and list/read requests observe the same capability surface as stdio.
     try {
         registerCommonPrompts(server);
     } catch (e) {
@@ -442,6 +454,9 @@ async function createMcpServer(desiredSid?: string, enableJsonResponse = false):
         // eslint-disable-next-line no-console
         console.warn('[MCP HTTP] Resources registration skipped:', (e as Error)?.message || String(e));
     }
+
+    // Connect server to transport
+    await server.connect(transport);
 
     const now = Date.now();
     return { server, transport, analyzer, adapter, createdAt: now, lastSeenAt: now, activeConsumers: 0 };

@@ -68,13 +68,18 @@ export async function resolveWorkspacePath(
     const inputLabel = options.inputLabel || 'path';
     const workspaceRoot = path.resolve(options.workspaceRoot || process.cwd());
     const candidate = path.resolve(workspaceRoot, requestedPath);
-    const relativePath = assertLexicallyWithinWorkspace(
-        workspaceRoot,
-        candidate,
-        inputLabel,
-        requestedPath,
-        options.allowRoot === true
-    );
+    const allowRoot = options.allowRoot === true;
+
+    // Relative inputs must be lexically contained before any realpath lookups. Absolute
+    // inputs are allowed to use a realpath spelling of a symlinked workspace root; their
+    // containment is enforced by the realpath check below.
+    const candidateLexicalRelative = path.relative(workspaceRoot, candidate);
+    const lexicalRelativePath = !isOutsideWorkspaceRelative(candidateLexicalRelative, allowRoot)
+        ? candidateLexicalRelative
+        : null;
+    if (!lexicalRelativePath && !path.isAbsolute(requestedPath)) {
+        assertLexicallyWithinWorkspace(workspaceRoot, candidate, inputLabel, requestedPath, allowRoot);
+    }
 
     const realWorkspaceRoot = await fs.realpath(workspaceRoot).catch((error) => {
         throw new CoreError('InvalidParams', `Failed to resolve workspace root: ${errorMessage(error)}`, {
@@ -83,18 +88,18 @@ export async function resolveWorkspacePath(
     });
 
     const realCandidate = await fs.realpath(candidate).catch((error) => {
+        if (lexicalRelativePath === null) {
+            throw new CoreError('InvalidParams', `${inputLabel} must stay within the workspace`, {
+                path: requestedPath,
+            });
+        }
         throw new CoreError('InvalidParams', `${inputLabel} does not exist or cannot be resolved`, {
             path: requestedPath,
             cause: errorMessage(error),
         });
     });
-    assertRealPathWithinWorkspace(
-        realWorkspaceRoot,
-        realCandidate,
-        inputLabel,
-        requestedPath,
-        options.allowRoot === true
-    );
+    assertRealPathWithinWorkspace(realWorkspaceRoot, realCandidate, inputLabel, requestedPath, allowRoot);
+    const relativePath = lexicalRelativePath ?? path.relative(realWorkspaceRoot, realCandidate);
 
     return {
         absolutePath: candidate,

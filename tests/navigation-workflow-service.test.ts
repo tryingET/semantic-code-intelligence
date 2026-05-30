@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
@@ -113,6 +113,22 @@ describe('NavigationWorkflowService', () => {
 
         const resolved = await resolveWorkspacePath('..fixtures.ts', { workspaceRoot, inputLabel: 'test path' });
         expect(resolved.relativePath).toBe('..fixtures.ts');
+        expect(resolved.realPath).toBe(target);
+    });
+
+    test('workspace path containment accepts realpath spelling under a symlinked workspace root', async () => {
+        const realRoot = tempWorkspace();
+        const linkRoot = join(
+            tmpdir(),
+            `sci-navigation-workflow-link-${Date.now()}-${Math.random().toString(16).slice(2)}`
+        );
+        roots.push(linkRoot);
+        const target = join(realRoot, 'target.ts');
+        writeFileSync(target, 'export const value = 1;\n', 'utf8');
+        symlinkSync(realRoot, linkRoot, 'dir');
+
+        const resolved = await resolveWorkspacePath(target, { workspaceRoot: linkRoot, inputLabel: 'test path' });
+        expect(resolved.relativePath).toBe('target.ts');
         expect(resolved.realPath).toBe(target);
     });
 

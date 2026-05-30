@@ -281,3 +281,53 @@ bindTest('MCP HTTP failed batch initialize returns a batch-shaped error', async 
 
     throw lastError ?? new Error('Failed to start MCP HTTP server after retries');
 });
+
+bindTest('MCP HTTP missing-session batch omits notifications but reports invalid request ids', async () => {
+    const host = '127.0.0.1';
+    let lastError: unknown = null;
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+        const port = pickRandomPort(7091, 7999);
+        const env = {
+            ...process.env,
+            MCP_HTTP_HOST: host,
+            MCP_HTTP_PORT: String(port),
+            HTTP_API_PORT: String(port + 9),
+        };
+        const server = spawn(
+            process.env.BUN_PATH || `${process.env.HOME}/.bun/bin/bun`,
+            ['run', 'src/servers/mcp-http.ts'],
+            { env }
+        );
+
+        try {
+            await wait(500);
+            const resp = await fetch(`http://${host}:${port}/mcp`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify([
+                    { jsonrpc: '2.0', method: 'notifications/initialized', params: {} },
+                    { jsonrpc: '2.0', id: { invalid: true }, method: 'tools/list', params: {} },
+                    { jsonrpc: '2.0', id: 7, method: 'tools/list', params: {} },
+                ]),
+            });
+
+            if (resp.status < 500) {
+                expect(resp.status).toBe(400);
+                const body = await resp.json();
+                expect(body).toHaveLength(2);
+                expect(body[0]).toMatchObject({ id: null, error: { code: -32000 } });
+                expect(body[1]).toMatchObject({ id: 7, error: { code: -32000 } });
+                expect(resp.headers.get('Mcp-Session-Id')).toBeNull();
+                server.kill('SIGTERM');
+                return;
+            }
+        } catch (err) {
+            lastError = err;
+        } finally {
+            server.kill('SIGTERM');
+        }
+    }
+
+    throw lastError ?? new Error('Failed to start MCP HTTP server after retries');
+});

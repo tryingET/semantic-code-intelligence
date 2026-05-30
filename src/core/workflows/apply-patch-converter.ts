@@ -11,10 +11,11 @@ export async function convertApplyPatchToUnified(
     const out: string[] = [];
     let i = 0;
     const isFileHeader = (s: string) => /^\*\*\*\s+(Update|Add|Delete) File: /i.test(s);
-    const splitFileLines = (text: string) => {
-        const fileLines = text.replace(/\r\n/g, '\n').split('\n');
+    const splitFileText = (text: string): { lines: string[]; endsWithNewline: boolean } => {
+        const normalized = text.replace(/\r\n/g, '\n');
+        const fileLines = normalized.split('\n');
         if (fileLines.length && fileLines[fileLines.length - 1] === '') fileLines.pop();
-        return fileLines;
+        return { lines: fileLines, endsWithNewline: normalized.endsWith('\n') };
     };
     const findSequences = (haystack: string[], needle: string[], startAt: number): number[] => {
         if (!needle.length) return [];
@@ -31,7 +32,7 @@ export async function convertApplyPatchToUnified(
         }
         return matches;
     };
-    const readSourceLines = async (file: string): Promise<string[]> => {
+    const readSourceFile = async (file: string): Promise<{ lines: string[]; endsWithNewline: boolean }> => {
         let sourceWorkspaceRoot = workspaceRoot;
         const snapshotId = options.snapshotId;
         if (snapshotId) {
@@ -40,9 +41,7 @@ export async function convertApplyPatchToUnified(
             });
             if (Array.isArray((snap as any).diffs) && (snap as any).diffs.length > 0) {
                 const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
-                const materializedRoot = ensure
-                    ? await ensure(snapshotId, { workspaceRoot })
-                    : null;
+                const materializedRoot = ensure ? await ensure(snapshotId, { workspaceRoot }) : null;
                 if (materializedRoot) sourceWorkspaceRoot = materializedRoot;
             }
         }
@@ -57,8 +56,9 @@ export async function convertApplyPatchToUnified(
         } finally {
             await opened.handle.close().catch(() => undefined);
         }
-        return splitFileLines(fileText);
+        return splitFileText(fileText);
     };
+    const readSourceLines = async (file: string): Promise<string[]> => (await readSourceFile(file)).lines;
 
     const buildHunks = async (kind: string, file: string, rawChunk: string[]) => {
         const hunks: HunkLine[][] = [];
@@ -132,10 +132,19 @@ export async function convertApplyPatchToUnified(
             }
             i++;
         }
-        if (kind === 'delete') {
-            throw new Error(`apply_patch delete not supported for ${file}`);
-        }
         out.push(`diff --git a/${file} b/${file}`);
+        if (kind === 'delete') {
+            const source = await readSourceFile(file);
+            out.push('deleted file mode 100644');
+            out.push(`--- a/${file}`);
+            out.push('+++ /dev/null');
+            if (source.lines.length) {
+                out.push(`@@ -1,${source.lines.length} +0,0 @@`);
+                out.push(...source.lines.map((sourceLine) => `-${sourceLine}`));
+                if (!source.endsWithNewline) out.push('\\ No newline at end of file');
+            }
+            continue;
+        }
         if (kind === 'add') {
             out.push('--- /dev/null');
             out.push(`+++ b/${file}`);

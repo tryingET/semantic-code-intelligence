@@ -230,7 +230,7 @@ describe('WorkspaceQueryWorkflowService', () => {
         const out = payload(await service.textSearch({ query: 'needle', path: '.', kind: 'literal' }));
         expect(out.count).toBe(1);
         expect(out.results[0]).toMatchObject({
-            file: join(workspaceRoot, 'sample.ts'),
+            file: 'sample.ts',
             line: 1,
             column: 1,
             text: 'needle',

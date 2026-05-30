@@ -135,3 +135,68 @@ test('propose_patch rejects full-context apply_patch hunks when old context is a
         await fs.rm(fixture, { force: true });
     }
 });
+
+test('propose_patch converts apply_patch delete headers into executable deletion diffs', async () => {
+    const cases = [
+        {
+            name: 'trailing newline',
+            fixtureRel: 'tests/fixtures/temp-delete-apply-patch-with-newline.ts',
+            content: 'export const doomed = 1;\n',
+            expectedDiff: '-export const doomed = 1;',
+        },
+        {
+            name: 'empty file',
+            fixtureRel: 'tests/fixtures/temp-delete-apply-patch-empty.ts',
+            content: '',
+            expectedDiff: 'deleted file mode 100644',
+        },
+        {
+            name: 'no trailing newline',
+            fixtureRel: 'tests/fixtures/temp-delete-apply-patch-no-newline.ts',
+            content: 'export const doomedNoNewline = 1;',
+            expectedDiff: '\\ No newline at end of file',
+        },
+    ];
+    const cfg = createDefaultCoreConfig();
+    const analyzer = await createCodeAnalyzer({ ...cfg, workspaceRoot: process.cwd() });
+    await analyzer.initialize();
+    try {
+        const mcp = new MCPAdapter(analyzer);
+        for (const item of cases) {
+            const fixture = path.join(process.cwd(), item.fixtureRel);
+            await fs.writeFile(fixture, item.content, 'utf8');
+            try {
+                const snapRes = await mcp.handleToolCall('get_snapshot', { preferExisting: false });
+                const snapOut = await parseContent(snapRes);
+                const snapshot = snapOut?.snapshot || snapOut?.id;
+                const deletePatch = `*** Begin Patch\n*** Delete File: ${item.fixtureRel}\n*** End Patch\n`;
+
+                const prop = await mcp.handleToolCall('propose_patch', { snapshot, patch: deletePatch });
+                const propOut = await parseContent(prop);
+
+                expect(prop.isError, item.name).toBeFalsy();
+                expect(propOut.accepted, item.name).toBe(true);
+                const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
+                const dir = ensure ? await ensure(snapshot) : path.join('.ontology', 'snapshots', snapshot);
+                const diff = await fs.readFile(path.join(dir, 'overlay.diff'), 'utf8');
+                expect(diff).toContain(`diff --git a/${item.fixtureRel} b/${item.fixtureRel}`);
+                expect(diff).toContain(`--- a/${item.fixtureRel}`);
+                expect(diff).toContain('+++ /dev/null');
+                expect(diff).toContain(item.expectedDiff);
+
+                const checks = await mcp.handleToolCall('run_checks', {
+                    snapshot,
+                    commands: [`test ! -e ${item.fixtureRel}`],
+                    timeoutSec: 30,
+                });
+                const checksOut = await parseContent(checks);
+                expect(checksOut.ok, item.name).toBe(true);
+            } finally {
+                await fs.rm(fixture, { force: true });
+            }
+        }
+    } finally {
+        await analyzer.dispose?.();
+        for (const item of cases) await fs.rm(path.join(process.cwd(), item.fixtureRel), { force: true });
+    }
+});

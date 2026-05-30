@@ -45,6 +45,7 @@ class CLI {
     private toolRouter!: any;
     private toolExecutor!: any;
     private colorOutput = true;
+    private commanderErrorOutput = '';
 
     // Metrics tracking for CLI commands
     private currentCommand: string | null = null;
@@ -53,6 +54,13 @@ class CLI {
 
     constructor() {
         this.program = new Command();
+        this.program.exitOverride();
+        this.program.configureOutput({
+            writeOut: (str) => process.stdout.write(str),
+            writeErr: (str) => {
+                this.commanderErrorOutput += str;
+            },
+        });
         this.setupCommands();
     }
 
@@ -1220,12 +1228,24 @@ build/
         try {
             await this.program.parseAsync(argv);
         } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            if (argv.includes('--json') || argv.includes('-j')) {
-                console.error(JSON.stringify({ ok: false, error: message }));
-            } else {
-                console.error(`Error: ${message}`);
+            if (typeof (error as any)?.exitCode === 'number' && (error as any).exitCode === 0) {
+                await this.shutdown();
+                process.exit(0);
             }
+            this.markCommandFailed();
+            const message =
+                this.commanderErrorOutput.trim() || (error instanceof Error ? error.message : String(error));
+            if (argv.includes('--json') || argv.includes('-j')) {
+                console.log(
+                    JSON.stringify({
+                        success: false,
+                        error: { code: 'InvalidParams', message: message.replace(/^error:\s*/i, '') },
+                    })
+                );
+            } else {
+                console.error(message.startsWith('error:') ? message : `Error: ${message}`);
+            }
+            await this.shutdown();
             process.exit(1);
         }
     }

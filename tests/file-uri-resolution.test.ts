@@ -70,8 +70,8 @@ const grep = new AsyncEnhancedGrep();
         const search = await callToolJson('text_search', { query: 'AsyncEnhancedGrep', path: '.', maxResults: 10 });
         expect(search.count).toBeGreaterThan(0);
         const files = (search.results || []).map((item: any) => String(item.file || ''));
-        expect(files.some((file: string) => file.includes('async-grep.ts'))).toBe(true);
-        expect(files.every((file: string) => file.includes(testDir))).toBe(true);
+        expect(files.some((file: string) => file === 'async-grep.ts')).toBe(true);
+        expect(files.every((file: string) => !path.isAbsolute(file))).toBe(true);
     });
 
     test('discovers definitions in the analyzer configured workspace when no file context is provided', async () => {

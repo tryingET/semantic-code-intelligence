@@ -565,7 +565,7 @@ export class WorkspaceQueryWorkflowService {
                     }
                     if (column >= 0) {
                         results.push({
-                            file: entry.realPath,
+                            file: opened.relativePath,
                             line: index + 1,
                             column: column + 1,
                             ...boundedTextSearchLine(line, column),

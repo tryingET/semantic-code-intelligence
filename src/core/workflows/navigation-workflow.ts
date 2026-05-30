@@ -508,11 +508,14 @@ function toBase(uri: string) {
 }
 
 function filePathFromUriLike(uri: string): string {
-    try {
-        return new URL(uri).pathname;
-    } catch {
-        return String(uri).replace(/^file:\/\//, '');
+    if (String(uri).startsWith('file://')) {
+        try {
+            return fileURLToPath(uri);
+        } catch {
+            return String(uri).replace(/^file:\/\//, '');
+        }
     }
+    return String(uri);
 }
 
 function buildFindDefinitionRequest(params: {

@@ -175,8 +175,25 @@ describe('nexus implementation regressions', () => {
         });
 
         expect(result.status).toBe(1);
-        expect(result.stdout).toBe('');
-        expect(() => JSON.parse(result.stderr.trim())).not.toThrow();
-        expect(JSON.parse(result.stderr.trim())).toMatchObject({ ok: false, error: 'max-files must be an integer' });
+        expect(result.stderr.trim()).toBe('');
+        expect(() => JSON.parse(result.stdout.trim())).not.toThrow();
+        expect(JSON.parse(result.stdout.trim())).toMatchObject({
+            success: false,
+            error: { code: 'InvalidParams', message: 'max-files must be an integer' },
+        });
+    });
+
+    test('CLI top-level commander errors honor --json without stderr noise', () => {
+        const result = spawnSync('bun', ['src/servers/cli.ts', '--json', '--definitely-bad-option'], {
+            cwd: process.cwd(),
+            encoding: 'utf8',
+        });
+
+        expect(result.status).toBe(1);
+        expect(result.stderr.trim()).toBe('');
+        expect(JSON.parse(result.stdout.trim())).toMatchObject({
+            success: false,
+            error: { code: 'InvalidParams' },
+        });
     });
 });

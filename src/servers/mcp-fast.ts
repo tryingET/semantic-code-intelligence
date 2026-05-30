@@ -129,19 +129,21 @@ export class FastMCPServer {
     private async initializeCore(): Promise<void> {
         try {
             // Lazily import heavy modules to avoid startup side effects
-            const [coreIndex, adapterUtils, mcpAdapterMod] = await Promise.all([
+            const [coreIndex, adapterUtils, mcpAdapterMod, workspaceRootMod] = await Promise.all([
                 import('../core/index'),
                 import('../adapters/utils'),
                 import('../adapters/mcp-adapter'),
+                import('../core/workspace-root'),
             ]);
 
             const { createCodeAnalyzer } = coreIndex as any;
             const { createDefaultCoreConfig } = adapterUtils as any;
             const { MCPAdapter } = mcpAdapterMod as any;
+            const { resolveConfiguredWorkspaceRoot } = workspaceRootMod as any;
 
             // Initialize core analyzer with optimized config for MCP server
             const config = createDefaultCoreConfig();
-            const workspaceRoot = process.env.SEMANTIC_CODE_WORKSPACE || process.env.WORKSPACE_ROOT || process.cwd();
+            const workspaceRoot = resolveConfiguredWorkspaceRoot();
 
             // Disable slow startup operations and set aggressive timeouts
             if (config.optimization) {

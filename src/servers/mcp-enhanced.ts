@@ -285,20 +285,21 @@ export class EnhancedMCPServer {
                 mcpLogger.info('Initializing core analyzer...');
 
                 // Lazily import heavy modules
-                const [coreIndex, adapterUtils, mcpAdapterMod] = await Promise.all([
+                const [coreIndex, adapterUtils, mcpAdapterMod, workspaceRootMod] = await Promise.all([
                     import('../core/index'),
                     import('../adapters/utils'),
                     import('../adapters/mcp-adapter'),
+                    import('../core/workspace-root'),
                 ]);
 
                 const { createCodeAnalyzer } = coreIndex as any;
                 const { createDefaultCoreConfig } = adapterUtils as any;
                 const { MCPAdapter } = mcpAdapterMod as any;
+                const { resolveConfiguredWorkspaceRoot } = workspaceRootMod as any;
 
                 // Create optimized config
                 const config = createDefaultCoreConfig();
-                const workspaceRoot =
-                    process.env.SEMANTIC_CODE_WORKSPACE || process.env.WORKSPACE_ROOT || process.cwd();
+                const workspaceRoot = resolveConfiguredWorkspaceRoot();
 
                 // Optimize for fast initialization
                 config.optimization = {
