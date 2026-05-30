@@ -45,6 +45,7 @@ These tasks are AK records, not implementation authority until claimed and scope
 | `3166` | 2 | Performance evidence history calibration | Repeated `alpha:evidence:history` warnings are noisy or misleading. | Refine warning policy/baseline guidance; do not convert to production SLOs. |
 | `3167` | 1 | Durable snapshot/evidence boundary | A real workflow needs cross-process/session semantics beyond current artifacts. | IW69 adds `docs/project/durable-snapshot-evidence-boundary.md`; avoid adding a broad state layer by default. |
 | `3168` | 1 | Target dogfood issue capture | A target run fails or an operator reports target-specific friction. | Issue-candidate capture path exists via `bun run target-dogfood:issue`; it summarizes failed target dogfood without mutating targets, filing AK evidence, or adding confidence-only target proofs. |
+| `3460` | 3 | Nexus hardening maintainability | Nexus hardening leaves runtime/tool surfaces oversized enough to raise regression risk. | Split tool registry specs and snapshot patch workflow helpers into focused modules while preserving Alpha tool exports and Nexus regression coverage. |
 
 ## Non-backlog items
 
