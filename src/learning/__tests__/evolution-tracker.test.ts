@@ -542,24 +542,22 @@ describe('CodeEvolutionTracker', () => {
             const trends = await evolutionTracker.analyzeArchitecturalTrends();
 
             const complexityTrends = trends.filter((t) => t.type === 'complexity_increase');
+            expect(complexityTrends.length).toBeGreaterThan(0);
 
-            if (complexityTrends.length > 0) {
-                const trend = complexityTrends[0];
-                expect(trend.direction).toBe('increasing');
-                expect(trend.strength).toBeGreaterThan(0.5); // Strong trend due to consistent increase
-            }
+            const trend = complexityTrends[0];
+            expect(trend.direction).toBe('increasing');
+            expect(trend.strength).toBeGreaterThan(0.5); // Strong trend due to consistent increase
         });
 
         test('should detect test coverage decline', async () => {
             const trends = await evolutionTracker.analyzeArchitecturalTrends();
 
             const coverageTrends = trends.filter((t) => t.type === 'test_coverage_change');
+            expect(coverageTrends.length).toBeGreaterThan(0);
 
-            if (coverageTrends.length > 0) {
-                const trend = coverageTrends[0];
-                expect(trend.direction).toBe('decreasing');
-                expect(trend.dataPoints.length).toBeGreaterThan(0);
-            }
+            const trend = coverageTrends[0];
+            expect(trend.direction).toBe('decreasing');
+            expect(trend.dataPoints.length).toBeGreaterThan(0);
         });
 
         test('should filter trends by timeframe', async () => {

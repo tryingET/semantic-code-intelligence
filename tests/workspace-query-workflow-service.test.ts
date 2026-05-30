@@ -59,6 +59,27 @@ describe('WorkspaceQueryWorkflowService', () => {
         expect(JSON.stringify(out)).toContain('regex acb');
     });
 
+    test('rejects unsafe regex text_search patterns before scanning files', async () => {
+        const workspaceRoot = tempWorkspace();
+        mkdirSync(join(workspaceRoot, 'src'));
+        writeFileSync(join(workspaceRoot, 'src', 'sample.ts'), `${'a'.repeat(10_000)}!\n`, 'utf8');
+        const service = new WorkspaceQueryWorkflowService({
+            workspaceRoot: () => workspaceRoot,
+            coreAnalyzer: { async initialize() {} },
+            pathInputFromToolFile: (value) => value,
+        });
+
+        await expect(
+            service.textSearch({ query: '(a+)+$', path: 'src', kind: 'regex', timeoutMs: 50 })
+        ).rejects.toThrow('Unsafe text_search regex');
+        await expect(
+            service.textSearch({ query: '(?<x>a)\\k<x>', path: 'src', kind: 'regex', timeoutMs: 50 })
+        ).rejects.toThrow('backreferences are not allowed');
+        await expect(
+            service.textSearch({ query: '(a|aa)+$', path: 'src', kind: 'regex', timeoutMs: 50 })
+        ).rejects.toThrow('overlapping quantified alternations are not allowed');
+    });
+
     test('rejects invalid query and result caps as InvalidParams', async () => {
         const workspaceRoot = tempWorkspace();
         const service = new WorkspaceQueryWorkflowService({

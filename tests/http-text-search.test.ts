@@ -68,4 +68,17 @@ bindDescribe('HTTP tools: text_search', () => {
         expect(body.success).toBe(false);
         expect(typeof body.error?.message).toBe('string');
     });
+
+    test('text_search rejects unsafe regex at HTTP ingress with structured InvalidParams', async () => {
+        const res = await fetch(`${base}/api/v1/tools/call`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ name: 'text_search', arguments: { query: '(a+)+$', kind: 'regex' } }),
+        });
+        expect(res.status).toBe(400);
+        const body = await res.json();
+        expect(body.success).toBe(false);
+        expect(body.error?.code).toBe('InvalidParams');
+        expect(body.error?.message).toContain('Unsafe text_search regex');
+    });
 });

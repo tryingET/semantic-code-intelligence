@@ -419,6 +419,45 @@ describe('Integration Tests', () => {
         expect(attempts).toBe(3);
     });
 
+    test('does not retry operations after local timeout because the original promise is still running', async () => {
+        const handler = new ErrorHandler({ maxRetries: 1, baseDelay: 1, jitterMs: 0, timeoutMs: 1000 });
+        const context = {
+            component: 'IntegrationTest',
+            operation: 'timeout_no_retry_test',
+            timestamp: Date.now(),
+        };
+        let started = 0;
+        let finished = 0;
+        let releaseOperation!: () => void;
+        let markFinished!: () => void;
+        const operationGate = new Promise<void>((resolve) => {
+            releaseOperation = resolve;
+        });
+        const finishedSignal = new Promise<void>((resolve) => {
+            markFinished = resolve;
+        });
+
+        await expect(
+            handler.withErrorHandling(
+                context,
+                async () => {
+                    started++;
+                    await operationGate;
+                    finished++;
+                    markFinished();
+                    return 'too_late';
+                },
+                { maxRetries: 1, baseDelay: 1, jitterMs: 0, timeoutMs: 1000 }
+            )
+        ).rejects.toThrow('timed out');
+
+        expect(started).toBe(1);
+        expect(finished).toBe(0);
+        releaseOperation();
+        await finishedSignal;
+        expect(finished).toBe(1);
+    });
+
     test('should handle timeout scenarios', async () => {
         const context = {
             component: 'IntegrationTest',

@@ -33,6 +33,40 @@ describe('runtime service regressions', () => {
         await cache.dispose();
     });
 
+    test('database enables foreign key enforcement on every pooled SQLite connection', async () => {
+        const root = tempWorkspace();
+        const service = new DatabaseService(
+            {
+                path: join(root, 'ontology.db'),
+                maxConnections: 2,
+                busyTimeout: 1000,
+                enableWAL: false,
+                enableForeignKeys: true,
+            },
+            new EventBusService()
+        );
+        await service.initialize();
+
+        const pool = (service as any).pool;
+        const first = await pool.acquire();
+        const second = await pool.acquire();
+        try {
+            expect(first.query('PRAGMA foreign_keys').get().foreign_keys).toBe(1);
+            expect(second.query('PRAGMA foreign_keys').get().foreign_keys).toBe(1);
+            expect(() =>
+                second
+                    .query(
+                        "INSERT INTO pipeline_runs (id, pipeline_id, started_at, status) VALUES ('r1', 'missing', 1, 'pending')"
+                    )
+                    .run()
+            ).toThrow('FOREIGN KEY constraint failed');
+        } finally {
+            pool.release(second);
+            pool.release(first);
+            await service.dispose();
+        }
+    });
+
     test('database transactions can finish after service disposal without returning handles to a disposed pool', async () => {
         const root = tempWorkspace();
         const service = new DatabaseService(

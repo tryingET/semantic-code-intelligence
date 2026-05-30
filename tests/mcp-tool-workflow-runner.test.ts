@@ -91,5 +91,9 @@ describe('McpToolWorkflowRunner', () => {
                 timeoutSec: 120,
             })
         ).toEqual({ timeoutMs: 270_000, maxRetries: 0 });
+        expect(runner.errorHandlingOptionsForTool('run_pipeline', { id: 'pattern_feedback_cycle' })).toEqual({
+            timeoutMs: 600_000,
+            maxRetries: 0,
+        });
     });
 });

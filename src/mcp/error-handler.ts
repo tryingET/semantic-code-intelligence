@@ -28,6 +28,13 @@ export interface RecoveryOptions {
     timeoutMs: number; // per-attempt operation timeout
 }
 
+class OperationTimeoutError extends Error {
+    constructor(timeoutMs: number) {
+        super(`Operation timed out after ${timeoutMs}ms`);
+        this.name = 'OperationTimeoutError';
+    }
+}
+
 export class ErrorHandler {
     private retryAttempts = new Map<string, number>();
     private circuitBreakerState = new Map<
@@ -295,6 +302,12 @@ export class ErrorHandler {
     }
 
     private shouldNotRetry(error: Error): boolean {
+        // Retrying after a local timeout can duplicate non-idempotent side effects
+        // because Promise.race cannot cancel the original operation.
+        if (error.name === 'OperationTimeoutError') {
+            return true;
+        }
+
         // Don't retry on validation errors or client errors
         const msg = (error.message || '').toLowerCase();
         if (
@@ -323,7 +336,7 @@ export class ErrorHandler {
             return ErrorCode.InternalError;
         }
 
-        if (error.message.includes('timeout')) {
+        if (/timeout|timed out/i.test(error.message)) {
             return ErrorCode.RequestTimeout;
         }
 
@@ -360,7 +373,7 @@ export class ErrorHandler {
     private async withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
         let timer: ReturnType<typeof setTimeout> | undefined;
         const timeoutPromise = new Promise<never>((_, reject) => {
-            timer = setTimeout(() => reject(new Error(`Operation timed out after ${timeoutMs}ms`)), timeoutMs);
+            timer = setTimeout(() => reject(new OperationTimeoutError(timeoutMs)), timeoutMs);
             timer?.unref?.();
         });
 

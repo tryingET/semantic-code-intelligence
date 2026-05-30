@@ -287,7 +287,7 @@ class ConnectionPool {
     private Database: SQLiteDatabaseConstructor;
     private disposed = false;
 
-    constructor(dbPath: string, maxConnections: number = 10) {
+    constructor(dbPath: string, maxConnections: number = 10, enableForeignKeys: boolean = true) {
         this.maxConnections = maxConnections;
         this.Database = loadBunSqliteDatabase();
 
@@ -296,11 +296,16 @@ class ConnectionPool {
             try {
                 const db = new this.Database(dbPath);
 
-                // Configure each connection for optimal concurrency
+                // Configure each connection for optimal concurrency and invariants.
+                // SQLite PRAGMAs such as foreign_keys are connection-local, so every
+                // pooled connection must be initialized instead of relying on schema setup.
                 db.exec('PRAGMA busy_timeout = 30000');
                 db.exec('PRAGMA synchronous = NORMAL');
                 db.exec('PRAGMA cache_size = -8000'); // 8MB cache per connection
                 db.exec('PRAGMA temp_store = MEMORY');
+                if (enableForeignKeys) {
+                    db.exec('PRAGMA foreign_keys = ON');
+                }
 
                 this.connections.push(db);
             } catch (error) {
@@ -435,7 +440,7 @@ export class DatabaseService {
             if (isMemory) {
                 this.config.enableWAL = false;
             }
-            this.pool = new ConnectionPool(this.config.path, maxConnections);
+            this.pool = new ConnectionPool(this.config.path, maxConnections, this.config.enableForeignKeys !== false);
 
             // Initialize database schema
             await this.initializeSchema();
