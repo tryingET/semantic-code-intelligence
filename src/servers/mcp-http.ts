@@ -153,7 +153,7 @@ const missingSessionError = { code: -32000, message: 'Bad Request: No valid sess
 
 function requestJsonRpcId(body: unknown): JsonRpcMessageId {
     if (Array.isArray(body)) return null;
-    if (body && typeof body === 'object' && Object.prototype.hasOwnProperty.call(body, 'id')) {
+    if (body && typeof body === 'object' && Object.hasOwn(body, 'id')) {
         const id = (body as { id?: unknown }).id;
         if (typeof id === 'string' || typeof id === 'number' || id === null) return id;
     }
@@ -162,7 +162,7 @@ function requestJsonRpcId(body: unknown): JsonRpcMessageId {
 
 function jsonRpcIdResponseState(body: unknown): { respond: boolean; id: JsonRpcMessageId } {
     if (!body || typeof body !== 'object' || Array.isArray(body)) return { respond: true, id: null };
-    if (!Object.prototype.hasOwnProperty.call(body, 'id')) return { respond: false, id: null };
+    if (!Object.hasOwn(body, 'id')) return { respond: false, id: null };
     return { respond: true, id: requestJsonRpcId(body) };
 }
 
@@ -566,11 +566,74 @@ app.post('/mcp', async (req, res) => {
                 | { method?: unknown; params?: unknown; id?: JsonRpcMessageId }
                 | Array<{ method?: unknown; params?: unknown; id?: JsonRpcMessageId }>;
             const core = new CoreError('InvalidParams', 'Missing required parameters: params');
+            const schemaCore = new CoreError('InvalidParams', 'Invalid tools/call parameters');
+            const responseId = (item: { id?: JsonRpcMessageId }) => jsonRpcIdResponseState(item).id;
+            const shouldRespond = (item: { id?: JsonRpcMessageId }) => jsonRpcIdResponseState(item).respond;
             if (Array.isArray(body)) {
                 const invalid = body.filter(invalidToolsCall);
-                if (invalid.length > 0) {
-                    const payloads = invalid.map((item) => buildJsonRpcErrorPayload(core, item.id ?? null));
-                    res.status(400).json(payloads);
+                if (invalid.length > 0 && invalid.length === body.length) {
+                    const payloads = invalid
+                        .filter(shouldRespond)
+                        .map((item) => buildJsonRpcErrorPayload(core, responseId(item)));
+                    if (payloads.length) res.status(400).json(payloads);
+                    else res.status(400).end();
+                    return;
+                }
+                const localToolsCall = (item: { method?: unknown; params?: unknown }) =>
+                    item.method === 'tools/call' &&
+                    !!item.params &&
+                    typeof item.params === 'object' &&
+                    !Array.isArray(item.params);
+                const canAnswerMixedLocally =
+                    invalid.length > 0 &&
+                    body.every(
+                        (item) => invalidToolsCall(item) || item.method === 'tools/list' || localToolsCall(item)
+                    );
+                if (canAnswerMixedLocally) {
+                    beginSessionConsumer(activeRecord);
+                    try {
+                        const payloads = [];
+                        for (const item of body) {
+                            if (!shouldRespond(item)) continue;
+                            if (invalidToolsCall(item)) {
+                                payloads.push(buildJsonRpcErrorPayload(core, responseId(item)));
+                                continue;
+                            }
+                            if (item.method === 'tools/list') {
+                                payloads.push({
+                                    jsonrpc: '2.0' as const,
+                                    id: responseId(item),
+                                    result: { tools: activeRecord.adapter.getTools() },
+                                });
+                                continue;
+                            }
+                            const params = item.params as { name?: unknown; arguments?: unknown };
+                            if (
+                                typeof params.name !== 'string' ||
+                                !params.name.trim() ||
+                                (params.arguments !== undefined &&
+                                    (!params.arguments ||
+                                        typeof params.arguments !== 'object' ||
+                                        Array.isArray(params.arguments)))
+                            ) {
+                                payloads.push(buildJsonRpcErrorPayload(schemaCore, responseId(item)));
+                                continue;
+                            }
+                            try {
+                                const result = await activeRecord.adapter.handleValidatedToolCall(
+                                    params.name,
+                                    params.arguments ? (params.arguments as Record<string, unknown>) : {}
+                                );
+                                payloads.push({ jsonrpc: '2.0' as const, id: responseId(item), result });
+                            } catch (error) {
+                                payloads.push(buildJsonRpcErrorPayload(error, responseId(item)));
+                            }
+                        }
+                        if (payloads.length) res.status(200).json(payloads);
+                        else res.status(200).end();
+                    } finally {
+                        endSessionConsumer(activeRecord);
+                    }
                     return;
                 }
             } else if (invalidToolsCall(body)) {

@@ -62,6 +62,17 @@ describe('Alpha MVP tool contract', () => {
         }
     });
 
+    test('registry listing cannot mutate process-wide tool specs', () => {
+        const listed = ToolRegistry.list();
+        const originalName = listed[0].name;
+        listed[0].name = 'mutated_tool_name';
+        listed[0].inputSchema.properties = { mutated: true };
+
+        const fresh = ToolRegistry.list()[0];
+        expect(fresh.name).toBe(originalName);
+        expect(fresh.inputSchema.properties).not.toEqual({ mutated: true });
+    });
+
     test('MCP and HTTP use the same Alpha MVP exposure membrane', () => {
         const mcpNames = listMcpTools()
             .map((tool) => tool.name)

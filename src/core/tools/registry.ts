@@ -25,10 +25,31 @@ export interface ToolSpec {
     };
 }
 
+function cloneJsonLike<T>(value: T): T {
+    if (typeof globalThis.structuredClone === 'function') return globalThis.structuredClone(value);
+    return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function cloneToolSpec(spec: ToolSpec): ToolSpec {
+    return {
+        ...spec,
+        inputSchema: cloneJsonLike(spec.inputSchema),
+        outputSchema: spec.outputSchema === undefined ? undefined : cloneJsonLike(spec.outputSchema),
+        availability: spec.availability
+            ? {
+                  ...spec.availability,
+                  adapters: spec.availability.adapters ? [...spec.availability.adapters] : undefined,
+                  languages: spec.availability.languages ? [...spec.availability.languages] : undefined,
+              }
+            : undefined,
+        execution: spec.execution ? { ...spec.execution } : undefined,
+    };
+}
+
 export class ToolRegistry {
     private static tools: ToolSpec[] = TOOL_SPECS;
 
     static list(): ToolSpec[] {
-        return [...ToolRegistry.tools];
+        return ToolRegistry.tools.map(cloneToolSpec);
     }
 }

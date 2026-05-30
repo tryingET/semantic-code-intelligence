@@ -96,6 +96,43 @@ export class OverlayStore {
             : SNAPSHOT_RESOURCE_MAX_BYTES;
     }
 
+    private assertSafeRegularFileNoSymlink(filePath: string, label: string): void {
+        const stat = fs.lstatSync(filePath);
+        if (!stat.isFile() || stat.isSymbolicLink()) {
+            throw new Error(`${label} must be a non-symlink file`);
+        }
+    }
+
+    private async writeFileNoFollow(filePath: string, content: string, label: string): Promise<void> {
+        try {
+            this.assertSafeRegularFileNoSymlink(filePath, label);
+        } catch (error: any) {
+            if (error?.code !== 'ENOENT') throw error;
+        }
+        const noFollow = typeof fs.constants.O_NOFOLLOW === 'number' ? fs.constants.O_NOFOLLOW : 0;
+        const handle = await fsp.open(
+            filePath,
+            fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_TRUNC | noFollow,
+            0o600
+        );
+        try {
+            await handle.writeFile(content, 'utf8');
+        } finally {
+            await handle.close();
+        }
+    }
+
+    private async readFileNoFollow(filePath: string, label: string): Promise<string> {
+        this.assertSafeRegularFileNoSymlink(filePath, label);
+        const noFollow = typeof fs.constants.O_NOFOLLOW === 'number' ? fs.constants.O_NOFOLLOW : 0;
+        const handle = await fsp.open(filePath, fs.constants.O_RDONLY | noFollow);
+        try {
+            return await handle.readFile('utf8');
+        } finally {
+            await handle.close();
+        }
+    }
+
     private assertSafeSnapshotStoragePath(base: string, target: string, label: string): void {
         if (!fs.existsSync(target)) return;
         const stat = fs.lstatSync(target);
@@ -489,8 +526,8 @@ export class OverlayStore {
             ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--', '.', snapshotArtifactPathspec],
             'status'
         );
-        addGit(['diff', '--binary', '--', '.', snapshotArtifactPathspec], 'diff');
-        addGit(['diff', '--cached', '--binary', '--', '.', snapshotArtifactPathspec], 'cached-diff');
+        addGit(['diff', '--no-ext-diff', '--binary', '--', '.', snapshotArtifactPathspec], 'diff');
+        addGit(['diff', '--no-ext-diff', '--cached', '--binary', '--', '.', snapshotArtifactPathspec], 'cached-diff');
         const untracked = addGit(
             ['ls-files', '--others', '--exclude-standard', '-z', '--', '.', snapshotArtifactPathspec],
             'untracked-list'
@@ -2327,10 +2364,13 @@ export class OverlayStore {
         const overlayDiffFile = path.join(materializedDir, 'overlay.diff');
         if ((snap.diffs || []).length <= 1) return overlayDiffFile;
         const squashedDiffFile = path.join(materializedDir, 'squashed-overlay.diff');
-        if (reverse && fs.existsSync(squashedDiffFile)) return squashedDiffFile;
+        if (reverse && fs.existsSync(squashedDiffFile)) {
+            this.assertSafeRegularFileNoSymlink(squashedDiffFile, 'squashed snapshot diff');
+            return squashedDiffFile;
+        }
         if (reverse && !fs.existsSync(squashedDiffFile)) return overlayDiffFile;
         const squashed = this.buildSquashedSnapshotDiff(snap, materializedDir, workspaceRoot);
-        await fsp.writeFile(squashedDiffFile, squashed, 'utf8');
+        await this.writeFileNoFollow(squashedDiffFile, squashed, 'squashed snapshot diff');
         return squashedDiffFile;
     }
 
@@ -2353,13 +2393,31 @@ export class OverlayStore {
         const dir =
             (await this.ensureMaterialized(snapshotId, { allowCurrentMaterializedWithWorkspaceDrift: true })) ||
             workspaceRoot;
-        const diffFile = await this.effectiveApplyDiffFile(snap, dir, workspaceRoot, reverse);
         let output = '';
         const outputWithReceiptStatus = (
             currentOutput: string,
             receiptStatus: { ok: boolean; message?: string }
         ): string =>
             receiptStatus.ok ? currentOutput : `${currentOutput}${currentOutput ? '\n' : ''}${receiptStatus.message}`;
+        let diffFile: string;
+        try {
+            diffFile = await this.effectiveApplyDiffFile(snap, dir, workspaceRoot, reverse);
+        } catch {
+            const elapsedMs = Date.now() - start;
+            const message = 'Invalid apply_snapshot patch paths or missing overlay diff';
+            const receiptStatus = this.recordLastApply(snapshotId, {
+                ok: false,
+                elapsedMs,
+                outputTail: message,
+                args: { check, reverse },
+                at: Date.now(),
+            });
+            return {
+                ok: false,
+                output: outputWithReceiptStatus(message, receiptStatus),
+                elapsedMs,
+            };
+        }
         let applyCreatedDirs: string[] = [];
         let applyPreExistingDirs: string[] = [];
         let applyEnsureDirs: string[] = [];
@@ -2383,8 +2441,9 @@ export class OverlayStore {
         // Validate caller-controlled diff paths before invoking apply tools. Non-check apply
         // may need parent directories for newly added nested files; check/dry-run must not
         // create workspace directories before proving preview-only behavior.
+        let diffText: string;
         try {
-            const diffText = await fsp.readFile(diffFile, 'utf8');
+            diffText = await this.readFileNoFollow(diffFile, 'snapshot diff');
             applyEnsureDirs = this.collectApplyTargetDirs(diffText);
             if (!check && !reverse) {
                 const dirState = this.collectApplyDirState(applyEnsureDirs, workspaceRoot);
@@ -2414,8 +2473,9 @@ export class OverlayStore {
             };
         }
         if (reverse && !check) {
-            const reversePreflight = spawnSync('git', ['apply', '--check', '-R', '--whitespace=nowarn', diffFile], {
-                stdio: 'pipe',
+            const reversePreflight = spawnSync('git', ['apply', '--check', '-R', '--whitespace=nowarn'], {
+                input: diffText,
+                stdio: ['pipe', 'pipe', 'pipe'],
                 cwd: workspaceRoot,
             });
             if (reversePreflight.status !== 0) {
@@ -2455,8 +2515,8 @@ export class OverlayStore {
         const argsGit = ['apply'];
         if (reverse) argsGit.push('-R');
         if (check) argsGit.push('--check');
-        argsGit.push('--whitespace=nowarn', diffFile);
-        const git = spawnSync('git', argsGit, { stdio: 'pipe', cwd: workspaceRoot });
+        argsGit.push('--whitespace=nowarn');
+        const git = spawnSync('git', argsGit, { input: diffText, stdio: ['pipe', 'pipe', 'pipe'], cwd: workspaceRoot });
         output += String(git.stdout || '') + String(git.stderr || '');
         const elapsed = Date.now() - start;
         if (git.status === 0) {

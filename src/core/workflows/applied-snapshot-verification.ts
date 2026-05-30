@@ -1,7 +1,24 @@
 import { spawnSync } from 'node:child_process';
+import * as nodeFs from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { overlayStore } from '../overlay-store.js';
+
+async function readRegularFileNoFollow(
+    filePath: string
+): Promise<{ ok: true; text: string } | { ok: false; reason: string }> {
+    const stat = await fs.lstat(filePath).catch(() => null);
+    if (!stat) return { ok: false, reason: 'missing' };
+    if (!stat.isFile() || stat.isSymbolicLink()) return { ok: false, reason: 'not_regular_file' };
+    const noFollow = typeof nodeFs.constants.O_NOFOLLOW === 'number' ? nodeFs.constants.O_NOFOLLOW : 0;
+    const handle = await fs.open(filePath, nodeFs.constants.O_RDONLY | noFollow).catch(() => null);
+    if (!handle) return { ok: false, reason: 'open_failed' };
+    try {
+        return { ok: true, text: await handle.readFile('utf8') };
+    } finally {
+        await handle.close();
+    }
+}
 
 export async function verifyAppliedSnapshotDiff(
     snapshot: string,
@@ -14,33 +31,47 @@ export async function verifyAppliedSnapshotDiff(
     const method = 'materialized_content_and_reverse_check_vs_snapshot_overlay';
     try {
         const existingDiff = (overlayStore as any).getExistingMaterializedDiffPath?.bind(overlayStore);
-        const overlayDiffFile = existingDiff
-            ? existingDiff(snapshot, { workspaceRoot })
-            : path.resolve(workspaceRoot, '.ontology', 'snapshots', snapshot, 'overlay.diff');
+        const currentMaterializedDiffFile = existingDiff ? existingDiff(snapshot, { workspaceRoot }) : null;
+        const overlayDiffFile =
+            currentMaterializedDiffFile ??
+            path.resolve(workspaceRoot, '.ontology', 'snapshots', snapshot, 'overlay.diff');
         const squashedDiffFile = path.join(path.dirname(overlayDiffFile), 'squashed-overlay.diff');
-        const squashedStat = await fs.stat(squashedDiffFile).catch(() => null);
+        let squashedStat: Awaited<ReturnType<typeof fs.lstat>> | null = null;
+        if (currentMaterializedDiffFile) {
+            squashedStat = await fs.lstat(squashedDiffFile).catch(() => null);
+            if (squashedStat && (!squashedStat.isFile() || squashedStat.isSymbolicLink())) {
+                return {
+                    appliedDiffMatchesSnapshot: false,
+                    method,
+                    diagnostics: {
+                        reason: 'snapshot_squashed_diff_unsafe',
+                        snapshot,
+                        diffFile: squashedDiffFile,
+                    },
+                };
+            }
+        }
         const diffFile = squashedStat?.isFile() ? squashedDiffFile : overlayDiffFile;
-        const diffStat = await fs.stat(diffFile).catch(() => null);
-        if (!diffStat?.isFile()) {
+        const diffRead = await readRegularFileNoFollow(diffFile);
+        if (!diffRead.ok) {
             return {
                 appliedDiffMatchesSnapshot: false,
                 method,
                 diagnostics: {
                     reason: 'snapshot_overlay_diff_unavailable',
+                    detail: diffRead.reason,
                     snapshot,
                     diffFile,
                 },
             };
         }
 
-        const overlayDiff = await fs.readFile(diffFile, 'utf8');
+        const overlayDiff = diffRead.text;
         const status = overlayStore.getStatus(snapshot, {
             workspaceRoot: workspaceRoot,
         });
         const touchedFiles = Array.isArray(status?.touchedFiles)
-            ? status.touchedFiles.filter(
-                  (file: unknown): file is string => typeof file === 'string' && file.length > 0
-              )
+            ? status.touchedFiles.filter((file: unknown): file is string => typeof file === 'string' && file.length > 0)
             : [];
         if (touchedFiles.length === 0) {
             return {
@@ -54,27 +85,7 @@ export async function verifyAppliedSnapshotDiff(
             };
         }
 
-        const workingDiffProc = spawnSync('git', ['diff', '--no-ext-diff', '--', ...touchedFiles], {
-            cwd: workspaceRoot,
-            stdio: 'pipe',
-            encoding: 'utf8',
-        });
-        let workingDiff = String(workingDiffProc.stdout || '');
-        if (workingDiffProc.status !== 0) {
-            return {
-                appliedDiffMatchesSnapshot: false,
-                method,
-                diagnostics: {
-                    reason: 'working_tree_diff_failed',
-                    snapshot,
-                    files: touchedFiles,
-                    exitCode: workingDiffProc.status,
-                    stderr: String(workingDiffProc.stderr || '').slice(-2000),
-                },
-            };
-        }
-
-        const untrackedAddedFiles: string[] = [];
+        const validatedTouchedFiles: string[] = [];
         for (const file of touchedFiles) {
             const absolute = path.resolve(workspaceRoot, file);
             const relative = path.relative(workspaceRoot, absolute);
@@ -89,14 +100,52 @@ export async function verifyAppliedSnapshotDiff(
                     },
                 };
             }
+            validatedTouchedFiles.push(relative);
+        }
+
+        const workingDiffProc = spawnSync('git', ['diff', '--no-ext-diff', '--', ...validatedTouchedFiles], {
+            cwd: workspaceRoot,
+            stdio: 'pipe',
+            encoding: 'utf8',
+        });
+        let workingDiff = String(workingDiffProc.stdout || '');
+        if (workingDiffProc.status !== 0) {
+            return {
+                appliedDiffMatchesSnapshot: false,
+                method,
+                diagnostics: {
+                    reason: 'working_tree_diff_failed',
+                    snapshot,
+                    files: validatedTouchedFiles,
+                    exitCode: workingDiffProc.status,
+                    stderr: String(workingDiffProc.stderr || '').slice(-2000),
+                },
+            };
+        }
+
+        const untrackedAddedFiles: string[] = [];
+        for (const file of validatedTouchedFiles) {
+            const absolute = path.resolve(workspaceRoot, file);
             const tracked = spawnSync('git', ['ls-files', '--error-unmatch', '--', file], {
                 cwd: workspaceRoot,
                 stdio: 'pipe',
                 encoding: 'utf8',
             });
             if (tracked.status === 0) continue;
-            const stat = await fs.stat(absolute).catch(() => null);
-            if (!stat?.isFile()) continue;
+            const stat = await fs.lstat(absolute).catch(() => null);
+            if (!stat) continue;
+            if (stat.isSymbolicLink()) {
+                return {
+                    appliedDiffMatchesSnapshot: false,
+                    method,
+                    diagnostics: {
+                        reason: 'working_tree_untracked_symlink_unsafe',
+                        snapshot,
+                        file,
+                    },
+                };
+            }
+            if (!stat.isFile()) continue;
             const added = spawnSync('git', ['diff', '--no-ext-diff', '--no-index', '--', '/dev/null', file], {
                 cwd: workspaceRoot,
                 stdio: 'pipe',
@@ -124,7 +173,7 @@ export async function verifyAppliedSnapshotDiff(
 
         const materializedRoot = path.dirname(diffFile);
         const fileMismatches: Array<{ file: string; reason: string }> = [];
-        for (const file of touchedFiles) {
+        for (const file of validatedTouchedFiles) {
             const materializedPath = path.resolve(materializedRoot, file);
             const workingPath = path.resolve(workspaceRoot, file);
             const materializedRelative = path.relative(materializedRoot, materializedPath);
@@ -158,8 +207,7 @@ export async function verifyAppliedSnapshotDiff(
                     fs.readlink(materializedPath),
                     fs.readlink(workingPath),
                 ]);
-                if (materializedLink !== workingLink)
-                    fileMismatches.push({ file, reason: 'symlink_target_mismatch' });
+                if (materializedLink !== workingLink) fileMismatches.push({ file, reason: 'symlink_target_mismatch' });
                 continue;
             }
             if (!materializedStat.isFile() || !workingStat.isFile()) {
@@ -202,9 +250,10 @@ export async function verifyAppliedSnapshotDiff(
             overlayPatchId.ids.length === workingPatchId.ids.length &&
             overlayPatchId.ids.every((id, index) => id === workingPatchId.ids[index]);
 
-        const reverse = spawnSync('git', ['apply', '--check', '-R', '--whitespace=nowarn', diffFile], {
+        const reverse = spawnSync('git', ['apply', '--check', '-R', '--whitespace=nowarn'], {
             cwd: workspaceRoot,
-            stdio: 'pipe',
+            input: overlayDiff,
+            stdio: ['pipe', 'pipe', 'pipe'],
             encoding: 'utf8',
         });
         const reverseOk = reverse.status === 0;
@@ -215,7 +264,7 @@ export async function verifyAppliedSnapshotDiff(
             diagnostics: {
                 snapshot,
                 diffFile,
-                files: touchedFiles,
+                files: validatedTouchedFiles,
                 untrackedAddedFiles,
                 reverseApplyCheckOk: reverseOk,
                 fileContentsMatch,

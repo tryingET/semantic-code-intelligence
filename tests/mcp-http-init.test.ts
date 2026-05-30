@@ -66,7 +66,7 @@ bindTest('MCP HTTP initialize returns 200 and sets session id', async () => {
     throw lastError ?? new Error('Failed to start MCP HTTP server after retries');
 });
 
-bindTest('MCP HTTP mixed batch reports invalid tools/call params as InvalidParams', async () => {
+bindTest('MCP HTTP mixed batch preserves valid siblings while normalizing invalid tools/call params', async () => {
     const host = '127.0.0.1';
     let lastError: unknown = null;
 
@@ -113,13 +113,31 @@ bindTest('MCP HTTP mixed batch reports invalid tools/call params as InvalidParam
                 body: JSON.stringify([
                     { jsonrpc: '2.0', id: 2, method: 'tools/call' },
                     { jsonrpc: '2.0', id: 3, method: 'tools/list', params: {} },
+                    {
+                        jsonrpc: '2.0',
+                        id: 4,
+                        method: 'tools/call',
+                        params: {
+                            name: 'read_file',
+                            arguments: { path: 'README.md', range: { startLine: 1, endLine: 2 } },
+                        },
+                    },
+                    { jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'get_snapshot', arguments: 'bad' } },
+                    { jsonrpc: '2.0', method: 'tools/list', params: {} },
                 ]),
             });
             if (batch.status < 500) {
-                expect(batch.status).toBe(400);
+                expect(batch.status).toBe(200);
                 const payload = await batch.json();
+                expect(payload).toHaveLength(4);
                 expect(payload[0].id).toBe(2);
                 expect(payload[0].error.code).toBe(-32602);
+                expect(payload[1].id).toBe(3);
+                expect(Array.isArray(payload[1].result.tools)).toBe(true);
+                expect(payload[2].id).toBe(4);
+                expect(payload[2].result.content[0].text).toContain('Semantic Code Intelligence');
+                expect(payload[3].id).toBe(5);
+                expect(payload[3].error.code).toBe(-32602);
                 server.kill('SIGTERM');
                 return;
             }

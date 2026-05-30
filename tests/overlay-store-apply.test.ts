@@ -5,6 +5,7 @@ import * as fs from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { OverlayStore, overlayStore } from '../src/core/overlay-store.js';
+import { verifyAppliedSnapshotDiff } from '../src/core/workflows/applied-snapshot-verification.js';
 import { SnapshotPatchWorkflowService } from '../src/core/workflows/snapshot-patch-workflow.js';
 
 describe('OverlayStore applyToWorkingTree with unified diff', () => {
@@ -212,6 +213,150 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
             if (previousAllow === undefined) delete process.env.ALLOW_SNAPSHOT_APPLY;
             else process.env.ALLOW_SNAPSHOT_APPLY = previousAllow;
             await fs.rm(root, { recursive: true, force: true });
+        }
+    }, 30000);
+
+    test('snapshot fingerprinting ignores repo-configured external diff commands', async () => {
+        const root = await fs.mkdtemp(path.join(tmpdir(), 'sci-overlay-git-extdiff-'));
+        const marker = path.join(root, 'external-diff-ran');
+        try {
+            spawnSync('git', ['init', '-q'], { cwd: root });
+            spawnSync('git', ['config', 'user.email', 'sci@example.invalid'], { cwd: root });
+            spawnSync('git', ['config', 'user.name', 'SCI Test'], { cwd: root });
+            await fs.writeFile(path.join(root, 'file.txt'), 'old\n', 'utf8');
+            spawnSync('git', ['add', 'file.txt'], { cwd: root });
+            spawnSync('git', ['commit', '-qm', 'init'], { cwd: root });
+            await fs.writeFile(path.join(root, 'file.txt'), 'new\n', 'utf8');
+            const externalDiff = path.join(root, 'external-diff.sh');
+            await fs.writeFile(externalDiff, `#!/bin/sh\necho ran >> ${JSON.stringify(marker)}\n`, 'utf8');
+            await fs.chmod(externalDiff, 0o755);
+            spawnSync('git', ['config', 'diff.external', externalDiff], { cwd: root });
+
+            const store = new OverlayStore();
+            store.createSnapshot(false, { workspaceRoot: root });
+
+            expect(existsSync(marker)).toBe(false);
+        } finally {
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    });
+
+    test('squashed multi-diff apply refuses symlinked derived diff artifacts', async () => {
+        const root = await fs.mkdtemp(path.join(tmpdir(), 'sci-overlay-squash-symlink-'));
+        const outside = path.join(tmpdir(), `sci-overlay-outside-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+        try {
+            spawnSync('git', ['init', '-q'], { cwd: root });
+            spawnSync('git', ['config', 'user.email', 'sci@example.invalid'], { cwd: root });
+            spawnSync('git', ['config', 'user.name', 'SCI Test'], { cwd: root });
+            await fs.writeFile(path.join(root, 'file.txt'), 'one\n', 'utf8');
+            spawnSync('git', ['add', 'file.txt'], { cwd: root });
+            spawnSync('git', ['commit', '-qm', 'init'], { cwd: root });
+            await fs.writeFile(outside, 'sentinel\n', 'utf8');
+            const store = new OverlayStore();
+            const snap = store.createSnapshot(false, { workspaceRoot: root });
+            expect(
+                store.stagePatch(
+                    snap.id,
+                    'diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-one\n+two\n'
+                ).accepted
+            ).toBe(true);
+            expect(
+                store.stagePatch(
+                    snap.id,
+                    'diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-two\n+three\n'
+                ).accepted
+            ).toBe(true);
+            const service = new SnapshotPatchWorkflowService({ workspaceRoot: () => root } as any);
+            await service.extractSnapshotArtifacts({ snapshot: snap.id, includeContent: true });
+            const dir = store.getSnapshotDirectory(snap.id, { workspaceRoot: root });
+            await fs.symlink(outside, path.join(dir, 'squashed-overlay.diff'));
+
+            const checked = await store.applyToWorkingTree(snap.id, { check: true, workspaceRoot: root });
+
+            expect(checked.ok).toBe(false);
+            expect(await fs.readFile(outside, 'utf8')).toBe('sentinel\n');
+        } finally {
+            await fs.rm(root, { recursive: true, force: true });
+            await fs.rm(outside, { force: true });
+        }
+    }, 30000);
+
+    test('applied snapshot verification refuses symlinked squashed diff artifacts', async () => {
+        const root = await fs.mkdtemp(path.join(tmpdir(), 'sci-overlay-verify-squash-symlink-'));
+        const outside = path.join(
+            tmpdir(),
+            `sci-overlay-verify-outside-${Date.now()}-${Math.random().toString(16).slice(2)}`
+        );
+        try {
+            spawnSync('git', ['init', '-q'], { cwd: root });
+            spawnSync('git', ['config', 'user.email', 'sci@example.invalid'], { cwd: root });
+            spawnSync('git', ['config', 'user.name', 'SCI Test'], { cwd: root });
+            await fs.writeFile(path.join(root, 'file.txt'), 'one\n', 'utf8');
+            spawnSync('git', ['add', 'file.txt'], { cwd: root });
+            spawnSync('git', ['commit', '-qm', 'init'], { cwd: root });
+            await fs.writeFile(outside, 'not the reviewed artifact\n', 'utf8');
+            const store = new OverlayStore();
+            const snap = store.createSnapshot(false, { workspaceRoot: root });
+            expect(
+                store.stagePatch(
+                    snap.id,
+                    'diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-one\n+two\n'
+                ).accepted
+            ).toBe(true);
+            expect(
+                store.stagePatch(
+                    snap.id,
+                    'diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-two\n+three\n'
+                ).accepted
+            ).toBe(true);
+            const service = new SnapshotPatchWorkflowService({ workspaceRoot: () => root } as any);
+            await service.extractSnapshotArtifacts({ snapshot: snap.id, includeContent: true });
+            const dir = store.getSnapshotDirectory(snap.id, { workspaceRoot: root });
+            await fs.symlink(outside, path.join(dir, 'squashed-overlay.diff'));
+
+            const verification = await verifyAppliedSnapshotDiff(snap.id, root);
+
+            expect(verification.appliedDiffMatchesSnapshot).toBe(false);
+            expect(verification.diagnostics.reason).toBe('snapshot_squashed_diff_unsafe');
+        } finally {
+            await fs.rm(root, { recursive: true, force: true });
+            await fs.rm(outside, { force: true });
+        }
+    }, 30000);
+
+    test('applied snapshot verification refuses untracked touched-file symlink targets', async () => {
+        const root = await fs.mkdtemp(path.join(tmpdir(), 'sci-overlay-verify-untracked-symlink-'));
+        const outside = path.join(
+            tmpdir(),
+            `sci-overlay-verify-link-target-${Date.now()}-${Math.random().toString(16).slice(2)}`
+        );
+        try {
+            spawnSync('git', ['init', '-q'], { cwd: root });
+            spawnSync('git', ['config', 'user.email', 'sci@example.invalid'], { cwd: root });
+            spawnSync('git', ['config', 'user.name', 'SCI Test'], { cwd: root });
+            await fs.writeFile(path.join(root, 'base.txt'), 'base\n', 'utf8');
+            spawnSync('git', ['add', 'base.txt'], { cwd: root });
+            spawnSync('git', ['commit', '-qm', 'init'], { cwd: root });
+            await fs.writeFile(outside, 'external content must not be diffed\n', 'utf8');
+            const store = new OverlayStore();
+            const snap = store.createSnapshot(false, { workspaceRoot: root });
+            expect(
+                store.stagePatch(
+                    snap.id,
+                    'diff --git a/link.txt b/link.txt\nnew file mode 100644\n--- /dev/null\n+++ b/link.txt\n@@ -0,0 +1 @@\n+reviewed content\n'
+                ).accepted
+            ).toBe(true);
+            const service = new SnapshotPatchWorkflowService({ workspaceRoot: () => root } as any);
+            await service.extractSnapshotArtifacts({ snapshot: snap.id, includeContent: true });
+            await fs.symlink(outside, path.join(root, 'link.txt'));
+
+            const verification = await verifyAppliedSnapshotDiff(snap.id, root);
+
+            expect(verification.appliedDiffMatchesSnapshot).toBe(false);
+            expect(verification.diagnostics.reason).toBe('working_tree_untracked_symlink_unsafe');
+        } finally {
+            await fs.rm(root, { recursive: true, force: true });
+            await fs.rm(outside, { force: true });
         }
     }, 30000);
 
