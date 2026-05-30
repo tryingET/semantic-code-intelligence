@@ -191,9 +191,9 @@ jobs:
           TIMEOUT: 180000
           BUN_JOBS: 1
         run: |
-          echo "🧪 Running test slice $SLICE/$SLICES (batched)"
-          chmod +x bin/test-slicer.sh bin/test-progress-batch.sh
-          bin/test-slicer.sh | tee ".test-results/slice-${SLICE}.log"
+          echo "🧪 Running test slice $SLICE/$SLICES (canonical normal suite)"
+          chmod +x scripts/run-normal-tests.sh scripts/git-tree-fingerprint.sh bin/test-slicer.sh bin/test-progress-batch.sh
+          scripts/run-normal-tests.sh --slice "$SLICE/$SLICES" | tee ".test-results/slice-${SLICE}.log"
 
       - name: Upload slice artifacts
         uses: actions/upload-artifact@v4

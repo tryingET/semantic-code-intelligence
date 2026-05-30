@@ -7,12 +7,51 @@ set -euo pipefail
 # one huge `bun test` process with default per-test timeouts.
 
 SLICES=${SLICES:-4}
+REQUESTED_SLICE=
 # File-level batches are the stable default for local/agent validation. Larger
 # batches can be requested explicitly, but mixed HTTP/CLI tests contend heavily
 # when several files share one Bun process.
 BATCH_SIZE=${BATCH_SIZE:-1}
 TIMEOUT=${TIMEOUT:-180000}
 BUN_JOBS=${BUN_JOBS:-1}
+
+usage() {
+  cat >&2 <<'USAGE'
+Usage: scripts/run-normal-tests.sh [--slice K/N]
+
+Runs the normal non-perf, non-e2e suite through the canonical sliced+batched
+runner. Without --slice it runs all slices sequentially. With --slice it runs
+one matrix slice using the same defaults and guards.
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --slice)
+      if [[ $# -lt 2 ]]; then
+        usage
+        exit 2
+      fi
+      if [[ "$2" =~ ^([0-9]+)/([0-9]+)$ ]]; then
+        REQUESTED_SLICE="${BASH_REMATCH[1]}"
+        SLICES="${BASH_REMATCH[2]}"
+      else
+        echo "Invalid --slice value: $2 (expected K/N)" >&2
+        exit 2
+      fi
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      usage
+      exit 2
+      ;;
+  esac
+done
 
 require_positive_int() {
   local name="$1"
@@ -23,42 +62,20 @@ require_positive_int() {
   fi
 }
 
-git_tree_fingerprint() {
-  if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    printf 'not-a-git-worktree\n'
-    return 0
-  fi
-  {
-    printf 'status\0'
-    git status --porcelain=v1 -z --untracked-files=normal || true
-    printf 'diff\0'
-    git diff --binary || true
-    printf 'cached-diff\0'
-    git diff --cached --binary || true
-    printf 'untracked\0'
-    git ls-files --others --exclude-standard -z | python3 -c 'import hashlib, os, sys
-paths = sorted(p for p in sys.stdin.buffer.read().split(b"\0") if p)
-for raw in paths:
-    path = os.fsdecode(raw)
-    digest = hashlib.sha256()
-    try:
-        with open(path, "rb") as fh:
-            for chunk in iter(lambda: fh.read(1024 * 1024), b""):
-                digest.update(chunk)
-        print(f"{digest.hexdigest()}  {path}")
-    except OSError as exc:
-        print(f"ERROR {path}: {exc}")'
-  } | sha256sum | awk '{print $1}'
-}
-
 require_positive_int SLICES "$SLICES"
+if [[ -n "$REQUESTED_SLICE" ]]; then
+  require_positive_int SLICE "$REQUESTED_SLICE"
+  if [[ "$REQUESTED_SLICE" -gt "$SLICES" ]]; then
+    echo "Invalid SLICE: ${REQUESTED_SLICE}; expected 1 <= SLICE <= SLICES (${SLICES})" >&2
+    exit 2
+  fi
+fi
 require_positive_int BATCH_SIZE "$BATCH_SIZE"
 require_positive_int TIMEOUT "$TIMEOUT"
 require_positive_int BUN_JOBS "$BUN_JOBS"
 
-BASE_GIT_FINGERPRINT="$(git_tree_fingerprint)"
-
-for ((i = 1; i <= SLICES; i++)); do
+run_slice() {
+  local i="$1"
   echo "================ SLICE ${i}/${SLICES} ================"
   SLICES="$SLICES" \
     SLICE="$i" \
@@ -66,12 +83,22 @@ for ((i = 1; i <= SLICES; i++)); do
     TIMEOUT="$TIMEOUT" \
     BUN_JOBS="$BUN_JOBS" \
     bin/test-slicer.sh
-done
+}
 
-AFTER_GIT_FINGERPRINT="$(git_tree_fingerprint)"
-if [[ "$AFTER_GIT_FINGERPRINT" != "$BASE_GIT_FINGERPRINT" ]]; then
-  echo "Test run changed git working tree content; restore or commit intentional outputs." >&2
-  echo "--- status ---" >&2
-  git status --short --untracked-files=normal >&2 || true
-  exit 1
+if [[ -n "$REQUESTED_SLICE" ]]; then
+  run_slice "$REQUESTED_SLICE"
+else
+  BASE_GIT_FINGERPRINT="$(scripts/git-tree-fingerprint.sh)"
+
+  for ((i = 1; i <= SLICES; i++)); do
+    run_slice "$i"
+  done
+
+  AFTER_GIT_FINGERPRINT="$(scripts/git-tree-fingerprint.sh)"
+  if [[ "$AFTER_GIT_FINGERPRINT" != "$BASE_GIT_FINGERPRINT" ]]; then
+    echo "Test run changed git working tree content; restore or commit intentional outputs." >&2
+    echo "--- status ---" >&2
+    git status --short --untracked-files=normal >&2 || true
+    exit 1
+  fi
 fi

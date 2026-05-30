@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import yaml from 'js-yaml';
 import { alphaMvpToolNameSet } from '../src/core/tools/alpha-surface.js';
 
 interface Violation {
@@ -44,6 +45,177 @@ function claudeHookFiles(): string[] {
     .filter((name) => name.endsWith('.sh') || name.endsWith('.sh.old'))
     .map((name) => join(dir, name))
     .sort();
+}
+
+function workflowLineFor(text: string, needle: string): number {
+  const index = text.indexOf(needle);
+  if (index < 0) return 1;
+  return text.slice(0, index).split(/\r?\n/).length;
+}
+
+interface ShellInvocation {
+  line: string;
+  executable: string;
+  args: string[];
+  pipeline: Array<{ executable: string; args: string[] }>;
+}
+
+function shellTokens(command: string): string[] {
+  const tokens: string[] = [];
+  let current = '';
+  let quote: 'single' | 'double' | null = null;
+  let escaping = false;
+
+  for (const char of command) {
+    if (escaping) {
+      current += char;
+      escaping = false;
+      continue;
+    }
+    if (char === '\\' && quote !== 'single') {
+      escaping = true;
+      continue;
+    }
+    if (char === "'" && quote !== 'double') {
+      quote = quote === 'single' ? null : 'single';
+      continue;
+    }
+    if (char === '"' && quote !== 'single') {
+      quote = quote === 'double' ? null : 'double';
+      continue;
+    }
+    if (/\s/.test(char) && quote === null) {
+      if (current) tokens.push(current);
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+
+  if (current) tokens.push(current);
+  return tokens;
+}
+
+function normalizeExecutable(executable: string): string {
+  return executable.replace(/^\.\//, '');
+}
+
+function commandFromSegment(segment: string): { executable: string; args: string[] } | null {
+  const tokens = shellTokens(segment.trim());
+  if (tokens.length === 0 || tokens[0].startsWith('#')) return null;
+
+  let index = 0;
+  if (tokens[index] === 'env') index += 1;
+  while (index < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=.*/.test(tokens[index])) index += 1;
+  if (index >= tokens.length) return null;
+
+  const executable = normalizeExecutable(tokens[index]);
+  const args = tokens.slice(index + 1);
+  if ((executable === 'bash' || executable === 'sh') && args[0] && !args[0].startsWith('-')) {
+    return { executable: normalizeExecutable(args[0]), args: args.slice(1) };
+  }
+
+  return { executable, args };
+}
+
+function shellInvocations(run: string): ShellInvocation[] {
+  return run
+    .replace(/\\\r?\n/g, ' ')
+    .split(/\r?\n|&&|;/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#'))
+    .flatMap((line) => {
+      const pipeline = line
+        .split('|')
+        .map(commandFromSegment)
+        .filter((command): command is { executable: string; args: string[] } => command !== null);
+      const first = pipeline[0];
+      return first ? [{ line, executable: first.executable, args: first.args, pipeline }] : [];
+    });
+}
+
+function normalizedShellValue(value: string): string {
+  return value.replace(/\$\{([^}]+)\}/g, '$1').replace(/\$/g, '');
+}
+
+function writesCiSliceLog(invocation: ShellInvocation): boolean {
+  return invocation.pipeline.some(
+    (segment) =>
+      segment.executable === 'tee' &&
+      segment.args.some((arg) => {
+        const normalized = normalizedShellValue(arg);
+        return normalized.includes('.test-results/slice-') && normalized.includes('SLICE') && normalized.endsWith('.log');
+      })
+  );
+}
+
+function hasExplicitCiSliceArg(invocation: ShellInvocation): boolean {
+  const sliceIndex = invocation.args.indexOf('--slice');
+  if (sliceIndex < 0) return false;
+  const value = invocation.args[sliceIndex + 1];
+  if (!value) return false;
+  return normalizedShellValue(value) === 'SLICE/SLICES';
+}
+
+interface WorkflowRunBlock {
+  run: string;
+  env: Record<string, unknown>;
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function workflowRunBlocks(value: unknown): WorkflowRunBlock[] {
+  const root = recordValue(value);
+  const workflowEnv = recordValue(root.env);
+  const blocks: WorkflowRunBlock[] = [];
+  for (const jobValue of Object.values(recordValue(root.jobs))) {
+    const job = recordValue(jobValue);
+    if (!Array.isArray(job.steps)) continue;
+    const jobEnv = recordValue(job.env);
+    for (const stepValue of job.steps) {
+      const step = recordValue(stepValue);
+      if (typeof step.run === 'string') {
+        blocks.push({ run: step.run, env: { ...workflowEnv, ...jobEnv, ...recordValue(step.env) } });
+      }
+    }
+  }
+  return blocks;
+}
+
+function hasNormalSuiteSliceEnv(env: Record<string, unknown>): boolean {
+  return (
+    Object.prototype.hasOwnProperty.call(env, 'SLICES') &&
+    Object.prototype.hasOwnProperty.call(env, 'SLICE') &&
+    !Object.prototype.hasOwnProperty.call(env, 'SUITE_DIR') &&
+    !Object.prototype.hasOwnProperty.call(env, 'E2E')
+  );
+}
+
+function checkWorkflowNormalTestRunner(file: string): void {
+  const text = readText(file);
+  let parsed: unknown;
+  try {
+    parsed = yaml.load(text);
+  } catch (error) {
+    add(file, 1, 'workflow-yaml-parse-failed', String(error), 'Keep workflow YAML parseable so command-surface contracts can be checked structurally.');
+    return;
+  }
+
+  for (const block of workflowRunBlocks(parsed)) {
+    const line = workflowLineFor(text, block.run);
+    for (const invocation of shellInvocations(block.run)) {
+      const isCiNormalSlice = writesCiSliceLog(invocation) || hasNormalSuiteSliceEnv(block.env);
+      if (invocation.executable === 'bin/test-slicer.sh' && isCiNormalSlice) {
+        add(file, line, 'ci-normal-tests-use-canonical-runner', block.run, 'Use `scripts/run-normal-tests.sh` so CI matrix slices share the same guards as local `bun run test`/`just test`.');
+      }
+
+      if (invocation.executable === 'scripts/run-normal-tests.sh' && isCiNormalSlice && !hasExplicitCiSliceArg(invocation)) {
+        add(file, line, 'ci-normal-tests-explicit-slice', block.run, 'Pass `--slice "$SLICE/$SLICES"`; the normal runner must not infer partial-suite mode from ambient env.');
+      }
+    }
+  }
 }
 
 function scanTextSurface(file: string): void {
@@ -133,7 +305,10 @@ function checkPackageScripts(): void {
 function main(): void {
   checkPackageScripts();
 
-  for (const file of workflowFiles()) scanTextSurface(file);
+  for (const file of workflowFiles()) {
+    scanTextSurface(file);
+    checkWorkflowNormalTestRunner(file);
+  }
   for (const file of claudeHookFiles()) scanTextSurface(file);
   for (const file of ['.github/pull_request_template.md', 'README.md', 'TESTING_STRATEGY.md', 'tests/README.md', 'justfile', 'CLAUDE_DESKTOP_SETUP.md', 'bin/dogfood-workflows.sh', 'scripts/dogfood-mcp.ts']) scanTextSurface(file);
 

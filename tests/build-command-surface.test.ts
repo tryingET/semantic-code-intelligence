@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import yaml from 'js-yaml';
@@ -36,6 +36,83 @@ describe('build command surface', () => {
         const report = JSON.parse(proc.stdout) as { ok: boolean; violations: unknown[] };
         expect(report.ok).toBe(true);
         expect(report.violations).toEqual([]);
+    });
+
+    test('command-surface audit normalizes workflow run blocks for normal-suite slices', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'sci-command-surface-workflow-normalize-'));
+        const scriptPath = join(process.cwd(), 'scripts/check-command-surface.ts');
+        const writeFixture = (runBlock: string, jobEnvBlock = '', workflowEnvBlock = '') => {
+            mkdirSync(join(dir, '.github/workflows'), { recursive: true });
+            writeFileSync(
+                join(dir, 'package.json'),
+                JSON.stringify({
+                    scripts: {
+                        test: 'scripts/run-normal-tests.sh',
+                        'test:nonperf': 'scripts/run-normal-tests.sh',
+                        'test:coverage': 'scripts/run-coverage-tests.sh',
+                        'test:raw': 'bun test',
+                        'command-surface:check': 'bun run scripts/check-command-surface.ts',
+                    },
+                })
+            );
+            writeFileSync(
+                join(dir, '.github/workflows/ci.yml'),
+                `name: ci\non: [push]\n${workflowEnvBlock}jobs:\n  test:\n    runs-on: ubuntu-latest\n${jobEnvBlock}    steps:\n      - name: Normal slice\n        run: |\n${runBlock
+                    .split('\n')
+                    .map((line) => `          ${line}`)
+                    .join('\n')}\n`
+            );
+        };
+
+        try {
+            writeFixture('echo running\nchmod +x bin/test-slicer.sh\n  bin/test-slicer.sh   | tee .test-results/slice-$SLICE.log');
+            const legacy = spawnSync('bun', ['run', scriptPath, '--json'], { cwd: dir, encoding: 'utf8' });
+            expect(legacy.status).toBe(1);
+            expect(JSON.parse(legacy.stdout).violations.map((v: { rule: string }) => v.rule)).toContain(
+                'ci-normal-tests-use-canonical-runner'
+            );
+
+            writeFixture('bin/test-slicer.sh', '    env:\n      SLICES: 6\n      SLICE: ${{ matrix.slice }}\n');
+            const envOnlyLegacy = spawnSync('bun', ['run', scriptPath, '--json'], { cwd: dir, encoding: 'utf8' });
+            expect(envOnlyLegacy.status).toBe(1);
+            expect(JSON.parse(envOnlyLegacy.stdout).violations.map((v: { rule: string }) => v.rule)).toContain(
+                'ci-normal-tests-use-canonical-runner'
+            );
+
+            writeFixture('./bin/test-slicer.sh', '    env:\n      SLICES: 6\n      SLICE: ${{ matrix.slice }}\n');
+            const dottedLegacy = spawnSync('bun', ['run', scriptPath, '--json'], { cwd: dir, encoding: 'utf8' });
+            expect(dottedLegacy.status).toBe(1);
+            expect(JSON.parse(dottedLegacy.stdout).violations.map((v: { rule: string }) => v.rule)).toContain(
+                'ci-normal-tests-use-canonical-runner'
+            );
+
+            writeFixture('bash bin/test-slicer.sh', '', 'env:\n  SLICES: 6\n  SLICE: ${{ matrix.slice }}\n');
+            const topLevelEnvLegacy = spawnSync('bun', ['run', scriptPath, '--json'], { cwd: dir, encoding: 'utf8' });
+            expect(topLevelEnvLegacy.status).toBe(1);
+            expect(JSON.parse(topLevelEnvLegacy.stdout).violations.map((v: { rule: string }) => v.rule)).toContain(
+                'ci-normal-tests-use-canonical-runner'
+            );
+
+            writeFixture('scripts/run-normal-tests.sh | tee .test-results/slice-${SLICE}.log');
+            const implicit = spawnSync('bun', ['run', scriptPath, '--json'], { cwd: dir, encoding: 'utf8' });
+            expect(implicit.status).toBe(1);
+            expect(JSON.parse(implicit.stdout).violations.map((v: { rule: string }) => v.rule)).toContain(
+                'ci-normal-tests-explicit-slice'
+            );
+
+            writeFixture('bash scripts/run-normal-tests.sh | tee .test-results/slice-${SLICE}.log');
+            const shellWrappedImplicit = spawnSync('bun', ['run', scriptPath, '--json'], { cwd: dir, encoding: 'utf8' });
+            expect(shellWrappedImplicit.status).toBe(1);
+            expect(JSON.parse(shellWrappedImplicit.stdout).violations.map((v: { rule: string }) => v.rule)).toContain(
+                'ci-normal-tests-explicit-slice'
+            );
+
+            writeFixture('env BUN_JOBS=1 ./scripts/run-normal-tests.sh \\\n  --slice "${SLICE}/${SLICES}" | tee ".test-results/slice-${SLICE}.log"');
+            const ok = spawnSync('bun', ['run', scriptPath, '--json'], { cwd: dir, encoding: 'utf8' });
+            expect(ok.status, ok.stderr || ok.stdout).toBe(0);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
     });
 
     test('local harness artifacts are ignored and rejected if force-tracked', () => {
@@ -91,6 +168,7 @@ describe('build command surface', () => {
         const runner = readText('scripts/run-normal-tests.sh');
         const slicer = readText('bin/test-slicer.sh');
         const justfile = readText('justfile');
+        const ciWorkflow = readText('.github/workflows/ci.yml');
 
         expect(packageJson.scripts?.test).toBe('scripts/run-normal-tests.sh');
         expect(packageJson.scripts?.['test:nonperf']).toBe('scripts/run-normal-tests.sh');
@@ -124,14 +202,18 @@ describe('build command surface', () => {
         expect(slicer).not.toContain('slice_files=( $output )');
         expect(recipeBody(justfile, 'test-fast')).toContain('BATCH_SIZE=${BATCH_SIZE:-1}');
         expect(recipeBody(justfile, 'test-slices slices="4"')).toContain('BATCH_SIZE=${BATCH_SIZE:-1}');
-        expect(recipeBody(justfile, 'test-slices slices="4"')).toContain('Invalid slices');
-        expect(runner).toContain('git_tree_fingerprint()');
-        expect(runner).toContain('BASE_GIT_FINGERPRINT="$(git_tree_fingerprint)"');
-        expect(runner).toContain('AFTER_GIT_FINGERPRINT="$(git_tree_fingerprint)"');
+        expect(recipeBody(justfile, 'test-slices slices="4"')).toContain('scripts/run-normal-tests.sh');
+        expect(runner).toContain('require_positive_int SLICES "$SLICES"');
+        expect(runner).toContain('REQUESTED_SLICE=');
+        expect(runner).not.toContain('SLICE=${SLICE:-}');
+        expect(ciWorkflow).toContain('scripts/run-normal-tests.sh --slice "$SLICE/$SLICES"');
+        expect(runner).toContain('scripts/git-tree-fingerprint.sh');
+        expect(runner).toContain('BASE_GIT_FINGERPRINT="$(scripts/git-tree-fingerprint.sh)"');
+        expect(runner).toContain('AFTER_GIT_FINGERPRINT="$(scripts/git-tree-fingerprint.sh)"');
         expect(runner).toContain('Test run changed git working tree content');
-        expect(slicer).toContain('git_tree_fingerprint()');
-        expect(slicer).toContain('BASE_GIT_FINGERPRINT="$(git_tree_fingerprint)"');
-        expect(slicer).toContain('AFTER_GIT_FINGERPRINT="$(git_tree_fingerprint)"');
+        expect(slicer).toContain('scripts/git-tree-fingerprint.sh');
+        expect(slicer).toContain('BASE_GIT_FINGERPRINT="$(scripts/git-tree-fingerprint.sh)"');
+        expect(slicer).toContain('AFTER_GIT_FINGERPRINT="$(scripts/git-tree-fingerprint.sh)"');
         expect(slicer).toContain('Test slice changed git working tree content');
     });
 
@@ -166,6 +248,53 @@ describe('build command surface', () => {
         }
     });
 
+    test('normal runner ignores ambient SLICE unless --slice is explicit', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'sci-normal-runner-slice-contract-'));
+        try {
+            mkdirSync(join(dir, 'scripts'), { recursive: true });
+            mkdirSync(join(dir, 'bin'), { recursive: true });
+            writeFileSync(join(dir, 'scripts', 'run-normal-tests.sh'), readText('scripts/run-normal-tests.sh'));
+            writeFileSync(join(dir, 'scripts', 'git-tree-fingerprint.sh'), readText('scripts/git-tree-fingerprint.sh'));
+            writeFileSync(
+                join(dir, 'bin', 'test-slicer.sh'),
+                '#!/usr/bin/env bash\nset -euo pipefail\necho "SLICE=${SLICE:-} SLICES=${SLICES:-}"\n'
+            );
+            chmodSync(join(dir, 'scripts', 'git-tree-fingerprint.sh'), 0o755);
+            chmodSync(join(dir, 'bin', 'test-slicer.sh'), 0o755);
+
+            const init = spawnSync('git', ['init'], { cwd: dir, encoding: 'utf8' });
+            expect(init.status, init.stderr || init.stdout).toBe(0);
+            spawnSync('git', ['config', 'user.email', 'test@example.invalid'], { cwd: dir, encoding: 'utf8' });
+            spawnSync('git', ['config', 'user.name', 'Test User'], { cwd: dir, encoding: 'utf8' });
+            const add = spawnSync('git', ['add', 'scripts/run-normal-tests.sh', 'scripts/git-tree-fingerprint.sh', 'bin/test-slicer.sh'], { cwd: dir, encoding: 'utf8' });
+            expect(add.status, add.stderr || add.stdout).toBe(0);
+            const commit = spawnSync('git', ['commit', '-m', 'fixture'], { cwd: dir, encoding: 'utf8' });
+            expect(commit.status, commit.stderr || commit.stdout).toBe(0);
+
+            const ambient = spawnSync('bash', ['scripts/run-normal-tests.sh'], {
+                cwd: dir,
+                encoding: 'utf8',
+                env: { ...process.env, SLICES: '3', SLICE: '2', BATCH_SIZE: '1', TIMEOUT: '1000', BUN_JOBS: '1' },
+            });
+            expect(ambient.status, ambient.stderr || ambient.stdout).toBe(0);
+            expect(ambient.stdout.match(/^SLICE=.*$/gm)).toEqual([
+                'SLICE=1 SLICES=3',
+                'SLICE=2 SLICES=3',
+                'SLICE=3 SLICES=3',
+            ]);
+
+            const explicit = spawnSync('bash', ['scripts/run-normal-tests.sh', '--slice', '2/3'], {
+                cwd: dir,
+                encoding: 'utf8',
+                env: { ...process.env, SLICES: '99', SLICE: 'stale', BATCH_SIZE: '1', TIMEOUT: '1000', BUN_JOBS: '1' },
+            });
+            expect(explicit.status, explicit.stderr || explicit.stdout).toBe(0);
+            expect(explicit.stdout.match(/^SLICE=.*$/gm)).toEqual(['SLICE=2 SLICES=3']);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     test('normal test runners fail closed for invalid batch sizing', () => {
         const proc = spawnSync('bash', ['scripts/run-normal-tests.sh'], {
             cwd: process.cwd(),
@@ -189,7 +318,7 @@ describe('build command surface', () => {
             env: { ...process.env, MAX_FILES: '0' },
         });
         expect(justProc.status).toBe(2);
-        expect(justProc.stderr).toContain('Invalid slices: slices=6');
+        expect(justProc.stderr).toContain('Invalid SLICES: slices=6');
     });
 
     test('batch runner preserves JSONL shape and refuses symlink report outputs', () => {

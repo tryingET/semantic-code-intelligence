@@ -443,8 +443,8 @@ test:
       echo "🧪 Running legacy test recipe (single process)"; \
       {{bun}} test tests/step*.test.ts tests/integration.test.ts; \
     else \
-      echo "🧪 Running tests (sliced + batched for speed)"; \
-      just test-fast; \
+      echo "🧪 Running tests (canonical normal sliced + batched suite)"; \
+      scripts/run-normal-tests.sh; \
     fi
 
 # Run comprehensive integration test suite (NEW UNIFIED ARCHITECTURE)
@@ -506,18 +506,13 @@ test-batch:
 
 # Slice the test suite into N parts and run one slice
 test-sliced slices="4" slice="1":
-    @echo "🧪 Running test slice {{slice}}/{{slices}} (batched with progress)"
+    @echo "🧪 Running test slice {{slice}}/{{slices}} (canonical normal suite)"
     @echo "   Override with: just test-sliced <N> <K> [BATCH_SIZE=1 TIMEOUT=180000]"
-    @SLICES={{slices}} SLICE={{slice}} BATCH_SIZE=${BATCH_SIZE:-1} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} bin/test-slicer.sh
+    @BATCH_SIZE=${BATCH_SIZE:-1} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} scripts/run-normal-tests.sh --slice {{slice}}/{{slices}}
 
 # Run all slices sequentially (useful locally to get periodic feedback)
 test-slices slices="4":
-    @n={{slices}}; case "$n" in ''|*[!0-9]*) echo "Invalid slices: $n" >&2; exit 2;; esac; if [ "$n" -lt 1 ]; then echo "Invalid slices: $n" >&2; exit 2; fi; i=1; \
-    while [ "$i" -le "$n" ]; do \
-        echo "================ SLICE $i/$n ================"; \
-        SLICES="$n" SLICE="$i" BATCH_SIZE=${BATCH_SIZE:-1} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} L2_MAX_PARSE_FILES=${L2_MAX_PARSE_FILES:-10} ESCALATION_POLICY=${ESCALATION_POLICY:-never} BAIL=${BAIL:-} bin/test-slicer.sh || exit $?; \
-        i=`expr $i + 1`; \
-    done
+    @SLICES={{slices}} BATCH_SIZE=${BATCH_SIZE:-1} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} L2_MAX_PARSE_FILES=${L2_MAX_PARSE_FILES:-10} ESCALATION_POLICY=${ESCALATION_POLICY:-never} BAIL=${BAIL:-} scripts/run-normal-tests.sh
 
 # CI-like local run: 6 slices sequentially with steadier batch size
 test-ci-like:
@@ -533,8 +528,8 @@ test-ci-like-balanced:
 
 # Auto-sliced test runner (detect CPU, clamp slices; sequential for clean output)
 test-fast:
-    @SLICES=${SLICES:-4}; echo "🧪 Running $SLICES slices (batched)"
-    @SLICES=${SLICES:-4}; i=1; while [ $i -le $SLICES ]; do echo "================ SLICE $i/$SLICES ================"; SLICES=$SLICES SLICE=$i BATCH_SIZE=${BATCH_SIZE:-1} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} bin/test-slicer.sh || exit $?; i=`expr $i + 1`; done
+    @SLICES=${SLICES:-4}; echo "🧪 Running $SLICES slices (canonical normal suite)"
+    @SLICES=${SLICES:-4} BATCH_SIZE=${BATCH_SIZE:-1} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} scripts/run-normal-tests.sh
 
  
 
