@@ -45,7 +45,8 @@ export async function readLimitedJsonBody(
     if (request.method === 'GET' || request.method === 'HEAD') return undefined;
 
     const contentType = request.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) {
+    const mediaType = contentType.split(';', 1)[0]?.trim().toLowerCase() || '';
+    if (mediaType !== 'application/json') {
         if (request.body) {
             throw new CoreError('InvalidParams', 'HTTP JSON request body requires Content-Type: application/json', {
                 contentType: contentType || null,

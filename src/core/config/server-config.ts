@@ -3,6 +3,8 @@
  * This ensures no port conflicts and consistent settings across the system
  */
 
+import { loadRuntimeConfig } from '../runtime-config.js';
+
 export interface ServerPorts {
     httpAPI: number;
     mcpHTTP: number; // MCP HTTP (Streamable) server port
@@ -58,8 +60,9 @@ function parseIntegerEnv(name: string, value: string): number {
     return parsed;
 }
 
-export function getConfig(): ServerConfig {
+export function getConfig(startDir = process.cwd()): ServerConfig {
     const config: ServerConfig = { ...DEFAULT_CONFIG, ports: { ...DEFAULT_CONFIG.ports } };
+    applyRuntimeServerConfig(config, startDir);
 
     // Allow environment variables to override defaults
     if (process.env.HTTP_API_PORT) {
@@ -86,6 +89,50 @@ export function getConfig(): ServerConfig {
 
     validatePorts(config);
     return config;
+}
+
+function parseIntegerConfig(name: string, value: unknown): number {
+    if (typeof value !== 'number' && typeof value !== 'string') {
+        throw new Error(`Invalid numeric runtime configuration ${name}: ${String(value)}`);
+    }
+    const text = String(value).trim();
+    if (!/^\d+$/.test(text)) {
+        throw new Error(`Invalid numeric runtime configuration ${name}: ${String(value)}`);
+    }
+    const parsed = Number(text);
+    if (!Number.isSafeInteger(parsed)) {
+        throw new Error(`Invalid numeric runtime configuration ${name}: ${String(value)}`);
+    }
+    return parsed;
+}
+
+function parseBooleanConfig(name: string, value: unknown): boolean {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        if (normalized === 'true') return true;
+        if (normalized === 'false') return false;
+    }
+    throw new Error(`Invalid boolean runtime configuration ${name}: ${String(value)}`);
+}
+
+function applyRuntimeServerConfig(config: ServerConfig, startDir: string): void {
+    const runtime = loadRuntimeConfig(startDir);
+    const server = runtime?.data?.server;
+    if (!server || typeof server !== 'object' || Array.isArray(server)) return;
+
+    if (typeof server.host === 'string' && server.host.trim()) config.host = server.host.trim();
+    const ports = server.ports;
+    if (ports && typeof ports === 'object' && !Array.isArray(ports)) {
+        for (const key of Object.keys(config.ports) as Array<keyof ServerPorts>) {
+            if (ports[key] !== undefined) config.ports[key] = parseIntegerConfig(`server.ports.${key}`, ports[key]);
+        }
+    }
+    if (server.timeout !== undefined) config.timeout = parseIntegerConfig('server.timeout', server.timeout);
+    if (server.maxRetries !== undefined) config.maxRetries = parseIntegerConfig('server.maxRetries', server.maxRetries);
+    if (server.cacheEnabled !== undefined)
+        config.cacheEnabled = parseBooleanConfig('server.cacheEnabled', server.cacheEnabled);
+    if (server.cacheTTL !== undefined) config.cacheTTL = parseIntegerConfig('server.cacheTTL', server.cacheTTL);
 }
 
 /**

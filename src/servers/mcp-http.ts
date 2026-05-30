@@ -91,7 +91,7 @@ function dynamicMcpHttpCorsOrigin(
     callback(null, policy);
 }
 
-export const app = express();
+export const app: any = express();
 app.use(express.json({ limit: maxJsonBodyBytes() }));
 app.use(
     cors({
@@ -273,7 +273,7 @@ app.use((err: unknown, _req: express.Request, res: express.Response, next: expre
 });
 
 // Prometheus metrics endpoint for MCP HTTP adapter
-app.get('/metrics', (_req, res) => {
+app.get('/metrics', (_req: express.Request, res: express.Response) => {
     const text = metricsRegistry.renderPrometheusText();
     res.setHeader('Content-Type', 'text/plain; version=0.0.4');
     res.status(200).send(text);
@@ -394,7 +394,7 @@ async function createMcpServer(desiredSid?: string, enableJsonResponse = false):
     await analyzer.initialize();
 
     // Create adapter and low-level server with handlers
-    const adapter = new MCPAdapter(analyzer);
+    const adapter = new MCPAdapter(analyzer as any);
     const server = new Server(
         { name: 'semantic-code-intelligence', version: SCI_VERSION },
         { capabilities: { tools: {}, resources: {}, prompts: {} } }
@@ -463,7 +463,7 @@ async function createMcpServer(desiredSid?: string, enableJsonResponse = false):
 }
 
 // POST /mcp - client -> server
-app.post('/mcp', async (req, res) => {
+app.post('/mcp', async (req: express.Request, res: express.Response) => {
     try {
         if (!isJsonRpcObjectOrBatch(req.body)) {
             const core = new CoreError('InvalidParams', 'Invalid JSON', {
@@ -488,7 +488,7 @@ app.post('/mcp', async (req, res) => {
                         error: 'Fix the invalid initialize request and retry the batch',
                     }
                 );
-                const payloads = req.body.map((item) =>
+                const payloads = req.body.map((item: Record<string, unknown>) =>
                     buildJsonRpcErrorPayload(invalidItems.has(item) ? core : batchCore, requestJsonRpcId(item))
                 );
                 if (/text\/event-stream/i.test(originalAccept)) sendSseJsonRpcPayload(res, payloads);
@@ -529,7 +529,7 @@ app.post('/mcp', async (req, res) => {
             const initializedRecord = record;
             const transport = initializedRecord.transport;
             // When session is initialized, store it
-            transport.onsessioninitialized = (sid: string) => {
+            (transport as any).onsessioninitialized = (sid: string) => {
                 touchSession(initializedRecord);
                 sessions[sid] = initializedRecord;
                 try {
@@ -556,9 +556,7 @@ app.post('/mcp', async (req, res) => {
         // SDK request schema validation can surface "missing params" as InternalError (-32603).
         // Normalize the most common transport-level case (tools/call with missing params) to InvalidParams (-32602).
         try {
-            const invalidToolsCall = (
-                body: any
-            ): body is { method?: unknown; params?: unknown; id?: JsonRpcMessageId } =>
+            const invalidToolsCall = (body: any): boolean =>
                 !!body &&
                 body.method === 'tools/call' &&
                 (!body.params || typeof body.params !== 'object' || Array.isArray(body.params));
@@ -708,7 +706,7 @@ app.post('/mcp', async (req, res) => {
 });
 
 // GET /mcp - server -> client notifications stream
-app.get('/mcp', async (req, res) => {
+app.get('/mcp', async (req: express.Request, res: express.Response) => {
     const sessionId = (req.headers['mcp-session-id'] as string | undefined) || undefined;
     if (!sessionId || !sessions[sessionId]) {
         sendMissingSession(res);
@@ -732,7 +730,7 @@ app.get('/mcp', async (req, res) => {
 });
 
 // SSE stream of MCP tool events for live monitoring
-app.get('/mcp-events', (req, res) => {
+app.get('/mcp-events', (req: express.Request, res: express.Response) => {
     const sessionId = (req.headers['mcp-session-id'] as string | undefined) || undefined;
     if (!sessionId || !sessions[sessionId]) {
         sendMissingSession(res);
@@ -782,7 +780,7 @@ app.get('/mcp-events', (req, res) => {
 });
 
 // DELETE /mcp - end session
-app.delete('/mcp', async (req, res) => {
+app.delete('/mcp', async (req: express.Request, res: express.Response) => {
     const sessionId = (req.headers['mcp-session-id'] as string | undefined) || undefined;
     const record = sessionId ? sessions[sessionId] : undefined;
     if (!sessionId || !record) {
@@ -797,7 +795,7 @@ app.delete('/mcp', async (req, res) => {
 });
 
 // Health endpoint
-app.get('/health', (_req, res) => {
+app.get('/health', (_req: express.Request, res: express.Response) => {
     res.json({ status: 'healthy', sessions: Object.keys(sessions).length, timestamp: new Date().toISOString() });
 });
 
@@ -833,13 +831,34 @@ export function startMcpHttpServer(options: McpHttpServerStartOptions = {}): Htt
     ensureSessionSweeper();
     const { host, port } = resolveMcpHttpRuntimeConfig(options);
     activeCorsHost = host;
+    let listening = false;
     const server = app.listen(port, host, () => {
+        listening = true;
         const address = server.address();
         const boundPort = typeof address === 'object' && address ? (address as AddressInfo).port : port;
         console.log(`MCP Streamable HTTP server listening at http://${host}:${boundPort}`);
     });
-    activeServer = installSessionDisposingClose(server);
-    return activeServer;
+    const managedServer = installSessionDisposingClose(server);
+    const onBindError = (error: Error) => {
+        if (!listening && activeServer === managedServer) {
+            activeServer = null;
+            activeCorsHost = undefined;
+        }
+        managedServer.off('listening', onListening);
+        managedServer.off('error', onBindError);
+        if (managedServer.listenerCount('error') === 0) {
+            queueMicrotask(() => {
+                throw error;
+            });
+        }
+    };
+    const onListening = () => {
+        managedServer.off('error', onBindError);
+    };
+    managedServer.once('error', onBindError);
+    managedServer.once('listening', onListening);
+    activeServer = managedServer;
+    return managedServer;
 }
 
 let server: HttpServer | null = null;

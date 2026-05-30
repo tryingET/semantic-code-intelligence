@@ -97,6 +97,11 @@ describe('build command surface', () => {
         expect(packageJson.scripts?.['test:raw']).toBe('bun test');
         expect(packageJson.scripts?.['test:coverage']).toBe('scripts/run-coverage-tests.sh');
         expect(packageJson.scripts?.['command-surface:check']).toBe('bun run scripts/check-command-surface.ts');
+        expect(packageJson.scripts?.typecheck).toContain('tsconfig.build.json');
+        expect(packageJson.scripts?.typecheck).toContain('tsconfig.alpha-contract.json');
+        expect(readText('tsconfig.alpha-contract.json')).toContain('src/adapters/http-adapter.ts');
+        expect(readText('tsconfig.alpha-contract.json')).toContain('src/servers/http-ingress.ts');
+        expect(readText('tsconfig.alpha-contract.json')).toContain('src/servers/mcp-http.ts');
         expect(packageJson.scripts?.['alpha:evidence:check']).toContain('mkdir -p .test-results &&');
         expect(packageJson.scripts?.['alpha:evidence:packet']).toContain('mkdir -p .test-results &&');
         expect(packageJson.scripts?.lint).toBe(
@@ -119,6 +124,7 @@ describe('build command surface', () => {
         expect(slicer).not.toContain('slice_files=( $output )');
         expect(recipeBody(justfile, 'test-fast')).toContain('BATCH_SIZE=${BATCH_SIZE:-1}');
         expect(recipeBody(justfile, 'test-slices slices="4"')).toContain('BATCH_SIZE=${BATCH_SIZE:-1}');
+        expect(recipeBody(justfile, 'test-slices slices="4"')).toContain('Invalid slices');
         expect(runner).toContain('git_tree_fingerprint()');
         expect(runner).toContain('BASE_GIT_FINGERPRINT="$(git_tree_fingerprint)"');
         expect(runner).toContain('AFTER_GIT_FINGERPRINT="$(git_tree_fingerprint)"');
@@ -176,6 +182,14 @@ describe('build command surface', () => {
         });
         expect(slicerProc.status).toBe(2);
         expect(slicerProc.stderr).toContain('Invalid BATCH_SIZE: nope');
+
+        const justProc = spawnSync('just', ['test-slices', 'slices=6'], {
+            cwd: process.cwd(),
+            encoding: 'utf8',
+            env: { ...process.env, MAX_FILES: '0' },
+        });
+        expect(justProc.status).toBe(2);
+        expect(justProc.stderr).toContain('Invalid slices: slices=6');
     });
 
     test('batch runner preserves JSONL shape and refuses symlink report outputs', () => {
@@ -239,6 +253,13 @@ describe('build command surface', () => {
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
+    });
+
+    test('documented test slice commands use Just positional arguments', () => {
+        expect(readText('README.md')).toContain('just test-slices 6');
+        expect(readText('README.md')).not.toContain('just test-slices slices=6');
+        expect(readText('TESTING_STRATEGY.md')).toContain('just test-slices 6');
+        expect(readText('TESTING_STRATEGY.md')).not.toContain('just test-slices slices=6');
     });
 
     test('release and review surfaces use the normal package test command for broad tests', () => {

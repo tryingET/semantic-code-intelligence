@@ -512,7 +512,7 @@ test-sliced slices="4" slice="1":
 
 # Run all slices sequentially (useful locally to get periodic feedback)
 test-slices slices="4":
-    @n={{slices}}; i=1; \
+    @n={{slices}}; case "$n" in ''|*[!0-9]*) echo "Invalid slices: $n" >&2; exit 2;; esac; if [ "$n" -lt 1 ]; then echo "Invalid slices: $n" >&2; exit 2; fi; i=1; \
     while [ "$i" -le "$n" ]; do \
         echo "================ SLICE $i/$n ================"; \
         SLICES="$n" SLICE="$i" BATCH_SIZE=${BATCH_SIZE:-1} TIMEOUT=${TIMEOUT:-180000} BUN_JOBS=${BUN_JOBS:-1} L2_MAX_PARSE_FILES=${L2_MAX_PARSE_FILES:-10} ESCALATION_POLICY=${ESCALATION_POLICY:-never} BAIL=${BAIL:-} bin/test-slicer.sh || exit $?; \

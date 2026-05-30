@@ -1,3 +1,28 @@
+declare module 'cors' {
+    const cors: (...args: any[]) => any;
+    export default cors;
+}
+
+declare module 'express' {
+    namespace express {
+        export type Request = any;
+        export type Response = any;
+        export type NextFunction = any;
+    }
+    interface ExpressApp {
+        use(...args: any[]): any;
+        get(path: string, handler: (req: any, res: any) => any): any;
+        post(path: string, handler: (req: any, res: any) => any): any;
+        delete(path: string, handler: (req: any, res: any) => any): any;
+        listen(port: number, host: string, callback?: () => void): any;
+    }
+    function express(): ExpressApp;
+    namespace express {
+        export function json(...args: any[]): any;
+    }
+    export default express;
+}
+
 declare module '../core/unified-analyzer.js' {
     export interface CodeAnalyzer {
         [key: string]: any;

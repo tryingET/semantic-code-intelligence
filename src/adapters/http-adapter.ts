@@ -1119,7 +1119,11 @@ export class HTTPAdapter {
                     'file://definition'
                 ),
                 position: body.position ? normalizePosition(body.position) : createPosition(0, 0),
-                maxResults: body.maxResults || 50,
+                maxResults: parseIntegerOption(body.maxResults, 'maxResults', {
+                    defaultValue: 50,
+                    min: 1,
+                    max: this.config.maxResults ?? 1000,
+                }),
             };
 
             // Use the new async definition search method

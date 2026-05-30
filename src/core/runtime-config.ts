@@ -75,7 +75,8 @@ export function applyRuntimeConfig(config: CoreConfig, startDir = process.cwd())
     if (!runtime) return config;
 
     const data = runtime.data;
-    config.layers = mergeObjects(config.layers as any, data.layers || {}) as any;
+    const runtimeLayers = normalizeLayerConfig(data.layers || {});
+    config.layers = mergeObjects(config.layers as any, runtimeLayers) as any;
     config.performance = mergeObjects(config.performance as any, data.performance || {}) as any;
     config.monitoring = mergeObjects(config.monitoring as any, data.monitoring || {}) as any;
 
@@ -85,9 +86,9 @@ export function applyRuntimeConfig(config: CoreConfig, startDir = process.cwd())
 
     const dbPath = pickString(
         data.database?.path,
-        data.layers?.layer4?.dbPath,
-        data.layers?.layer5?.dbPath,
-        data.layers?.layer3?.dbPath
+        runtimeLayers?.layer4?.dbPath,
+        runtimeLayers?.layer5?.dbPath,
+        runtimeLayers?.layer3?.dbPath
     );
     if (dbPath) {
         const resolvedDbPath = resolveConfigPath(runtime.dir, dbPath);
@@ -144,6 +145,28 @@ function resolveConfigWorkspaceRoot(runtime: RuntimeConfigFile, rawWorkspaceRoot
         }
     }
     return resolved;
+}
+
+function normalizeLayerConfig(raw: Record<string, any>): Record<string, any> {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    const normalized: Record<string, any> = { ...raw };
+    const aliases: Array<[string, string]> = [
+        ['layer1_fast', 'layer1'],
+        ['tree_sitter', 'layer2'],
+        ['planner', 'layer3'],
+        ['ontology', 'layer4'],
+        ['semantic_graph', 'layer4'],
+        ['patterns', 'layer5'],
+        ['propagation', 'layer5'],
+    ];
+    for (const [alias, canonical] of aliases) {
+        const value = raw[alias];
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+            normalized[canonical] = mergeObjects(value, normalized[canonical] || {});
+        }
+        delete normalized[alias];
+    }
+    return normalized;
 }
 
 function mergeCacheConfig(current: CoreConfig['cache'], raw: Record<string, any>): CoreConfig['cache'] {

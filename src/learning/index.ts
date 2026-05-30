@@ -8,7 +8,8 @@
 export { CodeEvolutionTracker } from './evolution-tracker.js';
 // Core learning components
 export { FeedbackLoopSystem } from './feedback-loop.js';
-export { LearningOrchestrator } from './learning-orchestrator.js';
+import { LearningOrchestrator } from './learning-orchestrator.js';
+export { LearningOrchestrator };
 export { TeamKnowledgeSystem } from './team-knowledge.js';
 
 // Types and interfaces
@@ -49,12 +50,7 @@ export async function createLearningSystem(config: {
     const { database, cache, eventBus, workspaceRoot } = config;
 
     // Initialize learning orchestrator with all components
-    const learningOrchestrator = new LearningOrchestrator({
-        database,
-        cache,
-        eventBus,
-        workspaceRoot,
-    });
+    const learningOrchestrator = new LearningOrchestrator({ database, cache, workspaceRoot } as any, eventBus);
 
     await learningOrchestrator.initialize();
 

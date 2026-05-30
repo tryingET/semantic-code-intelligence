@@ -759,6 +759,28 @@ describe('nexus contract regressions', () => {
         expect(calls[0].uri).toContain(workspaceRoot);
     });
 
+    test('HTTP stream definition rejects invalid maxResults before core delegation', async () => {
+        const workspaceRoot = tempWorkspace();
+        const core: any = {
+            config: { workspaceRoot },
+            findDefinitionAsync: async () => {
+                throw new Error('core should not receive invalid maxResults');
+            },
+            sharedServices: {},
+        };
+        const adapter = new HTTPAdapter(core, { enableCors: false, enableOpenAPI: false });
+
+        const response = await adapter.handleRequest({
+            method: 'POST',
+            url: '/api/v1/stream/definition',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ identifier: 'Anything', maxResults: 'abc' }),
+        });
+
+        expect(response.status).toBe(400);
+        expect(response.body).toContain('maxResults must be an integer');
+    });
+
     test('HTTP explicit nonexistent file input fails closed instead of widening to workspace root', async () => {
         const workspaceRoot = tempWorkspace();
         const core: any = {

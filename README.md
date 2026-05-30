@@ -201,55 +201,50 @@ server:
     mcpHTTP: 7001
     lspServer: 7002
 
-# Layer configuration
+# Layer configuration uses canonical layer1..layer5 keys.
 layers:
-  layer1_fast:
+  layer1:
     enabled: true
-    timeout: 100
+    timeout: 200
     maxResults: 100
     fileTypes: [ts, tsx, js, jsx, py, java, go, rust]
-    
-  tree_sitter:
+
+  layer2:
     enabled: true
-    timeout: 500
+    timeout: 100
     languages: [typescript, javascript, python]
-    maxFileSize: 1MB
-    
-  ontology:
+    maxFileSize: 1048576
+
+  layer3:
     enabled: true
-    dbPath: .ontology/concepts.db
+    dbPath: .ontology/ontology.db
     cacheSize: 1000
-    
-  patterns:
+
+  layer4:
     enabled: true
+    adapter: sqlite
+    dbPath: .ontology/ontology.db
+    augmentExplore: true
+
+  layer5:
+    enabled: true
+    dbPath: .ontology/ontology.db
     learningThreshold: 3
     confidenceThreshold: 0.7
     maxPatterns: 1000
-    
-  propagation:
-    enabled: true
     maxDepth: 3
     autoApplyThreshold: 0.9
 
-# Performance tuning
+# Cache and performance tuning
+cache:
+  memory:
+    maxSize: 524288000
+    ttl: 3600
+
 performance:
-  caching:
-    memory:
-      maxSize: 500MB
-      ttl: 3600
-    disk:
-      enabled: true
-      path: .ontology/cache
-      maxSize: 2GB
-      
-  parallelism:
-    workers: 4
-    batchSize: 100
-    
-# Search configuration
-search:
-  fuzzy:
-    editDistanceThreshold: 3
+  maxConcurrentRequests: 10
+  requestTimeout: 5000
+```
 
 ### Tools Preferences
 
@@ -604,7 +599,7 @@ bun run test
 just test-sliced 6 2
 
 # All slices sequentially
-just test-slices slices=6
+just test-slices 6
 
 # CI-like run locally (6 slices, steady batch size)
 just test-ci-like

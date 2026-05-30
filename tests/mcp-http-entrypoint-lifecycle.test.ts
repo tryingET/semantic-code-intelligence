@@ -83,6 +83,34 @@ describe('MCP HTTP entrypoint and session lifecycle', () => {
         expect(result.status).toBe(0);
     });
 
+    test('failed bind clears in-process active server state for retry', () => {
+        const port = uniquePort(29);
+        const moduleUrl = repoModuleUrl('src/servers/mcp-http.ts');
+        const script = `
+            import net from 'node:net';
+            const holder = net.createServer();
+            await new Promise((resolve, reject) => {
+                holder.once('error', reject);
+                holder.listen(${port}, '127.0.0.1', resolve);
+            });
+            const mod = await import(${JSON.stringify(moduleUrl)});
+            const failed = mod.startMcpHttpServer({ host: '127.0.0.1', port: ${port} });
+            await new Promise((resolve) => failed.once('error', resolve));
+            const server = mod.startMcpHttpServer({ host: '127.0.0.1', port: 0 });
+            await new Promise((resolve) => setTimeout(resolve, 150));
+            await new Promise((resolve) => server.close(resolve));
+            await new Promise((resolve) => holder.close(resolve));
+        `;
+
+        const result = spawnSync(process.execPath, ['--eval', script], {
+            cwd: process.cwd(),
+            encoding: 'utf8',
+            timeout: 15_000,
+        });
+
+        expect(result.status, result.stderr || result.stdout).toBe(0);
+    });
+
     test('start rejects concurrent in-process servers to avoid shared lifecycle state corruption', () => {
         const moduleUrl = repoModuleUrl('src/servers/mcp-http.ts');
         const script = `

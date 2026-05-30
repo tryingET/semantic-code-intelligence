@@ -198,7 +198,7 @@ bun run test
 just test-sliced 6 2
 
 # All slices sequentially
-just test-slices slices=6
+just test-slices 6
 
 # CI-like run locally (6 slices, steady batch size)
 just test-ci-like

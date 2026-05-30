@@ -62,6 +62,17 @@ bindDescribe('Nexus HTTP ingress regressions', () => {
         expect(body.error?.message).toContain('origin');
     });
 
+    test('accepts JSON content type case-insensitively', async () => {
+        const res = await fetch(`${base}/api/v1/tools/call`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'Application/JSON' },
+            body: JSON.stringify({ name: 'get_snapshot', arguments: {} }),
+        });
+        expect(res.status).toBe(200);
+        const body = await res.json();
+        expect(body.success).toBe(true);
+    });
+
     test('rejects non-loopback browser origins before snapshot reads', async () => {
         const res = await fetch(`${base}/api/v1/snapshots`, {
             headers: { origin: 'https://attacker.example' },

@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "noEmit": true
+  },
+  "files": [
+    "src/adapters/shims.d.ts",
+    "src/core/runtime-config.ts",
+    "src/core/config/server-config.ts",
+    "src/servers/http-ingress.ts",
+    "src/adapters/http-adapter.ts",
+    "src/servers/mcp-http.ts"
+  ],
+  "include": []
+}
