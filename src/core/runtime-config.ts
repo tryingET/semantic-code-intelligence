@@ -58,7 +58,7 @@ export function resolveRuntimeWorkspaceRoot(explicit?: string, fallback?: string
     const runtime = loadRuntimeConfig(startDir);
     const configuredRoot = runtime?.data?.workspaceRoot;
     if (runtime && typeof configuredRoot === 'string' && configuredRoot.trim()) {
-        return path.resolve(runtime.dir, configuredRoot);
+        return resolveConfigWorkspaceRoot(runtime, configuredRoot);
     }
 
     return path.resolve(fallback || process.cwd());
@@ -102,10 +102,48 @@ export function applyRuntimeConfig(config: CoreConfig, startDir = process.cwd())
 
     const workspaceRoot = data.workspaceRoot;
     if (typeof workspaceRoot === 'string' && workspaceRoot.trim()) {
-        config.workspaceRoot = path.resolve(runtime.dir, workspaceRoot);
+        config.workspaceRoot = resolveConfigWorkspaceRoot(runtime, workspaceRoot);
     }
 
     return config;
+}
+
+function isPathWithinOrEqual(candidate: string, root: string): boolean {
+    const relative = path.relative(path.resolve(root), path.resolve(candidate));
+    return !relative || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+function resolveConfigWorkspaceRoot(runtime: RuntimeConfigFile, rawWorkspaceRoot: string): string {
+    const resolved = path.resolve(runtime.dir, rawWorkspaceRoot);
+    if (!isPathWithinOrEqual(resolved, runtime.dir)) {
+        throw new CoreError(
+            'Configured workspaceRoot must stay within the config directory',
+            'CONFIG_ERROR',
+            undefined,
+            undefined,
+            {
+                configPath: runtime.path,
+                workspaceRoot: rawWorkspaceRoot,
+            }
+        );
+    }
+    if (fs.existsSync(resolved)) {
+        const realConfigDir = fs.realpathSync(runtime.dir);
+        const realWorkspaceRoot = fs.realpathSync(resolved);
+        if (!isPathWithinOrEqual(realWorkspaceRoot, realConfigDir)) {
+            throw new CoreError(
+                'Configured workspaceRoot realpath must stay within the config directory',
+                'CONFIG_ERROR',
+                undefined,
+                undefined,
+                {
+                    configPath: runtime.path,
+                    workspaceRoot: rawWorkspaceRoot,
+                }
+            );
+        }
+    }
+    return resolved;
 }
 
 function mergeCacheConfig(current: CoreConfig['cache'], raw: Record<string, any>): CoreConfig['cache'] {

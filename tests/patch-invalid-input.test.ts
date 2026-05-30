@@ -13,7 +13,6 @@ async function callTool(base: string, name: string, args: Record<string, any>) {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ name, arguments: args }),
     });
-    // Accept either 200 (normalized result) or 400 (normalized error)
     expect(res.status).toBeGreaterThanOrEqual(200);
     expect(res.status).toBeLessThan(500);
     return await res.json();
@@ -35,26 +34,23 @@ bindDescribe('Patch workflow rejects non-diff input early', () => {
     test('patch_checks_in_snapshot returns invalid_patch on plain text', async () => {
         const plain = "console.log('hello world');\n";
         const resp = await callTool(base, 'patch_checks_in_snapshot', { patch: plain, timeoutSec: 30 });
-        if (resp.success === true) {
-            const txt = resp.result?.content?.[0]?.text ?? '';
-            const obj = (() => {
-                try {
-                    return JSON.parse(txt);
-                } catch {
-                    return {};
-                }
-            })();
-            expect(obj.ok).toBe(false);
-            expect(obj.reason).toBe('invalid_patch');
-        } else {
-            // HTTP adapter returned normalized error
-            expect(resp.success).toBe(false);
-            const msg = String(resp.error?.message || '');
-            expect(msg.toLowerCase()).toContain('invalid_patch');
-        }
+        expect(resp.success).toBe(true);
+        const txt = resp.result?.content?.[0]?.text ?? '';
+        const obj = txt
+            ? (() => {
+                  try {
+                      return JSON.parse(txt);
+                  } catch {
+                      return {};
+                  }
+              })()
+            : resp.result || {};
+        expect(obj.ok).toBe(false);
+        expect(obj.reason).toBe('invalid_patch');
+        expect(obj.checks).toBe(null);
     });
 
-    test('propose_patch invalid input maps to client error instead of Internal', async () => {
+    test('propose_patch invalid input maps to a structured domain refusal', async () => {
         const snapshotResp = await callTool(base, 'get_snapshot', { preferExisting: false });
         const snapshot = snapshotResp.result?.snapshot;
         expect(typeof snapshot).toBe('string');
@@ -64,10 +60,10 @@ bindDescribe('Patch workflow rejects non-diff input early', () => {
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ name: 'propose_patch', arguments: { snapshot, patch: 'not a diff' } }),
         });
-        expect(res.status).toBe(400);
+        expect(res.status).toBe(200);
         const body = await res.json();
-        expect(body.success).toBe(false);
-        expect(body.error?.code).toBe('InvalidParams');
-        expect(String(body.error?.message || '')).toContain('invalid_patch');
+        expect(body.success).toBe(true);
+        expect(body.result).toMatchObject({ ok: false, accepted: false, reason: 'invalid_patch' });
+        expect(String(body.result?.message || '')).toContain('invalid_patch');
     });
 });

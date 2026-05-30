@@ -138,7 +138,7 @@ export class ToolExecutor {
         }
         validateArgs(args || {}, spec);
         // Extra validation for patch-bearing tools to keep adapters lean
-        if (spec.execution?.requiresPatchValidation) {
+        if (spec.execution?.requiresPatchValidation && !this.workflowOwnsPatchStageFailure(name)) {
             const patch = typeof args?.patch === 'string' ? String(args.patch) : '';
             if (!this.isLikelyDiffOrApplyPatch(patch)) {
                 throw new CoreError(
@@ -152,6 +152,10 @@ export class ToolExecutor {
     async execute(adapter: ToolAdapter, name: string, args: Record<string, any>): Promise<any> {
         this.validate(name, args || {});
         return adapter.handleToolCall(name, args || {});
+    }
+
+    private workflowOwnsPatchStageFailure(name: string): boolean {
+        return name === 'patch_checks_in_snapshot' || name === 'safe_write' || name === 'apply_after_checks';
     }
 
     private isLikelyDiffOrApplyPatch(patch: string): boolean {

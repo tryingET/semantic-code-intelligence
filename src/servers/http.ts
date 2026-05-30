@@ -24,6 +24,8 @@ import type { CodeAnalyzer } from '../core/unified-analyzer';
 import { assertHttpToolAllowed as assertSharedHttpToolAllowed } from '../core/workflows/http-tool-policy.js';
 import type { SnapshotWorkflowResult } from '../core/workflows/snapshot-patch-workflow.js';
 import {
+    httpToolDomainOutcomePayload,
+    isHttpToolDomainOutcome,
     normalizeWorkflowResult,
     workflowErrorPayload,
     workflowPayload,
@@ -429,17 +431,23 @@ export class HTTPServer {
 
                             const normalized = this.normalizeToolWorkflowResultForHttp(toolResult);
                             const explicitToolError = !!toolResult?.isError;
+                            const isDomainOutcome = explicitToolError && isHttpToolDomainOutcome(name, normalized);
                             // A parsed tool payload may legitimately contain ok:false as domain state
                             // (for example guarded apply refused or checks failed). Treat only explicit
-                            // core workflow error flags as HTTP tool-call failures.
-                            const isError = explicitToolError;
+                            // core workflow error flags as HTTP tool-call failures unless the Alpha contract
+                            // defines the refusal as a recoverable domain outcome.
+                            const isError = explicitToolError && !isDomainOutcome;
                             recordToolEnd('http', name, Date.now() - t0, !isError);
                             const errCode = isError ? (normalized as any)?.error?.code : undefined;
                             const status = isError ? statusForCoreErrorCode(errCode, 400) : 200;
                             return new Response(
                                 JSON.stringify({
                                     success: !isError,
-                                    result: isError ? undefined : normalized,
+                                    result: explicitToolError
+                                        ? isDomainOutcome
+                                            ? httpToolDomainOutcomePayload(normalized)
+                                            : undefined
+                                        : normalized,
                                     error: isError ? normalized.error : undefined,
                                 }),
                                 {

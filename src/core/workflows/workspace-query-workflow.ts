@@ -519,7 +519,16 @@ export class WorkspaceQueryWorkflowService {
         maxResults: number;
         timeoutMs: number;
         caseInsensitive: boolean;
-    }): Promise<{ count: number; results: TextSearchResult[] }> {
+    }): Promise<{
+        query: string;
+        rootPath: string;
+        maxResults: number;
+        timeoutMs: number;
+        capped: boolean;
+        capReason: 'maxResults' | 'timeout' | null;
+        count: number;
+        results: TextSearchResult[];
+    }> {
         const started = Date.now();
         const results: TextSearchResult[] = [];
         const flags = args.caseInsensitive ? 'i' : '';
@@ -536,13 +545,21 @@ export class WorkspaceQueryWorkflowService {
         }
         const literalNeedle = args.caseInsensitive ? args.query.toLowerCase() : args.query;
 
+        let capReason: 'maxResults' | 'timeout' | null = null;
         for await (const entry of walkWorkspaceFilesForRead({
             workspaceRoot: args.workspaceRoot,
             rootPath: args.rootPath,
             maxFiles: 20_000,
             maxDepth: 10,
         })) {
-            if (results.length >= args.maxResults || Date.now() - started > args.timeoutMs) break;
+            if (results.length >= args.maxResults) {
+                capReason = 'maxResults';
+                break;
+            }
+            if (Date.now() - started > args.timeoutMs) {
+                capReason = 'timeout';
+                break;
+            }
             if (entry.size > 2 * 1024 * 1024) continue;
             let opened: Awaited<ReturnType<typeof openWorkspaceFileForRead>> | null = null;
             try {
@@ -578,7 +595,17 @@ export class WorkspaceQueryWorkflowService {
             }
         }
 
-        return { count: results.length, results };
+        if (!capReason && results.length >= args.maxResults) capReason = 'maxResults';
+        return {
+            query: args.query,
+            rootPath: args.rootPath,
+            maxResults: args.maxResults,
+            timeoutMs: args.timeoutMs,
+            capped: capReason !== null,
+            capReason,
+            count: results.length,
+            results,
+        };
     }
 
     async symbolSearch(args: Record<string, any>): Promise<SnapshotWorkflowResult> {

@@ -96,3 +96,14 @@ export function normalizeWorkflowResult(result: SnapshotWorkflowResult): any {
         return { ok: false, error: { code: 'Internal', message: 'Failed to normalize tool result' } };
     }
 }
+
+export function isHttpToolDomainOutcome(name: string, normalized: any): boolean {
+    return name === 'propose_patch' && normalized?.ok === false && normalized?.error?.data?.accepted === false;
+}
+
+export function httpToolDomainOutcomePayload(normalized: any): any {
+    const data = normalized?.error?.data || normalized;
+    return data && typeof data === 'object' && !Array.isArray(data) && data.ok === undefined
+        ? { ok: false, ...data }
+        : data;
+}

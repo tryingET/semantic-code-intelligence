@@ -20,6 +20,12 @@ export { buildValidationPlan, recommendChecksPayload } from './validation-plan.j
 
 export type SnapshotWorkflowResult = { payload: unknown; isError?: boolean } | { text: string; isError?: boolean };
 
+function stageFailureReason(stage: any): string {
+    const message = String(stage?.message || '').toLowerCase();
+    if (message.includes('no workspace files found in diff')) return 'invalid_patch';
+    return 'patch_stage_failed';
+}
+
 export class SnapshotPatchWorkflowService {
     constructor(private readonly options: { workspaceRoot: () => string }) {}
 
@@ -84,6 +90,13 @@ export class SnapshotPatchWorkflowService {
                     ...(res.accepted ? {} : { code: 'InvalidParams' }),
                     accepted: res.accepted,
                     snapshot: snap.id,
+                    ...(res.accepted
+                        ? {}
+                        : {
+                              reason: String(res.message || '').includes('invalid_patch')
+                                  ? 'invalid_patch'
+                                  : 'patch_stage_failed',
+                          }),
                     message: res.message,
                 },
                 isError: !res.accepted,
@@ -226,6 +239,7 @@ export class SnapshotPatchWorkflowService {
         const staged = asPayload(stage);
         if (stage?.isError || staged?.accepted !== true) {
             const snapshotArtifacts = snapshotArtifactLinks(snapId);
+            const reason = stageFailureReason(staged);
             const validationPlan = buildValidationPlan({
                 workflow: 'patch_checks_in_snapshot',
                 mode: 'preview_validate',
@@ -245,7 +259,7 @@ export class SnapshotPatchWorkflowService {
                 payload: {
                     workflow: 'patch_checks_in_snapshot',
                     ok: false,
-                    reason: 'patch_stage_failed',
+                    reason,
                     snapshot: snapId,
                     stage: staged,
                     checkRecommendations,
@@ -335,6 +349,7 @@ export class SnapshotPatchWorkflowService {
         const stageOut = asPayload(stage) || {};
         if (stage?.isError || stageOut?.accepted !== true) {
             const snapshotArtifacts = snapshotArtifactLinks(snapshot);
+            const reason = stageFailureReason(stageOut);
             const verification = {
                 staged: false,
                 checksPassed: false,
@@ -342,7 +357,7 @@ export class SnapshotPatchWorkflowService {
                 applied: false,
                 appliedDiffMatchesSnapshot: null,
                 method: null,
-                diagnostics: { reason: 'patch_stage_failed' },
+                diagnostics: { reason },
             };
             const validationPlan = buildValidationPlan({
                 workflow: 'safe_write',
@@ -365,7 +380,7 @@ export class SnapshotPatchWorkflowService {
                 ok: false,
                 workflow: 'safe_write',
                 mode: apply ? 'apply_after_checks' : 'preview_validate',
-                reason: 'patch_stage_failed',
+                reason,
                 risk,
                 snapshot,
                 stage: stageOut,
@@ -383,7 +398,7 @@ export class SnapshotPatchWorkflowService {
                     ? {
                           ok: false,
                           workflow: 'safe_write',
-                          reason: 'patch_stage_failed',
+                          reason,
                           snapshot,
                           validationPlan,
                           verification,

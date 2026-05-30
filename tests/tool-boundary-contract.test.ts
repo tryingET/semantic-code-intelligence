@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { getConfig, getEnvironmentConfig, validatePorts } from '../src/core/config/server-config';
@@ -69,6 +69,29 @@ describe('tool boundary contract', () => {
 
         expect(result.ok).toBe(true);
         expect(result.commands.map((command) => command.ok)).toEqual([true, true]);
+    });
+
+    test('run_checks sanitizes PATH before resolving allowlisted validation binaries', async () => {
+        const root = tempRoot();
+        const marker = join(tempRoot(), 'path-hijack-marker');
+        writeFileSync(join(root, 'package.json'), '{"type":"module"}\n', 'utf8');
+        writeFileSync(join(root, 'sample.txt'), 'old\n', 'utf8');
+        writeFileSync(join(root, 'tsc'), `#!/bin/sh\necho hijacked > ${JSON.stringify(marker)}\nexit 0\n`, 'utf8');
+        chmodSync(join(root, 'tsc'), 0o755);
+        const store = new OverlayStore();
+        const snap = store.createSnapshot(false, { workspaceRoot: root });
+        expect(
+            store.stagePatch(
+                snap.id,
+                'diff --git a/sample.txt b/sample.txt\n--- a/sample.txt\n+++ b/sample.txt\n@@ -1 +1 @@\n-old\n+new\n'
+            ).accepted
+        ).toBe(true);
+        rememberEnv('PATH');
+        process.env.PATH = `${root}${process.platform === 'win32' ? ';' : ':'}${process.env.PATH || ''}`;
+
+        await store.runChecks(snap.id, ['tsc --version'], 5, { workspaceRoot: root });
+
+        expect(existsSync(marker)).toBe(false);
     });
 
     test('run_checks rejects non-validation and arbitrary-code commands before execution', async () => {

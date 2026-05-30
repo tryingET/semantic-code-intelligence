@@ -20,7 +20,12 @@ import { ToolExecutor } from '../core/tools/executor.js';
 import type { CodeAnalyzer } from '../core/unified-analyzer.js';
 import { assertHttpToolAllowed as assertSharedHttpToolAllowed } from '../core/workflows/http-tool-policy.js';
 import type { SnapshotWorkflowResult } from '../core/workflows/snapshot-patch-workflow.js';
-import { normalizeWorkflowResult, workflowErrorPayload } from '../core/workflows/tool-result-normalizer.js';
+import {
+    httpToolDomainOutcomePayload,
+    isHttpToolDomainOutcome,
+    normalizeWorkflowResult,
+    workflowErrorPayload,
+} from '../core/workflows/tool-result-normalizer.js';
 import { ToolWorkflowRouter } from '../core/workflows/tool-workflow-router.js';
 import { workspaceInputToPath } from '../core/workspace-input.js';
 import { resolveWorkspacePath } from '../core/workspace-path.js';
@@ -1294,14 +1299,19 @@ export class HTTPAdapter {
             const toolResult = await this.executeToolWorkflow(name, args);
             const normalized = this.normalizeToolWorkflowResultForHttp(toolResult);
             const isError = !!toolResult?.isError;
-            const errCode = isError ? (normalized as any)?.error?.code : undefined;
+            const isDomainOutcome = isError && isHttpToolDomainOutcome(name, normalized);
+            const errCode = isError && !isDomainOutcome ? (normalized as any)?.error?.code : undefined;
             return {
-                status: isError ? this.statusForCoreErrorCode(errCode, 400) : 200,
+                status: isError && !isDomainOutcome ? this.statusForCoreErrorCode(errCode, 400) : 200,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    success: !isError,
-                    result: isError ? undefined : normalized,
-                    error: isError ? normalized.error : undefined,
+                    success: !isError || isDomainOutcome,
+                    result: isError
+                        ? isDomainOutcome
+                            ? httpToolDomainOutcomePayload(normalized)
+                            : undefined
+                        : normalized,
+                    error: isError && !isDomainOutcome ? normalized.error : undefined,
                 }),
             };
         } catch (err) {

@@ -67,6 +67,10 @@ export class NavigationWorkflowService {
                     return {
                         payload: {
                             schemaVersion: 2,
+                            symbol,
+                            query: symbol,
+                            fallback: false,
+                            maxResults,
                             definitions: [definitionToApiResponse(explicit as any)],
                             performance: { layer1: 0, layer2: 0, layer3: 0, layer4: 0, layer5: 0, total: 0 },
                             requestId: undefined,
@@ -140,6 +144,9 @@ export class NavigationWorkflowService {
                 return {
                     payload: {
                         schemaVersion: 2,
+                        ...(containedPrioritized.length
+                            ? { symbol, query: symbol, fallback: false, maxResults }
+                            : { fallback: false, maxResults }),
                         definitions: containedPrioritized.map((definition: any) => definitionToApiResponse(definition)),
                         performance: result.performance,
                         requestId: result.requestId,
@@ -156,6 +163,7 @@ export class NavigationWorkflowService {
                 return {
                     payload: {
                         schemaVersion: 2,
+                        ...(containedFallbackDefs.length ? { symbol, query: symbol, maxResults } : { maxResults }),
                         definitions: containedFallbackDefs.map((definition: any) =>
                             definitionToApiResponse(definition)
                         ),
@@ -186,6 +194,9 @@ export class NavigationWorkflowService {
         return {
             payload: {
                 schemaVersion: 2,
+                ...(containedPrioritized.length
+                    ? { symbol, query: symbol, fallback: false, maxResults }
+                    : { fallback: false, maxResults }),
                 definitions: containedPrioritized.map((definition: any) => definitionToApiResponse(definition)),
                 performance: result.performance,
                 requestId: result.requestId,
@@ -228,6 +239,9 @@ export class NavigationWorkflowService {
             return {
                 payload: {
                     schemaVersion: 2,
+                    ...(containedFallbackRefs.length
+                        ? { symbol: String(args.symbol), query: String(args.symbol), maxResults }
+                        : { maxResults }),
                     references: containedFallbackRefs.map((reference: any) => referenceToApiResponse(reference)),
                     performance: { layer1: 0, layer2: 0, layer3: 0, layer4: 0, layer5: 0, total: 0 },
                     requestId: undefined,
@@ -258,6 +272,9 @@ export class NavigationWorkflowService {
         return {
             payload: {
                 schemaVersion: 2,
+                ...(containedReferences.length
+                    ? { symbol: String(args.symbol), query: String(args.symbol), fallback: false, maxResults }
+                    : { fallback: false, maxResults }),
                 references: containedReferences.map((reference: any) => referenceToApiResponse(reference)),
                 performance: result.performance,
                 requestId: result.requestId,
@@ -475,7 +492,15 @@ async function readSafeWorkspaceFile(workspaceRoot: string, relativePath: string
 }
 
 function emptyReferencesPayload() {
-    return { schemaVersion: 2, references: [], performance: { total: 0 }, requestId: 'none', count: 0 };
+    return {
+        schemaVersion: 2,
+        fallback: false,
+        maxResults: 0,
+        references: [],
+        performance: { total: 0 },
+        requestId: 'none',
+        count: 0,
+    };
 }
 
 function prioritizeDefinitions(data: any, symbol: unknown) {

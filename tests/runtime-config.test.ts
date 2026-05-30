@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createDefaultCoreConfig } from '../src/adapters/utils.js';
@@ -52,6 +52,19 @@ describe('runtime config contract', () => {
         expect(config.layers.layer4.dbPath).toBe(join(root, 'data', 'ontology.db'));
         expect(config.cache.memory.maxSize).toBe(2048);
         expect(config.cache.memory.ttl).toBe(10);
+    });
+
+    test('config-file workspaceRoot cannot escape the config directory through a symlink', () => {
+        delete process.env.SEMANTIC_CODE_WORKSPACE;
+        delete process.env.WORKSPACE_ROOT;
+        const root = tempWorkspace();
+        const outside = tempWorkspace('sci-runtime-config-outside-');
+        mkdirSync(join(root, 'repo'));
+        symlinkSync(outside, join(root, 'repo', 'ws'), 'dir');
+        writeFileSync(join(root, 'repo', '.semantic-code-intelligence-config.yaml'), 'workspaceRoot: ws\n', 'utf8');
+        process.chdir(join(root, 'repo'));
+
+        expect(() => resolveConfiguredWorkspaceRoot()).toThrow('realpath must stay within the config directory');
     });
 
     test('explicit and environment workspace roots override config-file workspaceRoot', () => {

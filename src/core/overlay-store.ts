@@ -1488,17 +1488,48 @@ export class OverlayStore {
         return { ok: true, words, env };
     }
 
+    private isPathWithinOrEqual(candidate: string, root: string): boolean {
+        const relative = path.relative(path.resolve(root), path.resolve(candidate));
+        return !relative || (!relative.startsWith('..') && !path.isAbsolute(relative));
+    }
+
+    private sanitizeCheckPath(pathValue: string | undefined, forbiddenRoots: string[]): string | undefined {
+        if (typeof pathValue !== 'string') return undefined;
+        const safeEntries: string[] = [];
+        const roots = forbiddenRoots.map((root) => path.resolve(root)).filter(Boolean);
+        for (const rawEntry of pathValue.split(path.delimiter)) {
+            if (!rawEntry) continue;
+            const entry = path.resolve(rawEntry);
+            if (!path.isAbsolute(rawEntry)) continue;
+            if (roots.some((root) => this.isPathWithinOrEqual(entry, root))) continue;
+            let realEntry = entry;
+            try {
+                realEntry = fs.realpathSync(entry);
+            } catch {}
+            if (roots.some((root) => this.isPathWithinOrEqual(realEntry, root))) continue;
+            safeEntries.push(rawEntry);
+        }
+        return safeEntries.length ? Array.from(new Set(safeEntries)).join(path.delimiter) : undefined;
+    }
+
     private checkCommandEnvironment(
         gitCeilingDirectory: string,
         isolatedEnvRoot: string,
-        extraEnv: Record<string, string> = {}
+        extraEnv: Record<string, string> = {},
+        forbiddenPathRoots: string[] = []
     ): Record<string, string> {
         const env: Record<string, string> = {};
         const preserve = (key: string) => {
             const value = process.env[key];
             if (typeof value === 'string') env[key] = value;
         };
-        for (const key of ['PATH', 'CI', 'FORCE_COLOR', 'NO_COLOR', 'BUN_JOBS', 'LANG']) {
+        const sanitizedPath = this.sanitizeCheckPath(process.env.PATH, [
+            gitCeilingDirectory,
+            isolatedEnvRoot,
+            ...forbiddenPathRoots,
+        ]);
+        if (sanitizedPath) env.PATH = sanitizedPath;
+        for (const key of ['CI', 'FORCE_COLOR', 'NO_COLOR', 'BUN_JOBS', 'LANG']) {
             preserve(key);
         }
         for (const [key, value] of Object.entries(process.env)) {
@@ -2070,10 +2101,14 @@ export class OverlayStore {
                 const commandStart = Date.now();
                 const result = await new Promise<{ ok: boolean; exitCode: number | null; timedOut: boolean }>(
                     (resolve) => {
+                        const snap = this.ensureSnapshot(snapshotId);
+                        const snapshotsRoot = this.snapshotsRoot(snap.workspaceRoot);
+                        const workspaceRoot = this.resolveWorkspaceBase(snap.workspaceRoot);
                         const env = this.checkCommandEnvironment(
-                            this.snapshotsRoot(this.ensureSnapshot(snapshotId).workspaceRoot),
+                            snapshotsRoot,
                             isolatedEnvRoot,
-                            resolvedCommand?.ok ? resolvedCommand.env : {}
+                            resolvedCommand?.ok ? resolvedCommand.env : {},
+                            [workspaceRoot, cwd]
                         );
                         const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd, env, detached: true });
                         let settled = false;

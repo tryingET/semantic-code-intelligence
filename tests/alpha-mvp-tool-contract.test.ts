@@ -231,11 +231,20 @@ bindDescribe('Alpha MVP HTTP tools/call contract', () => {
             results.set(name, body.result);
         }
 
+        expect(results.get('text_search')?.query).toBe('handleToolCall');
+        expect(typeof results.get('text_search')?.capped).toBe('boolean');
         expect(results.get('text_search')?.count).toBeGreaterThan(0);
         expect(results.get('text_search')?.results?.length).toBeLessThanOrEqual(5);
         expect(results.get('symbol_search')?.symbols?.[0]?.name).toBe('handleToolCall');
+        expect(results.get('find_definition')?.symbol).toBe('handleToolCall');
+        expect(typeof results.get('find_definition')?.fallback).toBe('boolean');
         expect(results.get('find_definition')?.count).toBeGreaterThan(0);
+        expect(results.get('find_references')?.symbol).toBe('handleToolCall');
+        expect(typeof results.get('find_references')?.fallback).toBe('boolean');
         expect(results.get('find_references')?.count).toBeGreaterThan(0);
+        expect(results.get('ast_query')?.language).toBe('typescript');
+        expect(results.get('ast_query')?.query).toBe('(program) @root');
+        expect(results.get('ast_query')?.parserStatus).toBeDefined();
         expect(Array.isArray(results.get('ast_query')?.results)).toBe(true);
         expect(results.get('graph_expand')?.schemaVersion).toBe(2);
         expect(results.get('graph_expand')?.neighbors).toBeDefined();
@@ -255,6 +264,9 @@ bindDescribe('Alpha MVP HTTP tools/call contract', () => {
             });
             expect(status).toBe(200);
             expect(body.success).toBe(true);
+            expect(body.result.query).toBe('NEEDLE');
+            expect(body.result.capped).toBe(true);
+            expect(body.result.capReason).toBe('maxResults');
             expect(body.result.results).toHaveLength(1);
             expect(body.result.results[0].text.length).toBeLessThanOrEqual(4096);
             expect(body.result.results[0]).toMatchObject({

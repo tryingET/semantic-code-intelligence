@@ -45,7 +45,15 @@ export async function runAstQuery(inp: AstQueryInput) {
     const lang = await loadLanguage(inp.language);
     if (!lang) {
         // No language available; return empty result rather than throw to keep HTTP stable
-        return { count: 0, results: [] };
+        return {
+            language: inp.language,
+            query: inp.query,
+            parserStatus: 'unavailable',
+            fallback: true,
+            capped: false,
+            count: 0,
+            results: [],
+        };
     }
     const parser = new Parser();
     parser.setLanguage(lang);
@@ -54,6 +62,11 @@ export async function runAstQuery(inp: AstQueryInput) {
         q = new Query(lang as any, inp.query);
     } catch (error) {
         return {
+            language: inp.language,
+            query: inp.query,
+            parserStatus: 'query_unavailable',
+            fallback: true,
+            capped: false,
             count: 0,
             results: [],
             parser: 'query_unavailable',
@@ -114,5 +127,13 @@ export async function runAstQuery(inp: AstQueryInput) {
         }
         if (results.length >= resultLimit) break;
     }
-    return { count: results.length, results };
+    return {
+        language: inp.language,
+        query: inp.query,
+        parserStatus: 'ok',
+        fallback: false,
+        capped: results.length >= resultLimit,
+        count: results.length,
+        results,
+    };
 }
