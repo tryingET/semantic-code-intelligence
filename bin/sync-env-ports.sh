@@ -6,8 +6,10 @@ set -euo pipefail
 
 ROOT_DIR=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 ENV_FILE="$ROOT_DIR/.env"
-PREF_HTTP=${HTTP_PREFERRED_PORT:-7000}
-PREF_MCP=${MCP_PREFERRED_PORT:-7001}
+DEFAULT_HTTP=7000
+DEFAULT_MCP=7001
+PREF_HTTP=${HTTP_PREFERRED_PORT:-$DEFAULT_HTTP}
+PREF_MCP=${MCP_PREFERRED_PORT:-$DEFAULT_MCP}
 
 CLI_TS="$HOME/programming/port-registry/src/cli.ts"
 CLI_RUN=(bun run "$CLI_TS")
@@ -16,14 +18,31 @@ log() { echo "[sync-ports] $*" 1>&2; }
 
 has_cli() { [ -f "$CLI_TS" ] || return 1; command -v bun >/dev/null 2>&1 || return 1; }
 
+is_valid_port() {
+  local port="$1"
+  [[ "$port" =~ ^[0-9]+$ ]] && [ "$port" -ge 1 ] && [ "$port" -le 65535 ]
+}
+
+sanitize_port() {
+  local port="$1" fallback="$2"
+  if is_valid_port "$port"; then
+    echo "$port"
+  else
+    echo "$fallback"
+  fi
+}
+
 is_listening() {
   local port="$1"
+  is_valid_port "$port" || return 1
   ss -tulnp 2>/dev/null | grep -q ":$port "
 }
 
 find_free_port() {
   local start="$1"
+  is_valid_port "$start" || return 1
   local end=$((start+100))
+  if [ "$end" -gt 65535 ]; then end=65535; fi
   for ((p=start; p<=end; p++)); do
     if ! is_listening "$p"; then
       echo "$p"; return 0
@@ -34,17 +53,22 @@ find_free_port() {
 
 reserve_with_cli() {
   local component="$1"; local preferred="$2"
-  local out
+  local out port
   if out=$("${CLI_RUN[@]}" reserve --component "$component" --preferred "$preferred" 2>/dev/null); then
-    echo "$out" | grep -Eo '^[0-9]+$' | tail -n1
-    return 0
+    port=$(echo "$out" | grep -Eo '^[0-9]+$' | tail -n1)
+    if is_valid_port "$port"; then
+      echo "$port"
+      return 0
+    fi
   fi
   return 1
 }
 
 choose_port() {
   local component="$1"; local preferred="$2"
-  local port
+  local port fallback="$DEFAULT_MCP"
+  if [ "$component" = "http-api" ]; then fallback="$DEFAULT_HTTP"; fi
+  preferred=$(sanitize_port "$preferred" "$fallback")
   if has_cli; then
     if port=$(reserve_with_cli "$component" "$preferred"); then
       echo "$port"; return 0
@@ -55,10 +79,12 @@ choose_port() {
 }
 
 ensure_distinct() {
-  local a="$1" b="$2"
+  local a="$1" b="$2" next
   if [ "$a" = "$b" ]; then
-    # bump MCP by 1 if collision
-    echo $((b+1))
+    # Re-enter the chooser so registry-backed runs reserve the collision replacement.
+    next=$((b + 1))
+    if [ "$next" -gt 65535 ]; then next="$PREF_MCP"; fi
+    choose_port mcp-http "$next"
   else
     echo "$b"
   fi
@@ -73,12 +99,17 @@ set_kv() {
   fi
 }
 
+PREF_HTTP=$(sanitize_port "$PREF_HTTP" "$DEFAULT_HTTP")
+PREF_MCP=$(sanitize_port "$PREF_MCP" "$DEFAULT_MCP")
+
 # Load existing ports if present to keep stability
 CUR_HTTP=""; CUR_MCP=""
 if [ -f "$ENV_FILE" ]; then
   CUR_HTTP=$(grep -E '^HTTP_API_PORT=' "$ENV_FILE" | cut -d= -f2- || true)
   CUR_MCP=$(grep -E '^MCP_HTTP_PORT=' "$ENV_FILE" | cut -d= -f2- || true)
 fi
+if ! is_valid_port "$CUR_HTTP"; then CUR_HTTP=""; fi
+if ! is_valid_port "$CUR_MCP"; then CUR_MCP=""; fi
 
 TARGET_HTTP="${CUR_HTTP:-}"
 TARGET_MCP="${CUR_MCP:-}"

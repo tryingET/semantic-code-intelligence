@@ -328,6 +328,12 @@ export class HTTPAdapter {
             if (!body || typeof body !== 'object' || body.identifier === undefined || body.identifier === null) {
                 validateRequired(body, ['identifier']);
             }
+            const maxResults = parseIntegerOption(body.maxResults, 'maxResults', {
+                defaultValue: this.config.maxResults,
+                min: 1,
+                max: 1000,
+            });
+
             const ident =
                 typeof body.identifier === 'string' ? body.identifier.trim() : String(body.identifier || '').trim();
             if (ident.length === 0) {
@@ -347,7 +353,7 @@ export class HTTPAdapter {
                 identifier: ident,
                 file: body.file || body.uri || '',
                 position: body.position || {},
-                maxResults: body.maxResults || this.config.maxResults,
+                maxResults,
                 includeDeclaration: body.includeDeclaration ?? true,
                 precise: !!body.precise,
             })}`;
@@ -372,7 +378,7 @@ export class HTTPAdapter {
                 uri: await this.containedRequestUri(body.file || body.uri, 'definition file', 'file://unknown'),
                 position,
                 identifier: ident,
-                maxResults: body.maxResults || this.config.maxResults,
+                maxResults,
                 includeDeclaration: body.includeDeclaration ?? true,
                 precise: !!body.precise,
             });
@@ -414,6 +420,12 @@ export class HTTPAdapter {
             const body = strictJsonParse(request.body || '{}');
             validateRequired(body, ['identifier']);
 
+            const maxResults = parseIntegerOption(body.maxResults, 'maxResults', {
+                defaultValue: this.config.maxResults,
+                min: 1,
+                max: 1000,
+            });
+
             // Parity: require a file/URI context for references; return empty results when context is missing or identifier empty
             const hasContext = !!(body.file || body.uri);
             const ident = typeof body.identifier === 'string' ? body.identifier.trim() : '';
@@ -434,7 +446,7 @@ export class HTTPAdapter {
                 identifier: ident,
                 file: body.file || body.uri || '',
                 position: { line: body.position?.line || 0, character: body.position?.character || 0 },
-                maxResults: body.maxResults || this.config.maxResults,
+                maxResults,
                 includeDeclaration: body.includeDeclaration ?? false,
                 precise: !!body.precise,
             })}`;
@@ -458,7 +470,7 @@ export class HTTPAdapter {
                 uri: await this.containedRequestUri(body.file || body.uri, 'references file', 'file://unknown'),
                 position,
                 identifier: ident,
-                maxResults: body.maxResults || this.config.maxResults,
+                maxResults,
                 includeDeclaration: body.includeDeclaration ?? false,
                 precise: !!body.precise,
             });
@@ -737,11 +749,16 @@ export class HTTPAdapter {
             validateRequired({ identifier }, ['identifier']);
 
             const uri = await this.containedRequestUri(body.file || body.uri, 'explore file', 'file://workspace');
+            const maxResults = parseIntegerOption(body.maxResults, 'maxResults', {
+                defaultValue: this.config.maxResults,
+                min: 1,
+                max: 1000,
+            });
             const result = await (this.coreAnalyzer as any).exploreCodebase({
                 uri,
                 identifier,
                 includeDeclaration: body.includeDeclaration ?? true,
-                maxResults: body.maxResults || this.config.maxResults,
+                maxResults,
                 conceptual: !!body.conceptual,
             });
 

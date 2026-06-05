@@ -59,7 +59,10 @@ ARGS+=(--timeout 240)
 if semantic-code-intelligence "${ARGS[@]}"; then
   :
 else
+  status=$?
   echo "✗ Patch checks failed (snapshot: $SNAP). See output above." >&2
+  if [[ -n "${TMP:-}" && -f "$TMP" ]]; then rm -f "$TMP"; fi
+  exit "$status"
 fi
 
 if [[ -n "${TMP:-}" && -f "$TMP" ]]; then rm -f "$TMP"; fi

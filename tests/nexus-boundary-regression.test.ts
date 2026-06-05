@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { CLIAdapter } from '../src/adapters/cli-adapter.js';
 import { HTTPAdapter } from '../src/adapters/http-adapter.js';
@@ -356,5 +357,164 @@ describe('nexus boundary regressions', () => {
             newName: 'newName',
         } as any);
         expect(renameRequest?.dryRun).toBe(true);
+    });
+
+    test('HTTP navigation endpoints reject non-integer maxResults at the adapter boundary', async () => {
+        const workspace = tempWorkspace();
+        const file = join(workspace, 'target.ts');
+        writeFileSync(file, 'export const boundaryNeedle = 1;\n', 'utf8');
+        const calls: any[] = [];
+        const adapter = new HTTPAdapter(
+            {
+                config: { workspaceRoot: workspace },
+                async findDefinitionAsync(request: any) {
+                    calls.push(['definition', request]);
+                    return { data: [], performance: {}, timestamp: Date.now(), cacheHit: false };
+                },
+                async findReferencesAsync(request: any) {
+                    calls.push(['references', request]);
+                    return { data: [], performance: {}, timestamp: Date.now(), cacheHit: false };
+                },
+                async exploreCodebase(request: any) {
+                    calls.push(['explore', request]);
+                    return { definitions: [], references: [] };
+                },
+            } as any,
+            { enableCors: false, enableOpenAPI: false }
+        );
+
+        const invalidRequests = [
+            { url: '/api/v1/definition', body: { identifier: 'boundaryNeedle', file, maxResults: 'not-a-number' } },
+            { url: '/api/v1/references', body: { identifier: 'boundaryNeedle', file, maxResults: 'not-a-number' } },
+            { url: '/api/v1/explore', body: { identifier: 'boundaryNeedle', file, maxResults: 'not-a-number' } },
+            { url: '/api/v1/definition', body: { identifier: '', maxResults: 'not-a-number' } },
+            { url: '/api/v1/references', body: { identifier: 'boundaryNeedle', maxResults: 'not-a-number' } },
+        ];
+
+        for (const { url, body } of invalidRequests) {
+            const response = await adapter.handleRequest({
+                method: 'POST',
+                url,
+                headers: {},
+                body: JSON.stringify(body),
+            });
+            expect(response.status).toBe(400);
+            expect(JSON.parse(String(response.body)).details?.message).toContain('maxResults must be an integer');
+        }
+        expect(calls).toEqual([]);
+    });
+
+    test('snap-diff rejects traversal-shaped snapshot ids before filesystem lookup', () => {
+        const outside = tempWorkspace('sci-snap-diff-outside-');
+        writeFileSync(join(outside, 'overlay.diff'), 'not a snapshot diff\n', 'utf8');
+        const maliciousId = relative(join(process.cwd(), '.ontology', 'snapshots'), outside);
+
+        const result = spawnSync('bash', [join(process.cwd(), 'bin/snap-diff.sh'), maliciousId], {
+            cwd: tempWorkspace('sci-snap-diff-cwd-'),
+            encoding: 'utf8',
+        });
+
+        expect(result.status).toBe(2);
+        expect(result.stderr).toContain('Invalid snapshot id');
+    });
+
+    test('snap-diff rejects symlinked snapshot artifacts with valid snapshot ids', () => {
+        const workspace = tempWorkspace('sci-snap-diff-symlink-');
+        const outside = tempWorkspace('sci-snap-diff-outside-');
+        const snapshots = join(workspace, '.ontology', 'snapshots');
+        mkdirSync(snapshots, { recursive: true });
+        writeFileSync(join(outside, 'overlay.diff'), 'outside diff\n', 'utf8');
+
+        const snapshotDirId = '11111111-1111-4111-8111-111111111111';
+        symlinkSync(outside, join(snapshots, snapshotDirId), 'dir');
+        const dirResult = spawnSync('bash', [join(process.cwd(), 'bin/snap-diff.sh'), snapshotDirId], {
+            cwd: workspace,
+            encoding: 'utf8',
+        });
+        expect(dirResult.status).toBe(2);
+        expect(dirResult.stderr).toContain('Refusing symlinked snapshot artifact');
+
+        const overlayId = '22222222-2222-4222-8222-222222222222';
+        const overlayDir = join(snapshots, overlayId);
+        mkdirSync(overlayDir);
+        symlinkSync(join(outside, 'overlay.diff'), join(overlayDir, 'overlay.diff'));
+        const fileResult = spawnSync('bash', [join(process.cwd(), 'bin/snap-diff.sh'), overlayId], {
+            cwd: workspace,
+            encoding: 'utf8',
+        });
+        expect(fileResult.status).toBe(2);
+        expect(fileResult.stderr).toContain('Refusing symlinked snapshot artifact');
+    });
+
+    test('self-apply propagates patch-check failures instead of printing a false-green snapshot', () => {
+        const workspace = tempWorkspace('sci-self-apply-');
+        const fakeBin = join(workspace, 'bin');
+        mkdirSync(fakeBin);
+        const fakeCli = join(fakeBin, 'semantic-code-intelligence');
+        writeFileSync(
+            fakeCli,
+            '#!/usr/bin/env bash\nif [[ "$1" = "get-snapshot" ]]; then echo fake-snapshot; exit 0; fi\nexit 7\n',
+            { mode: 0o755 }
+        );
+        const patchFile = join(workspace, 'change.diff');
+        writeFileSync(patchFile, 'diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-a\n+b\n');
+
+        const result = spawnSync('bash', ['bin/self-apply.sh', '-f', patchFile, '--', 'true'], {
+            cwd: process.cwd(),
+            env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH || ''}` },
+            encoding: 'utf8',
+        });
+
+        expect(result.status).toBe(7);
+        expect(result.stderr).toContain('Patch checks failed');
+        expect(result.stdout).not.toContain('Snapshot: fake-snapshot');
+    });
+
+    test('sync-env-ports rechecks the bumped MCP port instead of persisting an occupied collision', () => {
+        const workspace = tempWorkspace('sci-sync-ports-');
+        const fakeBin = join(workspace, 'bin');
+        mkdirSync(fakeBin);
+        writeFileSync(
+            join(fakeBin, 'ss'),
+            '#!/usr/bin/env bash\necho "tcp LISTEN 0 4096 127.0.0.1:47001 0.0.0.0:* users:((\\\"server\\\"))"\n',
+            { mode: 0o755 }
+        );
+        writeFileSync(join(workspace, '.env'), 'HTTP_API_PORT=47000\nMCP_HTTP_PORT=47000\n', 'utf8');
+
+        const result = spawnSync('bash', [join(process.cwd(), 'bin/sync-env-ports.sh')], {
+            cwd: workspace,
+            env: {
+                ...process.env,
+                HOME: workspace,
+                PATH: `${fakeBin}:${process.env.PATH || ''}`,
+                HTTP_PREFERRED_PORT: '47000',
+                MCP_PREFERRED_PORT: '47000',
+            },
+            encoding: 'utf8',
+        });
+
+        expect(result.status).toBe(0);
+        expect(readFileSync(join(workspace, '.env'), 'utf8')).toContain('MCP_HTTP_PORT=47002');
+    });
+
+    test('sync-env-ports sanitizes invalid existing and preferred port values', () => {
+        const workspace = tempWorkspace('sci-sync-ports-invalid-');
+        writeFileSync(join(workspace, '.env'), 'HTTP_API_PORT=abc\nMCP_HTTP_PORT=def\n', 'utf8');
+
+        const result = spawnSync('bash', [join(process.cwd(), 'bin/sync-env-ports.sh')], {
+            cwd: workspace,
+            env: {
+                ...process.env,
+                HOME: workspace,
+                HTTP_PREFERRED_PORT: 'not-a-port',
+                MCP_PREFERRED_PORT: '70001',
+            },
+            encoding: 'utf8',
+        });
+
+        expect(result.status).toBe(0);
+        const envFile = readFileSync(join(workspace, '.env'), 'utf8');
+        expect(envFile).toContain('HTTP_API_PORT=7000');
+        expect(envFile).toContain('MCP_HTTP_PORT=7001');
     });
 });
