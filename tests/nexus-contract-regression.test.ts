@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -809,6 +810,44 @@ describe('nexus contract regressions', () => {
         expect(tail).toContain('event: definition-end');
     });
 
+    test('HTTP stream definition emits stream results incrementally and cancels the underlying stream', async () => {
+        const workspaceRoot = tempWorkspace();
+        let canceled = false;
+        const definitionStream = new EventEmitter() as any;
+        definitionStream.cancel = () => {
+            canceled = true;
+            definitionStream.emit('end');
+        };
+        const core: any = {
+            config: { workspaceRoot },
+            findDefinitionStream: () => definitionStream,
+            findDefinitionAsync: async () => {
+                throw new Error('async definition lookup should not be used when stream surface exists');
+            },
+            sharedServices: {},
+        };
+        const adapter = new HTTPAdapter(core, { enableCors: false, enableOpenAPI: false });
+
+        const response = await adapter.handleRequest({
+            method: 'POST',
+            url: '/api/v1/stream/definition',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ identifier: 'Anything' }),
+        });
+        expect(response.status).toBe(200);
+        const reader = (response.body as ReadableStream<Uint8Array>).getReader();
+        const decoder = new TextDecoder();
+        const first = await reader.read();
+        expect(decoder.decode(first.value)).toContain('event: definition-start');
+
+        definitionStream.emit('data', { file: 'sample.ts', line: 1, column: 1, text: 'function Anything() {}' });
+        const second = await reader.read();
+        expect(decoder.decode(second.value)).toContain('event: definition-data');
+
+        await reader.cancel();
+        expect(canceled).toBe(true);
+    });
+
     test('HTTP stream definition reports async failures as structured SSE error events', async () => {
         const workspaceRoot = tempWorkspace();
         const core: any = {
@@ -1330,6 +1369,46 @@ describe('nexus contract regressions', () => {
 
         expect(response.status).toBe(500);
         expect(JSON.parse(response.body)).toMatchObject({ success: false, error: 'Internal server error' });
+    });
+
+    test('HTTP stream search emits async results incrementally and cancels the underlying stream', async () => {
+        const workspaceRoot = tempWorkspace();
+        let canceled = false;
+        const searchStream = new EventEmitter() as any;
+        searchStream.cancel = () => {
+            canceled = true;
+            searchStream.emit('end');
+        };
+        const adapter = new HTTPAdapter(
+            {
+                config: { workspaceRoot },
+                asyncSearchTools: { searchStream: () => searchStream },
+                findDefinitionAsync: async () => {
+                    throw new Error('definition lookup should not be used for stream search');
+                },
+                sharedServices: {},
+            } as any,
+            { enableCors: false, enableOpenAPI: false }
+        );
+
+        const response = await adapter.handleRequest({
+            method: 'POST',
+            url: '/api/v1/stream/search',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ pattern: 'needle', path: '.', maxResults: 5 }),
+        });
+        expect(response.status).toBe(200);
+        const reader = (response.body as ReadableStream<Uint8Array>).getReader();
+        const decoder = new TextDecoder();
+        const first = await reader.read();
+        expect(decoder.decode(first.value)).toContain('event: search-start');
+
+        searchStream.emit('data', { file: 'sample.ts', line: 1, column: 7, text: 'const needle = true;' });
+        const second = await reader.read();
+        expect(decoder.decode(second.value)).toContain('event: search-data');
+
+        await reader.cancel();
+        expect(canceled).toBe(true);
     });
 
     test('HTTP stream search rejects outside paths before opening the SSE stream', async () => {

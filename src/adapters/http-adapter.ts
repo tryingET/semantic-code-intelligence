@@ -1089,11 +1089,21 @@ export class HTTPAdapter {
                 max: 1000,
             });
 
-            const sseData = this.createSSEStream('search', async (emit) => {
+            const searchPath = resolvedSearchRoot.relativePath || '.';
+            const sseData = this.createSSEStream('search', async (emit, signal) => {
+                const stream = this.createTextSearchStream({
+                    pattern: String(body.pattern),
+                    path: searchPath,
+                    maxResults,
+                    caseInsensitive: !!body.caseInsensitive,
+                    kind: body.kind,
+                });
+                if (stream) return await this.emitSearchStreamResults(stream, emit, signal);
+
                 const workflowResult = await withAdapterTimeout(
                     this.executeToolWorkflow('text_search', {
                         query: String(body.pattern),
-                        path: resolvedSearchRoot.relativePath || '.',
+                        path: searchPath,
                         maxResults,
                         caseInsensitive: !!body.caseInsensitive,
                         kind: body.kind || 'literal',
@@ -1101,6 +1111,7 @@ export class HTTPAdapter {
                     this.config.timeout,
                     'http.streamSearch.textSearch'
                 );
+                if (signal.aborted) return 0;
                 if (workflowResult.isError) {
                     throw new CoreError(
                         'InvalidParams',
@@ -1152,12 +1163,16 @@ export class HTTPAdapter {
                 }),
             };
 
-            const sseData = this.createSSEStream('definition', async (emit) => {
+            const sseData = this.createSSEStream('definition', async (emit, signal) => {
+                const stream = this.createDefinitionStream(searchRequest);
+                if (stream) return await this.emitSearchStreamResults(stream, emit, signal);
+
                 const result = await withAdapterTimeout(
                     this.coreAnalyzer.findDefinitionAsync(searchRequest),
                     this.config.timeout,
                     'http.streamDefinition.findDefinition'
                 );
+                if (signal.aborted) return 0;
                 const resultItems = this.sseResultItems(result);
                 resultItems.forEach((item: any, index: number) => emit('data', this.sseResultPayload(item, index)));
                 return resultItems.length;
@@ -1180,12 +1195,13 @@ export class HTTPAdapter {
 
     private createSSEStream(
         eventType: string,
-        run: (emit: (phase: 'data', payload: Record<string, unknown>) => void) => Promise<number>
+        run: (emit: (phase: 'data', payload: Record<string, unknown>) => void, signal: AbortSignal) => Promise<number>
     ): ReadableStream<Uint8Array> {
         const encoder = new TextEncoder();
         const encodeEvent = (event: string, data: Record<string, unknown>) =>
             encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
         let closed = false;
+        const abort = new AbortController();
         return new ReadableStream<Uint8Array>({
             start(controller) {
                 const safeEnqueue = (event: string, data: Record<string, unknown>) => {
@@ -1202,7 +1218,7 @@ export class HTTPAdapter {
                 };
                 void (async () => {
                     try {
-                        const totalResults = await run(emit);
+                        const totalResults = await run(emit, abort.signal);
                         safeEnqueue(`${eventType}-end`, {
                             type: 'end',
                             message: `${eventType} completed`,
@@ -1226,7 +1242,88 @@ export class HTTPAdapter {
             },
             cancel() {
                 closed = true;
+                abort.abort();
             },
+        });
+    }
+
+    private createTextSearchStream(args: {
+        pattern: string;
+        path: string;
+        maxResults: number;
+        caseInsensitive: boolean;
+        kind?: unknown;
+    }): SearchStream | null {
+        const asyncSearchTools = (this.coreAnalyzer as any)?.asyncSearchTools;
+        if (!asyncSearchTools || typeof asyncSearchTools.searchStream !== 'function') return null;
+        return asyncSearchTools.searchStream({
+            pattern: args.pattern,
+            path: args.path,
+            maxResults: args.maxResults,
+            timeout: this.config.timeout,
+            caseInsensitive: args.caseInsensitive,
+            useRegex: args.kind === 'regex',
+            streaming: true,
+        });
+    }
+
+    private createDefinitionStream(searchRequest: Record<string, unknown>): SearchStream | null {
+        const finder = (this.coreAnalyzer as any)?.findDefinitionStream;
+        if (typeof finder !== 'function') return null;
+        return finder.call(this.coreAnalyzer, searchRequest);
+    }
+
+    private emitSearchStreamResults(
+        stream: SearchStream,
+        emit: (phase: 'data', payload: Record<string, unknown>) => void,
+        signal: AbortSignal
+    ): Promise<number> {
+        return new Promise((resolve, reject) => {
+            let count = 0;
+            let settled = false;
+            const finish = (value: number) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                resolve(value);
+            };
+            const fail = (error: Error) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                reject(error);
+            };
+            const cancel = () => {
+                try {
+                    stream.cancel();
+                } catch {}
+                finish(count);
+            };
+            const onData = (item: any) => {
+                if (signal.aborted || settled) return;
+                emit('data', this.sseResultPayload(item, count));
+                count += 1;
+            };
+            const onError = (error: Error) => fail(error);
+            const onEnd = () => finish(count);
+            const cleanup = () => {
+                signal.removeEventListener('abort', cancel);
+                const off = (stream as any).off || (stream as any).removeListener;
+                try {
+                    off?.call(stream, 'data', onData);
+                    off?.call(stream, 'error', onError);
+                    off?.call(stream, 'end', onEnd);
+                } catch {}
+            };
+
+            if (signal.aborted) {
+                cancel();
+                return;
+            }
+            signal.addEventListener('abort', cancel, { once: true });
+            stream.on('data', onData);
+            stream.on('error', onError);
+            stream.on('end', onEnd);
         });
     }
 
