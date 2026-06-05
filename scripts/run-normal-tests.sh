@@ -14,6 +14,7 @@ REQUESTED_SLICE=
 BATCH_SIZE=${BATCH_SIZE:-1}
 TIMEOUT=${TIMEOUT:-180000}
 BUN_JOBS=${BUN_JOBS:-1}
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
   cat >&2 <<'USAGE'
@@ -77,24 +78,27 @@ require_positive_int BUN_JOBS "$BUN_JOBS"
 run_slice() {
   local i="$1"
   echo "================ SLICE ${i}/${SLICES} ================"
-  SLICES="$SLICES" \
-    SLICE="$i" \
-    BATCH_SIZE="$BATCH_SIZE" \
-    TIMEOUT="$TIMEOUT" \
-    BUN_JOBS="$BUN_JOBS" \
-    bin/test-slicer.sh
+  (
+    cd "$REPO_ROOT"
+    SLICES="$SLICES" \
+      SLICE="$i" \
+      BATCH_SIZE="$BATCH_SIZE" \
+      TIMEOUT="$TIMEOUT" \
+      BUN_JOBS="$BUN_JOBS" \
+      "$REPO_ROOT/bin/test-slicer.sh"
+  )
 }
 
 if [[ -n "$REQUESTED_SLICE" ]]; then
   run_slice "$REQUESTED_SLICE"
 else
-  BASE_GIT_FINGERPRINT="$(scripts/git-tree-fingerprint.sh)"
+  BASE_GIT_FINGERPRINT="$($REPO_ROOT/scripts/git-tree-fingerprint.sh)"
 
   for ((i = 1; i <= SLICES; i++)); do
     run_slice "$i"
   done
 
-  AFTER_GIT_FINGERPRINT="$(scripts/git-tree-fingerprint.sh)"
+  AFTER_GIT_FINGERPRINT="$($REPO_ROOT/scripts/git-tree-fingerprint.sh)"
   if [[ "$AFTER_GIT_FINGERPRINT" != "$BASE_GIT_FINGERPRINT" ]]; then
     echo "Test run changed git working tree content; restore or commit intentional outputs." >&2
     echo "--- status ---" >&2

@@ -1,6 +1,16 @@
 import { describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+    chmodSync,
+    existsSync,
+    mkdirSync,
+    mkdtempSync,
+    readdirSync,
+    readFileSync,
+    rmSync,
+    symlinkSync,
+    writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import yaml from 'js-yaml';
@@ -65,7 +75,9 @@ describe('build command surface', () => {
         };
 
         try {
-            writeFixture('echo running\nchmod +x bin/test-slicer.sh\n  bin/test-slicer.sh   | tee .test-results/slice-$SLICE.log');
+            writeFixture(
+                'echo running\nchmod +x bin/test-slicer.sh\n  bin/test-slicer.sh   | tee .test-results/slice-$SLICE.log'
+            );
             const legacy = spawnSync('bun', ['run', scriptPath, '--json'], { cwd: dir, encoding: 'utf8' });
             expect(legacy.status).toBe(1);
             expect(JSON.parse(legacy.stdout).violations.map((v: { rule: string }) => v.rule)).toContain(
@@ -101,13 +113,18 @@ describe('build command surface', () => {
             );
 
             writeFixture('bash scripts/run-normal-tests.sh | tee .test-results/slice-${SLICE}.log');
-            const shellWrappedImplicit = spawnSync('bun', ['run', scriptPath, '--json'], { cwd: dir, encoding: 'utf8' });
+            const shellWrappedImplicit = spawnSync('bun', ['run', scriptPath, '--json'], {
+                cwd: dir,
+                encoding: 'utf8',
+            });
             expect(shellWrappedImplicit.status).toBe(1);
             expect(JSON.parse(shellWrappedImplicit.stdout).violations.map((v: { rule: string }) => v.rule)).toContain(
                 'ci-normal-tests-explicit-slice'
             );
 
-            writeFixture('env BUN_JOBS=1 ./scripts/run-normal-tests.sh \\\n  --slice "${SLICE}/${SLICES}" | tee ".test-results/slice-${SLICE}.log"');
+            writeFixture(
+                'env BUN_JOBS=1 ./scripts/run-normal-tests.sh \\\n  --slice "${SLICE}/${SLICES}" | tee ".test-results/slice-${SLICE}.log"'
+            );
             const ok = spawnSync('bun', ['run', scriptPath, '--json'], { cwd: dir, encoding: 'utf8' });
             expect(ok.status, ok.stderr || ok.stdout).toBe(0);
         } finally {
@@ -190,7 +207,8 @@ describe('build command surface', () => {
         );
         expect(packageJson.scripts?.lint).not.toContain('--write');
         expect(packageJson.scripts?.['lint:fix']).toContain('--write');
-        expect(runner).toContain('bin/test-slicer.sh');
+        expect(runner).toContain('REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"');
+        expect(runner).toContain('"$REPO_ROOT/bin/test-slicer.sh"');
         expect(runner).toContain('BATCH_SIZE=${BATCH_SIZE:-1}');
         expect(runner).toContain('BUN_JOBS=${BUN_JOBS:-1}');
         expect(runner).toContain('require_positive_int BATCH_SIZE "$BATCH_SIZE"');
@@ -208,8 +226,8 @@ describe('build command surface', () => {
         expect(runner).not.toContain('SLICE=${SLICE:-}');
         expect(ciWorkflow).toContain('scripts/run-normal-tests.sh --slice "$SLICE/$SLICES"');
         expect(runner).toContain('scripts/git-tree-fingerprint.sh');
-        expect(runner).toContain('BASE_GIT_FINGERPRINT="$(scripts/git-tree-fingerprint.sh)"');
-        expect(runner).toContain('AFTER_GIT_FINGERPRINT="$(scripts/git-tree-fingerprint.sh)"');
+        expect(runner).toContain('BASE_GIT_FINGERPRINT="$($REPO_ROOT/scripts/git-tree-fingerprint.sh)"');
+        expect(runner).toContain('AFTER_GIT_FINGERPRINT="$($REPO_ROOT/scripts/git-tree-fingerprint.sh)"');
         expect(runner).toContain('Test run changed git working tree content');
         expect(slicer).toContain('scripts/git-tree-fingerprint.sh');
         expect(slicer).toContain('BASE_GIT_FINGERPRINT="$(scripts/git-tree-fingerprint.sh)"');
@@ -266,7 +284,11 @@ describe('build command surface', () => {
             expect(init.status, init.stderr || init.stdout).toBe(0);
             spawnSync('git', ['config', 'user.email', 'test@example.invalid'], { cwd: dir, encoding: 'utf8' });
             spawnSync('git', ['config', 'user.name', 'Test User'], { cwd: dir, encoding: 'utf8' });
-            const add = spawnSync('git', ['add', 'scripts/run-normal-tests.sh', 'scripts/git-tree-fingerprint.sh', 'bin/test-slicer.sh'], { cwd: dir, encoding: 'utf8' });
+            const add = spawnSync(
+                'git',
+                ['add', 'scripts/run-normal-tests.sh', 'scripts/git-tree-fingerprint.sh', 'bin/test-slicer.sh'],
+                { cwd: dir, encoding: 'utf8' }
+            );
             expect(add.status, add.stderr || add.stdout).toBe(0);
             const commit = spawnSync('git', ['commit', '-m', 'fixture'], { cwd: dir, encoding: 'utf8' });
             expect(commit.status, commit.stderr || commit.stdout).toBe(0);
@@ -290,6 +312,15 @@ describe('build command surface', () => {
             });
             expect(explicit.status, explicit.stderr || explicit.stdout).toBe(0);
             expect(explicit.stdout.match(/^SLICE=.*$/gm)).toEqual(['SLICE=2 SLICES=3']);
+
+            mkdirSync(join(dir, 'subdir'), { recursive: true });
+            const fromSubdir = spawnSync('bash', ['../scripts/run-normal-tests.sh', '--slice', '1/3'], {
+                cwd: join(dir, 'subdir'),
+                encoding: 'utf8',
+                env: { ...process.env, BATCH_SIZE: '1', TIMEOUT: '1000', BUN_JOBS: '1' },
+            });
+            expect(fromSubdir.status, fromSubdir.stderr || fromSubdir.stdout).toBe(0);
+            expect(fromSubdir.stdout.match(/^SLICE=.*$/gm)).toEqual(['SLICE=1 SLICES=3']);
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
@@ -466,6 +497,36 @@ describe('build command surface', () => {
         expect(packageJson.files).not.toContain('bin/');
     });
 
+    test('package scripts are explicitly partitioned between runtime and source-checkout surfaces', () => {
+        const packageJson = JSON.parse(readText('package.json')) as {
+            files?: string[];
+            scripts?: Record<string, string>;
+            sciPackageContract?: {
+                kind?: string;
+                runtimeScripts?: string[];
+                sourceOnlyScripts?: string[];
+                sourceOnlyReason?: string;
+            };
+        };
+        const scripts = Object.keys(packageJson.scripts || {}).sort();
+        const runtime = packageJson.sciPackageContract?.runtimeScripts || [];
+        const sourceOnly = packageJson.sciPackageContract?.sourceOnlyScripts || [];
+        const classified = [...runtime, ...sourceOnly].sort();
+
+        expect(packageJson.sciPackageContract?.kind).toBe('runtime-tarball');
+        expect(packageJson.sciPackageContract?.sourceOnlyReason).toContain('source checkout');
+        expect(classified).toEqual(scripts);
+        expect(runtime.filter((name) => sourceOnly.includes(name))).toEqual([]);
+        expect(runtime).toEqual(['start', 'start:mcp']);
+        expect(packageJson.scripts?.start).toContain('dist/lsp/lsp.js');
+        expect(packageJson.scripts?.['start:mcp']).toContain('dist/mcp/mcp.js');
+        expect(sourceOnly).toContain('test');
+        expect(sourceOnly).toContain('alpha:mvp:check');
+        expect(packageJson.files).not.toContain('src/');
+        expect(packageJson.files).not.toContain('scripts/');
+        expect(packageJson.files).not.toContain('tests/');
+    });
+
     test('CLI init --force refuses symlink config clobbering', () => {
         const dir = mkdtempSync(join(tmpdir(), 'sci-init-symlink-'));
         const victim = join(dir, 'victim.txt');
@@ -521,6 +582,18 @@ describe('build command surface', () => {
         expect(body).not.toContain('dist/mcp-fast');
     });
 
+    test('server cleanup recipes avoid broad process-name kills', () => {
+        const justfile = readText('justfile');
+        for (const recipe of ['stop', 'stop-quiet', 'clean-ports-force']) {
+            const body = recipeBody(justfile, recipe);
+            expect(body).not.toContain('pkill -f "src/servers"');
+            expect(body).not.toContain('pkill -f "semantic-code-intelligence"');
+            expect(body).not.toContain('pkill -f "http.server.*8081"');
+        }
+        expect(recipeBody(justfile, 'stop')).toContain('Skipping broad process-name cleanup');
+        expect(recipeBody(justfile, 'process-management-info')).toContain('Scoped cleanup methods');
+    });
+
     test('package server builds share one build helper for externals', () => {
         const packageJson = JSON.parse(readText('package.json')) as { scripts?: Record<string, string> };
         const helper = readText('scripts/build-server.ts');
@@ -541,7 +614,10 @@ describe('build command surface', () => {
         expect(helper).toContain("'tree-sitter-rust'");
         expect(helper).toContain("'bun:sqlite'");
         expect(helper).toContain('mcp-enhanced');
-        expect(helper).toContain('rmSync(target.outdir, { recursive: true, force: true })');
+        expect(helper).toContain('fileURLToPath(import.meta.url)');
+        expect(helper).toContain('const outdir = resolve(repoRoot, target.outdir)');
+        expect(helper).toContain('rmSync(outdir, { recursive: true, force: true })');
+        expect(helper).toContain('cwd: repoRoot');
     });
 
     test('build helper fails closed for unknown targets', () => {
@@ -553,6 +629,12 @@ describe('build command surface', () => {
         expect(proc.status).toBe(2);
         expect(proc.stderr).toContain('Usage: bun run scripts/build-server.ts <target>');
         expect(proc.stderr).toContain('Available targets:');
+    });
+
+    test('ignored source-server bundles do not shadow TypeScript sources', () => {
+        for (const generatedPath of ['src/servers/mcp-fast.js', 'src/servers/mcp-fast.js.map']) {
+            expect(existsSync(generatedPath), `${generatedPath} should not exist in the source tree`).toBe(false);
+        }
     });
 
     test('MCP stdio and enhanced smoke surfaces are fail-closed over release artifacts', () => {

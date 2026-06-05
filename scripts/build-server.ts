@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 
 import { mkdirSync, rmSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 type BuildTarget = {
     entry: string;
@@ -36,6 +37,8 @@ const externals = [
     'cors',
 ];
 
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
 const targetName = process.argv[2];
 const target = targetName ? targets[targetName] : undefined;
 
@@ -46,21 +49,25 @@ if (!target) {
     process.exit(2);
 }
 
-rmSync(target.outdir, { recursive: true, force: true });
-if (target.outfile) {
-    mkdirSync(dirname(target.outfile), { recursive: true });
+const outdir = resolve(repoRoot, target.outdir);
+const outfile = target.outfile ? resolve(repoRoot, target.outfile) : undefined;
+
+rmSync(outdir, { recursive: true, force: true });
+if (outfile) {
+    mkdirSync(dirname(outfile), { recursive: true });
 }
 
 const args = [
     'build',
-    target.entry,
+    resolve(repoRoot, target.entry),
     '--target=bun',
-    target.outfile ? `--outfile=${target.outfile}` : `--outdir=${target.outdir}`,
+    outfile ? `--outfile=${outfile}` : `--outdir=${outdir}`,
     '--format=esm',
     ...externals.flatMap((external) => ['--external', external]),
 ];
 
 const proc = Bun.spawnSync(['bun', ...args], {
+    cwd: repoRoot,
     stdout: 'inherit',
     stderr: 'inherit',
 });

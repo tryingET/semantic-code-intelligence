@@ -34,6 +34,12 @@ function checkPackageEntrypoints(): void {
     files?: string[];
     scripts?: Record<string, string>;
     engines?: Record<string, string>;
+    sciPackageContract?: {
+      kind?: string;
+      runtimeScripts?: string[];
+      sourceOnlyScripts?: string[];
+      sourceOnlyReason?: string;
+    };
   };
 
   if (pkg.main !== 'dist/core/index.js') {
@@ -68,6 +74,8 @@ function checkPackageEntrypoints(): void {
     }
   }
 
+  checkPackageScriptContract(pkg);
+
   for (const [name, rel] of Object.entries(pkg.bin || {})) {
     requireExisting(rel, 'package-bin-missing', `Restore the bin wrapper for ${name}.`);
     if (!exists(rel)) continue;
@@ -79,6 +87,78 @@ function checkPackageEntrypoints(): void {
       continue;
     }
     requireExisting(match[1], 'package-bin-target-missing', `Run bun run build:all or fix the ${name} wrapper target.`);
+  }
+}
+
+function checkPackageScriptContract(pkg: {
+  files?: string[];
+  scripts?: Record<string, string>;
+  sciPackageContract?: {
+    kind?: string;
+    runtimeScripts?: string[];
+    sourceOnlyScripts?: string[];
+    sourceOnlyReason?: string;
+  };
+}): void {
+  const contract = pkg.sciPackageContract;
+  if (contract?.kind !== 'runtime-tarball') {
+    add(
+      'package.json',
+      'package-script-contract-missing',
+      `sciPackageContract.kind=${contract?.kind ?? '<missing>'}`,
+      'Declare sciPackageContract.kind="runtime-tarball" so package scripts are explicitly classified.'
+    );
+    return;
+  }
+
+  const files = new Set(pkg.files || []);
+  for (const sourcePath of ['src/', 'scripts/', 'tests/', 'bin/']) {
+    if (files.has(sourcePath)) {
+      add(
+        'package.json',
+        'runtime-package-files-too-broad',
+        `files includes ${sourcePath}`,
+        'Keep the published tarball runtime-focused; classify repo-only scripts instead of shipping broad source/test trees.'
+      );
+    }
+  }
+
+  const scripts = pkg.scripts || {};
+  const scriptNames = Object.keys(scripts).sort();
+  const runtimeScripts = new Set(contract.runtimeScripts || []);
+  const sourceOnlyScripts = new Set(contract.sourceOnlyScripts || []);
+  const classified = new Set([...runtimeScripts, ...sourceOnlyScripts]);
+  const unclassified = scriptNames.filter((name) => !classified.has(name));
+  const unknown = [...classified].filter((name) => !(name in scripts));
+  const overlapping = [...runtimeScripts].filter((name) => sourceOnlyScripts.has(name));
+  if (unclassified.length || unknown.length || overlapping.length) {
+    add(
+      'package.json',
+      'package-script-contract-incomplete',
+      `unclassified=${unclassified.join(',') || '<none>'}; unknown=${unknown.join(',') || '<none>'}; overlapping=${overlapping.join(',') || '<none>'}`,
+      'Partition every package script into sciPackageContract.runtimeScripts or sciPackageContract.sourceOnlyScripts.'
+    );
+  }
+
+  for (const name of runtimeScripts) {
+    const command = scripts[name] || '';
+    if (/\b(src|scripts|tests)\//.test(command)) {
+      add(
+        'package.json',
+        'runtime-script-uses-source-path',
+        `scripts.${name}=${command}`,
+        'Runtime package scripts must use files included in the runtime tarball, usually dist/ entrypoints.'
+      );
+    }
+  }
+
+  if (!String(contract.sourceOnlyReason || '').includes('source checkout')) {
+    add(
+      'package.json',
+      'package-script-contract-reason-missing',
+      `sourceOnlyReason=${contract.sourceOnlyReason ?? '<missing>'}`,
+      'Explain that build/test/validation scripts are source-checkout surfaces, not runtime tarball support promises.'
+    );
   }
 }
 

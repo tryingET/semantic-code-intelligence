@@ -95,10 +95,7 @@ stop:
     @-bash -c "if [ -f .ontology/pids/mcp-http.pid ]; then sed 's/!//g' .ontology/pids/mcp-http.pid | xargs -r kill 2>/dev/null || true; rm -f .ontology/pids/mcp-http.pid; fi"
     @echo "  Cleaning up any remaining processes on target ports..."
     @just clean-ports-quiet
-    @echo "  Terminating any orphaned processes..."
-    @-pkill -f "src/servers" 2>/dev/null || true
-    @-pkill -f "semantic-code-intelligence" 2>/dev/null || true
-    @-pkill -f "http.server.*8081" 2>/dev/null || true
+    @echo "  Skipping broad process-name cleanup; use 'just clean-ports' for explicit port-based cleanup."
     @sleep 1
     @echo "✅ All servers stopped and ports cleaned"
 
@@ -108,9 +105,6 @@ stop-quiet:
     @-bash -c "if [ -f .ontology/pids/http-api.pid ]; then sed 's/!//g' .ontology/pids/http-api.pid | xargs -r kill 2>/dev/null || true; rm -f .ontology/pids/http-api.pid; fi" 2>/dev/null || true
     @-bash -c "if [ -f .ontology/pids/mcp-http.pid ]; then sed 's/!//g' .ontology/pids/mcp-http.pid | xargs -r kill 2>/dev/null || true; rm -f .ontology/pids/mcp-http.pid; fi" 2>/dev/null || true
     @just clean-ports-quiet
-    @-pkill -f "src/servers" 2>/dev/null || true
-    @-pkill -f "semantic-code-intelligence" 2>/dev/null || true
-    @-pkill -f "http.server.*8081" 2>/dev/null || true
 
 # Restart servers
 restart: stop start
@@ -174,7 +168,7 @@ process-management-info:
     @echo ""
     @echo "✅ Port Management:"
     @echo "  • Pre-startup port availability checks"
-    @echo "  • Multiple cleanup methods (PID, port-based, pattern-based)"
+    @echo "  • Scoped cleanup methods (PID and explicit target ports only)"
     @echo "  • Clean handling of orphaned processes"
     @echo ""
     @echo "✅ Target Ports:"
@@ -247,10 +241,7 @@ clean-ports-force:
     echo "    Cleaning port $HTTP_PORT..." && (ss -tulnp 2>/dev/null | grep ":$HTTP_PORT " | grep -o 'pid=[0-9]*' | cut -d= -f2 | xargs -r kill 2>/dev/null || true); \
     echo "    Cleaning port $MCP_PORT..." && (ss -tulnp 2>/dev/null | grep ":$MCP_PORT " | grep -o 'pid=[0-9]*' | cut -d= -f2 | xargs -r kill 2>/dev/null || true); \
     echo "    Cleaning port $LSP_PORT..." && (ss -tulnp 2>/dev/null | grep ":$LSP_PORT " | grep -o 'pid=[0-9]*' | cut -d= -f2 | xargs -r kill 2>/dev/null || true); \
-    echo "    Cleaning port 8081..." && (ss -tulnp 2>/dev/null | grep ":8081 " | grep -o 'pid=[0-9]*' | cut -d= -f2 | xargs -r kill 2>/dev/null || true); \
-    @-pkill -f "src/servers" 2>/dev/null || true
-    @-pkill -f "semantic-code-intelligence" 2>/dev/null || true
-    @-pkill -f "http.server.*8081" 2>/dev/null || true
+    echo "    Cleaning port 8081..." && (ss -tulnp 2>/dev/null | grep ":8081 " | grep -o 'pid=[0-9]*' | cut -d= -f2 | xargs -r kill 2>/dev/null || true)
     @sleep 1
 
 # Get stats from servers
