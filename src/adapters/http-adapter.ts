@@ -683,24 +683,6 @@ export class HTTPAdapter {
             const file = body.file || body.uri;
             validateRequired({ file, position: body.position }, ['file', 'position']);
 
-            // Create cache key from request essentials
-            const cacheKey = this.createCacheKey('completions', {
-                file,
-                position: body.position,
-                triggerCharacter: body.triggerCharacter,
-                maxResults: body.maxResults,
-            });
-
-            // Check response cache first
-            const cached = this.getFromResponseCache(cacheKey);
-            if (cached) {
-                return {
-                    status: 200,
-                    headers: { 'X-Cache': 'HIT' },
-                    body: cached,
-                };
-            }
-
             const coreRequest = buildCompletionRequest({
                 uri: await this.containedRequestUri(file, 'completion file', 'file://unknown'),
                 position: normalizePosition(body.position),
@@ -711,6 +693,19 @@ export class HTTPAdapter {
                     max: 1000,
                 }),
             });
+
+            // Create cache key from normalized request semantics.
+            const cacheKey = this.createCacheKey('completions', coreRequest);
+
+            // Check response cache first
+            const cached = this.getFromResponseCache(cacheKey);
+            if (cached) {
+                return {
+                    status: 200,
+                    headers: { 'X-Cache': 'HIT' },
+                    body: cached,
+                };
+            }
 
             const result = await withAdapterTimeout(
                 this.coreAnalyzer.getCompletions(coreRequest),
@@ -1352,9 +1347,19 @@ export class HTTPAdapter {
      * Create simple cache key for request parameters
      */
     private createCacheKey(operation: string, params: any): string {
-        const fileOrUri = params.file || params.uri || '';
-        const pos = params.position || {};
-        return `${operation}:${params.identifier || ''}:${fileOrUri}:${pos.line || 0}:${pos.character || 0}`;
+        const stableParams = this.stableCacheObject(params || {});
+        return `${operation}:${JSON.stringify(stableParams)}`;
+    }
+
+    private stableCacheObject(value: any): any {
+        if (value === null || typeof value !== 'object') return value;
+        if (Array.isArray(value)) return value.map((item) => this.stableCacheObject(item));
+
+        return Object.fromEntries(
+            Object.keys(value)
+                .sort()
+                .map((key) => [key, this.stableCacheObject(value[key])])
+        );
     }
 
     /**

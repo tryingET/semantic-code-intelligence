@@ -22,7 +22,7 @@ import {
     type RenameRequest,
 } from '../src/core/types.js';
 import { CodeAnalyzer } from '../src/core/unified-analyzer.js';
-import { createTestConfig, registerRealLayers } from './test-helpers.js';
+import { createTestConfig, createTestFile, registerRealLayers, testPaths } from './test-helpers.js';
 
 // Test fixtures and utilities
 interface TestContext {
@@ -64,7 +64,7 @@ const createTestContext = async (): Promise<TestContext> => {
 
 // Test data
 const testSymbol = 'TestFunction';
-const testUri = 'file:///test/example.ts';
+const testUri = pathToFileURL(join(testPaths.testWorkspace(), 'example.ts')).href;
 const testPosition = { line: 10, character: 5 };
 
 function enforceBudget(metric: string, observedMs: number, defaultBudgetMs: number, envName: string): void {
@@ -82,6 +82,10 @@ describe('Unified Core Architecture', () => {
     let context: TestContext;
 
     beforeAll(async () => {
+        createTestFile(
+            '.test-workspace/example.ts',
+            `export function ${testSymbol}(param: string): string { return param; }\n${testSymbol}('warmup');\n`
+        );
         context = await createTestContext();
     });
 
@@ -270,7 +274,7 @@ describe('Unified Core Architecture', () => {
             try {
                 const result = await context.codeAnalyzer.findReferences({
                     identifier: 'foo',
-                    uri: 'file:///tmp/sci-reference-shaping.ts',
+                    uri: testUri,
                     position: testPosition,
                     maxResults: 100,
                 });

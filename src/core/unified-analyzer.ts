@@ -314,7 +314,9 @@ export class CodeAnalyzer {
         const startTime = Date.now();
 
         try {
-            // Async cache check
+            const searchDir = this.extractDirectoryFromUri(request.uri, 'find_definition uri');
+
+            // Async cache check after request membrane validation
             const cacheKey = this.generateCacheKey('definition', request);
             const cached = await this.sharedServices.cache.get<Definition[]>(cacheKey);
             if (cached) {
@@ -332,7 +334,6 @@ export class CodeAnalyzer {
             // Use a short timeout derived from layer1 config to avoid long blocking
             const layer1Timeout = (this.config.layers?.layer1 as any)?.timeout ?? 1000;
             const asyncTimeout = Math.max(1000, Math.min(4000, layer1Timeout));
-            const searchDir = this.extractDirectoryFromUri(request.uri, 'find_definition uri');
             const isTestsScope = (() => {
                 try {
                     const p = (searchDir || '').replace(/\\/g, '/');
@@ -763,12 +764,27 @@ export class CodeAnalyzer {
         const layer1Start = this.monotonicNowMs();
 
         try {
+            const searchDir = this.extractDirectoryFromUri(request.uri, 'find_references uri');
+
+            const cacheKey = this.generateCacheKey('references', request);
+            const cached = await this.sharedServices.cache.get<Reference[]>(cacheKey);
+            if (cached) {
+                const performance: LayerPerformance = {
+                    layer1: 0,
+                    layer2: 0,
+                    layer3: 0,
+                    layer4: 0,
+                    layer5: 0,
+                    total: 0,
+                };
+                return { data: cached, performance, requestId, cacheHit: true, timestamp: Date.now() };
+            }
+
             const l1Base =
                 (this.config as any)?.layers?.layer1?.timeout ??
                 (this.config as any)?.layers?.layer1?.grep?.defaultTimeout ??
                 1000;
             const asyncTimeout = Math.max(1000, Math.min(4000, l1Base));
-            const searchDir = this.extractDirectoryFromUri(request.uri, 'find_references uri');
             const isTestsScope = (() => {
                 try {
                     const p = (searchDir || '').replace(/\\/g, '/');
@@ -960,7 +976,6 @@ export class CodeAnalyzer {
             };
 
             // Cache results
-            const cacheKey = this.generateCacheKey('references', request);
             const ttl = this.calculateOptimalCacheTtl(finalRefs, 'mixed');
             await this.sharedServices.cache.set(cacheKey, finalRefs, ttl);
 
@@ -2367,10 +2382,13 @@ export class CodeAnalyzer {
     private generateCacheKey(operation: string, request: any): string {
         // Use only stable, request-identifying properties for cache key
         // Avoid volatile properties like requestId, timestamp, etc.
+        const normalizedUri = this.normalizeUriForCaching(request.uri);
+        const workspaceRoot = path.resolve((this.config as any)?.workspaceRoot || process.cwd());
         const stableKey = {
             operation,
+            workspaceRoot,
             identifier: request.identifier,
-            uri: this.normalizeUriForCaching(request.uri),
+            uri: normalizedUri,
             position: request.position
                 ? {
                       line: request.position.line,
@@ -2386,8 +2404,8 @@ export class CodeAnalyzer {
             ...(request.dryRun !== undefined && { dryRun: request.dryRun }),
         };
 
-        // Create a stable, consistent cache key
-        return this.hashObject(stableKey);
+        // Create a stable, consistent cache key with a readable dependency prefix for invalidation.
+        return `cache:${operation}:${workspaceRoot}:${normalizedUri}:${this.hashObject(stableKey)}`;
     }
 
     private normalizeUriForCaching(uri: string): string {
@@ -2416,15 +2434,26 @@ export class CodeAnalyzer {
     }
 
     private hashObject(obj: any): string {
-        // Create a deterministic hash of the object
-        const str = JSON.stringify(obj, Object.keys(obj).sort());
+        // Create a deterministic hash of the full request identity, including nested fields.
+        const str = this.stableStringify(obj);
         let hash = 0;
         for (let i = 0; i < str.length; i++) {
             const char = str.charCodeAt(i);
             hash = (hash << 5) - hash + char;
             hash = hash & hash; // Convert to 32bit integer
         }
-        return `cache_${Math.abs(hash).toString(36)}`;
+        return `hash_${Math.abs(hash).toString(36)}`;
+    }
+
+    private stableStringify(value: any): string {
+        if (value === undefined) return 'undefined';
+        if (value === null || typeof value !== 'object') return JSON.stringify(value);
+        if (Array.isArray(value)) return `[${value.map((item) => this.stableStringify(item)).join(',')}]`;
+
+        const entries = Object.keys(value)
+            .sort()
+            .map((key) => `${JSON.stringify(key)}:${this.stableStringify(value[key])}`);
+        return `{${entries.join(',')}}`;
     }
 
     /**
@@ -2556,11 +2585,12 @@ export class CodeAnalyzer {
         try {
             // Normalize the file URI for consistent invalidation
             const normalizedUri = this.normalizeUriForCaching(fileUri);
+            const workspaceRoot = path.resolve((this.config as any)?.workspaceRoot || process.cwd());
 
-            // Pattern to match cache entries for this file
-            const filePattern = new RegExp(`cache_.*${this.escapeRegexForUri(normalizedUri)}`);
+            // Any file change can affect file-, directory-, and workspace-scoped navigation results.
+            // Invalidate all navigation cache entries for this workspace rather than leaving stale directory/global keys.
+            const filePattern = new RegExp(`^cache:[^:]+:${this.escapeRegexForUri(workspaceRoot)}:`);
 
-            // Invalidate specific file-related entries
             const invalidated = await this.sharedServices.cache.invalidatePattern(filePattern);
 
             if (invalidated > 0) {
@@ -2976,11 +3006,12 @@ export class CodeAnalyzer {
         const filePath = this.uriToCandidatePath(uri, wsRoot);
         const candidate = path.isAbsolute(filePath) ? path.resolve(filePath) : path.resolve(wsRoot, filePath);
 
+        this.assertLexicallyInWorkspaceSync(wsRoot, candidate, inputLabel, uri, true);
+
         if (!fsSync.existsSync(candidate)) {
-            return realWsRoot;
+            throw new InvalidRequestError(`${inputLabel} is unavailable or unreadable: ${uri}`);
         }
 
-        this.assertLexicallyInWorkspaceSync(wsRoot, candidate, inputLabel, uri, true);
         const realCandidate = this.realpathOrThrow(candidate, inputLabel, uri);
         this.assertRealInWorkspaceSync(realWsRoot, realCandidate, inputLabel, uri, true);
 
@@ -2998,8 +3029,9 @@ export class CodeAnalyzer {
         try {
             const parsed = new URL(uri);
             if (parsed.protocol === 'file:') return fileURLToPath(parsed);
-            return wsRoot;
-        } catch {
+            throw new InvalidRequestError(`uri must be a file URI or workspace path: ${uri}`);
+        } catch (error) {
+            if (error instanceof InvalidRequestError) throw error;
             return this.fileUriToPath(uri);
         }
     }

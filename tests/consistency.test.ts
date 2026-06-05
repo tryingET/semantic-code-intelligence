@@ -7,6 +7,10 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const perfOnly = process.env.PERF === '1';
 const perfDescribe = perfOnly ? describe : describe.skip;
@@ -41,7 +45,19 @@ interface ConsistencyTestContext {
     config: CoreConfig;
 }
 
+const tempRoots: string[] = [];
+
 const createConsistencyTestContext = async (): Promise<ConsistencyTestContext> => {
+    const workspaceRoot = mkdtempSync(join(tmpdir(), 'sci-consistency-workspace-'));
+    tempRoots.push(workspaceRoot);
+    const consistencyFile = join(workspaceRoot, 'consistency.ts');
+    writeFileSync(
+        consistencyFile,
+        `export function ${consistencyTestData.symbol}(): number { return 1; }\n${consistencyTestData.symbol}();\n`,
+        'utf8'
+    );
+    consistencyTestData.file = pathToFileURL(consistencyFile).href;
+
     // Event bus for monitoring consistency
     const events: Array<{ type: string; data: any; timestamp: number; source: string }> = [];
     const eventBus: EventBus = {
@@ -54,7 +70,7 @@ const createConsistencyTestContext = async (): Promise<ConsistencyTestContext> =
     };
 
     const config: CoreConfig = {
-        workspaceRoot: '/consistency-test-workspace',
+        workspaceRoot,
         layers: {
             layer1: { enabled: true, timeout: 50 },
             layer2: { enabled: true, timeout: 100 },
@@ -159,8 +175,8 @@ const createConsistencyTestContext = async (): Promise<ConsistencyTestContext> =
 // Test data
 const consistencyTestData = {
     symbol: 'ConsistencyTestFunction',
-    file: 'file:///test/consistency.ts',
-    position: { line: 15, character: 10 },
+    file: 'file://workspace',
+    position: { line: 0, character: 20 },
     newName: 'RenamedConsistencyFunction',
 };
 
@@ -235,6 +251,9 @@ describe('Cross-Protocol Consistency', () => {
         await context.codeAnalyzer.dispose();
         await context.layerManager.dispose();
         await context.sharedServices.dispose();
+        while (tempRoots.length) {
+            rmSync(tempRoots.pop()!, { recursive: true, force: true });
+        }
     });
 
     describe('Definition Result Consistency', () => {
@@ -432,9 +451,16 @@ describe('Cross-Protocol Consistency', () => {
                     .filter(([_, hasError]) => !hasError)
                     .map(([protocol, _]) => protocol);
 
-                if (['non_existent_symbol', 'invalid_file'].includes(name) && errorProtocols.length === 1) {
-                    // CLI now enforces the workspace trust boundary at its public adapter surface;
-                    // older in-process protocol shims may still normalize synthetic out-of-workspace file URIs to empty results.
+                if (name === 'invalid_file') {
+                    // Public/core path membranes fail closed; LSP/MCP compatibility shims may return empty results for bad URIs.
+                    expect(errors.core).toBe(true);
+                    expect(errors.http).toBe(true);
+                    expect(errors.cli).toBe(true);
+                    continue;
+                }
+
+                if (name === 'non_existent_symbol' && errorProtocols.length === 1) {
+                    // CLI may enforce a stricter public adapter boundary while in-process shims return empty results.
                     expect(errors.cli).toBe(true);
                     continue;
                 }
@@ -569,7 +595,7 @@ describe('Cross-Protocol Consistency', () => {
                     name: 'timeout_scenario',
                     getRequest: () => ({
                         identifier: 'TimeoutTestSymbol',
-                        uri: 'file:///test/timeout.ts',
+                        uri: consistencyTestData.file,
                         position: { line: 1, character: 1 },
                     }),
                 },
@@ -873,7 +899,7 @@ describe('Cross-Protocol Consistency', () => {
         });
 
         test('should maintain cache coherence across protocol boundaries', async () => {
-            const testSymbol = 'CacheCoherenceTest';
+            const testSymbol = consistencyTestData.symbol;
 
             // Clear cache
             await context.sharedServices.cache.clear();

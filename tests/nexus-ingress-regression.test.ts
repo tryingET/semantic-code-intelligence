@@ -533,4 +533,58 @@ describe('Nexus workflow boundary regressions', () => {
         expect(calls).toBe(2);
         expect(JSON.parse(second.body).data[0].name).toBe('max:2');
     });
+
+    test('HTTP response cache varies on completion request semantics', async () => {
+        let calls = 0;
+        const file = resolve(process.cwd(), 'package.json');
+        const uri = pathToFileURL(file).href;
+        const adapterCore = {
+            config: { workspaceRoot: process.cwd() },
+            getCompletions: async (request: { maxResults: number; context?: { triggerCharacter?: string } }) => {
+                calls += 1;
+                const prefix = request.context?.triggerCharacter ?? 'none';
+                return {
+                    data: Array.from({ length: request.maxResults }, (_, index) => ({
+                        label: `${prefix}-${index}`,
+                        kind: 'text',
+                    })),
+                    performance: {},
+                    requestId: `req-${calls}`,
+                    timestamp: Date.now(),
+                    cacheHit: false,
+                };
+            },
+        } as unknown as ConstructorParameters<typeof HTTPAdapter>[0];
+        const adapter = new HTTPAdapter(adapterCore, { enableCors: false, maxResults: 100 });
+
+        const first = await adapter.handleRequest({
+            method: 'POST',
+            url: 'http://localhost/api/v1/completions',
+            headers: {},
+            body: JSON.stringify({
+                file: uri,
+                position: { line: 0, character: 0 },
+                maxResults: 1,
+                triggerCharacter: '.',
+            }),
+        });
+        const second = await adapter.handleRequest({
+            method: 'POST',
+            url: 'http://localhost/api/v1/completions',
+            headers: {},
+            body: JSON.stringify({
+                file: uri,
+                position: { line: 0, character: 0 },
+                maxResults: 3,
+                triggerCharacter: '#',
+            }),
+        });
+
+        expect(first.headers['X-Cache']).not.toBe('HIT');
+        expect(second.headers['X-Cache']).not.toBe('HIT');
+        expect(calls).toBe(2);
+        expect(JSON.parse(first.body).data).toHaveLength(1);
+        expect(JSON.parse(second.body).data).toHaveLength(3);
+        expect(JSON.parse(second.body).data[0].label).toBe('#-0');
+    });
 });
