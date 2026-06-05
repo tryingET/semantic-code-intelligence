@@ -51,6 +51,23 @@ describe('ToolExecutor schema validation', () => {
         ).toThrow('position.line must be >= 0');
     });
 
+    test('accepts find_definition cursor shape for MCP/HTTP parity with LSP navigation', () => {
+        const executor = new ToolExecutor();
+
+        expect(() =>
+            executor.validate('find_definition', {
+                file: 'src/adapters/mcp-adapter.ts',
+                position: { line: 0, character: 13 },
+            })
+        ).not.toThrow();
+        expect(() => executor.validate('find_definition', { file: 'src/adapters/mcp-adapter.ts' })).toThrow(
+            'Missing required parameters: symbol or file+position'
+        );
+        expect(() => executor.validate('find_definition', { symbol: 'Foo', maxResults: 1001 })).toThrow(
+            'maxResults must be <= 1000'
+        );
+    });
+
     test('rejects unsupported array enum values before dispatch', () => {
         const executor = new ToolExecutor();
 

@@ -42,7 +42,6 @@ const nonAlphaToolNames = [
     'generate_tests',
     'cache_controls',
     'list_pipelines',
-    'locate_confirm_definition',
 ];
 
 async function callTool(base: string, name: string, args: Record<string, unknown>) {
@@ -142,6 +141,11 @@ describe('Alpha MVP tool contract', () => {
         expect(specs.get('symbol_search')?.inputSchema?.properties?.maxResults?.type).toBe('number');
         expect(specs.get('symbol_search')?.inputSchema?.properties?.fileHint?.type).toBe('string');
         expect(specs.get('find_definition')?.inputSchema?.properties?.file?.type).toBe('string');
+        expect(specs.get('find_definition')?.inputSchema?.properties?.maxResults?.maximum).toBe(1000);
+        expect(specs.get('find_definition')?.inputSchema?.anyOf).toEqual([
+            { required: ['symbol'] },
+            { required: ['file', 'position'] },
+        ]);
         expect(specs.get('find_references')?.inputSchema?.properties?.includeDeclaration?.type).toBe('boolean');
         expect(specs.get('ast_query')?.inputSchema?.properties?.limit?.type).toBe('number');
         expect(specs.get('graph_expand')?.inputSchema?.properties?.limit?.type).toBe('number');
@@ -160,6 +164,8 @@ describe('Alpha MVP tool contract', () => {
         expect(specs.get('patch_checks_in_snapshot')?.inputSchema?.properties?.recommendChecks?.type).toBe('boolean');
         expect(specs.get('patch_checks_in_snapshot')?.inputSchema?.properties?.impactSummary?.type).toBe('object');
         expect(specs.get('patch_checks_in_snapshot')?.inputSchema?.properties?.onlyTouched?.type).toBe('boolean');
+        expect(specs.get('explore_symbol_impact')?.category).toBe('workflow');
+        expect(specs.get('locate_confirm_definition')?.category).toBe('workflow');
     });
 });
 

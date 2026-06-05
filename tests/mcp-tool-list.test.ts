@@ -33,8 +33,12 @@ describe('MCP tool list formatting', () => {
         expect(names.has('patch_checks_in_snapshot')).toBe(true);
         expect(names.has('structural_patch_checks')).toBe(true);
         expect(names.has('safe_write')).toBe(true);
+        expect(names.has('explore_symbol_impact')).toBe(true);
+        expect(names.has('locate_confirm_definition')).toBe(true);
         expect(names.has('rename_safely')).toBe(true);
         expect(names.has('workflow_safe_rename')).toBe(false);
+        expect(names.has('workflow_explore_symbol')).toBe(false);
+        expect(names.has('workflow_locate_confirm_definition')).toBe(false);
         expect(workflows.every((tool) => tool.annotations.category === 'workflow')).toBe(true);
     });
 });

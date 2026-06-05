@@ -112,11 +112,13 @@ function validateArgs(args: Record<string, any>, spec: ToolSpec): void {
     validateObjectAgainstSchema(args, schema);
     // Handle anyOf with required clauses (simple case)
     if (Array.isArray(schema.anyOf) && schema.anyOf.length > 0) {
-        const ok = schema.anyOf.some((alt: any) =>
-            Array.isArray(alt.required) ? hasRequired(args, alt.required) : false
-        );
+        const requiredAlternatives = schema.anyOf
+            .map((alt: any) => (Array.isArray(alt.required) ? alt.required : []))
+            .filter((required: string[]) => required.length > 0);
+        const ok = requiredAlternatives.some((required: string[]) => hasRequired(args, required));
         if (!ok) {
-            throw new CoreError('InvalidParams', 'Arguments do not satisfy any required shape');
+            const shapes = requiredAlternatives.map((required: string[]) => required.join('+')).join(' or ');
+            throw new CoreError('InvalidParams', `Missing required parameters: ${shapes || 'valid argument shape'}`);
         }
     }
 }

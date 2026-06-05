@@ -186,7 +186,7 @@ export class NavigationWorkflowService {
             precise: !!args.precise,
         });
         const result = await this.deps.coreAnalyzer.findDefinitionAsync(request);
-        const prioritized = prioritizeDefinitions(Array.isArray(result.data) ? result.data : result.data, args.symbol);
+        const prioritized = prioritizeDefinitions(Array.isArray(result.data) ? result.data : result.data, symbol);
         const containedPrioritized = await this.filterWorkspaceItemsByUri(
             Array.isArray(prioritized) ? prioritized : [],
             'find_definition result uri'

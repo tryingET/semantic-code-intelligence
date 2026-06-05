@@ -19,6 +19,8 @@ export const ALPHA_MVP_TOOL_NAMES = [
     'structural_search',
     'structural_patch_checks',
     'safe_write',
+    'explore_symbol_impact',
+    'locate_confirm_definition',
     'rename_safely',
 ] as const;
 

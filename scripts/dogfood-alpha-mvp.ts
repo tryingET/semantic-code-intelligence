@@ -17,6 +17,8 @@ const pretty = process.argv.includes('--pretty');
 const host = process.env.DOGFOOD_HOST || '127.0.0.1';
 const port = Number(process.env.DOGFOOD_PORT || 7031);
 const base = `http://${host}:${port}`;
+const navigationSymbol = 'handleToolCall';
+const navigationFile = 'src/adapters/mcp-adapter.ts';
 const patchPlanningMarker = '<!-- alpha patch-planning parity snapshot-only marker -->';
 const patchPlanningTarget = 'docs/project/alpha-mvp-contract.md';
 const patchPlanningDiff = `diff --git a/${patchPlanningTarget} b/${patchPlanningTarget}
@@ -42,6 +44,7 @@ if (jsonMode) {
 
 const server = new HTTPServer({ host, port, workspaceRoot: process.cwd(), enableOpenAPI: false });
 const calls: ToolCallEvidence[] = [];
+const semanticChecks: Array<{ name: string; ok: boolean; detail?: unknown }> = [];
 
 function compactSample(value: unknown): unknown {
     const cloned = JSON.parse(JSON.stringify(value));
@@ -62,6 +65,10 @@ async function callTool(name: string, args: Record<string, unknown>, observation
     const elapsedMs = Date.now() - started;
     calls.push({ name, args, status: res.status, success: body.success === true, elapsedMs, observation, sample: compactSample(body) });
     return body.result;
+}
+
+function recordSemanticCheck(name: string, ok: boolean, detail?: unknown): void {
+    semanticChecks.push({ name, ok, detail });
 }
 
 function parseCliWorkflowOutput(stdout: string) {
@@ -106,32 +113,75 @@ try {
         { path: 'docs/project/alpha-mvp-contract.md', range: { startLine: 1, endLine: 30 }, snapshot: snapshot?.snapshot || snapshot?.id },
         'Read the Phase 1 contract from a bounded range.'
     );
-    await callTool('text_search', { query: 'handleReadFile', path: 'src', maxResults: 10 }, 'Locate implementation candidates by text.');
-    await callTool(
+    const textSearch = await callTool(
+        'text_search',
+        { query: navigationSymbol, path: 'src', maxResults: 10 },
+        'Locate implementation candidates by text.'
+    );
+    recordSemanticCheck('text_search_finds_navigation_symbol', Number(textSearch?.count || 0) > 0, {
+        count: textSearch?.count,
+        symbol: navigationSymbol,
+    });
+    const symbolSearch = await callTool(
         'symbol_search',
-        { query: 'handleReadFile', maxResults: 10, fileHint: 'src/adapters/mcp-adapter.ts' },
+        { query: navigationSymbol, maxResults: 10, fileHint: navigationFile },
         'Validate symbol-level candidates with a file hint.'
     );
-    await callTool(
+    recordSemanticCheck(
+        'symbol_search_finds_navigation_symbol',
+        Array.isArray(symbolSearch?.symbols) && symbolSearch.symbols.some((symbol: any) => symbol?.name === navigationSymbol),
+        { count: symbolSearch?.count, symbol: navigationSymbol }
+    );
+    const definition = await callTool(
         'find_definition',
-        { symbol: 'handleReadFile', file: 'src/adapters/mcp-adapter.ts', precise: true, maxResults: 10 },
+        { symbol: navigationSymbol, file: navigationFile, precise: true, maxResults: 10 },
         'Resolve the implementation definition.'
     );
-    await callTool(
+    recordSemanticCheck(
+        'find_definition_resolves_navigation_symbol_in_target_file',
+        Array.isArray(definition?.definitions) &&
+            definition.definitions.some(
+                (item: any) => item?.name === navigationSymbol && String(item?.uri || '').endsWith(`/${navigationFile}`)
+            ),
+        { count: definition?.count, symbol: navigationSymbol, file: navigationFile }
+    );
+    const references = await callTool(
         'find_references',
-        { symbol: 'handleReadFile', file: 'src/adapters/mcp-adapter.ts', includeDeclaration: true, maxResults: 10 },
+        { symbol: navigationSymbol, file: navigationFile, includeDeclaration: true, maxResults: 10 },
         'Find bounded references so the harness can estimate local change impact.'
     );
+    recordSemanticCheck('find_references_finds_navigation_symbol', Number(references?.count || 0) > 0, {
+        count: references?.count,
+        symbol: navigationSymbol,
+    });
     await callTool(
         'ast_query',
-        { language: 'typescript', query: '(program) @root', paths: ['src/adapters/mcp-adapter.ts'], limit: 5 },
+        { language: 'typescript', query: '(program) @root', paths: [navigationFile], limit: 5 },
         'Exercise structural query behavior and parser/fallback stability.'
     );
     const graphResult = await callTool(
         'graph_expand',
-        { file: 'src/adapters/mcp-adapter.ts', edges: ['imports', 'exports'], depth: 1, limit: 20 },
+        { file: navigationFile, edges: ['imports', 'exports'], depth: 1, limit: 20 },
         'Inspect graph-neighborhood behavior and fallback stability.'
     );
+    const impact = await callTool(
+        'explore_symbol_impact',
+        { symbol: navigationSymbol, file: navigationFile, precise: true, depth: 1, limit: 10 },
+        'Exercise the preferred renamed impact workflow exposed through the Alpha membrane.'
+    );
+    recordSemanticCheck('explore_symbol_impact_resolves_navigation_symbol', Number(impact?.definitions?.count || 0) > 0, {
+        count: impact?.definitions?.count,
+        symbol: navigationSymbol,
+    });
+    const located = await callTool(
+        'locate_confirm_definition',
+        { symbol: navigationSymbol, file: navigationFile, precise: true, maxResults: 10 },
+        'Exercise the preferred renamed locate/confirm workflow exposed through the Alpha membrane.'
+    );
+    recordSemanticCheck('locate_confirm_definition_resolves_navigation_symbol', located?.ok === true, {
+        count: located?.definitions?.length,
+        symbol: navigationSymbol,
+    });
     await callTool(
         'recommend_checks',
         { files: ['src/adapters/mcp-adapter.ts'], impactSummary: graphResult?.impactSummary, mode: 'broader' },
@@ -212,7 +262,7 @@ try {
     );
     callCliWorkflow(
         'text_search',
-        { query: 'handleReadFile', path: 'src', maxResults: 5 },
+        { query: navigationSymbol, path: 'src', maxResults: 5 },
         'Use the CLI fallback workflow command for bounded navigation search.'
     );
     callCliWorkflow(
@@ -225,11 +275,12 @@ try {
 
     const evidence = {
         schema: 'semantic-code-intelligence.alpha_mvp_dogfood.v1',
-        ok: calls.every((call) => call.success) && workspaceUnchanged && cliWorkspaceUnchanged,
+        ok: calls.every((call) => call.success) && semanticChecks.every((check) => check.ok) && workspaceUnchanged && cliWorkspaceUnchanged,
         mode: 'harnessed_llm_code_navigation_simulation',
         base,
         summary: calls.map(({ name, status, success, elapsedMs, observation }) => ({ name, status, success, elapsedMs, observation })),
         calls,
+        semanticChecks,
         patchPlanning: {
             target: patchPlanningTarget,
             workspaceUnchanged,

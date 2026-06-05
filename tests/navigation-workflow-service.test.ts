@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { NavigationWorkflowService, wordAt } from '../src/core/workflows/navigation-workflow.js';
 import { resolveWorkspacePath } from '../src/core/workspace-path.js';
@@ -104,6 +104,55 @@ describe('NavigationWorkflowService', () => {
 
         await service.findDefinition({ symbol: 'Target', file: 'target.ts', precise: true });
         expect(seen[0]?.precise).toBe(true);
+    });
+
+    test('cursor-derived find_definition uses the derived symbol for request and ranking', async () => {
+        const workspaceRoot = tempWorkspace();
+        const targetFile = join(workspaceRoot, 'target.ts');
+        const genericFile = join(workspaceRoot, 'generic.ts');
+        writeFileSync(targetFile, 'export class Target {}\n', 'utf8');
+        writeFileSync(genericFile, 'export class Target {}\n', 'utf8');
+        const seen: any[] = [];
+        const service = new NavigationWorkflowService({
+            workspaceRoot: () => workspaceRoot,
+            maxResults: () => 50,
+            coreAnalyzer: {
+                findDefinitionAsync: async (request: any) => {
+                    seen.push(request);
+                    return {
+                        data: [definition(genericFile, 'Target'), definition(targetFile, 'Target')],
+                        performance: { total: 1 },
+                        requestId: 'req-position',
+                    };
+                },
+            },
+            resolveWorkspaceFile: async (value, inputLabel) => {
+                const resolved = await resolveWorkspacePath(value, { workspaceRoot, inputLabel });
+                return {
+                    path: resolved.realPath,
+                    uri: pathToFileURL(resolved.realPath).href,
+                    relativePath: resolved.relativePath,
+                };
+            },
+            containedUriOrNull: async (value, inputLabel) => {
+                try {
+                    const resolved = await resolveWorkspacePath(
+                        value.startsWith('file://') ? new URL(value).pathname : value,
+                        { workspaceRoot, inputLabel }
+                    );
+                    return pathToFileURL(resolved.realPath).href;
+                } catch {
+                    return null;
+                }
+            },
+        });
+
+        const result = payload(
+            await service.findDefinition({ file: 'target.ts', position: { line: 0, character: 14 } })
+        );
+        expect(seen[0]?.identifier).toBe('Target');
+        expect(result.symbol).toBe('Target');
+        expect(result.definitions[0].uri).toBe(pathToFileURL(targetFile).href);
     });
 
     test('workspace path containment accepts in-workspace names that begin with dot-dot text', async () => {
