@@ -167,7 +167,7 @@ export class SnapshotPatchWorkflowService {
             const msg = e instanceof Error ? e.message : String(e);
             return workflowErrorResult('InvalidParams', `Invalid snapshot: ${msg}`);
         }
-        if (process.env.ALLOW_SNAPSHOT_APPLY !== '1') {
+        if (!check && process.env.ALLOW_SNAPSHOT_APPLY !== '1') {
             return {
                 payload: {
                     workflow: 'apply_snapshot',

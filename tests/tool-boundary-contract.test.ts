@@ -204,6 +204,13 @@ describe('tool boundary contract', () => {
         expect(rgResult.ok).toBe(false);
         expect(rgResult.output).toContain('unsupported rg option');
         expect(rgResult.output).not.toContain('outside-secret-sci-must-not-leak');
+
+        rememberEnv('SCI_ALLOW_UNSAFE_CHECK_COMMANDS');
+        process.env.SCI_ALLOW_UNSAFE_CHECK_COMMANDS = '1';
+        const unsafeResult = await store.runChecks(snap.id, ['true'], 5, { workspaceRoot: root });
+        expect(unsafeResult.ok).toBe(false);
+        expect(unsafeResult.output).toContain('check workspace contains symlink escape');
+        expect(unsafeResult.output).not.toContain('outside-secret-sci-must-not-leak');
     });
 
     test('snapshot patches and checks reject symlink escapes and unsafe git apply', async () => {

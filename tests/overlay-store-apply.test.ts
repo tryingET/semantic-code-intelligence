@@ -72,6 +72,29 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
         expect(typeof status.lastApply.at).toBe('number');
     }, 30000);
 
+    test('workflow dry-run apply does not require the mutation guard', async () => {
+        const previousAllow = process.env.ALLOW_SNAPSHOT_APPLY;
+        const rel = `.tmp-overlay-workflow-check-${Date.now()}-${Math.random().toString(16).slice(2)}.txt`;
+        const abs = path.join(process.cwd(), rel);
+        try {
+            delete process.env.ALLOW_SNAPSHOT_APPLY;
+            await fs.writeFile(abs, 'one\n', 'utf8');
+            const service = new SnapshotPatchWorkflowService({ workspaceRoot: () => process.cwd() } as any);
+            const created = await service.getSnapshot({ preferExisting: false });
+            const snapshot = (created as any).payload.snapshot;
+            const patch = `diff --git a/${rel} b/${rel}\n--- a/${rel}\n+++ b/${rel}\n@@ -1 +1 @@\n-one\n+two\n`;
+            expect(((await service.proposePatch({ snapshot, patch })) as any).payload.accepted).toBe(true);
+
+            const checked = await service.applySnapshot({ snapshot, check: true });
+            expect((checked as any).payload).toMatchObject({ ok: true });
+            expect(await fs.readFile(abs, 'utf8')).toBe('one\n');
+        } finally {
+            if (previousAllow === undefined) delete process.env.ALLOW_SNAPSHOT_APPLY;
+            else process.env.ALLOW_SNAPSHOT_APPLY = previousAllow;
+            rmSync(abs, { force: true });
+        }
+    }, 30000);
+
     test('dry-run apply for nested new files does not create workspace directories', async () => {
         const nestedDir = `.tmp-overlay-check-${Date.now()}-${Math.random().toString(16).slice(2)}`;
         const nestedRel = `${nestedDir}/new-file.ts`;
@@ -796,6 +819,26 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
             expect(applied.ok).toBe(false);
             expect(applied.output).toContain('Workspace changed since snapshot creation before apply');
             expect(await fs.readFile(abs, 'utf8')).toBe('workspace changed\n');
+        } finally {
+            rmSync(abs, { force: true });
+        }
+    }, 30000);
+
+    test('reverse apply requires a recorded successful forward apply receipt', async () => {
+        const rel = `.tmp-overlay-reverse-receipt-${Date.now()}-${Math.random().toString(16).slice(2)}.txt`;
+        const abs = path.join(process.cwd(), rel);
+        try {
+            await fs.writeFile(abs, 'one\n', 'utf8');
+            const snap = overlayStore.createSnapshot(false);
+            const patch = `diff --git a/${rel} b/${rel}\n--- a/${rel}\n+++ b/${rel}\n@@ -1 +1 @@\n-one\n+two\n`;
+            expect(overlayStore.stagePatch(snap.id, patch).accepted).toBe(true);
+            expect((await overlayStore.applyToWorkingTree(snap.id, { check: true, reverse: false })).ok).toBe(true);
+
+            await fs.writeFile(abs, 'two\n', 'utf8');
+            const reversed = await overlayStore.applyToWorkingTree(snap.id, { check: false, reverse: true });
+            expect(reversed.ok).toBe(false);
+            expect(reversed.output).toContain('recorded successful forward apply');
+            expect(await fs.readFile(abs, 'utf8')).toBe('two\n');
         } finally {
             rmSync(abs, { force: true });
         }

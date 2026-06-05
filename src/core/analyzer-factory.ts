@@ -3,6 +3,7 @@
  * This provides a clean interface for protocol adapters to initialize the system
  */
 
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 // Import existing layer implementations
 import { ClaudeToolsLayer } from '../layers/claude-tools';
@@ -468,16 +469,41 @@ export class AnalyzerFactory {
         return normalized === '.ontology/ontology.db' || normalized.endsWith('/.ontology/ontology.db');
     }
 
+    private static isPathInsideOrEqual(parent: string, candidate: string): boolean {
+        const relative = path.relative(parent, candidate);
+        return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+    }
+
+    private static nearestExistingPath(candidate: string): string {
+        let current = candidate;
+        while (!fs.existsSync(current)) {
+            const parent = path.dirname(current);
+            if (parent === current) return current;
+            current = parent;
+        }
+        return current;
+    }
+
     private static resolveWorkspaceDbPath(dbPath: string | undefined, workspaceRoot: string, label: string): string {
         if (!dbPath || dbPath === ':memory:') return dbPath || ':memory:';
         const root = path.resolve(workspaceRoot);
         const resolved = path.isAbsolute(dbPath) ? path.resolve(dbPath) : path.resolve(root, dbPath);
-        const relative = path.relative(root, resolved);
-        if (relative.startsWith('..') || path.isAbsolute(relative)) {
+        if (!AnalyzerFactory.isPathInsideOrEqual(root, resolved)) {
             throw new CoreError('InvalidParams', `${label} must stay within the workspace`, {
                 workspaceRoot: root,
                 dbPath,
             });
+        }
+        if (fs.existsSync(root)) {
+            const nearest = AnalyzerFactory.nearestExistingPath(resolved);
+            const realRoot = fs.realpathSync(root);
+            const realNearest = fs.realpathSync(nearest);
+            if (!AnalyzerFactory.isPathInsideOrEqual(realRoot, realNearest)) {
+                throw new CoreError('InvalidParams', `${label} realpath must stay within the workspace`, {
+                    workspaceRoot: root,
+                    dbPath,
+                });
+            }
         }
         return resolved;
     }

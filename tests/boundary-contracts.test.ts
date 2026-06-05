@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, symlinkSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -105,6 +105,28 @@ describe('boundary contracts', () => {
                     monitoring: { enabled: false } as any,
                 })
             ).rejects.toThrow('layer4.dbPath must stay within the workspace');
+        } finally {
+            await rm(dir, { recursive: true, force: true });
+            await rm(outside, { recursive: true, force: true });
+        }
+    });
+
+    test('AnalyzerFactory rejects SQLite DB paths that escape through workspace symlinks', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'sci-db-symlink-boundary-'));
+        const outside = await mkdtemp(join(tmpdir(), 'sci-db-symlink-outside-'));
+        try {
+            symlinkSync(outside, join(dir, 'link'));
+            await expect(
+                AnalyzerFactory.createAnalyzer({
+                    workspaceRoot: dir,
+                    layers: {
+                        layer3: { dbPath: join(dir, 'l3', 'symbols.db') } as any,
+                        layer4: { dbPath: join(dir, 'link', 'ontology.db') } as any,
+                        layer5: { enabled: false } as any,
+                    } as any,
+                    monitoring: { enabled: false } as any,
+                })
+            ).rejects.toThrow('layer4.dbPath realpath must stay within the workspace');
         } finally {
             await rm(dir, { recursive: true, force: true });
             await rm(outside, { recursive: true, force: true });

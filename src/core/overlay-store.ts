@@ -36,6 +36,11 @@ type Snapshot = {
         args: { check: boolean; reverse: boolean };
         at: number;
     };
+    forwardApplyReceipt?: {
+        ok: true;
+        at: number;
+        diffSha256: string;
+    };
     applyCreatedDirs?: string[];
     applyPreExistingDirs?: string[];
 };
@@ -562,6 +567,7 @@ export class OverlayStore {
             workspaceRoot: snap.workspaceRoot || null,
             touchedFiles: snap.touchedFiles ? Array.from(snap.touchedFiles) : [],
             lastApply: snap.lastApply || null,
+            forwardApplyReceipt: snap.forwardApplyReceipt || null,
             applyCreatedDirs: snap.applyCreatedDirs || [],
             applyPreExistingDirs: snap.applyPreExistingDirs || [],
         };
@@ -585,6 +591,12 @@ export class OverlayStore {
         const snap: Snapshot = { id, createdAt, diffs, baseFingerprint, workspaceRoot };
         if (touched.length) snap.touchedFiles = new Set(touched);
         if (raw?.lastApply && typeof raw.lastApply === 'object') snap.lastApply = raw.lastApply;
+        if (raw?.forwardApplyReceipt && typeof raw.forwardApplyReceipt === 'object') {
+            const receipt = raw.forwardApplyReceipt;
+            if (receipt.ok === true && typeof receipt.at === 'number' && typeof receipt.diffSha256 === 'string') {
+                snap.forwardApplyReceipt = receipt;
+            }
+        }
         if (Array.isArray(raw?.applyCreatedDirs))
             snap.applyCreatedDirs = raw.applyCreatedDirs.filter((dir: any) => typeof dir === 'string');
         if (Array.isArray(raw?.applyPreExistingDirs))
@@ -684,11 +696,24 @@ export class OverlayStore {
         try {
             const snap = this.ensureSnapshot(snapshotId);
             const previousLastApply = snap.lastApply;
+            const previousForwardApplyReceipt = snap.forwardApplyReceipt;
             snap.lastApply = receipt;
+            if (receipt.ok && !receipt.args.check && !receipt.args.reverse) {
+                const diffText = snap.diffs.join('\n');
+                snap.forwardApplyReceipt = {
+                    ok: true,
+                    at: receipt.at,
+                    diffSha256: createHash('sha256').update(diffText).digest('hex'),
+                };
+            }
+            if (receipt.ok && !receipt.args.check && receipt.args.reverse) {
+                snap.forwardApplyReceipt = undefined;
+            }
             try {
                 this.persistSnapshotSync(snap);
             } catch (error) {
                 snap.lastApply = previousLastApply;
+                snap.forwardApplyReceipt = previousForwardApplyReceipt;
                 return { ok: false, message: `Failed to persist snapshot apply receipt: ${errorMessage(error)}` };
             }
             return { ok: true };
@@ -2134,20 +2159,20 @@ export class OverlayStore {
                             commands: commandResults,
                         };
                     }
-                    try {
-                        this.assertNoSymlinkEscapes(cwd, 'check workspace');
-                    } catch (error) {
-                        const message =
-                            error instanceof Error ? error.message : String(error || 'symlink validation failed');
-                        appendOutput(`Rejected check workspace: ${message}\n`);
-                        commandResults.push({ command: cmd, ok: false, elapsedMs: 0, exitCode: null, timedOut: false });
-                        return {
-                            ok: false,
-                            output: output.join(''),
-                            elapsedMs: Date.now() - start,
-                            commands: commandResults,
-                        };
-                    }
+                }
+                try {
+                    this.assertNoSymlinkEscapes(cwd, 'check workspace');
+                } catch (error) {
+                    const message =
+                        error instanceof Error ? error.message : String(error || 'symlink validation failed');
+                    appendOutput(`Rejected check workspace: ${message}\n`);
+                    commandResults.push({ command: cmd, ok: false, elapsedMs: 0, exitCode: null, timedOut: false });
+                    return {
+                        ok: false,
+                        output: output.join(''),
+                        elapsedMs: Date.now() - start,
+                        commands: commandResults,
+                    };
                 }
                 const [bin, ...args] = resolvedCommand?.ok ? resolvedCommand.words : [bashPath || 'bash', '-lc', cmd];
                 const commandStart = Date.now();
@@ -2483,6 +2508,19 @@ export class OverlayStore {
             };
         }
         if (reverse && !check) {
+            const expectedDiffSha256 = createHash('sha256').update(snap.diffs.join('\n')).digest('hex');
+            if (!snap.forwardApplyReceipt || snap.forwardApplyReceipt.diffSha256 !== expectedDiffSha256) {
+                const elapsedMs = Date.now() - start;
+                const message = 'Reverse apply requires a recorded successful forward apply for this snapshot';
+                const receiptStatus = this.recordLastApply(snapshotId, {
+                    ok: false,
+                    elapsedMs,
+                    outputTail: message,
+                    args: { check, reverse },
+                    at: Date.now(),
+                });
+                return { ok: false, output: outputWithReceiptStatus(message, receiptStatus), elapsedMs };
+            }
             const reversePreflight = spawnSync('git', ['apply', '--check', '-R', '--whitespace=nowarn'], {
                 input: diffText,
                 stdio: ['pipe', 'pipe', 'pipe'],
@@ -2575,6 +2613,7 @@ export class OverlayStore {
             diffsCount: s.diffs.length,
             touchedFiles: touched,
             lastApply: s.lastApply || null,
+            forwardApplyReceipt: s.forwardApplyReceipt || null,
         };
     }
 }

@@ -257,6 +257,34 @@ describe('MCP HTTP entrypoint and session lifecycle', () => {
         expect(result.status, result.stderr || result.stdout).toBe(0);
     });
 
+    test('prototype-looking session IDs are rejected as missing sessions', () => {
+        const moduleUrl = repoModuleUrl('src/servers/mcp-http.ts');
+        const script = `
+            const mod = await import(${JSON.stringify(moduleUrl)});
+            const server = mod.startMcpHttpServer({ host: '127.0.0.1', port: 0 });
+            await new Promise((resolve) => setTimeout(resolve, 150));
+            const address = server.address();
+            const port = typeof address === 'object' && address ? address.port : 0;
+            for (const sid of ['__proto__', 'toString']) {
+                const res = await fetch('http://127.0.0.1:' + port + '/mcp', {
+                    headers: { 'Mcp-Session-Id': sid }
+                });
+                const text = await res.text();
+                if (res.status !== 400) throw new Error('expected 400 for ' + sid + ', got ' + res.status + ' ' + text);
+                if (!text.includes('No valid session ID')) throw new Error('missing session message for ' + sid + ': ' + text);
+            }
+            await new Promise((resolve) => server.close(resolve));
+        `;
+
+        const result = spawnSync(process.execPath, ['--eval', script], {
+            cwd: process.cwd(),
+            encoding: 'utf8',
+            timeout: 20_000,
+        });
+
+        expect(result.status, result.stderr || result.stdout).toBe(0);
+    });
+
     test('server close disposes active MCP HTTP sessions', () => {
         const port = uniquePort(31);
         const moduleUrl = repoModuleUrl('src/servers/mcp-http.ts');

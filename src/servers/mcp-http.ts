@@ -294,8 +294,9 @@ app.get('/metrics', (_req: express.Request, res: express.Response) => {
     res.status(200).send(text);
 });
 
-// In-memory session map
-const sessions: Record<string, SessionRecord> = {};
+// In-memory session map. Null prototype prevents prototype keys such as
+// "__proto__"/"toString" from being accepted as real session IDs.
+const sessions: Record<string, SessionRecord> = Object.create(null);
 const mcpEvents = new EventEmitter();
 let sessionSweepTimer: ReturnType<typeof setInterval> | null = null;
 let activeServer: HttpServer | null = null;
