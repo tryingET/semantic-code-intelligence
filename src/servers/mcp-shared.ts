@@ -1,3 +1,4 @@
+import * as path from 'node:path';
 import { completable } from '@modelcontextprotocol/sdk/server/completable.js';
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
@@ -384,10 +385,11 @@ export function registerCommonResources(
                             maxBytes: SNAPSHOT_ARTIFACT_MAX_BYTES,
                         }) || '';
                     if (!text) {
-                        const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
-                        const dir = ensure ? await ensure(id, { workspaceRoot: opts.workspaceRoot }) : undefined;
+                        const existingDiffPath = (overlayStore as any).getExistingMaterializedDiffPath?.(id, {
+                            workspaceRoot: opts.workspaceRoot,
+                        });
                         text = await readSnapshotArtifactText(
-                            dir,
+                            existingDiffPath ? path.dirname(existingDiffPath) : undefined,
                             'overlay.diff',
                             '# No overlay.diff found in snapshot'
                         );

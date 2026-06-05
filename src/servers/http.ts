@@ -1014,14 +1014,20 @@ export class HTTPServer {
                                     headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                                 });
                             const { overlayStore } = await import('../core/overlay-store.js');
-                            const ensure = (overlayStore as any).ensureMaterialized?.bind(overlayStore);
-                            const dir = ensure ? await ensure(id, { workspaceRoot: this.config.workspaceRoot }) : null;
-                            if (!dir)
-                                return new Response(JSON.stringify({ success: false, error: 'Snapshot not found' }), {
-                                    status: 404,
-                                    headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
+                            let text =
+                                (overlayStore as any).getOverlayDiffText?.(id, {
+                                    workspaceRoot: this.config.workspaceRoot,
+                                }) || '';
+                            if (!text) {
+                                const existingDiffPath = (overlayStore as any).getExistingMaterializedDiffPath?.(id, {
+                                    workspaceRoot: this.config.workspaceRoot,
                                 });
-                            const text = await readSnapshotArtifactText(dir, 'overlay.diff', '');
+                                text = await readSnapshotArtifactText(
+                                    existingDiffPath ? path.dirname(existingDiffPath) : undefined,
+                                    'overlay.diff',
+                                    ''
+                                );
+                            }
                             return new Response(JSON.stringify({ success: true, data: { id, diff: text } }), {
                                 status: 200,
                                 headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
