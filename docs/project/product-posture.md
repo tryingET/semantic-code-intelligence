@@ -48,7 +48,15 @@ Alpha-supported operations are specified in `docs/project/alpha-mvp-contract.md`
 - `graph_expand`
 - `recommend_checks`
 - `propose_patch`
+- `apply_snapshot`
+- `patch_checks_in_snapshot`
+- `extract_snapshot_artifacts`
 - `run_checks`
+- `structural_search`
+- `structural_patch_checks`
+- `safe_write`
+- `explore_symbol_impact`
+- `locate_confirm_definition`
 - `rename_safely`
 
 Success means a harnessed LLM coding session can solve routine code-navigation and patch-planning tasks with less raw shell probing, fewer stale assumptions, and clearer validation evidence.

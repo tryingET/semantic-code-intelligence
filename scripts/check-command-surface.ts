@@ -268,6 +268,28 @@ function scanTextSurface(file: string): void {
   });
 }
 
+function isSemanticCodeIntelligenceRepo(): boolean {
+  if (!existsSync('package.json')) return false;
+  try {
+    return JSON.parse(readText('package.json')).name === 'semantic-code-intelligence';
+  } catch {
+    return false;
+  }
+}
+
+function checkAlphaDocToolParity(file: string): void {
+  if (!existsSync(file)) {
+    add(file, 1, 'alpha-tool-doc-missing', '<missing>', 'Keep Alpha MVP docs present and synchronized with the runtime Alpha membrane.');
+    return;
+  }
+  const text = readText(file);
+  for (const name of alphaToolNames) {
+    if (!text.includes(`\`${name}\``)) {
+      add(file, 1, 'alpha-tool-doc-drift', name, `Document Alpha MVP tool \`${name}\` or remove it from the runtime Alpha membrane.`);
+    }
+  }
+}
+
 function checkPackageScripts(): void {
   const file = 'package.json';
   const pkg = JSON.parse(readText(file)) as { scripts?: Record<string, string> };
@@ -311,6 +333,9 @@ function main(): void {
   }
   for (const file of claudeHookFiles()) scanTextSurface(file);
   for (const file of ['.github/pull_request_template.md', 'README.md', 'TESTING_STRATEGY.md', 'tests/README.md', 'justfile', 'CLAUDE_DESKTOP_SETUP.md', 'bin/dogfood-workflows.sh', 'scripts/dogfood-mcp.ts']) scanTextSurface(file);
+  if (isSemanticCodeIntelligenceRepo()) {
+    for (const file of ['docs/project/product-posture.md', 'docs/project/alpha-mvp-contract.md']) checkAlphaDocToolParity(file);
+  }
 
   const report = { ok: violations.length === 0, violations };
   if (json) {

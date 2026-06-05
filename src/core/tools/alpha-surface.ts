@@ -1,30 +1,8 @@
 import { CoreError } from '../errors.js';
+import { ALPHA_MVP_TOOL_NAMES, type AlphaMvpToolName } from './alpha-mvp-contract.js';
 import { ToolRegistry } from './registry.js';
 
-export const ALPHA_MVP_TOOL_NAMES = [
-    'get_snapshot',
-    'read_file',
-    'text_search',
-    'symbol_search',
-    'ast_query',
-    'find_definition',
-    'find_references',
-    'graph_expand',
-    'recommend_checks',
-    'propose_patch',
-    'apply_snapshot',
-    'patch_checks_in_snapshot',
-    'extract_snapshot_artifacts',
-    'run_checks',
-    'structural_search',
-    'structural_patch_checks',
-    'safe_write',
-    'explore_symbol_impact',
-    'locate_confirm_definition',
-    'rename_safely',
-] as const;
-
-export type AlphaMvpToolName = (typeof ALPHA_MVP_TOOL_NAMES)[number];
+export { ALPHA_MVP_TOOL_CONTRACT, ALPHA_MVP_TOOL_NAMES, type AlphaMvpToolName } from './alpha-mvp-contract.js';
 
 const ALPHA_MVP_TOOL_NAME_SET = new Set<string>(ALPHA_MVP_TOOL_NAMES);
 

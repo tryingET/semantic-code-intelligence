@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { mkdir, rm } from 'node:fs/promises';
 import { ALPHA_MVP_TOOL_NAMES, assertAlphaMvpToolAllowed } from '../src/core/tools/alpha-surface';
 import { ToolRegistry } from '../src/core/tools/registry';
@@ -70,6 +71,21 @@ describe('Alpha MVP tool contract', () => {
         const fresh = ToolRegistry.list()[0];
         expect(fresh.name).toBe(originalName);
         expect(fresh.inputSchema.properties).not.toEqual({ mutated: true });
+    });
+
+    test('Alpha MVP docs list every runtime-exposed tool', () => {
+        for (const file of ['docs/project/product-posture.md', 'docs/project/alpha-mvp-contract.md']) {
+            const text = readFileSync(file, 'utf8');
+            for (const name of alphaMvpTools) {
+                expect(text.includes(`\`${name}\``), `${file} should document ${name}`).toBe(true);
+            }
+        }
+    });
+
+    test('Alpha MVP tool-name export is immutable', () => {
+        expect(Object.isFrozen(ALPHA_MVP_TOOL_NAMES)).toBe(true);
+        expect(() => (ALPHA_MVP_TOOL_NAMES as string[]).push('mutated_tool')).toThrow();
+        expect(ALPHA_MVP_TOOL_NAMES).not.toContain('mutated_tool');
     });
 
     test('MCP and HTTP use the same Alpha MVP exposure membrane', () => {
