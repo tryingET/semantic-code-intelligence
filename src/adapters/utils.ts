@@ -1,6 +1,9 @@
+import * as nodeFs from 'node:fs';
 import * as nodePath from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Position, Range } from 'vscode-languageserver';
+import { CoreError } from '../core/errors.js';
+import { createRuntimeCoreConfig } from '../core/runtime-config.js';
 import type {
     CompletionRequest,
     CoreConfig,
@@ -10,8 +13,6 @@ import type {
     Reference,
     RenameRequest,
 } from '../core/types.js';
-import { CoreError } from '../core/errors.js';
-import { createRuntimeCoreConfig } from '../core/runtime-config.js';
 
 export function pathToUri(filePath: string): string {
     try {
@@ -241,41 +242,101 @@ export function parseIntegerOption(
 
 export { handleAdapterError, withAdapterTimeout } from './error-mapper.js';
 
+function isDefaultOntologyDbPath(value: unknown): boolean {
+    if (typeof value !== 'string') return false;
+    const normalized = value.replace(/\\/g, '/');
+    return normalized === '.ontology/ontology.db' || normalized === './.ontology/ontology.db';
+}
+
+function isPathInsideOrEqual(parent: string, candidate: string): boolean {
+    const relative = nodePath.relative(parent, candidate);
+    return relative === '' || (!relative.startsWith('..') && !nodePath.isAbsolute(relative));
+}
+
+function nearestExistingPath(candidate: string): string {
+    let current = candidate;
+    while (!nodeFs.existsSync(current)) {
+        const parent = nodePath.dirname(current);
+        if (parent === current) return current;
+        current = parent;
+    }
+    return current;
+}
+
+function resolveWorkspaceStoragePath(rawPath: string, workspaceRoot: string, label: string): string {
+    if (rawPath === ':memory:') return rawPath;
+    const root = nodePath.resolve(workspaceRoot);
+    const resolved = nodePath.isAbsolute(rawPath) ? nodePath.resolve(rawPath) : nodePath.resolve(root, rawPath);
+    if (!isPathInsideOrEqual(root, resolved)) {
+        throw new CoreError('InvalidParams', `${label} must stay within the workspace`, {
+            workspaceRoot: root,
+            dbPath: rawPath,
+        });
+    }
+    if (nodeFs.existsSync(root)) {
+        const nearest = nearestExistingPath(resolved);
+        const realRoot = nodeFs.realpathSync(root);
+        const realNearest = nodeFs.realpathSync(nearest);
+        if (!isPathInsideOrEqual(realRoot, realNearest)) {
+            throw new CoreError('InvalidParams', `${label} realpath must stay within the workspace`, {
+                workspaceRoot: root,
+                dbPath: rawPath,
+            });
+        }
+    }
+    return resolved;
+}
+
+function applyWorkspaceDefaultStorage(cfg: CoreConfig, workspaceRoot: string): void {
+    const defaultDbPath = nodePath.join(nodePath.resolve(workspaceRoot), '.ontology', 'ontology.db');
+    (cfg as any).layers = (cfg as any).layers || {};
+    for (const layerName of ['layer3', 'layer4', 'layer5']) {
+        const layer = { ...((cfg as any).layers[layerName] || {}) };
+        if (isDefaultOntologyDbPath(layer.dbPath)) {
+            layer.dbPath = defaultDbPath;
+            (cfg as any).layers[layerName] = layer;
+        }
+    }
+}
+
 export function createDefaultCoreConfig(
     startDir = process.env.SEMANTIC_CODE_WORKSPACE || process.env.WORKSPACE_ROOT || process.cwd()
 ): CoreConfig {
     const cfg = createRuntimeCoreConfig(startDir);
     const envWorkspaceRoot = process.env.SEMANTIC_CODE_WORKSPACE || process.env.WORKSPACE_ROOT;
-    if (envWorkspaceRoot && envWorkspaceRoot.trim()) {
-        (cfg as any).workspaceRoot = nodePath.resolve(envWorkspaceRoot);
-    }
+    const workspaceRoot = nodePath.resolve(
+        envWorkspaceRoot && envWorkspaceRoot.trim()
+            ? envWorkspaceRoot
+            : ((cfg as any).workspaceRoot as string | undefined) || startDir || process.cwd()
+    );
+    (cfg as any).workspaceRoot = workspaceRoot;
+    applyWorkspaceDefaultStorage(cfg, workspaceRoot);
     (cfg as any).monitoring = { ...(cfg as any).monitoring, enabled: false };
 
-    // Allow simple env-based overrides for storage without touching callers
+    // Allow simple env-based overrides for storage without touching callers.
+    // Env SQLite paths share the same workspace containment boundary as runtime config paths.
     // Default remains SQLite; only switch if explicitly requested.
-    try {
-        const adapterEnv =
-            process.env.LAYER4_ADAPTER || process.env.ONTOLOGY_STORAGE_ADAPTER || process.env.STORAGE_ADAPTER;
-        if (adapterEnv) {
-            (cfg as any).layers = (cfg as any).layers || {};
-            (cfg as any).layers.layer4 = { ...(cfg as any).layers.layer4, adapter: adapterEnv };
-        }
-        const dbPathEnv = process.env.SEMANTIC_CODE_DB_PATH || process.env.LAYER4_DB_PATH;
-        if (dbPathEnv) {
-            (cfg as any).layers = (cfg as any).layers || {};
-            (cfg as any).layers.layer4 = { ...(cfg as any).layers.layer4, dbPath: dbPathEnv };
-            (cfg as any).layers.layer3 = { ...(cfg as any).layers.layer3, dbPath: dbPathEnv };
-            (cfg as any).layers.layer5 = { ...(cfg as any).layers.layer5, dbPath: dbPathEnv };
-        }
-        const augmentExplore = process.env.L4_AUGMENT_EXPLORE;
-        if (augmentExplore) {
-            (cfg as any).layers.layer4 = {
-                ...(cfg as any).layers.layer4,
-                augmentExplore: augmentExplore === '1' || augmentExplore === 'true',
-            };
-        }
-    } catch {
-        // ignore env parsing errors; keep defaults
+    const adapterEnv =
+        process.env.LAYER4_ADAPTER || process.env.ONTOLOGY_STORAGE_ADAPTER || process.env.STORAGE_ADAPTER;
+    if (adapterEnv) {
+        (cfg as any).layers = (cfg as any).layers || {};
+        (cfg as any).layers.layer4 = { ...(cfg as any).layers.layer4, adapter: adapterEnv };
+    }
+    const dbPathEnv = process.env.SEMANTIC_CODE_DB_PATH || process.env.LAYER4_DB_PATH;
+    if (dbPathEnv) {
+        const resolvedDbPath = resolveWorkspaceStoragePath(dbPathEnv, workspaceRoot, 'environment database path');
+        (cfg as any).database = { ...(cfg as any).database, path: resolvedDbPath };
+        (cfg as any).layers = (cfg as any).layers || {};
+        (cfg as any).layers.layer4 = { ...(cfg as any).layers.layer4, dbPath: resolvedDbPath };
+        (cfg as any).layers.layer3 = { ...(cfg as any).layers.layer3, dbPath: resolvedDbPath };
+        (cfg as any).layers.layer5 = { ...(cfg as any).layers.layer5, dbPath: resolvedDbPath };
+    }
+    const augmentExplore = process.env.L4_AUGMENT_EXPLORE;
+    if (augmentExplore) {
+        (cfg as any).layers.layer4 = {
+            ...(cfg as any).layers.layer4,
+            augmentExplore: augmentExplore === '1' || augmentExplore === 'true',
+        };
     }
     return cfg as CoreConfig;
 }

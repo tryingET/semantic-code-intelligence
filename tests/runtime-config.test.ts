@@ -15,6 +15,8 @@ const originalLegacyWorkspace = process.env.WORKSPACE_ROOT;
 const originalHttpPort = process.env.HTTP_API_PORT;
 const originalMcpPort = process.env.MCP_HTTP_PORT;
 const originalLspPort = process.env.LSP_SERVER_PORT;
+const originalDbPath = process.env.SEMANTIC_CODE_DB_PATH;
+const originalLayer4DbPath = process.env.LAYER4_DB_PATH;
 const originalNodeEnv = process.env.NODE_ENV;
 const originalBunEnv = process.env.BUN_ENV;
 
@@ -36,6 +38,10 @@ afterEach(() => {
     else process.env.MCP_HTTP_PORT = originalMcpPort;
     if (originalLspPort === undefined) delete process.env.LSP_SERVER_PORT;
     else process.env.LSP_SERVER_PORT = originalLspPort;
+    if (originalDbPath === undefined) delete process.env.SEMANTIC_CODE_DB_PATH;
+    else process.env.SEMANTIC_CODE_DB_PATH = originalDbPath;
+    if (originalLayer4DbPath === undefined) delete process.env.LAYER4_DB_PATH;
+    else process.env.LAYER4_DB_PATH = originalLayer4DbPath;
     if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
     else process.env.NODE_ENV = originalNodeEnv;
     if (originalBunEnv === undefined) delete process.env.BUN_ENV;
@@ -87,6 +93,31 @@ describe('runtime config contract', () => {
         const config = createDefaultCoreConfig();
         expect(config.database?.path).toBe(join(target, '.ontology', 'custom.db'));
         expect(config.layers.layer4.dbPath).toBe(join(target, '.ontology', 'custom.db'));
+    });
+
+    test('default core config anchors default ontology storage to the effective workspace root', () => {
+        delete process.env.SEMANTIC_CODE_WORKSPACE;
+        delete process.env.WORKSPACE_ROOT;
+        delete process.env.SEMANTIC_CODE_DB_PATH;
+        delete process.env.LAYER4_DB_PATH;
+        const root = tempWorkspace();
+        const config = createDefaultCoreConfig(root);
+
+        expect(config.workspaceRoot).toBe(root);
+        expect(config.layers.layer3.dbPath).toBe(join(root, '.ontology', 'ontology.db'));
+        expect(config.layers.layer4.dbPath).toBe(join(root, '.ontology', 'ontology.db'));
+        expect(config.layers.layer5.dbPath).toBe(join(root, '.ontology', 'ontology.db'));
+    });
+
+    test('environment database path cannot escape the effective workspace root', () => {
+        delete process.env.SEMANTIC_CODE_WORKSPACE;
+        delete process.env.WORKSPACE_ROOT;
+        delete process.env.LAYER4_DB_PATH;
+        const root = tempWorkspace();
+        const outside = tempWorkspace('sci-runtime-config-env-db-outside-');
+        process.env.SEMANTIC_CODE_DB_PATH = join(outside, 'ontology.db');
+
+        expect(() => createDefaultCoreConfig(root)).toThrow('environment database path must stay within the workspace');
     });
 
     test('runtime database path cannot escape the config directory lexically', () => {

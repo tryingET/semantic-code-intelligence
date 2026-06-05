@@ -3,6 +3,7 @@
  * This provides a clean interface for protocol adapters to initialize the system
  */
 
+import * as path from 'node:path';
 // Import existing layer implementations
 import { ClaudeToolsLayer } from '../layers/claude-tools';
 import { PlannerLayer } from '../layers/planner-layer';
@@ -12,6 +13,7 @@ import { createStorageAdapter } from '../ontology/storage-factory';
 import { PatternLearner } from '../patterns/pattern-learner';
 import { KnowledgeSpreader } from '../propagation/knowledge-spreader';
 import type { EnhancedMatches, SearchQuery } from '../types/core';
+import { CoreError } from './errors';
 import { DefaultEventBus, LayerManager } from './layer-manager';
 import { SharedServices } from './services/index';
 import { CacheConfig, type CoreConfig, type Layer, LayerConfigs, MonitoringConfig, PerformanceConfig } from './types';
@@ -386,11 +388,30 @@ export class AnalyzerFactory {
             },
         });
 
-        const ontologyDbPath = fullConfig.layers.layer4?.dbPath || fullConfig.layers.layer3.dbPath;
-        const patternDbPath = fullConfig.layers.layer5?.dbPath || ontologyDbPath;
-        const layer3Planner = new PlannerLayer();
+        const workspaceRoot = path.resolve((fullConfig as any).workspaceRoot || process.cwd());
         const layer4Enabled = fullConfig.layers.layer4?.enabled ?? true;
         const layer5Enabled = fullConfig.layers.layer5?.enabled ?? true;
+        const layer3DbPath = AnalyzerFactory.resolveWorkspaceDbPath(
+            fullConfig.layers.layer3.dbPath,
+            workspaceRoot,
+            'layer3.dbPath'
+        );
+        const ontologyDbPath = AnalyzerFactory.resolveWorkspaceDbPath(
+            fullConfig.layers.layer4?.dbPath || layer3DbPath,
+            workspaceRoot,
+            'layer4.dbPath'
+        );
+        const patternDbPath = AnalyzerFactory.resolveWorkspaceDbPath(
+            fullConfig.layers.layer5?.dbPath || ontologyDbPath,
+            workspaceRoot,
+            'layer5.dbPath'
+        );
+        fullConfig.workspaceRoot = workspaceRoot;
+        fullConfig.layers.layer3 = { ...fullConfig.layers.layer3, dbPath: layer3DbPath };
+        if (fullConfig.layers.layer4)
+            fullConfig.layers.layer4 = { ...fullConfig.layers.layer4, dbPath: ontologyDbPath };
+        if (fullConfig.layers.layer5) fullConfig.layers.layer5 = { ...fullConfig.layers.layer5, dbPath: patternDbPath };
+        const layer3Planner = new PlannerLayer();
         const storage = layer4Enabled
             ? createStorageAdapter({
                   enabled: true,
@@ -441,6 +462,26 @@ export class AnalyzerFactory {
         };
     }
 
+    private static isDefaultOntologyDbPath(dbPath: unknown): boolean {
+        if (typeof dbPath !== 'string') return false;
+        const normalized = dbPath.replace(/\\/g, '/');
+        return normalized === '.ontology/ontology.db' || normalized.endsWith('/.ontology/ontology.db');
+    }
+
+    private static resolveWorkspaceDbPath(dbPath: string | undefined, workspaceRoot: string, label: string): string {
+        if (!dbPath || dbPath === ':memory:') return dbPath || ':memory:';
+        const root = path.resolve(workspaceRoot);
+        const resolved = path.isAbsolute(dbPath) ? path.resolve(dbPath) : path.resolve(root, dbPath);
+        const relative = path.relative(root, resolved);
+        if (relative.startsWith('..') || path.isAbsolute(relative)) {
+            throw new CoreError('InvalidParams', `${label} must stay within the workspace`, {
+                workspaceRoot: root,
+                dbPath,
+            });
+        }
+        return resolved;
+    }
+
     /**
      * Create analyzer with specific workspace path
      */
@@ -453,6 +494,10 @@ export class AnalyzerFactory {
         sharedServices: SharedServices;
     }> {
         const workspaceDbPath = `${workspacePath}/.ontology/ontology.db`;
+        const configuredLayer5DbPath = (config?.layers as any)?.layer5?.dbPath;
+        const layer5DbPath = AnalyzerFactory.isDefaultOntologyDbPath(configuredLayer5DbPath)
+            ? workspaceDbPath
+            : configuredLayer5DbPath;
         const workspaceConfig: any = {
             ...config,
             layers: {
@@ -468,7 +513,7 @@ export class AnalyzerFactory {
                 },
                 layer5: {
                     ...config?.layers?.layer5,
-                    dbPath: (config?.layers as any)?.layer5?.dbPath ?? workspaceDbPath,
+                    dbPath: layer5DbPath ?? workspaceDbPath,
                 },
             },
             // Provide workspaceRoot to downstream analyzer config for correct path resolution

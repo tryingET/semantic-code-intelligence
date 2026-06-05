@@ -1,13 +1,14 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { existsSync, writeFileSync } from 'node:fs';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { HTTPAdapter } from '../src/adapters/http-adapter.js';
+import { LSPAdapter } from '../src/adapters/lsp-adapter.js';
+import { createDefaultCoreConfig } from '../src/adapters/utils.js';
 import { AnalyzerFactory } from '../src/core/analyzer-factory.js';
 import { CodeAnalysisWorkflowService } from '../src/core/workflows/code-analysis-workflow.js';
-import { LSPAdapter } from '../src/adapters/lsp-adapter.js';
-import { HTTPAdapter } from '../src/adapters/http-adapter.js';
 import { TreeSitterLayer } from '../src/layers/tree-sitter.js';
 
 function fakeCore(overrides: Record<string, any> = {}): any {
@@ -89,6 +90,27 @@ describe('boundary contracts', () => {
         }
     });
 
+    test('AnalyzerFactory rejects SQLite DB paths outside the configured workspace', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'sci-db-boundary-'));
+        const outside = await mkdtemp(join(tmpdir(), 'sci-db-boundary-outside-'));
+        try {
+            await expect(
+                AnalyzerFactory.createAnalyzer({
+                    workspaceRoot: dir,
+                    layers: {
+                        layer3: { dbPath: join(dir, 'l3', 'symbols.db') } as any,
+                        layer4: { dbPath: join(outside, 'ontology.db') } as any,
+                        layer5: { dbPath: join(dir, 'l5', 'patterns.db') } as any,
+                    } as any,
+                    monitoring: { enabled: false } as any,
+                })
+            ).rejects.toThrow('layer4.dbPath must stay within the workspace');
+        } finally {
+            await rm(dir, { recursive: true, force: true });
+            await rm(outside, { recursive: true, force: true });
+        }
+    });
+
     test('Layer 5 adapter honors its own DB path instead of the Layer 4 ontology DB', async () => {
         const dir = await mkdtemp(join(tmpdir(), 'sci-layer5-db-'));
         const layer5DbPath = join(dir, 'l5', 'patterns.db');
@@ -121,6 +143,22 @@ describe('boundary contracts', () => {
             expect(layer5.getPatternLearner().storage.dbPath).toBe(workspaceDbPath);
             expect((created.sharedServices.database as any).config.path).toBe(workspaceDbPath);
             expect((created.analyzer as any).learningOrchestrator.patternLearner.storage.dbPath).toBe(workspaceDbPath);
+        } finally {
+            await created.analyzer.dispose().catch(() => undefined);
+            await created.layerManager.dispose().catch(() => undefined);
+            await created.sharedServices.dispose().catch(() => undefined);
+            await rm(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('workspace analyzer treats default DB paths from another launcher root as workspace defaults', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'sci-workspace-db-rebase-'));
+        const workspaceDbPath = join(dir, '.ontology', 'ontology.db');
+        const config = createDefaultCoreConfig(process.cwd());
+        const created = await AnalyzerFactory.createWorkspaceAnalyzer(dir, config);
+        try {
+            const layer5: any = created.layerManager.getLayer('layer5');
+            expect(layer5.getPatternLearner().storage.dbPath).toBe(workspaceDbPath);
         } finally {
             await created.analyzer.dispose().catch(() => undefined);
             await created.layerManager.dispose().catch(() => undefined);

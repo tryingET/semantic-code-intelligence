@@ -139,7 +139,8 @@ const config = {
     },
     layer3: {
       enabled: true,
-      dbPath: '/custom/path/ontology.db',
+      // SQLite paths are resolved under workspaceRoot and must stay within it.
+      dbPath: '.ontology/custom-ontology.db',
       cacheSize: 2000
     }
   },

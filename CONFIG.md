@@ -54,7 +54,7 @@ Settings are loaded in this priority order:
 - `LAYER4_ADAPTER` or `ONTOLOGY_STORAGE_ADAPTER` or `STORAGE_ADAPTER`
   - Values: `sqlite` (default) | `postgres` | `triplestore` (scaffold)
 - `SEMANTIC_CODE_DB_PATH` or `LAYER4_DB_PATH`
-  - Path to SQLite DB file (applies to Layers 3/4/5 when set)
+  - Path to SQLite DB file (applies to Layers 3/4/5 when set); relative paths resolve under the effective workspace root and resolved paths must stay within that workspace.
 - `ONTOLOGY_PG_URL` / `DATABASE_URL` / `PG_URL`
   - Postgres connection string (only required if using `postgres` adapter)
 - `L4_AUTO_MIGRATE` - Enable automatic schema creation and migration (default: `1`)
