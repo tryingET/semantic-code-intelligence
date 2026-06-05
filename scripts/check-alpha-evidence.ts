@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { join } from 'node:path';
+import { ALPHA_MVP_TOOL_NAMES } from '../src/core/tools/alpha-surface';
 import { maxElapsed, readEvidenceJsonFile, safeEvidenceError, sanitizeEvidence } from './evidence-summary-utils';
 
 type Check = {
@@ -63,7 +64,7 @@ try {
 
 if (alpha) {
     const summary = Array.isArray(alpha.summary) ? alpha.summary : [];
-    const required = ['get_snapshot', 'read_file', 'text_search', 'symbol_search', 'find_definition', 'find_references', 'ast_query', 'graph_expand', 'recommend_checks', 'propose_patch', 'run_checks'];
+    const required = [...ALPHA_MVP_TOOL_NAMES];
     const actual = names(summary);
     checks.push({ name: 'alpha_dogfood_ok', ok: alpha.ok === true, detail: { schema: alpha.schema } });
     checks.push({

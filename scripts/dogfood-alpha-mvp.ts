@@ -154,6 +154,53 @@ try {
         { snapshot: patchSnapshot?.snapshot || patchSnapshot?.id, commands: ['true'], timeoutSec: 30 },
         'Run an explicit validation command against the staged snapshot.'
     );
+    await callTool(
+        'apply_snapshot',
+        { snapshot: patchSnapshot?.snapshot || patchSnapshot?.id, check: true },
+        'Preflight the staged snapshot through guarded apply semantics without mutating the workspace.'
+    );
+    await callTool(
+        'extract_snapshot_artifacts',
+        { snapshot: patchSnapshot?.snapshot || patchSnapshot?.id, includeContent: false },
+        'Expose bounded snapshot artifact links for human/operator inspection.'
+    );
+    await callTool(
+        'patch_checks_in_snapshot',
+        { patch: patchPlanningDiff, commands: ['true'], timeoutSec: 30 },
+        'Exercise the composite preview-first patch/check workflow through HTTP tools/call.'
+    );
+    await callTool(
+        'structural_search',
+        { language: 'typescript', pattern: 'const $A = $B', paths: ['src/core/version.ts'], maxResults: 5 },
+        'Exercise ast-grep-backed structural search on a bounded source file.'
+    );
+    await callTool(
+        'structural_patch_checks',
+        {
+            language: 'typescript',
+            pattern: 'const SCI_ALPHA_MVP_NO_MATCH = $B',
+            rewrite: 'const SCI_ALPHA_MVP_NO_MATCH = $B',
+            paths: ['src/core/version.ts'],
+            commands: ['true'],
+            timeoutSec: 30,
+        },
+        'Exercise structural patch checks in no-match preview mode without mutating the workspace.'
+    );
+    await callTool(
+        'safe_write',
+        { patch: patchPlanningDiff, commands: ['true'], timeoutSec: 30, apply: false },
+        'Exercise the autonomous-safe write workflow in preview-only mode.'
+    );
+    await callTool(
+        'rename_safely',
+        {
+            oldName: 'SCI_ALPHA_MVP_NO_SUCH_SYMBOL',
+            newName: 'SCI_ALPHA_MVP_NO_SUCH_SYMBOL_RENAMED',
+            file: 'src/core/version.ts',
+            runChecks: false,
+        },
+        'Exercise safe rename planning with a bounded file context and no workspace mutation.'
+    );
     const afterPatchPlanning = await Bun.file(patchPlanningTarget).text();
     const workspaceUnchanged = beforePatchPlanning === afterPatchPlanning && !afterPatchPlanning.includes(patchPlanningMarker);
 

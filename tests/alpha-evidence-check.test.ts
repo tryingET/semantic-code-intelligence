@@ -3,21 +3,10 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { ALPHA_MVP_TOOL_NAMES } from '../src/core/tools/alpha-surface';
 
 const tempRoots: string[] = [];
-const requiredAlphaTools = [
-    'get_snapshot',
-    'read_file',
-    'text_search',
-    'symbol_search',
-    'find_definition',
-    'find_references',
-    'ast_query',
-    'graph_expand',
-    'recommend_checks',
-    'propose_patch',
-    'run_checks',
-];
+const requiredAlphaTools = [...ALPHA_MVP_TOOL_NAMES];
 
 function writeJson(path: string, value: unknown) {
     writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
