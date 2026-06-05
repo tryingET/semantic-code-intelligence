@@ -122,7 +122,7 @@ export class HTTPAdapter {
                 return pathToFileURL(workspaceRoot).href;
             }
             if (this.config.allowLegacyCwdFallback === true) {
-                const legacy = await this.legacyRepoLocalUriOrNull(requested);
+                const legacy = await this.legacyRepoLocalUriOrNull(requested, workspaceRoot);
                 if (legacy) return legacy;
             }
             throw error;
@@ -149,9 +149,11 @@ export class HTTPAdapter {
         return workspaceInputToPath(raw, workspaceRoot);
     }
 
-    private async legacyRepoLocalUriOrNull(requested: string): Promise<string | null> {
+    private async legacyRepoLocalUriOrNull(requested: string, workspaceRoot: string): Promise<string | null> {
         try {
             const cwdRoot = path.resolve(process.cwd());
+            const configuredRoot = path.resolve(workspaceRoot);
+            if (cwdRoot !== configuredRoot) return null;
             const resolved = await resolveWorkspacePath(requested, {
                 workspaceRoot: cwdRoot,
                 inputLabel: 'legacy HTTP file',

@@ -11,6 +11,8 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { HTTPAdapter } from '../src/adapters/http-adapter';
 import { MCPAdapter } from '../src/adapters/mcp-adapter';
 import { AnalyzerFactory } from '../src/core/analyzer-factory';
 import type { CodeAnalyzer } from '../src/core/unified-analyzer';
@@ -57,6 +59,15 @@ const grep = new AsyncEnhancedGrep();
         const text = result.content?.[0]?.text || '{}';
         return JSON.parse(text);
     }
+
+    test('HTTP legacy cwd fallback cannot cross the configured workspace boundary', async () => {
+        const adapter = new HTTPAdapter(analyzer, { allowLegacyCwdFallback: true });
+        const repoPackageUri = pathToFileURL(path.join(process.cwd(), 'package.json')).href;
+
+        await expect(
+            (adapter as any).containedRequestUri(repoPackageUri, 'HTTP test file', 'file://unknown')
+        ).rejects.toThrow();
+    });
 
     async function callDefinition(args: Record<string, unknown>) {
         return callToolJson('find_definition', args);
