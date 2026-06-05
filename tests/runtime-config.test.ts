@@ -121,6 +121,34 @@ describe('runtime config contract', () => {
         expect(config.layers.layer5.dbPath).toBe(join(root, '.ontology', 'ontology.db'));
     });
 
+    test('runtime config preserves distinct per-layer database paths', () => {
+        delete process.env.SEMANTIC_CODE_WORKSPACE;
+        delete process.env.WORKSPACE_ROOT;
+        delete process.env.SEMANTIC_CODE_DB_PATH;
+        delete process.env.LAYER4_DB_PATH;
+        const root = tempWorkspace();
+        writeFileSync(
+            join(root, '.semantic-code-intelligence-config.yaml'),
+            [
+                'layers:',
+                '  layer3:',
+                '    dbPath: .ontology/layer3.db',
+                '  layer4:',
+                '    dbPath: .ontology/layer4.db',
+                '  layer5:',
+                '    dbPath: .ontology/layer5.db',
+                '',
+            ].join('\n'),
+            'utf8'
+        );
+
+        const config = createRuntimeCoreConfig(root);
+        expect(config.database?.path).toBe(join(root, '.ontology', 'layer4.db'));
+        expect(config.layers.layer3.dbPath).toBe(join(root, '.ontology', 'layer3.db'));
+        expect(config.layers.layer4.dbPath).toBe(join(root, '.ontology', 'layer4.db'));
+        expect(config.layers.layer5.dbPath).toBe(join(root, '.ontology', 'layer5.db'));
+    });
+
     test('environment database path cannot escape the effective workspace root', () => {
         delete process.env.SEMANTIC_CODE_WORKSPACE;
         delete process.env.WORKSPACE_ROOT;

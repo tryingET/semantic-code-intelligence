@@ -84,21 +84,46 @@ export function applyRuntimeConfig(config: CoreConfig, startDir = process.cwd())
         config.cache = mergeCacheConfig(config.cache, data.cache);
     }
 
-    const dbPath = pickString(
-        data.database?.path,
-        runtimeLayers?.layer4?.dbPath,
-        runtimeLayers?.layer5?.dbPath,
-        runtimeLayers?.layer3?.dbPath
+    const databasePath = pickString(data.database?.path);
+    const layerDbPaths = {
+        layer3: pickString(runtimeLayers?.layer3?.dbPath),
+        layer4: pickString(runtimeLayers?.layer4?.dbPath),
+        layer5: pickString(runtimeLayers?.layer5?.dbPath),
+    };
+    const databaseFallbackPath = pickString(
+        databasePath,
+        layerDbPaths.layer4,
+        layerDbPaths.layer5,
+        layerDbPaths.layer3
     );
-    if (dbPath) {
-        const resolvedDbPath = resolveConfigContainedPath(runtime, dbPath, 'database.path');
+    const databaseFallbackField = databasePath
+        ? 'database.path'
+        : layerDbPaths.layer4
+          ? 'layers.layer4.dbPath'
+          : layerDbPaths.layer5
+            ? 'layers.layer5.dbPath'
+            : 'layers.layer3.dbPath';
+    const resolvedDatabasePath = databaseFallbackPath
+        ? resolveConfigContainedPath(runtime, databaseFallbackPath, databaseFallbackField)
+        : null;
+    if (resolvedDatabasePath) {
         config.database = {
-            path: resolvedDbPath,
+            path: resolvedDatabasePath,
             maxConnections: Number(data.database?.maxConnections || config.database?.maxConnections || 10),
         };
-        config.layers.layer3 = { ...config.layers.layer3, dbPath: resolvedDbPath };
-        config.layers.layer4 = { ...config.layers.layer4, dbPath: resolvedDbPath };
-        config.layers.layer5 = { ...config.layers.layer5, dbPath: resolvedDbPath };
+    }
+
+    const configLayers = config.layers as unknown as Record<string, any>;
+    for (const layerName of ['layer3', 'layer4', 'layer5'] as const) {
+        const rawLayerPath = layerDbPaths[layerName];
+        if (rawLayerPath) {
+            configLayers[layerName] = {
+                ...configLayers[layerName],
+                dbPath: resolveConfigContainedPath(runtime, rawLayerPath, `layers.${layerName}.dbPath`),
+            };
+        } else if (databasePath && resolvedDatabasePath) {
+            configLayers[layerName] = { ...configLayers[layerName], dbPath: resolvedDatabasePath };
+        }
     }
 
     const workspaceRoot = data.workspaceRoot;
