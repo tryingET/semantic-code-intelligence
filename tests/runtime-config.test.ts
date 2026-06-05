@@ -89,6 +89,36 @@ describe('runtime config contract', () => {
         expect(config.layers.layer4.dbPath).toBe(join(target, '.ontology', 'custom.db'));
     });
 
+    test('runtime database path cannot escape the config directory lexically', () => {
+        delete process.env.SEMANTIC_CODE_WORKSPACE;
+        delete process.env.WORKSPACE_ROOT;
+        const root = tempWorkspace();
+        writeFileSync(
+            join(root, '.semantic-code-intelligence-config.yaml'),
+            'database:\n  path: ../outside/ontology.db\n',
+            'utf8'
+        );
+
+        expect(() => createRuntimeCoreConfig(root)).toThrow('database.path must stay within the config directory');
+    });
+
+    test('runtime database path cannot escape the config directory through an existing symlink parent', () => {
+        delete process.env.SEMANTIC_CODE_WORKSPACE;
+        delete process.env.WORKSPACE_ROOT;
+        const root = tempWorkspace();
+        const outside = tempWorkspace('sci-runtime-config-db-outside-');
+        symlinkSync(outside, join(root, 'data'), 'dir');
+        writeFileSync(
+            join(root, '.semantic-code-intelligence-config.yaml'),
+            'database:\n  path: data/ontology.db\n',
+            'utf8'
+        );
+
+        expect(() => createRuntimeCoreConfig(root)).toThrow(
+            'database.path realpath must stay within the config directory'
+        );
+    });
+
     test('config-file workspaceRoot cannot escape the config directory through a symlink', () => {
         delete process.env.SEMANTIC_CODE_WORKSPACE;
         delete process.env.WORKSPACE_ROOT;

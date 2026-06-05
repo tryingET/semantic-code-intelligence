@@ -285,6 +285,7 @@ const sessions: Record<string, SessionRecord> = {};
 const mcpEvents = new EventEmitter();
 let sessionSweepTimer: ReturnType<typeof setInterval> | null = null;
 let activeServer: HttpServer | null = null;
+let pendingSessionCreations = 0;
 
 function parsePositiveIntegerEnv(name: string, fallback: number): number {
     const raw = process.env[name];
@@ -299,6 +300,14 @@ function sessionTtlMs(): number {
 
 function sessionSweepIntervalMs(): number {
     return parsePositiveIntegerEnv('MCP_HTTP_SESSION_SWEEP_INTERVAL_MS', 60 * 1000);
+}
+
+function mcpHttpMaxSessions(): number {
+    return parsePositiveIntegerEnv('MCP_HTTP_MAX_SESSIONS', 64);
+}
+
+function mcpHttpSessionLoad(): number {
+    return Object.keys(sessions).length + pendingSessionCreations;
 }
 
 function touchSession(record: SessionRecord | undefined, now = Date.now()): void {
@@ -504,15 +513,29 @@ app.post('/mcp', async (req: express.Request, res: express.Response) => {
 
         let record: SessionRecord | undefined;
         let provisionalSessionId: string | undefined;
+        let provisionalSessionPending = false;
         if (sessionId && sessions[sessionId]) {
             record = sessions[sessionId];
             touchSession(record);
         } else if (!sessionId && containsInitializeRequest(req.body)) {
+            if (mcpHttpSessionLoad() >= mcpHttpMaxSessions()) {
+                const error = new McpError(ErrorCode.InternalError, 'Too many MCP HTTP sessions', {
+                    maxSessions: mcpHttpMaxSessions(),
+                });
+                sendJsonRpcError(res, error, requestJsonRpcId(req.body), 429);
+                return;
+            }
             try {
+                pendingSessionCreations += 1;
+                provisionalSessionPending = true;
                 const preSid = randomUUID();
                 provisionalSessionId = preSid;
                 record = await createMcpServer(preSid, !/text\/event-stream/i.test(originalAccept));
             } catch (e) {
+                if (provisionalSessionPending) {
+                    pendingSessionCreations = Math.max(0, pendingSessionCreations - 1);
+                    provisionalSessionPending = false;
+                }
                 // Log detailed error to help diagnose 500s on initialize
                 // eslint-disable-next-line no-console
                 console.error('[MCP HTTP] createMcpServer failed:', e);
@@ -648,6 +671,10 @@ app.post('/mcp', async (req: express.Request, res: express.Response) => {
                 await activeRecord.transport.handleRequest(req as TransportRequest, res as TransportResponse, req.body);
             } finally {
                 endSessionConsumer(activeRecord);
+                if (provisionalSessionPending) {
+                    pendingSessionCreations = Math.max(0, pendingSessionCreations - 1);
+                    provisionalSessionPending = false;
+                }
             }
             if (provisionalSessionId && res.statusCode >= 400) {
                 try {
@@ -659,6 +686,10 @@ app.post('/mcp', async (req: express.Request, res: express.Response) => {
         } catch (e) {
             // eslint-disable-next-line no-console
             console.error('[MCP HTTP] handleRequest error:', e);
+            if (provisionalSessionPending) {
+                pendingSessionCreations = Math.max(0, pendingSessionCreations - 1);
+                provisionalSessionPending = false;
+            }
             if (provisionalSessionId) {
                 await disposeSession(activeRecord, provisionalSessionId);
             }

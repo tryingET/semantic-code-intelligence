@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { MCPAdapter } from '../src/adapters/mcp-adapter';
 import { overlayStore } from '../src/core/overlay-store';
 
@@ -132,6 +132,54 @@ describe('read_file workspace trust boundary', () => {
         expect(snapshotPayload.content).not.toContain(liveText);
         expect(livePayload.content).toContain(liveText);
         expect(livePayload.content).not.toContain(snapshotText);
+    });
+
+    test('snapshot read_file rejects materialized control artifacts as non-workspace files', async () => {
+        const liveText = 'control artifact live content';
+        const snapshotText = 'control artifact snapshot content';
+        const absPath = uniqueWorkspacePath('.tmp-read-file-snapshot-control.md');
+        const relPath = relative(process.cwd(), absPath);
+        writeFileSync(absPath, `${liveText}\n`);
+
+        const mcp = new MCPAdapter(undefined as any);
+        const snapshot = await freshSnapshot(mcp);
+        const proposed = await mcp.handleToolCall('propose_patch', {
+            snapshot,
+            patch: updateOneLineDiff(relPath, liveText, snapshotText),
+        });
+        expect(proposed.isError).toBe(false);
+
+        const result = await mcp.handleToolCall('read_file', { path: 'overlay.diff', snapshot });
+        const rendered = JSON.stringify(result);
+
+        expect(result.isError).toBe(true);
+        expect(rendered).toContain('snapshot control artifact');
+        expect(rendered).not.toContain('control artifact snapshot content');
+    });
+
+    test('snapshot text_search skips materialized control artifacts', async () => {
+        const liveText = 'text search live content';
+        const snapshotText = `unique_snapshot_search_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        const absPath = uniqueWorkspacePath('.tmp-read-file-snapshot-search.md');
+        const relPath = relative(process.cwd(), absPath);
+        writeFileSync(absPath, `${liveText}\n`);
+
+        const mcp = new MCPAdapter(undefined as any);
+        const snapshot = await freshSnapshot(mcp);
+        await mcp.handleToolCall('propose_patch', {
+            snapshot,
+            patch: updateOneLineDiff(relPath, liveText, snapshotText),
+        });
+
+        const result = await mcp.handleToolCall('text_search', {
+            snapshot,
+            query: snapshotText,
+            maxResults: 10,
+        });
+        const payload = parseToolJson(result);
+
+        expect(result.isError).toBe(false);
+        expect(payload.results.map((item: any) => item.file)).toEqual([relPath]);
     });
 
     test('maps absolute live-workspace paths to the same relative file inside a snapshot', async () => {

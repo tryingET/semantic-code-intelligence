@@ -21,6 +21,13 @@ type WorkspaceQueryDependencies = {
 };
 
 const TEXT_SEARCH_RESULT_TEXT_MAX_CHARS = 4096;
+const SNAPSHOT_CONTROL_ARTIFACTS = new Set([
+    '.materialized',
+    'metadata.json',
+    'overlay.diff',
+    'progress.log',
+    'squashed-overlay.diff',
+]);
 
 type TextSearchResult = {
     file: string;
@@ -83,6 +90,17 @@ export class WorkspaceQueryWorkflowService {
         }
     }
 
+    private assertSnapshotWorkspaceFilePath(readPath: string, requestedPath: string): string {
+        const normalized = path.normalize(readPath);
+        const firstSegment = normalized.split(path.sep)[0];
+        if (SNAPSHOT_CONTROL_ARTIFACTS.has(firstSegment)) {
+            throw new CoreError('InvalidParams', 'snapshot control artifact is not a workspace file', {
+                path: requestedPath,
+            });
+        }
+        return readPath;
+    }
+
     private async resolveReadFileRoot(
         args: Record<string, any>,
         requestedPath: string
@@ -90,7 +108,8 @@ export class WorkspaceQueryWorkflowService {
         const snapshotRoot = await this.materializedSnapshotRoot(args);
         if (!snapshotRoot)
             return { workspaceRoot: this.workspaceRoot, readPath: this.pathInputFromToolFile(requestedPath) };
-        return { workspaceRoot: snapshotRoot, readPath: this.snapshotReadPath(requestedPath, snapshotRoot) };
+        const readPath = this.snapshotReadPath(requestedPath, snapshotRoot);
+        return { workspaceRoot: snapshotRoot, readPath: this.assertSnapshotWorkspaceFilePath(readPath, requestedPath) };
     }
 
     async readFile(args: Record<string, any>): Promise<SnapshotWorkflowResult> {
@@ -480,7 +499,10 @@ export class WorkspaceQueryWorkflowService {
             const workspaceRoot = snapshotRoot || this.workspaceRoot;
             const requestedPath = typeof args?.path === 'string' && args.path.trim() ? String(args.path) : '.';
             const searchPath = snapshotRoot
-                ? this.snapshotReadPath(requestedPath, snapshotRoot)
+                ? this.assertSnapshotWorkspaceFilePath(
+                      this.snapshotReadPath(requestedPath, snapshotRoot),
+                      requestedPath
+                  )
                 : this.pathInputFromToolFile(requestedPath, workspaceRoot);
             await resolveWorkspacePath(searchPath, {
                 workspaceRoot,
@@ -498,6 +520,7 @@ export class WorkspaceQueryWorkflowService {
                 maxResults,
                 timeoutMs,
                 caseInsensitive,
+                ignoreNames: snapshotRoot ? SNAPSHOT_CONTROL_ARTIFACTS : undefined,
             });
 
             return { payload: result, isError: false };
@@ -519,6 +542,7 @@ export class WorkspaceQueryWorkflowService {
         maxResults: number;
         timeoutMs: number;
         caseInsensitive: boolean;
+        ignoreNames?: Set<string>;
     }): Promise<{
         query: string;
         rootPath: string;
@@ -551,6 +575,7 @@ export class WorkspaceQueryWorkflowService {
             rootPath: args.rootPath,
             maxFiles: 20_000,
             maxDepth: 10,
+            ignoreNames: args.ignoreNames,
         })) {
             if (results.length >= args.maxResults) {
                 capReason = 'maxResults';

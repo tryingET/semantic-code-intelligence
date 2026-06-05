@@ -238,6 +238,26 @@ bindDescribe('Nexus HTTP ingress regressions', () => {
             rmSync(root, { recursive: true, force: true });
         }
     });
+
+    test('web UI static lookup refuses files over the configured memory cap', async () => {
+        const root = mkdtempSync(join(tmpdir(), 'sci-ui-large-'));
+        const oldCwd = process.cwd();
+        const oldMax = process.env.SCI_HTTP_STATIC_MAX_BYTES;
+        try {
+            mkdirSync(join(root, 'web-ui', 'dist'), { recursive: true });
+            writeFileSync(join(root, 'web-ui', 'dist', 'large.bin'), 'x'.repeat(128));
+            process.env.SCI_HTTP_STATIC_MAX_BYTES = '64';
+            process.chdir(root);
+            const localServer = new HTTPServer({ host, port: 0, workspaceRoot: root, enableOpenAPI: false });
+            const found = await (localServer as any).findWebUiFile('large.bin', ['dist']);
+            expect(found).toBeNull();
+        } finally {
+            if (oldMax === undefined) delete process.env.SCI_HTTP_STATIC_MAX_BYTES;
+            else process.env.SCI_HTTP_STATIC_MAX_BYTES = oldMax;
+            process.chdir(oldCwd);
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
 });
 
 describe('Nexus workflow boundary regressions', () => {

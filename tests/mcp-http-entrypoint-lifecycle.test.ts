@@ -209,6 +209,54 @@ describe('MCP HTTP entrypoint and session lifecycle', () => {
         expect(result.stderr).toBe('');
     });
 
+    test('initialize requests over the session cap are rejected before creating another analyzer-backed session', () => {
+        const moduleUrl = repoModuleUrl('src/servers/mcp-http.ts');
+        const initBody = {
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'initialize',
+            params: {
+                protocolVersion: '2024-11-05',
+                capabilities: {},
+                clientInfo: { name: 'cap-test', version: '1.0.0' },
+            },
+        };
+        const script = `
+            process.env.MCP_HTTP_MAX_SESSIONS = '1';
+            const mod = await import(${JSON.stringify(moduleUrl)});
+            const server = mod.startMcpHttpServer({ host: '127.0.0.1', port: 0 });
+            await new Promise((resolve) => setTimeout(resolve, 150));
+            const address = server.address();
+            const port = typeof address === 'object' && address ? address.port : 0;
+            if (!port) throw new Error('server did not expose an ephemeral port');
+            const first = await fetch('http://127.0.0.1:' + port + '/mcp', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: ${JSON.stringify(JSON.stringify(initBody))}
+            });
+            if (!first.ok) throw new Error('first initialize failed: ' + first.status + ' ' + await first.text());
+            if (mod.mcpHttpSessionCount() !== 1) throw new Error('first session was not tracked');
+            const second = await fetch('http://127.0.0.1:' + port + '/mcp', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: ${JSON.stringify(JSON.stringify({ ...initBody, id: 2 }))}
+            });
+            const secondText = await second.text();
+            if (second.status !== 429) throw new Error('expected 429, got ' + second.status + ' ' + secondText);
+            if (!secondText.includes('Too many MCP HTTP sessions')) throw new Error('missing cap error: ' + secondText);
+            if (mod.mcpHttpSessionCount() !== 1) throw new Error('rejected initialize created a session');
+            await new Promise((resolve) => server.close(resolve));
+        `;
+
+        const result = spawnSync(process.execPath, ['--eval', script], {
+            cwd: process.cwd(),
+            encoding: 'utf8',
+            timeout: 20_000,
+        });
+
+        expect(result.status, result.stderr || result.stdout).toBe(0);
+    });
+
     test('server close disposes active MCP HTTP sessions', () => {
         const port = uniquePort(31);
         const moduleUrl = repoModuleUrl('src/servers/mcp-http.ts');

@@ -39,6 +39,12 @@ import { assertAllowedBrowserOrigin, corsHeadersForRequest, readLimitedJsonBody 
 
 const HTTP_MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const SNAPSHOT_ARTIFACT_MAX_BYTES = 256 * 1024;
+const DEFAULT_STATIC_FILE_MAX_BYTES = 10 * 1024 * 1024;
+
+function httpStaticFileMaxBytes(): number {
+    const raw = Number(process.env.SCI_HTTP_STATIC_MAX_BYTES);
+    return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : DEFAULT_STATIC_FILE_MAX_BYTES;
+}
 
 function truncateBufferUtf8WithMarker(buffer: Buffer, bytesRead: number, maxBytes: number): string {
     const marker = `\n[truncated at ${maxBytes} bytes]\n`;
@@ -1233,7 +1239,7 @@ export class HTTPServer {
 
     async stop(): Promise<void> {
         if (this.server) {
-            this.server.stop();
+            this.server.stop(true);
             this.server = null;
             if (!process.env.SILENT_MODE) {
                 console.log(`[HTTP Server] Stopped`);
@@ -1242,6 +1248,10 @@ export class HTTPServer {
 
         if (this.coreAnalyzer) {
             await this.coreAnalyzer.dispose();
+            (this as any).coreAnalyzer = undefined;
+            (this as any).httpAdapter = undefined;
+            (this as any).toolRouter = undefined;
+            (this as any).toolExecutor = undefined;
             if (!process.env.SILENT_MODE) {
                 console.log(`[HTTP Server] Core analyzer disposed`);
             }
@@ -1319,7 +1329,7 @@ export class HTTPServer {
 
                 try {
                     const stat = await fs.lstat(candidate);
-                    if (!stat.isFile() || stat.isSymbolicLink()) continue;
+                    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > httpStaticFileMaxBytes()) continue;
                     const [realBase, realCandidate] = await Promise.all([fs.realpath(base), fs.realpath(candidate)]);
                     const realRelative = path.relative(realBase, realCandidate);
                     if (!realRelative || realRelative.startsWith('..') || path.isAbsolute(realRelative)) continue;

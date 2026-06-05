@@ -1116,8 +1116,22 @@ class CLI {
             process.exit(1);
         }
 
-        // Create .ontology directory
-        if (!fs.existsSync(dbPath)) {
+        // Create .ontology directory without following an existing symlink.
+        let existingDbDir: fs.Stats | null = null;
+        try {
+            existingDbDir = fs.lstatSync(dbPath);
+        } catch (error: any) {
+            if (error?.code !== 'ENOENT') throw error;
+        }
+        if (existingDbDir?.isSymbolicLink()) {
+            console.error('.ontology path must not be a symlink.');
+            process.exit(1);
+        }
+        if (existingDbDir && !existingDbDir.isDirectory()) {
+            console.error('.ontology path already exists and is not a directory.');
+            process.exit(1);
+        }
+        if (!existingDbDir) {
             fs.mkdirSync(dbPath, { recursive: true });
         }
 

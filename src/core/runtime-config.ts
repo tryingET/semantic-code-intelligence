@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import yaml from 'js-yaml';
 import { AnalyzerFactory } from './analyzer-factory.js';
-import { CoreError, type CoreConfig } from './types.js';
+import { type CoreConfig, CoreError } from './types.js';
 
 export const SCI_CONFIG_FILE = '.semantic-code-intelligence-config.yaml';
 
@@ -91,7 +91,7 @@ export function applyRuntimeConfig(config: CoreConfig, startDir = process.cwd())
         runtimeLayers?.layer3?.dbPath
     );
     if (dbPath) {
-        const resolvedDbPath = resolveConfigPath(runtime.dir, dbPath);
+        const resolvedDbPath = resolveConfigContainedPath(runtime, dbPath, 'database.path');
         config.database = {
             path: resolvedDbPath,
             maxConnections: Number(data.database?.maxConnections || config.database?.maxConnections || 10),
@@ -144,6 +144,48 @@ function resolveConfigWorkspaceRoot(runtime: RuntimeConfigFile, rawWorkspaceRoot
             );
         }
     }
+    return resolved;
+}
+
+function nearestExistingPath(candidate: string): string {
+    let current = candidate;
+    while (!fs.existsSync(current)) {
+        const parent = path.dirname(current);
+        if (parent === current) return current;
+        current = parent;
+    }
+    return current;
+}
+
+function resolveConfigContainedPath(runtime: RuntimeConfigFile, rawPath: string, field: string): string {
+    if (rawPath === ':memory:') return rawPath;
+
+    const resolved = resolveConfigPath(runtime.dir, rawPath);
+    if (!isPathWithinOrEqual(resolved, runtime.dir)) {
+        throw new CoreError(
+            `Configured ${field} must stay within the config directory`,
+            'CONFIG_ERROR',
+            undefined,
+            undefined,
+            { configPath: runtime.path, [field]: rawPath }
+        );
+    }
+
+    const realConfigDir = fs.realpathSync(runtime.dir);
+    const existing = nearestExistingPath(resolved);
+    if (fs.existsSync(existing)) {
+        const realExisting = fs.realpathSync(existing);
+        if (!isPathWithinOrEqual(realExisting, realConfigDir)) {
+            throw new CoreError(
+                `Configured ${field} realpath must stay within the config directory`,
+                'CONFIG_ERROR',
+                undefined,
+                undefined,
+                { configPath: runtime.path, [field]: rawPath }
+            );
+        }
+    }
+
     return resolved;
 }
 
