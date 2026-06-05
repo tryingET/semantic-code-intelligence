@@ -112,6 +112,29 @@ describe('ast_query workspace trust boundary', () => {
         expect(result.count).toBe(0);
     });
 
+    test('excluded top-level paths are filtered before ast_query glob result caps', async () => {
+        const root = track(mkdtempSync(join(tmpdir(), 'sci-ast-query-excluded-cap-')));
+        const excludedDir = join(root, 'control');
+        mkdirSync(excludedDir, { recursive: true });
+        for (let i = 0; i < 2100; i++) {
+            writeFileSync(join(excludedDir, `${String(i).padStart(4, '0')}.js`), 'function excludedOnly() {}\n');
+        }
+        writeFileSync(join(root, 'z-valid.js'), 'function includedAfterExcludedCap() {}\n');
+
+        const result = await runAstQuery({
+            language: 'javascript',
+            query: functionQuery,
+            glob: '**/*.js',
+            workspaceRoot: root,
+            excludedTopLevelPaths: ['control'],
+            limit: 10,
+        });
+        const rendered = JSON.stringify(result);
+
+        expect(rendered).toContain('includedAfterExcludedCap');
+        expect(rendered).not.toContain('excludedOnly');
+    });
+
     test('rejects parent traversal globs before filesystem expansion', async () => {
         let message = '';
         try {
@@ -182,6 +205,73 @@ describe('ast_query workspace trust boundary', () => {
         expect(JSON.stringify(snapshotPayload)).not.toContain('liveAstSnapshotOnly');
         expect(JSON.stringify(livePayload)).toContain('liveAstSnapshotOnly');
         expect(JSON.stringify(livePayload)).not.toContain('stagedAstSnapshotOnly');
+    });
+
+    test('MCP snapshot ast_query rejects control artifacts without leaking overlay snippets', async () => {
+        const liveText = 'function liveAstControlArtifactOnly() { return "live"; }';
+        const snapshotText = 'function stagedAstControlArtifactOnly() { return "snapshot"; }';
+        const absPath = uniqueWorkspacePath('.tmp-ast-query-snapshot-control');
+        const relPath = relative(process.cwd(), absPath);
+        writeFileSync(absPath, `${liveText}\n`);
+
+        const mcp = new MCPAdapter(undefined as any);
+        const snapshot = await freshSnapshot(mcp);
+        await mcp.handleToolCall('propose_patch', {
+            snapshot,
+            patch: updateOneLineDiff(relPath, liveText, snapshotText),
+        });
+
+        const explicit = await mcp.handleToolCall('ast_query', {
+            language: 'javascript',
+            query: '(program) @root',
+            paths: ['overlay.diff'],
+            snapshot,
+            limit: 10,
+        });
+        const globbed = await mcp.handleToolCall('ast_query', {
+            language: 'javascript',
+            query: '(program) @root',
+            glob: 'overlay.diff',
+            snapshot,
+            limit: 10,
+        });
+        const rendered = JSON.stringify({ explicit, globbed });
+
+        expect(explicit.isError).toBe(true);
+        expect(rendered).toContain('snapshot control artifact');
+        expect(rendered).not.toContain('stagedAstControlArtifactOnly');
+        expect(globbed.isError).toBe(false);
+        expect(parseToolJson(globbed).count).toBe(0);
+        expect(JSON.stringify(globbed)).not.toContain('stagedAstControlArtifactOnly');
+    });
+
+    test('MCP ast_query maps absolute materialized snapshot paths to snapshot-relative files', async () => {
+        const liveText = 'function materializedLiveAstSnapshotOnly() { return "live"; }';
+        const snapshotText = 'function materializedStagedAstSnapshotOnly() { return "snapshot"; }';
+        const absPath = uniqueWorkspacePath('.tmp-ast-query-snapshot-materialized');
+        const relPath = relative(process.cwd(), absPath);
+        writeFileSync(absPath, `${liveText}\n`);
+
+        const mcp = new MCPAdapter(undefined as any);
+        const snapshot = await freshSnapshot(mcp);
+        await mcp.handleToolCall('propose_patch', {
+            snapshot,
+            patch: updateOneLineDiff(relPath, liveText, snapshotText),
+        });
+        const snapshotRoot = await (overlayStore as any).ensureMaterialized(snapshot);
+
+        const result = await mcp.handleToolCall('ast_query', {
+            language: 'typescript',
+            query: functionQuery,
+            paths: [join(snapshotRoot, relPath)],
+            snapshot,
+            limit: 10,
+        });
+        const payload = parseToolJson(result);
+
+        expect(result.isError).toBe(false);
+        expect(JSON.stringify(payload)).toContain('materializedStagedAstSnapshotOnly');
+        expect(JSON.stringify(payload)).not.toContain('materializedLiveAstSnapshotOnly');
     });
 
     test('MCP ast_query maps absolute live-workspace paths to snapshot-relative files', async () => {

@@ -69,7 +69,7 @@ export interface HTTPRequest {
 export interface HTTPResponse {
     status: number;
     headers: Record<string, string>;
-    body: string;
+    body: string | ReadableStream<Uint8Array>;
 }
 
 /**
@@ -1059,33 +1059,40 @@ export class HTTPAdapter {
                     ? String(body.path || body.file || body.uri)
                     : '.';
             const requestedPath = this.pathInputFromHttpUri(rawPath, workspaceRoot);
+            const resolvedSearchRoot = await resolveWorkspacePath(requestedPath, {
+                workspaceRoot,
+                inputLabel: 'stream search path',
+                allowRoot: true,
+            });
             const maxResults = parseIntegerOption(body.maxResults, 'maxResults', {
                 defaultValue: 100,
                 min: 1,
                 max: 1000,
             });
 
-            const workflowResult = await withAdapterTimeout(
-                this.executeToolWorkflow('text_search', {
-                    query: String(body.pattern),
-                    path: requestedPath,
-                    maxResults,
-                    caseInsensitive: !!body.caseInsensitive,
-                    kind: body.kind || 'literal',
-                }),
-                this.config.timeout,
-                'http.streamSearch.textSearch'
-            );
-            if (workflowResult.isError) {
-                throw new CoreError(
-                    'InvalidParams',
-                    this.toolWorkflowErrorPayload(workflowResult, 'stream search failed').message
+            const sseData = this.createSSEStream('search', async (emit) => {
+                const workflowResult = await withAdapterTimeout(
+                    this.executeToolWorkflow('text_search', {
+                        query: String(body.pattern),
+                        path: resolvedSearchRoot.relativePath || '.',
+                        maxResults,
+                        caseInsensitive: !!body.caseInsensitive,
+                        kind: body.kind || 'literal',
+                    }),
+                    this.config.timeout,
+                    'http.streamSearch.textSearch'
                 );
-            }
-            const result = this.normalizeToolWorkflowResultForHttp(workflowResult);
-
-            // Convert to SSE format (simplified for now)
-            const sseData = this.formatAsSSE(result, 'search');
+                if (workflowResult.isError) {
+                    throw new CoreError(
+                        'InvalidParams',
+                        this.toolWorkflowErrorPayload(workflowResult, 'stream search failed').message
+                    );
+                }
+                const result = this.normalizeToolWorkflowResultForHttp(workflowResult);
+                const resultItems = this.sseResultItems(result);
+                resultItems.forEach((item: any, index: number) => emit('data', this.sseResultPayload(item, index)));
+                return resultItems.length;
+            });
 
             return {
                 status: 200,
@@ -1126,15 +1133,16 @@ export class HTTPAdapter {
                 }),
             };
 
-            // Use the new async definition search method
-            const result = await withAdapterTimeout(
-                this.coreAnalyzer.findDefinitionAsync(searchRequest),
-                this.config.timeout,
-                'http.streamDefinition.findDefinition'
-            );
-
-            // Convert to SSE format (simplified for now)
-            const sseData = this.formatAsSSE(result, 'definition');
+            const sseData = this.createSSEStream('definition', async (emit) => {
+                const result = await withAdapterTimeout(
+                    this.coreAnalyzer.findDefinitionAsync(searchRequest),
+                    this.config.timeout,
+                    'http.streamDefinition.findDefinition'
+                );
+                const resultItems = this.sseResultItems(result);
+                resultItems.forEach((item: any, index: number) => emit('data', this.sseResultPayload(item, index)));
+                return resultItems.length;
+            });
 
             return {
                 status: 200,
@@ -1151,47 +1159,77 @@ export class HTTPAdapter {
         }
     }
 
-    /**
-     * Convert search result to SSE format (simplified version)
-     */
-    private formatAsSSE(result: any, eventType: string): string {
-        const chunks: string[] = [];
-
-        // Send start event
-        chunks.push(`event: ${eventType}-start\n`);
-        chunks.push(`data: {"type":"start","message":"Search started"}\n\n`);
-
-        // Send results
-        const resultItems = Array.isArray(result?.data)
-            ? result.data
-            : Array.isArray(result?.results)
-              ? result.results
-              : [];
-        resultItems.forEach((item: any, index: number) => {
-            const data = {
-                type: 'result',
-                data: {
-                    uri: item.uri ?? item.file,
-                    range: item.range,
-                    line: item.line,
-                    column: item.column,
-                    text: item.text,
-                    kind: item.kind,
-                    name: item.name,
-                    confidence: item.confidence,
-                },
-                count: index + 1,
-            };
-
-            chunks.push(`event: ${eventType}-data\n`);
-            chunks.push(`data: ${JSON.stringify(data)}\n\n`);
+    private createSSEStream(
+        eventType: string,
+        run: (emit: (phase: 'data', payload: Record<string, unknown>) => void) => Promise<number>
+    ): ReadableStream<Uint8Array> {
+        const encoder = new TextEncoder();
+        const encodeEvent = (event: string, data: Record<string, unknown>) =>
+            encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+        let closed = false;
+        return new ReadableStream<Uint8Array>({
+            start(controller) {
+                const safeEnqueue = (event: string, data: Record<string, unknown>) => {
+                    if (closed) return;
+                    try {
+                        controller.enqueue(encodeEvent(event, data));
+                    } catch {
+                        closed = true;
+                    }
+                };
+                safeEnqueue(`${eventType}-start`, { type: 'start', message: `${eventType} started` });
+                const emit = (_phase: 'data', payload: Record<string, unknown>) => {
+                    safeEnqueue(`${eventType}-data`, payload);
+                };
+                void (async () => {
+                    try {
+                        const totalResults = await run(emit);
+                        safeEnqueue(`${eventType}-end`, {
+                            type: 'end',
+                            message: `${eventType} completed`,
+                            totalResults,
+                        });
+                    } catch (error) {
+                        safeEnqueue(`${eventType}-error`, {
+                            type: 'error',
+                            code: isCoreError(error) ? error.code : 'Internal',
+                            message: error instanceof Error ? error.message : String(error),
+                        });
+                    } finally {
+                        if (!closed) {
+                            closed = true;
+                            try {
+                                controller.close();
+                            } catch {}
+                        }
+                    }
+                })();
+            },
+            cancel() {
+                closed = true;
+            },
         });
+    }
 
-        // Send completion event
-        chunks.push(`event: ${eventType}-end\n`);
-        chunks.push(`data: {"type":"end","message":"Search completed","totalResults":${resultItems.length}}\n\n`);
+    private sseResultItems(result: any): any[] {
+        return Array.isArray(result?.data) ? result.data : Array.isArray(result?.results) ? result.results : [];
+    }
 
-        return chunks.join('');
+    private sseResultPayload(item: any, index: number): Record<string, unknown> {
+        return {
+            type: 'result',
+            data: {
+                uri: item.uri ?? item.file,
+                range: item.range,
+                line: item.line,
+                column: item.column,
+                text: item.text,
+                kind: item.kind,
+                name: item.name,
+                confidence: item.confidence,
+            },
+            count: index + 1,
+        };
     }
 
     /**

@@ -44,6 +44,15 @@ function parseContent(res: any): any {
     return res?.payload ?? res;
 }
 
+async function httpResponseBodyText(body: string | ReadableStream<Uint8Array>): Promise<string> {
+    if (typeof body === 'string') return body;
+    return await new Response(body).text();
+}
+
+function delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function runGit(workspaceRoot: string, args: string[]) {
     const proc = spawnSync('git', args, {
         cwd: workspaceRoot,
@@ -759,6 +768,74 @@ describe('nexus contract regressions', () => {
         expect(calls[0].uri).toContain(workspaceRoot);
     });
 
+    test('HTTP stream definition returns before the definition lookup resolves', async () => {
+        const workspaceRoot = tempWorkspace();
+        let release!: () => void;
+        const core: any = {
+            config: { workspaceRoot },
+            findDefinitionAsync: async () => {
+                await new Promise<void>((resolve) => {
+                    release = resolve;
+                });
+                return { data: [], performance: {}, requestId: 'stream-delayed' };
+            },
+            sharedServices: {},
+        };
+        const adapter = new HTTPAdapter(core, { enableCors: false, enableOpenAPI: false });
+
+        const responsePromise = adapter.handleRequest({
+            method: 'POST',
+            url: '/api/v1/stream/definition',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ identifier: 'Anything' }),
+        });
+        const early = await Promise.race([responsePromise.then(() => 'returned'), delay(25).then(() => 'blocked')]);
+        expect(early).toBe('returned');
+
+        const response = await responsePromise;
+        expect(response.status).toBe(200);
+        expect(typeof response.body).not.toBe('string');
+        const reader = (response.body as ReadableStream<Uint8Array>).getReader();
+        const decoder = new TextDecoder();
+        const first = await reader.read();
+        expect(decoder.decode(first.value)).toContain('event: definition-start');
+        release();
+        let tail = '';
+        while (true) {
+            const chunk = await reader.read();
+            if (chunk.done) break;
+            tail += decoder.decode(chunk.value);
+        }
+        expect(tail).toContain('event: definition-end');
+    });
+
+    test('HTTP stream definition reports async failures as structured SSE error events', async () => {
+        const workspaceRoot = tempWorkspace();
+        const core: any = {
+            config: { workspaceRoot },
+            findDefinitionAsync: async () => {
+                await delay(30);
+                return { data: [], performance: {}, requestId: 'stream-too-late' };
+            },
+            sharedServices: {},
+        };
+        const adapter = new HTTPAdapter(core, { enableCors: false, enableOpenAPI: false, timeout: 1 });
+
+        const response = await adapter.handleRequest({
+            method: 'POST',
+            url: '/api/v1/stream/definition',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ identifier: 'Anything' }),
+        });
+        const bodyText = await httpResponseBodyText(response.body);
+
+        expect(response.status).toBe(200);
+        expect(bodyText).toContain('event: definition-start');
+        expect(bodyText).toContain('event: definition-error');
+        expect(bodyText).toContain('"code":"Internal"');
+        expect(bodyText).toContain('timed out');
+    });
+
     test('HTTP stream definition rejects invalid maxResults before core delegation', async () => {
         const workspaceRoot = tempWorkspace();
         const core: any = {
@@ -1255,6 +1332,30 @@ describe('nexus contract regressions', () => {
         expect(JSON.parse(response.body)).toMatchObject({ success: false, error: 'Internal server error' });
     });
 
+    test('HTTP stream search rejects outside paths before opening the SSE stream', async () => {
+        const workspaceRoot = tempWorkspace();
+        const outsideRoot = tempWorkspace('sci-nexus-outside-');
+        const adapter = new HTTPAdapter(
+            {
+                config: { workspaceRoot },
+                async initialize() {},
+                sharedServices: {},
+            } as any,
+            { enableCors: false, enableOpenAPI: false }
+        );
+
+        const response = await adapter.handleRequest({
+            method: 'POST',
+            url: '/api/v1/stream/search',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ pattern: 'needle', path: outsideRoot, maxResults: 5 }),
+        });
+
+        expect(response.status).toBe(400);
+        expect(typeof response.body).toBe('string');
+        expect(response.body).toContain('workspace');
+    });
+
     test('HTTP stream search uses bounded search rather than definition lookup', async () => {
         const workspaceRoot = tempWorkspace();
         writeFileSync(join(workspaceRoot, 'sample.ts'), 'const haystack = "needle";\n', 'utf8');
@@ -1279,8 +1380,9 @@ describe('nexus contract regressions', () => {
 
         expect(response.status).toBe(200);
         expect(response.headers['Access-Control-Allow-Origin']).toBeUndefined();
-        expect(response.body).toContain('event: search-data');
-        expect(response.body).toContain('needle');
+        const bodyText = await httpResponseBodyText(response.body);
+        expect(bodyText).toContain('event: search-data');
+        expect(bodyText).toContain('needle');
     });
 
     test('HTTP and LSP adapters enforce configured operation timeouts', async () => {

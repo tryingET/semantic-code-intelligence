@@ -217,6 +217,20 @@ function invalidInitializeRequests(body: unknown): Record<string, unknown>[] {
     return invalid;
 }
 
+function isJsonRpcNotification(message: unknown): boolean {
+    return (
+        !!message &&
+        typeof message === 'object' &&
+        !Array.isArray(message) &&
+        !Object.hasOwn(message, 'id') &&
+        typeof (message as { method?: unknown }).method === 'string'
+    );
+}
+
+function jsonRpcMessageShouldReceiveResponse(message: unknown): boolean {
+    return !isJsonRpcNotification(message);
+}
+
 function ensureMcpAcceptHeaders(req: express.Request) {
     const accepts = (req.headers.accept as string | undefined) || '';
     const needJson = !/application\/json/i.test(accepts);
@@ -498,11 +512,16 @@ app.post('/mcp', async (req: express.Request, res: express.Response) => {
                         error: 'Fix the invalid initialize request and retry the batch',
                     }
                 );
-                const payloads = req.body.map((item: Record<string, unknown>) =>
-                    buildJsonRpcErrorPayload(invalidItems.has(item) ? core : batchCore, requestJsonRpcId(item))
-                );
-                if (/text\/event-stream/i.test(originalAccept)) sendSseJsonRpcPayload(res, payloads);
+                const payloads = req.body
+                    .filter(jsonRpcMessageShouldReceiveResponse)
+                    .map((item: Record<string, unknown>) =>
+                        buildJsonRpcErrorPayload(invalidItems.has(item) ? core : batchCore, requestJsonRpcId(item))
+                    );
+                if (!payloads.length) res.status(400).end();
+                else if (/text\/event-stream/i.test(originalAccept)) sendSseJsonRpcPayload(res, payloads);
                 else res.status(400).json(payloads);
+            } else if (!jsonRpcMessageShouldReceiveResponse(invalidInitialize[0])) {
+                res.status(400).end();
             } else if (/text\/event-stream/i.test(originalAccept)) {
                 sendSseJsonRpcError(res, core, requestJsonRpcId(invalidInitialize[0]));
             } else {

@@ -58,16 +58,16 @@ export class WorkspaceQueryWorkflowService {
         if (!path.isAbsolute(decodedPath)) return decodedPath;
 
         const absolutePath = path.resolve(decodedPath);
-        const workspaceRelative = path.relative(workspaceRoot, absolutePath);
-        if (!workspaceRelative) return '.';
-        if (!isOutsideWorkspaceRelative(workspaceRelative, true)) {
-            return workspaceRelative;
-        }
-
         const snapshotRelative = path.relative(path.resolve(snapshotRoot), absolutePath);
         if (!snapshotRelative) return '.';
         if (!isOutsideWorkspaceRelative(snapshotRelative, true)) {
             return snapshotRelative;
+        }
+
+        const workspaceRelative = path.relative(workspaceRoot, absolutePath);
+        if (!workspaceRelative) return '.';
+        if (!isOutsideWorkspaceRelative(workspaceRelative, true)) {
+            return workspaceRelative;
         }
 
         return decodedPath;
@@ -746,11 +746,11 @@ export class WorkspaceQueryWorkflowService {
         try {
             const snapshotRoot = await this.materializedSnapshotRoot(args);
             const workspaceRoot = snapshotRoot || this.workspaceRoot;
-            const queryPaths = paths?.map((item) =>
-                snapshotRoot
-                    ? this.snapshotReadPath(String(item), snapshotRoot)
-                    : this.pathInputFromToolFile(String(item), workspaceRoot)
-            );
+            const queryPaths = paths?.map((item) => {
+                if (!snapshotRoot) return this.pathInputFromToolFile(String(item), workspaceRoot);
+                const readPath = this.snapshotReadPath(String(item), snapshotRoot);
+                return this.assertSnapshotWorkspaceFilePath(readPath, String(item));
+            });
             const { runAstQuery } = await import('../ast-query.js');
             const out = await runAstQuery({
                 language: language as any,
@@ -759,6 +759,7 @@ export class WorkspaceQueryWorkflowService {
                 glob,
                 limit,
                 workspaceRoot,
+                excludedTopLevelPaths: snapshotRoot ? Array.from(SNAPSHOT_CONTROL_ARTIFACTS) : undefined,
             });
             return { payload: out, isError: false };
         } catch (error) {

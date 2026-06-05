@@ -33,6 +33,7 @@ export type AstQueryInput = {
     glob?: string;
     limit?: number;
     workspaceRoot?: string;
+    excludedTopLevelPaths?: string[];
 };
 
 export async function runAstQuery(inp: AstQueryInput) {
@@ -75,24 +76,39 @@ export async function runAstQuery(inp: AstQueryInput) {
     }
 
     const workspaceRoot = path.resolve(inp.workspaceRoot || process.cwd());
+    const excludedTopLevelPaths = new Set(
+        (Array.isArray(inp.excludedTopLevelPaths) ? inp.excludedTopLevelPaths : [])
+            .map((item) => path.normalize(String(item)).split(path.sep)[0])
+            .filter(Boolean)
+    );
+    const isExcludedTopLevelPath = (value: string): boolean => {
+        if (!excludedTopLevelPaths.size) return false;
+        const normalized = path.normalize(String(value));
+        const firstSegment = normalized.split(path.sep)[0];
+        return excludedTopLevelPaths.has(firstSegment);
+    };
     const fileSet = new Set<string>();
     const explicitPaths = Array.isArray(inp.paths) ? inp.paths.map(String).filter(Boolean) : [];
     for (const requestedPath of explicitPaths) {
-        fileSet.add(requestedPath);
+        if (!isExcludedTopLevelPath(requestedPath)) fileSet.add(requestedPath);
     }
     if (inp.glob) {
         const pattern = String(inp.glob).trim();
         if (path.isAbsolute(pattern) || pattern.split(/[\\/]+/).includes('..')) {
             throw new CoreError('InvalidParams', 'ast_query glob must stay within the workspace', { glob: inp.glob });
         }
+        const excludedGlobs = Array.from(excludedTopLevelPaths).flatMap((segment) => [segment, `${segment}/**`]);
         const matches = glob.sync(pattern, {
             cwd: workspaceRoot,
-            ignore: ['**/node_modules/**', '**/dist/**', '**/.git/**', '**/coverage/**'],
+            ignore: ['**/node_modules/**', '**/dist/**', '**/.git/**', '**/coverage/**', ...excludedGlobs],
             nodir: true,
             follow: false,
             absolute: false,
         } as any);
-        matches.slice(0, 2000).forEach((m) => fileSet.add(String(m)));
+        matches
+            .filter((m) => !isExcludedTopLevelPath(String(m)))
+            .slice(0, 2000)
+            .forEach((m) => fileSet.add(String(m)));
     }
     const files = Array.from(fileSet).slice(0, 2000);
     const resultLimit = parseBoundedInteger(inp.limit, 'limit', { defaultValue: 2000, min: 1, max: 2000 });

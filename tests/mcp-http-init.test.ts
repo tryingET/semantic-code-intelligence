@@ -248,6 +248,49 @@ bindTest('MCP HTTP failed initialize does not expose a poisoned session id', asy
     throw lastError ?? new Error('Failed to start MCP HTTP server after retries');
 });
 
+bindTest('MCP HTTP invalid initialize notification does not receive a JSON-RPC response', async () => {
+    const host = '127.0.0.1';
+    let lastError: unknown = null;
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+        const port = pickRandomPort(7091, 7999);
+        const env = {
+            ...process.env,
+            MCP_HTTP_HOST: host,
+            MCP_HTTP_PORT: String(port),
+            HTTP_API_PORT: String(port + 9),
+        };
+        const server = spawn(
+            process.env.BUN_PATH || `${process.env.HOME}/.bun/bin/bun`,
+            ['run', 'src/servers/mcp-http.ts'],
+            { env }
+        );
+
+        try {
+            await wait(500);
+            const resp = await fetch(`http://${host}:${port}/mcp`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ jsonrpc: '2.0', method: 'initialize', params: {} }),
+            });
+
+            if (resp.status < 500) {
+                expect(resp.status).toBe(400);
+                expect(resp.headers.get('Mcp-Session-Id')).toBeNull();
+                expect(await resp.text()).toBe('');
+                server.kill('SIGTERM');
+                return;
+            }
+        } catch (err) {
+            lastError = err;
+        } finally {
+            server.kill('SIGTERM');
+        }
+    }
+
+    throw lastError ?? new Error('Failed to start MCP HTTP server after retries');
+});
+
 bindTest('MCP HTTP failed batch initialize returns a batch-shaped error', async () => {
     const host = '127.0.0.1';
     let lastError: unknown = null;
@@ -274,6 +317,8 @@ bindTest('MCP HTTP failed batch initialize returns a batch-shaped error', async 
                 body: JSON.stringify([
                     { jsonrpc: '2.0', id: 1, method: 'initialize', params: {} },
                     { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} },
+                    {},
+                    { jsonrpc: '2.0', method: 'notifications/initialized', params: {} },
                 ]),
             });
 
@@ -281,11 +326,13 @@ bindTest('MCP HTTP failed batch initialize returns a batch-shaped error', async 
                 expect(resp.status).toBe(400);
                 const body = await resp.json();
                 expect(Array.isArray(body)).toBe(true);
-                expect(body).toHaveLength(2);
+                expect(body).toHaveLength(3);
                 expect(body[0].id).toBe(1);
                 expect(body[0].error?.code).toBe(-32602);
                 expect(body[1].id).toBe(2);
                 expect(body[1].error?.code).toBe(-32602);
+                expect(body[2].id).toBeNull();
+                expect(body[2].error?.code).toBe(-32602);
                 expect(resp.headers.get('Mcp-Session-Id')).toBeNull();
                 server.kill('SIGTERM');
                 return;
