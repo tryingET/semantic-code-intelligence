@@ -275,6 +275,8 @@ export interface NodeMetadata {
     conceptName?: string;
     conceptConfidence?: number;
     semanticType?: string;
+    /** Declaration/reference authority for symbol-bearing AST nodes. */
+    symbolRole?: 'declaration' | 'reference' | 'usage' | 'unknown';
     functionName?: string;
     className?: string;
     variableName?: string;

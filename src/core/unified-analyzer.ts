@@ -393,12 +393,15 @@ export class CodeAnalyzer {
                     }
                 }
             }
-            const streamingResults = streamingResultsAll.slice(0, request.maxResults ?? 200);
+            const definitionSearchResults = streamingResultsAll
+                .filter((result) => this.isLikelyDefinitionSearchHit(result.text || '', request.identifier))
+                .slice(0, request.maxResults ?? 200);
 
-            // Convert streaming results to Definition objects with full token expansion
+            // Convert declaration-shaped streaming results to Definition objects with full token expansion.
+            // Definition lookup must not silently downgrade into occurrence lookup.
             const definitions: Definition[] = [];
             const seenDef = new Set<string>();
-            for (const result of streamingResults) {
+            for (const result of definitionSearchResults) {
                 // Normalize column to 0-based; if missing, derive from line text
                 let col = result.column ?? 0;
                 if (result.column !== undefined) {
@@ -2162,7 +2165,7 @@ export class CodeAnalyzer {
 
         const decls = new Map<string, any>();
         for (const d of layer2Defs) {
-            const key = `${d.uri}:${d.range.start.line}:${d.range.start.character}`;
+            const key = `${d.uri}:${d.range.start.line}:${((d as any).name || id).toLowerCase()}`;
             decls.set(key, { uri: d.uri, range: d.range, kind: d.kind, name: (d as any).name || id });
         }
 
@@ -2746,6 +2749,7 @@ export class CodeAnalyzer {
 
     private astDefinitionName(node: any): string {
         const metadata = node?.metadata || {};
+        if (metadata.symbolRole && metadata.symbolRole !== 'declaration') return '';
         const exported = Array.isArray(metadata.exports) ? metadata.exports[0]?.name : undefined;
         return (
             metadata.functionName ||
@@ -3076,6 +3080,26 @@ export class CodeAnalyzer {
         }
         const absolutePath = path.isAbsolute(filePath) ? filePath : path.resolve(filePath);
         return pathToFileURL(absolutePath).href;
+    }
+
+    private isLikelyDefinitionSearchHit(lineText: string, identifier: string): boolean {
+        const id = (identifier || '').trim();
+        const line = (lineText || '').trim();
+        if (!id || !line) return false;
+        const escaped = this.escapeRegex(id);
+        const prefix = String.raw`(?:export\s+)?(?:default\s+)?(?:declare\s+)?(?:public\s+|private\s+|protected\s+|static\s+|async\s+|abstract\s+|readonly\s+)*`;
+        const declarationPatterns = [
+            new RegExp(String.raw`^${prefix}function\s+${escaped}\b`),
+            new RegExp(String.raw`^${prefix}(?:class|interface|type|enum)\s+${escaped}\b`),
+            new RegExp(String.raw`^${prefix}(?:const|let|var)\s+${escaped}\b`),
+            new RegExp(String.raw`^${prefix}${escaped}\s*[:=]\s*`),
+            new RegExp(String.raw`^${prefix}${escaped}\s*\([^)]*\)\s*(?::[^={]+)?\{`),
+            new RegExp(String.raw`^import\s+(?:type\s+)?(?:\{[^}]*\b${escaped}\b|${escaped}\b)`),
+            new RegExp(
+                String.raw`^export\s+(?:\{[^}]*\b${escaped}\b|(?:const|let|var|function|class|interface|type|enum)\s+${escaped}\b)`
+            ),
+        ];
+        return declarationPatterns.some((pattern) => pattern.test(line));
     }
 
     private inferDefinitionKind(text: string): DefinitionKind {

@@ -1,7 +1,7 @@
 // Tree-sitter AST Analysis Layer
 
+import { type Dirent, existsSync, readdirSync } from 'fs';
 import * as fs from 'fs/promises';
-import { existsSync, readdirSync, type Dirent } from 'fs';
 import * as path from 'path';
 import Parser, { Query, type SyntaxNode, type Tree } from 'tree-sitter';
 import type { OntologyEngine } from '../ontology/ontology-engine';
@@ -766,6 +766,7 @@ export class TreeSitterLayer implements Layer<EnhancedMatches, TreeSitterResult>
             const existingMetadata = astNode.metadata || {};
             astNode.metadata = {
                 ...existingMetadata,
+                symbolRole: 'declaration',
                 functionName,
             };
 
@@ -787,6 +788,7 @@ export class TreeSitterLayer implements Layer<EnhancedMatches, TreeSitterResult>
             const existingMetadata = astNode.metadata || {};
             astNode.metadata = {
                 ...existingMetadata,
+                symbolRole: 'declaration',
                 className,
             };
 
@@ -805,6 +807,7 @@ export class TreeSitterLayer implements Layer<EnhancedMatches, TreeSitterResult>
                 const astNode = this.createASTNode(node, filePath);
                 astNode.metadata = {
                     ...(astNode.metadata || {}),
+                    symbolRole: 'declaration',
                     variableName: node.text,
                 };
 
@@ -851,6 +854,7 @@ export class TreeSitterLayer implements Layer<EnhancedMatches, TreeSitterResult>
             const astNode = this.createASTNode(exportInfo.node, filePath);
             astNode.metadata = {
                 ...(astNode.metadata || {}),
+                symbolRole: 'declaration',
                 exportName: exportInfo.name,
                 exports: [{ name: exportInfo.name, type: exportInfo.type }],
             };
@@ -878,8 +882,13 @@ export class TreeSitterLayer implements Layer<EnhancedMatches, TreeSitterResult>
                     });
                     // Also push an AST node for the identifier itself to help reference validation
                     const astNode = this.createASTNode(node, filePath);
-                    // Mark minimal metadata
-                    astNode.metadata = { ...(astNode.metadata || {}), functionName: target } as any;
+                    // Mark call identifiers as references, not declarations. Definition flows
+                    // must not treat this functionName-shaped metadata as declaration evidence.
+                    astNode.metadata = {
+                        ...(astNode.metadata || {}),
+                        symbolRole: 'reference',
+                        functionName: target,
+                    } as any;
                     result.nodes.push(astNode);
                 }
             }
@@ -902,7 +911,7 @@ export class TreeSitterLayer implements Layer<EnhancedMatches, TreeSitterResult>
                 const cap = capture.name || '';
                 if (cap.endsWith('ref.object') || cap.endsWith('ref.property')) {
                     const idNode = this.createASTNode(node, filePath);
-                    idNode.metadata = { ...(idNode.metadata || {}) } as any;
+                    idNode.metadata = { ...(idNode.metadata || {}), symbolRole: 'reference' } as any;
                     result.nodes.push(idNode);
                 }
             }
