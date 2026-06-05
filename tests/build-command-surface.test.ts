@@ -656,6 +656,15 @@ describe('build command surface', () => {
         expect(enhancedTestBody).not.toContain('|| echo');
     });
 
+    test('roadmap Kubernetes deployment surfaces are guarded during alpha', () => {
+        const justfile = readText('justfile');
+        expect(justfile).toContain('SCI_ENABLE_ROADMAP_K8S_DEPLOY=1');
+        expect(justfile).toContain('Kubernetes deployment is roadmap-only during alpha');
+        expect(readText('k8s/production.yaml')).toContain('not a supported default path');
+        expect(readText('k8s/deployment.yaml')).toContain('not a supported default deployment path');
+        expect(readText('config/environments/production.yaml')).toContain('not a supported default path');
+    });
+
     test('MCP HTTP docs and env sample use streamable HTTP names', () => {
         const envSample = readText('.env.sample');
         const readme = readText('README.md');

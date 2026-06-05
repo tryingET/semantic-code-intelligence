@@ -965,9 +965,10 @@ docker-dev-clean:
     docker system prune -f
     @echo "✅ Development environment cleaned"
 
-# Deploy to Kubernetes staging
+# Roadmap-only Kubernetes staging deploy; not part of the Alpha MVP supported path.
 deploy-staging: docker-build test-all
     @echo "🚀 Deploying to staging..."
+    @if [ "${SCI_ENABLE_ROADMAP_K8S_DEPLOY:-}" != "1" ]; then echo "❌ Kubernetes deployment is roadmap-only during alpha. Set SCI_ENABLE_ROADMAP_K8S_DEPLOY=1 after explicit release approval."; exit 1; fi
     @if ! kubectl config current-context | grep -q staging; then echo "❌ Not connected to staging cluster"; exit 1; fi
     
     # Update image in manifests
@@ -993,9 +994,10 @@ deploy-staging: docker-build test-all
     @mv k8s/production.yaml.bak k8s/production.yaml 2>/dev/null || true
     @echo "✅ Staging deployment complete!"
 
-# Deploy to production (Docker + Kubernetes)
+# Roadmap-only Kubernetes production deploy; not part of the Alpha MVP supported path.
 deploy-production: docker-build test-all
     @echo "🚢 Deploying to production..."
+    @if [ "${SCI_ENABLE_ROADMAP_K8S_DEPLOY:-}" != "1" ]; then echo "❌ Kubernetes deployment is roadmap-only during alpha. Set SCI_ENABLE_ROADMAP_K8S_DEPLOY=1 after explicit release approval."; exit 1; fi
     @if ! kubectl config current-context | grep -q prod; then echo "❌ Not connected to production cluster"; exit 1; fi
     
     # Confirm production deployment

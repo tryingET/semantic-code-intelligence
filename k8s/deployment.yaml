@@ -1,4 +1,5 @@
-# Semantic Code Intelligence Main Application Deployment
+# Semantic Code Intelligence roadmap Kubernetes application deployment
+# Alpha MVP note: this manifest is not a supported default deployment path.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

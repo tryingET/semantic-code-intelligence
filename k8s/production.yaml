@@ -1,6 +1,6 @@
-# Semantic Code Intelligence Production Deployment
-# All-in-one file for production deployment
-# Apply with: kubectl apply -f production.yaml
+# Semantic Code Intelligence roadmap Kubernetes manifest
+# Alpha MVP note: Kubernetes/production deployment is not a supported default path.
+# Apply only after explicit release approval; prefer the guarded just deploy-* recipes.
 
 # Namespace
 apiVersion: v1
