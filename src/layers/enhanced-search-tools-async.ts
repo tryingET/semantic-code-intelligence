@@ -1116,16 +1116,13 @@ export class AsyncEnhancedGrep {
         if (!options.useRegex) args.push('-F'); // Fixed-string for speed unless regex requested
         if (options.includeHidden) args.push('--hidden');
 
-        // Pattern (already escaped if needed)
-        args.push(options.pattern);
-
         // Limit total matches if requested (ripgrep -m)
         if (typeof options.maxResults === 'number' && options.maxResults > 0) {
             args.push('-m', String(options.maxResults));
         }
 
-        // Path (default to current directory)
-        args.push(options.path || '.');
+        // End option parsing before user-controlled pattern/path so leading '-' searches stay literal.
+        args.push('--', options.pattern, options.path || '.');
 
         return args;
     }

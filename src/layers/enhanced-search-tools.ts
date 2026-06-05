@@ -531,8 +531,6 @@ export class EnhancedGrep {
     // Spawn-friendly args (no embedded quotes)
     private buildRipgrepArgsForSpawn(params: EnhancedGrepParams): string[] {
         const args: string[] = [];
-        // Basic pattern first (compatible with previous layout)
-        args.push(params.pattern);
         // Respect project ignores and add defaults
         args.push('--no-ignore-parent');
         args.push('--glob', '!node_modules/**');
@@ -566,8 +564,8 @@ export class EnhancedGrep {
         }
 
         if (typeof params.headLimit === 'number') args.push('-m', String(params.headLimit));
-        if (params.path) args.push(params.path);
-        else args.push(process.cwd());
+        // End option parsing before user-controlled pattern/path so leading '-' searches stay literal.
+        args.push('--', params.pattern, params.path || process.cwd());
         return args;
     }
 
@@ -1217,12 +1215,13 @@ export class EnhancedLS {
                     continue;
                 }
 
-                // Check ignore patterns
-                if (params.ignorePatterns?.some((pattern) => this.matchesIgnorePattern(dirent.name, pattern))) {
+                const fullPath = path.join(dirPath, dirent.name);
+                const relativePath = path.relative(path.resolve(params.path), path.resolve(fullPath)) || dirent.name;
+
+                // Check ignore patterns against both the entry name and its workspace-relative path.
+                if (params.ignorePatterns?.some((pattern) => this.matchesIgnorePattern(relativePath, pattern))) {
                     continue;
                 }
-
-                const fullPath = path.join(dirPath, dirent.name);
 
                 try {
                     const entry = await this.createLSEntry(dirent, fullPath, params);
@@ -1343,10 +1342,21 @@ export class EnhancedLS {
     }
 
     private matchesIgnorePattern(name: string, pattern: string): boolean {
-        // Simple glob pattern matching
-        const regex = pattern.replace(/\./g, '\\.').replace(/\*/g, '.*').replace(/\?/g, '.');
+        // Simple glob pattern matching for normalized relative paths. Treat "dir/**" as
+        // matching both the directory entry itself and descendants so recursive LS does
+        // not descend into ignored roots.
+        const normalizedName = name.replace(/\\/g, '/').replace(/^\.\//, '');
+        const normalizedPattern = pattern.replace(/\\/g, '/').replace(/^\.\//, '');
+        if (normalizedPattern.endsWith('/**')) {
+            const dirPattern = normalizedPattern.slice(0, -3).replace(/\/$/, '');
+            if (normalizedName === dirPattern || normalizedName.startsWith(`${dirPattern}/`)) return true;
+        }
+        const regex = normalizedPattern
+            .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+            .replace(/\*/g, '.*')
+            .replace(/\?/g, '.');
 
-        return new RegExp(`^${regex}$`).test(name);
+        return new RegExp(`^${regex}$`).test(normalizedName);
     }
 
     private sortEntries(

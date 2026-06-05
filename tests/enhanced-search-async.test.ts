@@ -12,8 +12,9 @@ const perfDescribe = perfOnly ? describe : describe.skip;
 
 import { EventEmitter } from 'node:events';
 import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
 import * as os from 'node:os';
+import * as path from 'node:path';
+import { EnhancedGrep, EnhancedLS } from '../src/layers/enhanced-search-tools';
 import {
     AsyncEnhancedGrep,
     RipgrepProcessPool,
@@ -103,6 +104,55 @@ describe('Async Enhanced Search correctness', () => {
             expect(second).toHaveLength(0);
         } finally {
             grep.destroy();
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    });
+
+    test('treats leading-dash async search patterns as literals', async () => {
+        const root = await tempDir('sci-grep-leading-dash-');
+        const grep = new AsyncEnhancedGrep({ cacheSize: 0, defaultTimeout: 1000 });
+        try {
+            await fs.writeFile(path.join(root, 'flags.txt'), 'literal --files token\nplain text\n', 'utf8');
+            const results = await grep.search({ pattern: '--files', path: root, maxResults: 10, timeout: 1000 });
+            expect(results).toHaveLength(1);
+            expect(results[0]).toMatchObject({ file: path.join(root, 'flags.txt'), line: 1 });
+        } finally {
+            grep.destroy();
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    });
+
+    test('treats leading-dash legacy grep patterns as literals', async () => {
+        const root = await tempDir('sci-legacy-grep-leading-dash-');
+        const grep = new EnhancedGrep({ enableSmartCache: false, defaultTimeout: 1000 });
+        try {
+            await fs.writeFile(path.join(root, 'flags.txt'), 'literal --files token\nplain text\n', 'utf8');
+            const results = await grep.search({ pattern: '--files', path: root, headLimit: 10 });
+            expect(results).toHaveLength(1);
+            expect(results[0]).toMatchObject({ file: path.join(root, 'flags.txt'), line: 1 });
+        } finally {
+            await grep.dispose();
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    });
+
+    test('recursive LS ignores directory roots matched by dir-glob patterns', async () => {
+        const root = await tempDir('sci-ls-ignore-dir-root-');
+        const ls = new EnhancedLS({ enableSmartCache: false, defaultTimeout: 1000 });
+        try {
+            await fs.mkdir(path.join(root, 'node_modules', 'pkg'), { recursive: true });
+            await fs.mkdir(path.join(root, 'src'), { recursive: true });
+            await fs.writeFile(path.join(root, 'node_modules', 'pkg', 'index.js'), 'drop\n', 'utf8');
+            await fs.writeFile(path.join(root, 'src', 'index.ts'), 'keep\n', 'utf8');
+            const result = await ls.list({ path: root, recursive: true, ignorePatterns: ['node_modules/**'] });
+            expect(result.entries.map((entry) => path.relative(root, entry.path))).toContain(
+                path.join('src', 'index.ts')
+            );
+            expect(result.entries.some((entry) => path.relative(root, entry.path).startsWith('node_modules'))).toBe(
+                false
+            );
+        } finally {
+            await ls.dispose();
             await fs.rm(root, { recursive: true, force: true });
         }
     });
