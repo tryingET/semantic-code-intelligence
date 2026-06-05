@@ -230,6 +230,26 @@ describe('tool boundary contract', () => {
         expect(mutatingApply.output).toContain('git apply validation commands must include --check');
     });
 
+    test('run_checks excludes snapshot control artifacts from validation cwd', async () => {
+        const root = tempRoot();
+        writeFileSync(join(root, 'package.json'), '{"type":"module"}\n', 'utf8');
+        writeFileSync(join(root, 'sample.txt'), 'old\n', 'utf8');
+        const store = new OverlayStore();
+        const snap = store.createSnapshot(false, { workspaceRoot: root });
+        expect(
+            store.stagePatch(
+                snap.id,
+                'diff --git a/sample.txt b/sample.txt\n--- a/sample.txt\n+++ b/sample.txt\n@@ -1 +1 @@\n-old\n+new\n'
+            ).accepted
+        ).toBe(true);
+
+        const result = await store.runChecks(snap.id, ['test -f overlay.diff'], 5, { workspaceRoot: root });
+
+        expect(result.ok).toBe(false);
+        expect(result.commands[0]).toMatchObject({ command: 'test -f overlay.diff', ok: false, exitCode: 1 });
+        expect(result.output).not.toContain('new\n');
+    });
+
     test('run_checks rejects oversized command lists before execution', async () => {
         const root = tempRoot();
         writeFileSync(join(root, 'package.json'), '{"type":"module"}\n', 'utf8');

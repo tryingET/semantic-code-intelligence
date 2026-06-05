@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, symlinkSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
@@ -119,6 +119,31 @@ describe('OverlayStore applyToWorkingTree with unified diff', () => {
             rmSync(nestedDir, { recursive: true, force: true });
         }
     });
+
+    test('nested add-file apply refuses symlinked missing parent without creating outside files', async () => {
+        const root = await fs.mkdtemp(path.join(tmpdir(), 'sci-overlay-symlink-parent-'));
+        const outside = await fs.mkdtemp(path.join(tmpdir(), 'sci-overlay-outside-parent-'));
+        try {
+            spawnSync('git', ['init', '-q'], { cwd: root });
+            const store = new OverlayStore();
+            const snap = store.createSnapshot(false, { workspaceRoot: root });
+            const patch = `diff --git a/newdir/sub/file.txt b/newdir/sub/file.txt\n--- /dev/null\n+++ b/newdir/sub/file.txt\n@@ -0,0 +1,1 @@\n+hello\n`;
+            expect(store.stagePatch(snap.id, patch).accepted).toBe(true);
+            symlinkSync(outside, path.join(root, 'newdir'), 'dir');
+
+            await expect(
+                store.applyToWorkingTree(snap.id, {
+                    check: false,
+                    reverse: false,
+                    workspaceRoot: root,
+                })
+            ).rejects.toThrow('Workspace changed since snapshot creation');
+            expect(existsSync(path.join(outside, 'sub/file.txt'))).toBe(false);
+        } finally {
+            await fs.rm(root, { recursive: true, force: true });
+            await fs.rm(outside, { recursive: true, force: true });
+        }
+    }, 30000);
 
     test('nested add-file apply reverses file and empty parent directory', async () => {
         const nestedDir = `.tmp-overlay-apply-${Date.now()}-${Math.random().toString(16).slice(2)}`;

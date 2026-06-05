@@ -1768,6 +1768,10 @@ export class OverlayStore {
         }
     }
 
+    private snapshotPayloadCopyExcludes(): string[] {
+        return ['overlay.diff', 'metadata.json', '.materialized', 'progress.log'];
+    }
+
     private async createCheckWorkspace(
         snapshotId: string,
         materializedDir: string
@@ -1776,23 +1780,34 @@ export class OverlayStore {
         const snap = this.ensureSnapshot(snapshotId);
         const snapsRoot = this.snapshotsRoot(snap.workspaceRoot);
         const checkDir = path.join(snapsRoot, `.${snapshotId}.${process.pid}.${Date.now()}.${randomUUID()}.check`);
+        const controlArtifactExcludes = this.snapshotPayloadCopyExcludes();
         await fsp.rm(checkDir, { recursive: true, force: true }).catch(() => {});
         await fsp.mkdir(checkDir, { recursive: true });
         try {
             if (this.which('rsync')) {
                 this.spawnCheckedArgs(
                     'rsync',
-                    ['-a', '--delete', `${materializedDir}/`, `${checkDir}/`],
+                    [
+                        '-a',
+                        '--delete',
+                        ...controlArtifactExcludes.flatMap((name) => ['--exclude', `/${name}`]),
+                        `${materializedDir}/`,
+                        `${checkDir}/`,
+                    ],
                     'Failed to copy snapshot check workspace'
                 );
             } else if (this.which('tar')) {
+                const excludeArgs = controlArtifactExcludes
+                    .map((name) => `--exclude=${this.shellQuote(`./${name}`)}`)
+                    .join(' ');
                 this.spawnChecked(
-                    `tar -C ${this.shellQuote(materializedDir)} -cf - . | tar -C ${this.shellQuote(checkDir)} -xf -`,
+                    `tar -C ${this.shellQuote(materializedDir)} ${excludeArgs} -cf - . | tar -C ${this.shellQuote(checkDir)} -xf -`,
                     'Failed to copy snapshot check workspace'
                 );
             } else {
                 const entries = await fsp.readdir(materializedDir, { withFileTypes: true });
                 for (const ent of entries) {
+                    if (controlArtifactExcludes.includes(ent.name)) continue;
                     const src = path.join(materializedDir, ent.name);
                     const dest = path.join(checkDir, ent.name);
                     this.spawnCheckedArgs('cp', ['-a', src, dest], 'Failed to copy snapshot check workspace entry');
@@ -2449,12 +2464,7 @@ export class OverlayStore {
                 const dirState = this.collectApplyDirState(applyEnsureDirs, workspaceRoot);
                 applyCreatedDirs = dirState.missing;
                 applyPreExistingDirs = dirState.existing;
-                for (const rel of applyEnsureDirs) {
-                    if (!rel || rel === '.' || rel === '/') continue;
-                    const { absolutePath } = this.containedPath(workspaceRoot, rel, 'apply_snapshot directory');
-                    await fsp.mkdir(absolutePath, { recursive: true });
-                }
-                applyDirFingerprints = this.collectApplyDirFingerprints(applyEnsureDirs, workspaceRoot);
+                applyDirFingerprints = this.collectApplyDirFingerprints(applyPreExistingDirs, workspaceRoot);
             }
         } catch {
             const elapsedMs = Date.now() - start;
@@ -2495,7 +2505,7 @@ export class OverlayStore {
         }
         if (!check && !reverse) {
             try {
-                const latestFingerprints = this.collectApplyDirFingerprints(applyEnsureDirs, workspaceRoot);
+                const latestFingerprints = this.collectApplyDirFingerprints(applyPreExistingDirs, workspaceRoot);
                 if (!this.applyDirFingerprintsMatch(applyDirFingerprints, latestFingerprints)) {
                     throw new Error('apply_snapshot target directories changed before apply');
                 }
