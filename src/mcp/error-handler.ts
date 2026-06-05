@@ -24,6 +24,7 @@ export interface RecoveryOptions {
     maxDelay: number;
     exponentialBackoff: boolean;
     circuitBreakerThreshold: number; // failures before opening circuit
+    circuitBreakerResetTimeout: number; // milliseconds before an open circuit can try again
     jitterMs: number; // random jitter amplitude in ms
     timeoutMs: number; // per-attempt operation timeout
 }
@@ -33,6 +34,29 @@ class OperationTimeoutError extends Error {
         super(`Operation timed out after ${timeoutMs}ms`);
         this.name = 'OperationTimeoutError';
     }
+}
+
+function parsePositiveIntegerEnv(name: string, value: string | undefined): number | undefined {
+    if (value === undefined || value === '') return undefined;
+    if (!/^\d+$/.test(value.trim())) throw new Error(`Invalid numeric environment variable ${name}: ${value}`);
+    const parsed = Number(value);
+    if (!Number.isSafeInteger(parsed) || parsed < 1) {
+        throw new Error(`Invalid numeric environment variable ${name}: ${value}`);
+    }
+    return parsed;
+}
+
+function environmentRecoveryOptions(): Partial<RecoveryOptions> {
+    return {
+        circuitBreakerThreshold: parsePositiveIntegerEnv(
+            'CIRCUIT_BREAKER_THRESHOLD',
+            process.env.CIRCUIT_BREAKER_THRESHOLD
+        ),
+        circuitBreakerResetTimeout: parsePositiveIntegerEnv(
+            'CIRCUIT_BREAKER_RESET_TIMEOUT',
+            process.env.CIRCUIT_BREAKER_RESET_TIMEOUT
+        ),
+    };
 }
 
 export class ErrorHandler {
@@ -52,12 +76,13 @@ export class ErrorHandler {
         maxDelay: 30000,
         exponentialBackoff: true,
         circuitBreakerThreshold: 5,
+        circuitBreakerResetTimeout: 30000,
         jitterMs: 1000,
         timeoutMs: 30000,
     };
 
     constructor(private options: Partial<RecoveryOptions> = {}) {
-        this.options = { ...this.defaultOptions, ...options };
+        this.options = { ...this.defaultOptions, ...environmentRecoveryOptions(), ...options };
     }
 
     /**
@@ -76,7 +101,7 @@ export class ErrorHandler {
         const operationKey = `${context.component}:${context.operation}`;
 
         // Check circuit breaker
-        if (this.isCircuitOpen(operationKey)) {
+        if (this.isCircuitOpen(operationKey, effectiveOptions)) {
             const error = new Error(`Circuit breaker open for ${operationKey}`);
             this.logError(context, error, { circuitBreakerOpen: true });
             throw this.createMcpError(ErrorCode.InternalError, error.message, context);
@@ -130,7 +155,7 @@ export class ErrorHandler {
                 }
 
                 // Update circuit breaker for retryable/system failures only.
-                this.recordFailure(operationKey);
+                this.recordFailure(operationKey, effectiveOptions);
 
                 // Wait before retry (except on last attempt)
                 if (attempt < maxAttempts) {
@@ -384,15 +409,15 @@ export class ErrorHandler {
         }
     }
 
-    private isCircuitOpen(operationKey: string): boolean {
+    private isCircuitOpen(operationKey: string, options: RecoveryOptions): boolean {
         const state = this.circuitBreakerState.get(operationKey);
         if (!state) return false;
 
         if (state.isOpen) {
             // Check if enough time has passed to try again (half-open state)
             const timeSinceLastFailure = Date.now() - state.lastFailure;
-            if (timeSinceLastFailure > 60000) {
-                // 1 minute
+            const resetTimeout = options.circuitBreakerResetTimeout ?? this.defaultOptions.circuitBreakerResetTimeout;
+            if (timeSinceLastFailure > resetTimeout) {
                 state.isOpen = false;
                 state.failures = 0;
                 return false;
@@ -403,7 +428,7 @@ export class ErrorHandler {
         return false;
     }
 
-    private recordFailure(operationKey: string): void {
+    private recordFailure(operationKey: string, options: RecoveryOptions): void {
         let state = this.circuitBreakerState.get(operationKey);
         if (!state) {
             state = { failures: 0, lastFailure: 0, isOpen: false };
@@ -413,7 +438,7 @@ export class ErrorHandler {
         state.failures++;
         state.lastFailure = Date.now();
 
-        const threshold = this.options.circuitBreakerThreshold ?? this.defaultOptions.circuitBreakerThreshold;
+        const threshold = options.circuitBreakerThreshold ?? this.defaultOptions.circuitBreakerThreshold;
         if (state.failures >= threshold) {
             state.isOpen = true;
             mcpLogger.warn(`Circuit breaker opened for ${operationKey}`, {

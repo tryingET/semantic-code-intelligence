@@ -216,13 +216,18 @@ export class ErrorHandler {
         operation: () => Promise<T>,
         options: {
             circuitBreakerThreshold?: number;
+            circuitBreakerResetTimeout?: number;
             retryConfig?: Partial<RetryConfig>;
             degradationStrategy?: DegradationStrategy;
             fallbackValue?: T;
             timeout?: number;
         } = {}
     ): Promise<T> {
-        const circuitBreaker = this.getOrCreateCircuitBreaker(layerName, options.circuitBreakerThreshold);
+        const circuitBreaker = this.getOrCreateCircuitBreaker(
+            layerName,
+            options.circuitBreakerThreshold,
+            options.circuitBreakerResetTimeout
+        );
 
         const timeoutPromise = options.timeout ? this.createTimeoutPromise<T>(options.timeout, layerName) : null;
 
@@ -297,9 +302,9 @@ export class ErrorHandler {
         return !breaker || breaker.getState() !== CircuitBreakerState.Open;
     }
 
-    private getOrCreateCircuitBreaker(layerName: string, threshold?: number): CircuitBreaker {
+    private getOrCreateCircuitBreaker(layerName: string, threshold?: number, resetTimeout?: number): CircuitBreaker {
         if (!this.circuitBreakers.has(layerName)) {
-            this.circuitBreakers.set(layerName, new CircuitBreaker(threshold));
+            this.circuitBreakers.set(layerName, new CircuitBreaker(threshold, resetTimeout));
         }
         return this.circuitBreakers.get(layerName)!;
     }

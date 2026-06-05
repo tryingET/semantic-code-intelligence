@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createDefaultCoreConfig } from '../src/adapters/utils.js';
-import { getConfig, getEnvironmentConfig } from '../src/core/config/server-config.js';
+import { DEFAULT_CONFIG, getConfig, getEnvironmentConfig, getServiceUrl } from '../src/core/config/server-config.js';
 import { createRuntimeCoreConfig } from '../src/core/runtime-config.js';
 import { resolveConfiguredWorkspaceRoot } from '../src/core/workspace-root.js';
 import { resolveLspInitializeWorkspaceRoot } from '../src/servers/lsp.js';
@@ -15,6 +15,10 @@ const originalLegacyWorkspace = process.env.WORKSPACE_ROOT;
 const originalHttpPort = process.env.HTTP_API_PORT;
 const originalMcpPort = process.env.MCP_HTTP_PORT;
 const originalLspPort = process.env.LSP_SERVER_PORT;
+const originalLspHost = process.env.LSP_HOST;
+const originalCacheEnabled = process.env.LSP_CACHE_ENABLED;
+const originalCircuitBreakerThreshold = process.env.CIRCUIT_BREAKER_THRESHOLD;
+const originalCircuitBreakerResetTimeout = process.env.CIRCUIT_BREAKER_RESET_TIMEOUT;
 const originalDbPath = process.env.SEMANTIC_CODE_DB_PATH;
 const originalLayer4DbPath = process.env.LAYER4_DB_PATH;
 const originalNodeEnv = process.env.NODE_ENV;
@@ -38,6 +42,14 @@ afterEach(() => {
     else process.env.MCP_HTTP_PORT = originalMcpPort;
     if (originalLspPort === undefined) delete process.env.LSP_SERVER_PORT;
     else process.env.LSP_SERVER_PORT = originalLspPort;
+    if (originalLspHost === undefined) delete process.env.LSP_HOST;
+    else process.env.LSP_HOST = originalLspHost;
+    if (originalCacheEnabled === undefined) delete process.env.LSP_CACHE_ENABLED;
+    else process.env.LSP_CACHE_ENABLED = originalCacheEnabled;
+    if (originalCircuitBreakerThreshold === undefined) delete process.env.CIRCUIT_BREAKER_THRESHOLD;
+    else process.env.CIRCUIT_BREAKER_THRESHOLD = originalCircuitBreakerThreshold;
+    if (originalCircuitBreakerResetTimeout === undefined) delete process.env.CIRCUIT_BREAKER_RESET_TIMEOUT;
+    else process.env.CIRCUIT_BREAKER_RESET_TIMEOUT = originalCircuitBreakerResetTimeout;
     if (originalDbPath === undefined) delete process.env.SEMANTIC_CODE_DB_PATH;
     else process.env.SEMANTIC_CODE_DB_PATH = originalDbPath;
     if (originalLayer4DbPath === undefined) delete process.env.LAYER4_DB_PATH;
@@ -220,6 +232,52 @@ describe('runtime config contract', () => {
                 rootPath: rootPathWorkspace,
             } as any)
         ).toBe(rootUriWorkspace);
+    });
+
+    test('documented server environment overrides are applied and parsed strictly', () => {
+        delete process.env.HTTP_API_PORT;
+        delete process.env.MCP_HTTP_PORT;
+        delete process.env.LSP_SERVER_PORT;
+        process.env.LSP_HOST = '127.0.0.42';
+        process.env.LSP_CACHE_ENABLED = 'false';
+        process.env.CIRCUIT_BREAKER_THRESHOLD = '9';
+        process.env.CIRCUIT_BREAKER_RESET_TIMEOUT = '12345';
+
+        expect(getConfig(tempWorkspace())).toMatchObject({
+            host: '127.0.0.42',
+            cacheEnabled: false,
+            circuitBreakerThreshold: 9,
+            circuitBreakerResetTimeout: 12345,
+        });
+
+        process.env.LSP_CACHE_ENABLED = 'tru';
+        expect(() => getConfig(tempWorkspace())).toThrow('Invalid boolean environment variable LSP_CACHE_ENABLED');
+
+        process.env.LSP_CACHE_ENABLED = 'false';
+        process.env.LSP_HOST = '';
+        expect(() => getConfig(tempWorkspace())).toThrow('Invalid host environment variable LSP_HOST');
+
+        process.env.LSP_HOST = '127.0.0.42';
+        process.env.CIRCUIT_BREAKER_THRESHOLD = '0';
+        expect(() => getConfig(tempWorkspace())).toThrow(
+            'Invalid positive numeric environment variable CIRCUIT_BREAKER_THRESHOLD'
+        );
+    });
+
+    test('runtime server circuit breaker config requires positive values', () => {
+        const root = tempWorkspace();
+        writeFileSync(
+            join(root, '.semantic-code-intelligence-config.yaml'),
+            'server:\n  circuitBreakerThreshold: 0\n',
+            'utf8'
+        );
+        expect(() => getConfig(root)).toThrow(
+            'Invalid positive numeric runtime configuration server.circuitBreakerThreshold'
+        );
+    });
+
+    test('service URLs bracket IPv6 hosts', () => {
+        expect(getServiceUrl('mcpHTTP', { ...DEFAULT_CONFIG, host: '::1' })).toBe('http://[::1]:7001');
     });
 
     test('server cacheEnabled runtime config is parsed strictly', () => {

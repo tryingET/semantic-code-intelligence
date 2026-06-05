@@ -60,11 +60,35 @@ function parseIntegerEnv(name: string, value: string): number {
     return parsed;
 }
 
+function parsePositiveIntegerEnv(name: string, value: string): number {
+    const parsed = parseIntegerEnv(name, value);
+    if (parsed < 1) {
+        throw new Error(`Invalid positive numeric environment variable ${name}: ${value}`);
+    }
+    return parsed;
+}
+
+function parseBooleanEnv(name: string, value: string): boolean {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+    throw new Error(`Invalid boolean environment variable ${name}: ${value}`);
+}
+
+function parseHostEnv(name: string, value: string): string {
+    const trimmed = value.trim();
+    if (!trimmed) throw new Error(`Invalid host environment variable ${name}: ${value}`);
+    return trimmed;
+}
+
 export function getConfig(startDir = process.cwd()): ServerConfig {
     const config: ServerConfig = { ...DEFAULT_CONFIG, ports: { ...DEFAULT_CONFIG.ports } };
     applyRuntimeServerConfig(config, startDir);
 
     // Allow environment variables to override defaults
+    if (process.env.LSP_HOST !== undefined) {
+        config.host = parseHostEnv('LSP_HOST', process.env.LSP_HOST);
+    }
     if (process.env.HTTP_API_PORT) {
         config.ports.httpAPI = parseIntegerEnv('HTTP_API_PORT', process.env.HTTP_API_PORT);
     }
@@ -81,10 +105,22 @@ export function getConfig(startDir = process.cwd()): ServerConfig {
         config.maxRetries = parseIntegerEnv('LSP_MAX_RETRIES', process.env.LSP_MAX_RETRIES);
     }
     if (process.env.LSP_CACHE_ENABLED) {
-        config.cacheEnabled = process.env.LSP_CACHE_ENABLED === 'true';
+        config.cacheEnabled = parseBooleanEnv('LSP_CACHE_ENABLED', process.env.LSP_CACHE_ENABLED);
     }
     if (process.env.LSP_CACHE_TTL) {
         config.cacheTTL = parseIntegerEnv('LSP_CACHE_TTL', process.env.LSP_CACHE_TTL);
+    }
+    if (process.env.CIRCUIT_BREAKER_THRESHOLD) {
+        config.circuitBreakerThreshold = parsePositiveIntegerEnv(
+            'CIRCUIT_BREAKER_THRESHOLD',
+            process.env.CIRCUIT_BREAKER_THRESHOLD
+        );
+    }
+    if (process.env.CIRCUIT_BREAKER_RESET_TIMEOUT) {
+        config.circuitBreakerResetTimeout = parsePositiveIntegerEnv(
+            'CIRCUIT_BREAKER_RESET_TIMEOUT',
+            process.env.CIRCUIT_BREAKER_RESET_TIMEOUT
+        );
     }
 
     validatePorts(config);
@@ -102,6 +138,14 @@ function parseIntegerConfig(name: string, value: unknown): number {
     const parsed = Number(text);
     if (!Number.isSafeInteger(parsed)) {
         throw new Error(`Invalid numeric runtime configuration ${name}: ${String(value)}`);
+    }
+    return parsed;
+}
+
+function parsePositiveIntegerConfig(name: string, value: unknown): number {
+    const parsed = parseIntegerConfig(name, value);
+    if (parsed < 1) {
+        throw new Error(`Invalid positive numeric runtime configuration ${name}: ${String(value)}`);
     }
     return parsed;
 }
@@ -133,6 +177,16 @@ function applyRuntimeServerConfig(config: ServerConfig, startDir: string): void 
     if (server.cacheEnabled !== undefined)
         config.cacheEnabled = parseBooleanConfig('server.cacheEnabled', server.cacheEnabled);
     if (server.cacheTTL !== undefined) config.cacheTTL = parseIntegerConfig('server.cacheTTL', server.cacheTTL);
+    if (server.circuitBreakerThreshold !== undefined)
+        config.circuitBreakerThreshold = parsePositiveIntegerConfig(
+            'server.circuitBreakerThreshold',
+            server.circuitBreakerThreshold
+        );
+    if (server.circuitBreakerResetTimeout !== undefined)
+        config.circuitBreakerResetTimeout = parsePositiveIntegerConfig(
+            'server.circuitBreakerResetTimeout',
+            server.circuitBreakerResetTimeout
+        );
 }
 
 /**
@@ -198,10 +252,16 @@ export function validatePorts(config: ServerConfig): void {
 /**
  * Get URL for a specific service
  */
+function hostForUrl(host: string): string {
+    const trimmed = host.trim();
+    if (trimmed.includes(':') && !trimmed.startsWith('[') && !trimmed.endsWith(']')) return `[${trimmed}]`;
+    return trimmed;
+}
+
 export function getServiceUrl(service: keyof ServerPorts, config?: ServerConfig): string {
     const cfg = config || getEnvironmentConfig();
     const port = cfg.ports[service];
-    return `http://${cfg.host}:${port}`;
+    return `http://${hostForUrl(cfg.host)}:${port}`;
 }
 
 /**
