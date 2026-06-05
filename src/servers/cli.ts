@@ -403,6 +403,11 @@ class CLI {
                 });
                 await this.exitIfAdapterError(out, !!options.json);
                 console.log(out);
+                if (this.adapterOutputIndicatesCheckFailure(out)) {
+                    this.markCommandFailed();
+                    await this.shutdown();
+                    process.exit(1);
+                }
                 await this.shutdown();
                 process.exit(0);
             });
@@ -429,6 +434,11 @@ class CLI {
                 });
                 await this.exitIfAdapterError(out, !!options.json);
                 console.log(out);
+                if (this.adapterOutputIndicatesCheckFailure(out)) {
+                    this.markCommandFailed();
+                    await this.shutdown();
+                    process.exit(1);
+                }
                 await this.shutdown();
                 process.exit(0);
             });
@@ -623,6 +633,11 @@ class CLI {
                         process.exit(1);
                     }
                     console.log(printed);
+                    if (this.workflowResultIndicatesCheckFailure(String(name), result)) {
+                        this.markCommandFailed();
+                        await this.shutdown();
+                        process.exit(1);
+                    }
                     await this.shutdown();
                     process.exit(0);
                 } catch (e) {
@@ -842,6 +857,11 @@ class CLI {
                 process.exit(1);
             }
             console.log(printed);
+            if (this.workflowResultIndicatesCheckFailure(name, result)) {
+                this.markCommandFailed();
+                await this.shutdown();
+                process.exit(1);
+            }
             await this.shutdown();
             process.exit(0);
         } catch (error) {
@@ -856,6 +876,42 @@ class CLI {
 
     private isToolResultError(res: any): boolean {
         return res?.isError === true || res?.error || res?.success === false;
+    }
+
+    private adapterOutputIndicatesCheckFailure(out: string): boolean {
+        const trimmed = out.trim();
+        if (!trimmed) return false;
+        try {
+            const parsed = JSON.parse(trimmed);
+            return parsed?.ok === false || parsed?.checks?.ok === false;
+        } catch {
+            return /\bFAIL\b/.test(trimmed);
+        }
+    }
+
+    private workflowResultIndicatesCheckFailure(name: string, res: any): boolean {
+        if (name !== 'run_checks') return false;
+        const payload = this.workflowResultPayload(res);
+        return payload?.ok === false;
+    }
+
+    private workflowResultPayload(res: any): any {
+        if (res?.payload && typeof res.payload === 'object') return res.payload;
+        if (res?.content?.[0]?.text && typeof res.content[0].text === 'string') {
+            try {
+                return JSON.parse(res.content[0].text);
+            } catch {
+                return null;
+            }
+        }
+        if (typeof res?.text === 'string') {
+            try {
+                return JSON.parse(res.text);
+            } catch {
+                return null;
+            }
+        }
+        return null;
     }
 
     private printToolResult(res: any, rawJson: boolean): string {
