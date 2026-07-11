@@ -22,11 +22,11 @@
     "lanes": [
       {
         "lane": "ts",
-        "command": "uv tool -n run --from 'git+file:///home/tryinget/ai-society/core/engineering-core@v0.6.0' engineering-core show ts"
+        "command": "uv tool -n run --from 'git+file:///home/tryinget/ai-society/core/engineering-core@99290024b78eb6f1665adda6d75d06045b6a9cc2' engineering-core show ts"
       },
       {
         "lane": "ts-frontend",
-        "command": "uv tool -n run --from 'git+file:///home/tryinget/ai-society/core/engineering-core@v0.6.0' engineering-core show ts-frontend"
+        "command": "uv tool -n run --from 'git+file:///home/tryinget/ai-society/core/engineering-core@99290024b78eb6f1665adda6d75d06045b6a9cc2' engineering-core show ts-frontend"
       }
     ],
     "loop_validation": {
