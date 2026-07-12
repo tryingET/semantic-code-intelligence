@@ -1375,6 +1375,18 @@
           ],
           "dod": "Task reaches done in society.db with evidence recorded.",
           "completed_at": "2026-07-12"
+        },
+        {
+          "id": "AK-TASK-3828",
+          "title": "Archive completed Phase 1 strategic frame after audit closeout",
+          "state": "doing",
+          "tasks": [
+            {
+              "text": "Archive completed Phase 1 strategic frame after audit closeout (task #3828)",
+              "done": false
+            }
+          ],
+          "dod": "Task reaches done in society.db with evidence recorded."
         }
       ]
     }
