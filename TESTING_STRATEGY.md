@@ -564,40 +564,17 @@ export const factory = {
 
 ## 6. Test Execution Plan
 
-### Continuous Integration
+### Continuous integration
 
-```yaml
-# .github/workflows/test.yml
-name: Test Suite
-on: [push, pull_request]
+The canonical automatic workflow is `.github/workflows/alpha-mvp.yml`. It pins Bun 1.3.12 and runs:
 
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: oven-sh/setup-bun@v1
-      - run: bun install --frozen-lockfile
-      - run: just init
-      
-      # Unit tests
-      - run: just test-unit
-      
-      # Integration tests
-      - run: just start-test-servers
-      - run: just test-integration
-      - run: just stop-test-servers
-      
-      # E2E tests
-      - run: just test-e2e
-      
-      # Performance tests
-      - run: just bench
-      
-      # Coverage report
-      - run: just test-coverage
-      - uses: codecov/codecov-action@v3
+```bash
+./scripts/ci/portable.sh
+bun install --frozen-lockfile
+bun run alpha:mvp:check
 ```
+
+Broad E2E, performance, coverage, IDE, and deployment validation is opt-in and must not be interpreted as part of the Alpha gate.
 
 ### Local Testing
 

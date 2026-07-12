@@ -180,12 +180,53 @@ describe('build command surface', () => {
         }
     });
 
+    test('migration hygiene handles empty Kubernetes sets and rejects portable-path leaks', () => {
+        const script = join(process.cwd(), 'scripts/migration-hygiene.sh');
+        const makeRepo = () => {
+            const dir = mkdtempSync(join(tmpdir(), 'sci-migration-hygiene-'));
+            const init = spawnSync('git', ['init'], { cwd: dir, encoding: 'utf8' });
+            expect(init.status, init.stderr || init.stdout).toBe(0);
+            return dir;
+        };
+
+        const empty = makeRepo();
+        const homeLeak = makeRepo();
+        const generated = makeRepo();
+        try {
+            const clean = spawnSync('bash', [script], { cwd: empty, encoding: 'utf8' });
+            expect(clean.status, clean.stderr || clean.stdout).toBe(0);
+            expect(clean.stdout).toContain('no applyable Kubernetes placeholder secrets');
+
+            writeFileSync(join(homeLeak, 'config.txt'), `${['', 'Users', 'alice', 'private'].join('/')}\n`);
+            spawnSync('git', ['add', 'config.txt'], { cwd: homeLeak, encoding: 'utf8' });
+            const leaked = spawnSync('bash', [script], { cwd: homeLeak, encoding: 'utf8' });
+            expect(leaked.status).toBe(1);
+            expect(leaked.stderr).toContain('stale owner/path placeholders');
+
+            mkdirSync(join(generated, 'coverage'));
+            writeFileSync(join(generated, 'coverage', 'report.json'), '{}\n');
+            writeFileSync(join(generated, 'tsconfig.tsbuildinfo'), '{}\n');
+            spawnSync('git', ['add', '-f', 'coverage/report.json', 'tsconfig.tsbuildinfo'], {
+                cwd: generated,
+                encoding: 'utf8',
+            });
+            const generatedResult = spawnSync('bash', [script], { cwd: generated, encoding: 'utf8' });
+            expect(generatedResult.status).toBe(1);
+            expect(generatedResult.stderr).toContain('tracked generated/local artifacts');
+            expect(generatedResult.stderr).toContain('coverage/report.json');
+            expect(generatedResult.stderr).toContain('tsconfig.tsbuildinfo');
+        } finally {
+            rmSync(empty, { recursive: true, force: true });
+            rmSync(homeLeak, { recursive: true, force: true });
+            rmSync(generated, { recursive: true, force: true });
+        }
+    });
+
     test('package test delegates to the sliced normal-test runner', () => {
         const packageJson = JSON.parse(readText('package.json')) as { scripts?: Record<string, string> };
         const runner = readText('scripts/run-normal-tests.sh');
         const slicer = readText('bin/test-slicer.sh');
         const justfile = readText('justfile');
-        const ciWorkflow = readText('.github/workflows/ci.yml');
 
         expect(packageJson.scripts?.test).toBe('scripts/run-normal-tests.sh');
         expect(packageJson.scripts?.['test:nonperf']).toBe('scripts/run-normal-tests.sh');
@@ -224,7 +265,6 @@ describe('build command surface', () => {
         expect(runner).toContain('require_positive_int SLICES "$SLICES"');
         expect(runner).toContain('REQUESTED_SLICE=');
         expect(runner).not.toContain('SLICE=${SLICE:-}');
-        expect(ciWorkflow).toContain('scripts/run-normal-tests.sh --slice "$SLICE/$SLICES"');
         expect(runner).toContain('scripts/git-tree-fingerprint.sh');
         expect(runner).toContain('BASE_GIT_FINGERPRINT="$($REPO_ROOT/scripts/git-tree-fingerprint.sh)"');
         expect(runner).toContain('AFTER_GIT_FINGERPRINT="$($REPO_ROOT/scripts/git-tree-fingerprint.sh)"');
@@ -422,39 +462,40 @@ describe('build command surface', () => {
         expect(readText('TESTING_STRATEGY.md')).not.toContain('just test-slices slices=6');
     });
 
-    test('release and review surfaces use the normal package test command for broad tests', () => {
-        const npmPublish = readText('.github/workflows/npm-publish.yml');
+    test('release and review surfaces do not publish from the Alpha workflow', () => {
+        const packageJson = JSON.parse(readText('package.json')) as { private?: boolean };
+        const alphaWorkflow = readText('.github/workflows/alpha-mvp.yml');
+        const archiveGuide = readText('docs/archive/github-workflows/README.md');
         const prTemplate = readText('.github/pull_request_template.md');
 
-        expect(npmPublish).toContain('run: bun run test');
-        expect(npmPublish).not.toMatch(/^\s*run:\s*bun test\s*$/m);
+        expect(packageJson.private).toBe(true);
+        expect(alphaWorkflow).not.toContain('npm publish');
+        expect(alphaWorkflow).not.toContain('docker/build-push-action');
+        expect(archiveGuide).toContain('npm-publish.yml.disabled.yaml');
         expect(prTemplate).toContain('bun run test');
         expect(prTemplate).not.toMatch(/^bun test$/m);
     });
 
-    test('ontology-check workflow uses supported built CLI commands', () => {
-        const workflow = readText('.github/workflows/ontology-check.yml');
+    test('retired workflows stay outside the executable GitHub workflow directory', () => {
+        const archiveGuide = readText('docs/archive/github-workflows/README.md');
+        const activeWorkflowNames = readdirSync('.github/workflows').sort();
 
-        expect(workflow).toContain('bun run dist/cli/cli.js stats --json');
-        expect(workflow).toContain('bun run dist/cli/cli.js get-snapshot --json');
-        expect(workflow).not.toContain('dist/cli/index.js');
-        expect(workflow).not.toContain('analyze --path');
+        expect(activeWorkflowNames).toEqual(['alpha-mvp.yml', 'security.yml']);
+        expect(archiveGuide).toContain('*.disabled.yaml');
+        expect(archiveGuide).toContain('Do not reactivate');
     });
 
-    test('CI integration startup uses current build and source server paths', () => {
-        const workflow = readText('.github/workflows/ci.yml');
-        const ciCdWorkflow = readText('.github/workflows/ci-cd.yml');
+    test('canonical Alpha CI uses current package and portable integrity surfaces', () => {
+        const workflow = readText('.github/workflows/alpha-mvp.yml');
+        const securityWorkflow = readText('.github/workflows/security.yml');
 
-        expect(workflow).toContain('bun run dist/http/http.js --port 7000');
-        expect(workflow).toContain('bun run dist/mcp-http/mcp-http.js --port 7001');
-        expect(workflow).not.toContain('dist/api/http.js');
-        expect(workflow).not.toContain('dist/mcp-sse/mcp-sse.js');
-        expect(workflow).not.toContain('MCP SSE');
-        expect(ciCdWorkflow).toContain('HTTP_API_PORT=7010 bun run src/servers/http.ts');
-        expect(ciCdWorkflow).toContain('MCP_HTTP_PORT=7011 bun run src/servers/mcp-http.ts');
-        expect(ciCdWorkflow).not.toContain('mcp-ontology-server');
-        expect(ciCdWorkflow).not.toContain('src/api/http-server.ts');
-        expect(ciCdWorkflow).not.toContain('MCP_SSE_PORT');
+        expect(workflow).toContain("bun-version: '1.3.12'");
+        expect(workflow).toContain('run: ./scripts/ci/portable.sh');
+        expect(workflow).toContain('run: bun run alpha:mvp:check');
+        expect(workflow).not.toContain('npm publish');
+        expect(workflow).not.toContain('docker/build-push-action');
+        expect(securityWorkflow).toContain('workflow_dispatch');
+        expect(securityWorkflow).not.toMatch(/^\s*push:/m);
     });
 
     test('Claude setup surfaces use current MCP HTTP paths and Alpha tools', () => {
@@ -477,12 +518,14 @@ describe('build command surface', () => {
         expect(startHook).not.toContain('mcp-ontology-server');
     });
 
-    test('README quick start only advertises supported packaged commands', () => {
+    test('README quick start advertises only the source-checkout Alpha path', () => {
         const readme = readText('README.md');
 
-        expect(readme).toContain('semantic-code-intelligence stats');
-        expect(readme).toContain('semantic-code-mcp');
-        expect(readme).not.toContain('semantic-code-intelligence start');
+        expect(readme).toContain('bun install --frozen-lockfile');
+        expect(readme).toContain('bun run alpha:mvp:check');
+        expect(readme).toContain('semantic-code-intelligence workflow read_file');
+        expect(readme).not.toContain('npm install -g semantic-code-intelligence');
+        expect(readme).not.toContain('bunx semantic-code-intelligence');
         expect(readme).not.toContain('semantic-code-intelligence analyze');
     });
 

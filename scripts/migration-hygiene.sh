@@ -26,15 +26,16 @@ else
 fi
 
 # 2. Tracked local/generated artifacts that should not be canonical.
-tracked_artifacts="$(git ls-files | grep -E '(^|/)(node_modules|dist|logs|temp|tmp|\.ontology|\.semantic-graph|\.test-results|\.pi-subagent-sessions)(/|$)|(^|/)\.pi-subagent-sessions\.self-memory\.json$|(^|/).*\.(db|db-wal|db-shm|sqlite|sqlite3|pid|log|orig|bak)$|(^|/)package\.json\.orig$|(^|/)semantic-code-intelligence\.orig$' || true)"
+tracked_artifacts="$(git ls-files | grep -E '(^|/)(node_modules|dist|coverage|logs|temp|tmp|\.ontology|\.semantic-graph|\.test-results|\.pi-subagent-sessions)(/|$)|(^|/)\.pi-subagent-sessions\.self-memory\.json$|(^|/).*\.(db|db-wal|db-shm|sqlite|sqlite3|pid|log|orig|bak|tsbuildinfo)$|(^|/)package\.json\.orig$|(^|/)semantic-code-intelligence\.orig$' || true)"
 if [[ -n "$tracked_artifacts" ]]; then
   fail "tracked generated/local artifacts found:\n$tracked_artifacts"
 else
   info "no tracked generated/local artifacts"
 fi
 
-# 3. Old owner/path placeholders and historical product identity should not survive alpha rename.
-placeholder_hits="$(git grep -n -E '(/home/[^[:space:]"]+|yourusername|your-org|lightningRalf|github\.com/lightningRalf)' -- ':!.git/**' ':!scripts/migration-hygiene.sh' || true)"
+# 3. Machine-local paths must not leak into portable source/configuration. Generated
+# owner snapshots may truthfully retain the machine path they observed.
+placeholder_hits="$(git grep -n -E '(/home/[^[:space:]"]+|/Users/[^[:space:]"]+|[A-Za-z]:\\\\Users\\\\[^[:space:]"]+|git\+file://[^[:space:]"]+|yourusername|your-org|your-domain|lightningRalf|github\.com/lightningRalf)' -- ':!.git/**' ':!docs/archive/**' ':!PRODUCTION_DEPLOYMENT_NEXT_STEPS.md' ':!scripts/migration-hygiene.sh' ':!governance/engineering-core-capability-baseline.json' || true)"
 if [[ -n "$placeholder_hits" ]]; then
   fail "stale owner/path placeholders found:\n$placeholder_hits"
 else
@@ -49,12 +50,14 @@ else
 fi
 
 # 4. Applyable Kubernetes secrets with placeholder credentials are unsafe. Templates must not be .yaml under k8s/.
-if git ls-files 'k8s/*.yaml' 'k8s/*.yml' | xargs -r grep -n -E 'CHANGE_ME|changeme|OPENAI_API_KEY|ANTHROPIC_API_KEY' >/tmp/migration-hygiene-k8s.$$ 2>/dev/null; then
-  fail "applyable Kubernetes manifest contains placeholder secret material:\n$(cat /tmp/migration-hygiene-k8s.$$)"
+k8s_report="$(mktemp)"
+mapfile -t k8s_files < <(git ls-files 'k8s/*.yaml' 'k8s/*.yml')
+if (( ${#k8s_files[@]} > 0 )) && grep -n -E 'CHANGE_ME|changeme|OPENAI_API_KEY|ANTHROPIC_API_KEY' "${k8s_files[@]}" >"$k8s_report" 2>/dev/null; then
+  fail "applyable Kubernetes manifest contains placeholder secret material:\n$(cat "$k8s_report")"
 else
   info "no applyable Kubernetes placeholder secrets"
 fi
-rm -f /tmp/migration-hygiene-k8s.$$
+rm -f "$k8s_report"
 
 # 5. Package and lock identity should agree after rename.
 if [[ -f package.json && -f bun.lock ]]; then

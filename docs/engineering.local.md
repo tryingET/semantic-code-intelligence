@@ -28,6 +28,13 @@ Executable contract surface:
   - `uv tool -n run --from ~/ai-society/core/engineering-core engineering-core list-disciplines`
   - `uv tool -n run --from ~/ai-society/core/engineering-core engineering-core list-templates`
 
+Upstream retrieval posture:
+
+- The currently consumed engineering-core capability surface is workspace-local and not yet available at a matching remote release tag.
+- `policy/engineering-lane.json` therefore records `workspace-local-unpinned` rather than pretending an unavailable immutable pin is portable.
+- The generated doctor baseline should report this as a warning/degraded posture, not a released-match success.
+- Replacing this with a remote immutable pin requires a published matching tag/commit and an explicit dependency-adoption task; do not silently downgrade the declared capability contract to an older remote release.
+
 Practical rule:
 
 - Use root commands for monorepo-wide validation.

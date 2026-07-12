@@ -1,14 +1,15 @@
 ---
-summary: "Implementation Plan: Unified Core with MCP Adapter for the Semantic Code Intelligence repo."
+summary: "Historical unified-core migration plan retained for architecture provenance."
 read_when:
-  - "You need IMPLEMENTATION PLAN information for Semantic Code Intelligence."
-  - "You are changing IMPLEMENTATION_PLAN.md or related behavior."
-type: "reference"
+  - "You are investigating the origin of SCI's unified-core architecture."
+type: "archive"
 ---
 
-# Implementation Plan: Unified Core with MCP Adapter
+# Historical implementation plan: unified core with MCP adapter
 
-## Executive Summary
+> **Archived plan:** The migration described here has already been superseded by the current `src/core/`, adapter, and workflow architecture. Do not execute these file-move commands. Read `README.md`, `docs/project/product-posture.md`, and live AK tasks for current work.
+
+## Historical executive summary
 
 We're building a protocol-agnostic core that serves all clients through thin adapters, starting with the MCP adapter for MCP-compatible IDEs/agents. This fixes the current duplicate implementation problem and establishes the foundation for the intelligent programming companion.
 

@@ -63,6 +63,12 @@ const RESERVED_PATCH_ROOT_NAMES = new Set([
 const RESERVED_PATCH_ROOT_PREFIXES = ['.git', '.ontology'];
 const DEFAULT_SNAPSHOT_DIFF_MAX_BYTES = 2 * 1024 * 1024;
 const SNAPSHOT_RESOURCE_MAX_BYTES = 256 * 1024;
+const DEFAULT_SNAPSHOT_AUTO_CLEANUP_MAX_KEEP = 25;
+const DEFAULT_SNAPSHOT_AUTO_CLEANUP_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
+const DEFAULT_SNAPSHOT_AUTO_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+const DEFAULT_SNAPSHOT_AUTO_CLEANUP_EVERY = 25;
+const MATERIALIZE_LOCK_STALE_MS = 5 * 60 * 1000;
+const TRANSIENT_WORKSPACE_STALE_MS = 24 * 60 * 60 * 1000;
 
 function truncateUtf8WithMarker(text: string, maxBytes: number): string {
     if (Buffer.byteLength(text, 'utf8') <= maxBytes) return text;
@@ -83,6 +89,8 @@ function truncateUtf8WithMarker(text: string, maxBytes: number): string {
 export class OverlayStore {
     private snapshots = new Map<string, Snapshot>();
     private materializeLocks = new Map<string, Promise<void>>();
+    private snapshotAutoCleanupState = new Map<string, { lastAt: number; createdSinceCleanup: number }>();
+
     private wantProgress(): boolean {
         const env = process.env;
         return env.DOGFOOD_PROGRESS === '1' || env.PROGRESS_LOGS === '1';
@@ -99,6 +107,62 @@ export class OverlayStore {
         return Number.isFinite(parsed)
             ? Math.max(1, Math.min(SNAPSHOT_RESOURCE_MAX_BYTES, Math.floor(parsed)))
             : SNAPSHOT_RESOURCE_MAX_BYTES;
+    }
+
+    private boundedEnvNumber(name: string, fallback: number, min: number, max: number): number {
+        const raw = process.env[name];
+        if (raw === undefined || raw === '') return fallback;
+        const parsed = Number(raw);
+        if (!Number.isFinite(parsed)) return fallback;
+        return Math.max(min, Math.min(max, parsed));
+    }
+
+    private snapshotAutoCleanupEnabled(): boolean {
+        const raw = process.env.SCI_SNAPSHOT_AUTO_CLEANUP;
+        return raw !== '0' && raw !== 'false' && raw !== 'off';
+    }
+
+    private snapshotAutoCleanupMaxKeep(): number {
+        return Math.floor(
+            this.boundedEnvNumber('SCI_SNAPSHOT_MAX_KEEP', DEFAULT_SNAPSHOT_AUTO_CLEANUP_MAX_KEEP, 1, 10_000)
+        );
+    }
+
+    private snapshotAutoCleanupMaxAgeMs(): number {
+        if (process.env.SCI_SNAPSHOT_MAX_AGE_MS !== undefined) {
+            return Math.floor(
+                this.boundedEnvNumber(
+                    'SCI_SNAPSHOT_MAX_AGE_MS',
+                    DEFAULT_SNAPSHOT_AUTO_CLEANUP_MAX_AGE_MS,
+                    1_000,
+                    365 * 24 * 60 * 60 * 1000
+                )
+            );
+        }
+        const days = this.boundedEnvNumber(
+            'SCI_SNAPSHOT_MAX_AGE_DAYS',
+            DEFAULT_SNAPSHOT_AUTO_CLEANUP_MAX_AGE_MS / (24 * 60 * 60 * 1000),
+            1 / 24,
+            365
+        );
+        return Math.floor(days * 24 * 60 * 60 * 1000);
+    }
+
+    private snapshotAutoCleanupIntervalMs(): number {
+        return Math.floor(
+            this.boundedEnvNumber(
+                'SCI_SNAPSHOT_CLEANUP_INTERVAL_MS',
+                DEFAULT_SNAPSHOT_AUTO_CLEANUP_INTERVAL_MS,
+                0,
+                24 * 60 * 60 * 1000
+            )
+        );
+    }
+
+    private snapshotAutoCleanupEvery(): number {
+        return Math.floor(
+            this.boundedEnvNumber('SCI_SNAPSHOT_CLEANUP_EVERY', DEFAULT_SNAPSHOT_AUTO_CLEANUP_EVERY, 1, 10_000)
+        );
     }
 
     private assertSafeRegularFileNoSymlink(filePath: string, label: string): void {
@@ -501,7 +565,12 @@ export class OverlayStore {
                 if (error?.code !== 'EEXIST') throw error;
                 try {
                     const stat = await fsp.stat(lockDir);
-                    if (Date.now() - stat.mtimeMs > 5 * 60_000) await fsp.rm(lockDir, { recursive: true, force: true });
+                    if (
+                        Date.now() - stat.mtimeMs > MATERIALIZE_LOCK_STALE_MS &&
+                        !this.isMaterializeLockActiveSync(snapshotId, lockDir)
+                    ) {
+                        await fsp.rm(lockDir, { recursive: true, force: true });
+                    }
                 } catch {}
                 if (Date.now() > deadline) throw new Error('Timed out waiting for snapshot materialization lock');
                 await new Promise((resolve) => setTimeout(resolve, 50));
@@ -844,6 +913,7 @@ export class OverlayStore {
         this.snapshots.set(id, snap);
         try {
             this.persistSnapshotSync(snap);
+            this.maybeRunSnapshotAutoCleanupSync(workspaceRoot, id);
         } catch (error) {
             this.snapshots.delete(id);
             throw error;
@@ -870,11 +940,11 @@ export class OverlayStore {
     }
 
     list(opts: { workspaceRoot?: string } = {}): Snapshot[] {
-        const workspaceRoot = opts.workspaceRoot ? this.resolveWorkspaceBase(opts.workspaceRoot) : undefined;
+        const workspaceRoot = this.resolveWorkspaceBase(opts.workspaceRoot);
         this.loadAllSnapshotsFromDisk(workspaceRoot);
         return Array.from(this.snapshots.values())
-            .filter((snap) => !workspaceRoot || this.resolveWorkspaceBase(snap.workspaceRoot) === workspaceRoot)
-            .sort((a, b) => b.createdAt - a.createdAt);
+            .filter((snap) => this.resolveWorkspaceBase(snap.workspaceRoot) === workspaceRoot)
+            .sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id));
     }
 
     getSnapshotDirectory(snapshotId: string, opts: { workspaceRoot?: string } = {}): string {
@@ -939,6 +1009,7 @@ export class OverlayStore {
         maxAgeMs: number,
         suffixes = new Set(['check', 'tmp', 'old'])
     ): Promise<void> {
+        const locked = this.lockedSnapshotIdsForRoot(snapsRoot);
         let entries: fs.Dirent[] = [];
         try {
             entries = await fsp.readdir(snapsRoot, { withFileTypes: true });
@@ -950,7 +1021,7 @@ export class OverlayStore {
             const match = ent.name.match(/^\.([0-9a-fA-F-]{8,})(?:\.[^.]+)*\.(check|tmp|old)$/);
             if (!match) continue;
             const [, snapshotId, suffix] = match;
-            if (!this.isValidSnapshotId(snapshotId) || !suffixes.has(suffix)) continue;
+            if (!this.isValidSnapshotId(snapshotId) || !suffixes.has(suffix) || locked.has(snapshotId)) continue;
             const transientDir = path.join(snapsRoot, ent.name);
             try {
                 const stat = await fsp.stat(transientDir);
@@ -965,10 +1036,58 @@ export class OverlayStore {
         await this.cleanupTransientSnapshotWorkspaces(snapsRoot, now, maxAgeMs, new Set(['check']));
     }
 
-    private async cleanupMaterializeLockWorkspaces(snapsRoot: string, now: number, maxAgeMs: number): Promise<void> {
+    private cleanupTransientSnapshotWorkspacesSync(
+        snapsRoot: string,
+        now: number,
+        maxAgeMs: number,
+        suffixes = new Set(['check', 'tmp', 'old'])
+    ): void {
+        const locked = this.lockedSnapshotIdsForRoot(snapsRoot);
         let entries: fs.Dirent[] = [];
         try {
-            entries = await fsp.readdir(snapsRoot, { withFileTypes: true });
+            entries = fs.readdirSync(snapsRoot, { withFileTypes: true });
+        } catch {
+            return;
+        }
+        for (const ent of entries) {
+            if (!ent.isDirectory() || !ent.name.startsWith('.')) continue;
+            const match = ent.name.match(/^\.([0-9a-fA-F-]{8,})(?:\.[^.]+)*\.(check|tmp|old)$/);
+            if (!match) continue;
+            const [, snapshotId, suffix] = match;
+            if (!this.isValidSnapshotId(snapshotId) || !suffixes.has(suffix) || locked.has(snapshotId)) continue;
+            const transientDir = path.join(snapsRoot, ent.name);
+            try {
+                const stat = fs.statSync(transientDir);
+                if (now - stat.mtimeMs > maxAgeMs) {
+                    fs.rmSync(transientDir, { recursive: true, force: true });
+                }
+            } catch {}
+        }
+    }
+
+    private isMaterializeLockActiveSync(snapshotId: string, lockDir: string): boolean {
+        if (this.materializeLocks.has(snapshotId)) return true;
+        try {
+            const ownerPath = path.join(lockDir, 'owner.json');
+            const ownerStat = fs.lstatSync(ownerPath);
+            if (!ownerStat.isFile() || ownerStat.isSymbolicLink()) return false;
+            const owner = JSON.parse(fs.readFileSync(ownerPath, 'utf8')) as { pid?: unknown };
+            if (!Number.isInteger(owner.pid) || Number(owner.pid) <= 0) return false;
+            try {
+                process.kill(Number(owner.pid), 0);
+                return true;
+            } catch (error: any) {
+                return error?.code === 'EPERM';
+            }
+        } catch {
+            return false;
+        }
+    }
+
+    private cleanupMaterializeLockWorkspacesSync(snapsRoot: string, now: number, maxAgeMs: number): void {
+        let entries: fs.Dirent[] = [];
+        try {
+            entries = fs.readdirSync(snapsRoot, { withFileTypes: true });
         } catch {
             return;
         }
@@ -976,13 +1095,116 @@ export class OverlayStore {
             if (!ent.isDirectory()) continue;
             const match = ent.name.match(/^([0-9a-fA-F-]{8,})\.lock$/);
             if (!match || !this.isValidSnapshotId(match[1])) continue;
+            const snapshotId = match[1];
             const lockDir = path.join(snapsRoot, ent.name);
             try {
-                const stat = await fsp.stat(lockDir);
-                if (now - stat.mtimeMs > maxAgeMs) {
-                    await fsp.rm(lockDir, { recursive: true, force: true });
+                const stat = fs.statSync(lockDir);
+                if (now - stat.mtimeMs > maxAgeMs && !this.isMaterializeLockActiveSync(snapshotId, lockDir)) {
+                    fs.rmSync(lockDir, { recursive: true, force: true });
                 }
             } catch {}
+        }
+    }
+
+    private async cleanupMaterializeLockWorkspaces(snapsRoot: string, now: number, maxAgeMs: number): Promise<void> {
+        this.cleanupMaterializeLockWorkspacesSync(snapsRoot, now, maxAgeMs);
+    }
+
+    private lockedSnapshotIdsForRoot(snapsRoot: string): Set<string> {
+        const locked = new Set<string>();
+        try {
+            for (const ent of fs.readdirSync(snapsRoot, { withFileTypes: true })) {
+                if (!ent.isDirectory() || !ent.name.endsWith('.lock')) continue;
+                const snapshotId = ent.name.slice(0, -'.lock'.length);
+                if (this.isValidSnapshotId(snapshotId)) locked.add(snapshotId);
+            }
+        } catch {}
+        for (const snapshotId of this.materializeLocks.keys()) locked.add(snapshotId);
+        return locked;
+    }
+
+    private workspaceSnapshotCount(workspaceRoot?: string): number {
+        try {
+            return fs
+                .readdirSync(this.snapshotsRoot(workspaceRoot), { withFileTypes: true })
+                .filter((ent) => ent.isDirectory() && this.isValidSnapshotId(ent.name)).length;
+        } catch {
+            return 0;
+        }
+    }
+
+    private selectSnapshotsForCleanup(
+        snaps: Snapshot[],
+        now: number,
+        maxKeep: number,
+        maxAgeMs: number,
+        protectedIds: ReadonlySet<string> = new Set()
+    ): Snapshot[] {
+        const toDelete = new Set<Snapshot>();
+        for (const snap of snaps) {
+            if (!protectedIds.has(snap.id) && now - snap.createdAt > maxAgeMs) toDelete.add(snap);
+        }
+        let retainedCount = snaps.length - toDelete.size;
+        if (retainedCount > maxKeep) {
+            for (let index = snaps.length - 1; index >= 0 && retainedCount > maxKeep; index -= 1) {
+                const snap = snaps[index];
+                if (protectedIds.has(snap.id) || toDelete.has(snap)) continue;
+                toDelete.add(snap);
+                retainedCount -= 1;
+            }
+        }
+        return Array.from(toDelete);
+    }
+
+    private cleanupSync(
+        maxKeep = 10,
+        maxAgeMs = 3 * 24 * 60 * 60 * 1000,
+        opts: { workspaceRoot?: string; protectSnapshotIds?: Iterable<string> } = {}
+    ): void {
+        const workspaceRoot = this.resolveWorkspaceBase(opts.workspaceRoot);
+        const snapsRoot = this.snapshotsRoot(workspaceRoot);
+        const now = Date.now();
+        this.cleanupMaterializeLockWorkspacesSync(snapsRoot, now, MATERIALIZE_LOCK_STALE_MS);
+        this.cleanupTransientSnapshotWorkspacesSync(snapsRoot, now, TRANSIENT_WORKSPACE_STALE_MS);
+        const protectedIds = this.lockedSnapshotIdsForRoot(snapsRoot);
+        for (const snapshotId of opts.protectSnapshotIds || []) protectedIds.add(snapshotId);
+        const snaps = this.list({ workspaceRoot });
+        const toDelete = this.selectSnapshotsForCleanup(snaps, now, maxKeep, maxAgeMs, protectedIds);
+        for (const snap of toDelete) {
+            this.snapshots.delete(snap.id);
+            try {
+                fs.rmSync(path.join(this.snapshotsRoot(snap.workspaceRoot), snap.id), { recursive: true, force: true });
+            } catch {}
+        }
+    }
+
+    private maybeRunSnapshotAutoCleanupSync(workspaceRoot: string | undefined, currentSnapshotId: string): void {
+        if (!this.snapshotAutoCleanupEnabled()) return;
+        const workspaceKey = this.resolveWorkspaceBase(workspaceRoot);
+        const state = this.snapshotAutoCleanupState.get(workspaceKey) || { lastAt: 0, createdSinceCleanup: 0 };
+        state.createdSinceCleanup += 1;
+        const now = Date.now();
+        const maxKeep = this.snapshotAutoCleanupMaxKeep();
+        const overCountLimit = this.workspaceSnapshotCount(workspaceRoot) > maxKeep;
+        if (
+            !overCountLimit &&
+            state.lastAt > 0 &&
+            now - state.lastAt < this.snapshotAutoCleanupIntervalMs() &&
+            state.createdSinceCleanup < this.snapshotAutoCleanupEvery()
+        ) {
+            this.snapshotAutoCleanupState.set(workspaceKey, state);
+            return;
+        }
+        state.lastAt = now;
+        state.createdSinceCleanup = 0;
+        this.snapshotAutoCleanupState.set(workspaceKey, state);
+        try {
+            this.cleanupSync(maxKeep, this.snapshotAutoCleanupMaxAgeMs(), {
+                workspaceRoot,
+                protectSnapshotIds: [currentSnapshotId],
+            });
+        } catch {
+            // Snapshot cleanup is opportunistic. Snapshot creation must not fail because retention failed.
         }
     }
 
@@ -991,32 +1213,22 @@ export class OverlayStore {
         maxAgeMs = 3 * 24 * 60 * 60 * 1000,
         opts: { workspaceRoot?: string } = {}
     ): Promise<void> {
-        const workspaceRoot = opts.workspaceRoot ? this.resolveWorkspaceBase(opts.workspaceRoot) : undefined;
-        const snaps = this.list({ workspaceRoot });
+        const workspaceRoot = this.resolveWorkspaceBase(opts.workspaceRoot);
+        const snapsRoot = this.snapshotsRoot(workspaceRoot);
         const now = Date.now();
-        const toDelete: Snapshot[] = [];
-        // Age-based
-        for (const s of snaps) {
-            if (now - s.createdAt > maxAgeMs) toDelete.push(s);
-        }
-        // Count-based
-        if (snaps.length - toDelete.length > maxKeep) {
-            const excess = snaps.slice(maxKeep);
-            for (const s of excess) if (!toDelete.includes(s)) toDelete.push(s);
-        }
-        const cleanupRoots = new Set<string>();
-        for (const s of toDelete) {
-            this.snapshots.delete(s.id);
-            const snapsRoot = this.snapshotsRoot(s.workspaceRoot);
-            cleanupRoots.add(snapsRoot);
+        await this.cleanupMaterializeLockWorkspaces(snapsRoot, now, MATERIALIZE_LOCK_STALE_MS);
+        await this.cleanupTransientSnapshotWorkspaces(snapsRoot, now, maxAgeMs);
+        const protectedIds = this.lockedSnapshotIdsForRoot(snapsRoot);
+        const snaps = this.list({ workspaceRoot });
+        const toDelete = this.selectSnapshotsForCleanup(snaps, now, maxKeep, maxAgeMs, protectedIds);
+        for (const snap of toDelete) {
+            this.snapshots.delete(snap.id);
             try {
-                await fsp.rm(path.join(snapsRoot, s.id), { recursive: true, force: true });
+                await fsp.rm(path.join(this.snapshotsRoot(snap.workspaceRoot), snap.id), {
+                    recursive: true,
+                    force: true,
+                });
             } catch {}
-        }
-        cleanupRoots.add(this.snapshotsRoot(workspaceRoot));
-        for (const snapsRoot of cleanupRoots) {
-            await this.cleanupTransientSnapshotWorkspaces(snapsRoot, now, maxAgeMs);
-            await this.cleanupMaterializeLockWorkspaces(snapsRoot, now, maxAgeMs);
         }
     }
 

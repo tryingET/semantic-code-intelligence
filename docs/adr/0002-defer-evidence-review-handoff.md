@@ -5,6 +5,11 @@ read_when:
   - "You are deciding whether SCI may start Pi/operator-workbench evidence-review handoff or UI work."
   - "You are changing evidence-review summary schema, rendering, or handoff scope."
 type: "adr"
+system4d:
+  container: "SCI Phase 2 evidence-review policy within AK and Pi owner boundaries."
+  compass: "Keep evidence review read-only in SCI and prevent premature host/UI authority transfer."
+  engine: "Claim-model schema gates, evidence absence states, owner acceptance, and explicit reconsideration criteria."
+  fog: "Repository policy is not AK decision lifecycle truth; host-owner acceptance and durable non-mutation evidence remain separate gates."
 ---
 
 # ADR-0002: Defer Evidence Review Handoff Until Claim Model Is Schema-Ready
@@ -16,9 +21,9 @@ Authors: Semantic Code Intelligence Team
 
 ## Authority note
 
-This ADR is **accepted as a repository ADR** for the narrow Option A deferral decision recorded below.
+This is an operator-accepted, human-readable repository policy artifact for the narrow Option A deferral described below. It governs repository work within that scope, but it is not DB-native AK decision lifecycle state and must not be represented as an accepted AK decision.
 
-This ADR does not create or advance AK decision lifecycle state. AK decisions `46` and `47` remain superseded and must not be cited as accepted authority.
+AK decisions `46` and `47` remain superseded. Neither this artifact nor its acceptance task revives, advances, or replaces those records. Any future AK decision transition requires an explicit instruction naming the decision and target state.
 
 ## Context
 
@@ -155,8 +160,9 @@ Observed result:
 - markdown summary rendered successfully;
 - JSON summary rendered successfully with schema `semantic-code-intelligence.evidence_review.v1`;
 - selected and recommended commands remained distinct in rendered JSON;
-- working tree stayed clean apart from intentional docs edits;
-- docs strict, diff check, and direction check passed.
+- AK evidence `2687` and `2688` records successful markdown/JSON rendering and the schema observation;
+- evidence `2689`–`2691` records docs, diff-format, and direction checks;
+- those receipts do not independently prove complete source/snapshot/target/AK/database non-mutation, so no broader durable non-mutation claim is made here.
 
 ## Follow-up
 

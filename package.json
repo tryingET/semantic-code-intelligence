@@ -1,7 +1,8 @@
 {
   "name": "semantic-code-intelligence",
   "version": "2.0.0",
-  "description": "Unified ontology-enhanced code intelligence system with MCP, LSP, and HTTP adapters",
+  "description": "Alpha code-navigation, snapshot patching, and validation substrate for harnessed coding agents",
+  "private": true,
   "type": "module",
   "main": "dist/core/index.js",
   "bin": {
@@ -85,7 +86,7 @@
     "fuzzy-matching"
   ],
   "author": "tryingET",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "dependencies": {
     "@bufbuild/protobuf": "^2.12.0",
     "@c4312/scip": "0.1.0",

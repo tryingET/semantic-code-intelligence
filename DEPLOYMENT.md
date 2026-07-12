@@ -1,14 +1,15 @@
 ---
-summary: "Deployment Configuration for the Semantic Code Intelligence repo."
+summary: "Historical deployment sketch retained for provenance; not a supported Alpha runbook."
 read_when:
-  - "You need DEPLOYMENT information for Semantic Code Intelligence."
-  - "You are changing DEPLOYMENT.md or related behavior."
-type: "reference"
+  - "You are investigating older SCI deployment design material."
+type: "archive"
 ---
 
-# Deployment Configuration
+# Historical deployment configuration
 
-## Quick Start
+> **Archived and non-executable:** Production deployment is not an Alpha commitment. Examples below may reference superseded files and commands. Use `README.md` for local source-checkout operation; any future deployment requires an explicit productization and release decision.
+
+## Historical quick start
 
 ```bash
 # 1. Initialize the system

@@ -1,18 +1,19 @@
 ---
-summary: "Semantic Code Intelligence Production Deployment Guide for the Semantic Code Intelligence repo."
+summary: "Historical 2025 production-deployment report; superseded by the current Alpha posture."
 read_when:
-  - "You need DEPLOYMENT GUIDE information for Semantic Code Intelligence."
-  - "You are changing DEPLOYMENT_GUIDE.md or related behavior."
-type: "reference"
+  - "You are investigating historical SCI deployment claims or benchmark provenance."
+type: "archive"
 ---
 
-# Semantic Code Intelligence Production Deployment Guide
+# Historical Semantic Code Intelligence deployment report
 
-## 🚀 Deployment Status: PRODUCTION READY ✅
+> **Superseded:** This 2025 report is retained as historical evidence only. SCI is currently a Phase 1 Alpha MVP substrate and is **not production ready**. The measurements and deployment instructions below are not current guarantees or an executable runbook.
 
-**Date**: 2025-08-25  
-**Version**: 2.0.0  
-**Status**: All critical issues resolved, 100% production ready
+## Historical reported deployment status
+
+**Date captured**: 2025-08-25
+**Version reported**: 2.0.0
+**Historical claim**: production ready at the time of the report; not current authority
 
 ### ✅ Pre-Deployment Verification Completed
 

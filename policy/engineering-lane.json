@@ -1,11 +1,11 @@
 {
   "engineering_core": {
     "tool": "engineering-core",
-    "repository": "https://github.com/lightningralf/engineering-core",
-    "ref": "v0.7.0",
-    "catalog_command": "uv tool -n run --from 'git+file:///home/tryinget/ai-society/core/engineering-core@99290024b78eb6f1665adda6d75d06045b6a9cc2' engineering-core catalog --pretty",
-    "list_disciplines_command": "uv tool -n run --from 'git+file:///home/tryinget/ai-society/core/engineering-core@99290024b78eb6f1665adda6d75d06045b6a9cc2' engineering-core list-disciplines",
-    "list_templates_command": "uv tool -n run --from 'git+file:///home/tryinget/ai-society/core/engineering-core@99290024b78eb6f1665adda6d75d06045b6a9cc2' engineering-core list-templates",
+    "repository": "https://github.com/tryingET/core_engineering-core",
+    "ref": "workspace-local-unpinned",
+    "catalog_command": "uv tool -n run --from \"$HOME/ai-society/core/engineering-core\" engineering-core catalog --pretty --prefer-repo",
+    "list_disciplines_command": "uv tool -n run --from \"$HOME/ai-society/core/engineering-core\" engineering-core list-disciplines",
+    "list_templates_command": "uv tool -n run --from \"$HOME/ai-society/core/engineering-core\" engineering-core list-templates",
     "disciplines": [
       "validation",
       "testing",
@@ -22,11 +22,11 @@
     "lanes": [
       {
         "lane": "ts",
-        "command": "uv tool -n run --from 'git+file:///home/tryinget/ai-society/core/engineering-core@99290024b78eb6f1665adda6d75d06045b6a9cc2' engineering-core show ts"
+        "command": "uv tool -n run --from \"$HOME/ai-society/core/engineering-core\" engineering-core show ts --prefer-repo"
       },
       {
         "lane": "ts-frontend",
-        "command": "uv tool -n run --from 'git+file:///home/tryinget/ai-society/core/engineering-core@99290024b78eb6f1665adda6d75d06045b6a9cc2' engineering-core show ts-frontend"
+        "command": "uv tool -n run --from \"$HOME/ai-society/core/engineering-core\" engineering-core show ts-frontend --prefer-repo"
       }
     ],
     "loop_validation": {
@@ -56,10 +56,10 @@
       }
     },
     "release_pin": {
-      "kind": "git-commit",
-      "ref": "v0.7.0",
-      "resolved_commit": "99290024b78eb6f1665adda6d75d06045b6a9cc2",
-      "source": "git+file:///home/tryinget/ai-society/core/engineering-core@99290024b78eb6f1665adda6d75d06045b6a9cc2"
+      "kind": "workspace-local",
+      "ref": "workspace-local-unpinned",
+      "resolved_commit": null,
+      "source": "workspace-local-unpinned"
     }
   }
 }

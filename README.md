@@ -1,513 +1,266 @@
 ---
-summary: "Semantic Code Intelligence: Ontology-Enhanced Programming Companion for the Semantic Code Intelligence repo."
+summary: "Semantic Code Intelligence: bounded code navigation, snapshot patching, and validation evidence for harnessed coding agents."
 read_when:
-  - "You need README information for Semantic Code Intelligence."
-  - "You are changing README.md or related behavior."
+  - "You need the supported Semantic Code Intelligence product surface or source-checkout workflow."
+  - "You are changing README.md, public commands, protocols, or Alpha behavior."
 type: "reference"
 ---
 
-# Semantic Code Intelligence: Ontology-Enhanced Programming Companion
+# Semantic Code Intelligence
 
-**Alpha posture**: Semantic Code Intelligence is a phased code-intelligence substrate. The first supported user is the **harnessed LLM coding session**: an LLM operating inside a tool/runtime harness such as Pi, Claude Code, Cursor, or another coding workbench.
+Semantic Code Intelligence (SCI) is a local-first code-navigation and change-planning substrate for **harnessed LLM coding sessions**. It gives coding agents bounded repository reads, symbol and graph context, preview-first patches, explicit checks, and reviewable evidence through MCP, HTTP, and CLI contracts.
 
-Phase 1 focuses on snapshot-aware navigation, patch planning, validation evidence, and stable MCP/HTTP/CLI contracts. Human IDE polish, CI/review automation, dashboards, production deployment, marketplace, analytics, and AI-training claims are later phases unless they directly support the Phase 1 substrate.
+Phase 1 is closed as an **Alpha MVP substrate**. SCI is not a production-ready deployment product, polished IDE product, canonical task/evidence store, or whole-program semantic oracle.
 
 Read first:
 
-- Product posture: [docs/project/product-posture.md](docs/project/product-posture.md)
-- Alpha MVP contract: [docs/project/alpha-mvp-contract.md](docs/project/alpha-mvp-contract.md)
-- Alpha MVP validation: [docs/project/alpha-mvp-validation.md](docs/project/alpha-mvp-validation.md)
-- Identity policy: [docs/project/identity-policy.md](docs/project/identity-policy.md)
+- [Product posture](docs/project/product-posture.md)
+- [Alpha MVP contract](docs/project/alpha-mvp-contract.md)
+- [Alpha MVP validation](docs/project/alpha-mvp-validation.md)
+- [Phase 1 closure review](docs/project/phase-1-closure-review.md)
+- [Interface choice guide](docs/project/interface-choice-guide.md)
 
-Validate the Phase 1 surface locally:
+## Supported Alpha surface
 
-```bash
-bun run alpha:mvp:check
-# or
-just alpha-mvp-check
-```
+The supported interface order is:
 
-## 🚀 Alpha Capabilities
+1. MCP tools over stdio or Streamable HTTP;
+2. HTTP `POST /api/v1/tools/call` for deterministic parity and non-MCP harnesses;
+3. CLI `workflow <name>` for local verification and fallback.
 
-### 🧠 **Unified Intelligence Core**
-- **Protocol-Agnostic**: one core contract is exposed through MCP, HTTP, CLI, and LSP-oriented adapters.
-- **5-Layer Processing**: Fast Search → AST Analysis → Planner → Semantic Graph → Pattern Learning & Propagation.
-- **Alpha performance posture**: validation records coarse latency evidence for representative workflows; production p95/p99 and cross-machine SLOs remain future work.
-- **Preview-first mutation posture**: patch planning and safe-write workflows stage reviewable diffs, run explicit checks, and avoid direct writes by default.
+The supported 20-tool contract is:
 
-### 🔍 **Enhanced Search Intelligence**
-- **Smart Caching**: Zone-based caching with file change detection (never returns stale data)
-- **Multi-Tool Integration**: Enhanced Grep, Glob, LS with intelligent fallbacks
-- **Fuzzy Matching**: Finds semantically similar identifiers across naming conventions
-- **Contextual Understanding**: Tree-sitter AST analysis with ontology integration
+| Concern | Tools |
+|---|---|
+| Snapshot and bounded reads | `get_snapshot`, `read_file`, `extract_snapshot_artifacts` |
+| Search and navigation | `text_search`, `symbol_search`, `ast_query`, `find_definition`, `find_references` |
+| Impact and validation planning | `graph_expand`, `recommend_checks`, `explore_symbol_impact`, `locate_confirm_definition` |
+| Preview-first changes | `propose_patch`, `patch_checks_in_snapshot`, `structural_search`, `structural_patch_checks`, `rename_safely` |
+| Checks and guarded mutation | `run_checks`, `apply_snapshot`, `safe_write` |
 
-### 📚 **Learning System**
-- **Pattern Detection**: Learns from developer refactoring actions with confidence scoring
-- **Team Knowledge**: Shared learning across team members and projects
-- **Evolution Tracking**: Monitors code changes and architectural decisions over time
-- **Feedback Loop**: Continuously improves suggestions based on user interactions
+The runtime contains additional legacy, diagnostic, pipeline, LSP, and experimental functionality. Those surfaces are not Alpha commitments unless promoted into the contract above.
 
-### 🌐 **Multi-Protocol Support**
-- **MCP Protocol**: first-user integration through stdio and Streamable HTTP.
-- **HTTP API**: deterministic `/api/v1/tools/call` parity surface for harnesses and tests.
-- **CLI Tool**: local verification and target-repo fallback through machine-readable workflow calls.
-- **LSP Protocol**: adapter surface exists, but polished human IDE/workbench UX is later-phase.
-- **Dashboards / production deployment / analytics**: roadmap only until an explicit later-phase decision and evidence promote them.
+## Safety model
 
-## Choosing a Tool
+SCI is designed around these boundaries:
 
-- Semantic Code Intelligence: harnessed-LLM and developer code navigation, definitions/references, cross-file rename planning with preview, ontology/knowledge graph enrichment, metrics, and multi-protocol MCP/HTTP/CLI/LSP adapters.
-- ast-grep: fast, rule-driven structural search and codemods via CLI/editor rules; great for migrations and policy checks without project-wide semantics.
-- Detailed comparison and interoperability tips: [docs/comparison-ast_grep.md](docs/comparison-ast_grep.md)
+- repository paths are lexically and physically contained;
+- reads and searches are bounded by explicit limits;
+- changes are represented as reviewable diffs before application;
+- checks are explicit and return structured receipts;
+- failed staging prevents checks or apply from being reported as successful;
+- snapshot apply requires `ALLOW_SNAPSHOT_APPLY=1`;
+- `safe_write` also verifies the applied working tree against the reviewed snapshot;
+- learned patterns can advise but do not become hidden policy;
+- Agent Kernel remains the owner of canonical task, decision, direction, and evidence truth.
 
-### ⚡ **Alpha validation status**
-- One-command Phase 1 validation: `just alpha-mvp-check`
-- Current validated first-user surface: harnessed-LLM navigation and patch-planning primitives over MCP/HTTP/CLI
-- Later-phase surfaces such as production deployment, dashboards, marketplace, analytics, and AI-training remain roadmap until promoted by evidence.
+Graph results are best-effort planning evidence. Recursive whole-program graph expansion and uniform semantic richness across languages are not Alpha guarantees.
 
 ## Architecture
 
-```
-┌─────────────────┐
-│   IDE/Editor    │
-└────────┬────────┘
-         │ LSP Protocol
-         ↓
-┌─────────────────────────────┐
-│   SEMANTIC CODE INTELLIGENCE        │
-│ ┌─────────────────────────┐ │
-│ │ Layer 1: Fast Search    │ │ ← Grep, Glob, LS (5ms)
-│ │ Layer 2: Tree-sitter    │ │ ← AST Analysis (50ms)
-│ │ Layer 3: Planner        │ │ ← Symbol Map & Rename (10ms)
-│ │ Layer 4: Ontology       │ │ ← Concept Management (10ms)
-│ │ Layer 5: Patterns       │ │ ← Learning & Propagation (20ms)
-│ └─────────────────────────┘ │
-└────────┬────────────────────┘
-         │ Enhanced Results
-         ↓
-┌─────────────────┐
-│    Your Code    │
-└─────────────────┘
+```text
+CLI / MCP stdio / MCP HTTP / HTTP / LSP
+                    |
+          protocol adapters
+                    |
+ Tool registry -> workflow router -> workflow services
+                    |
+        protocol-independent CodeAnalyzer
+                    |
+ fast search -> AST -> planner -> ontology -> pattern learning
+                    |
+       configured storage + snapshot overlays
 ```
 
-### Architecture Decisions
+The five layers are architectural groupings and metric boundaries, not a guarantee that every operation traverses one strict pipeline:
 
-- ADR-0001: Prime Ontology Engine and Triple Graph Storage — docs/adr/0001-prime-ontology-triple-graph.md
+1. fast search;
+2. Tree-sitter AST analysis;
+3. symbol-map and rename planning;
+4. ontology and semantic graph;
+5. pattern learning and propagation.
 
-## Installation
+Primary source entrypoints are built from:
 
-### Prerequisites
-- Bun runtime (recommended) or Node.js 18+
-- MCP client environment (optional)
-- TypeScript/JavaScript/Python project
+- `src/core/index.ts`
+- `src/servers/cli.ts`
+- `src/servers/http.ts`
+- `src/servers/mcp-stdio-entry.ts`
+- `src/servers/mcp-http.ts`
+- `src/servers/lsp.ts`
 
-### Quick Start with bunx (No Install Required!)
+## Source checkout
+
+Prerequisites:
+
+- Bun 1.2 or newer;
+- Node.js 18 or newer for Node-compatible tooling;
+- `ast-grep`/`sg` only when using structural workflows;
+- an MCP client only when exercising MCP integration.
 
 ```bash
-# Run directly without installing using bunx
-bunx semantic-code-intelligence init
-bunx semantic-code-intelligence stats
-bunx semantic-code-intelligence find CodeAnalyzer
-
-# Start the stdio MCP server via the packaged MCP bin
-bunx semantic-code-mcp
-```
-
-### Global Installation
-
-```bash
-# Install globally with npm
-npm install -g semantic-code-intelligence
-
-# Or with Bun
-bun install -g semantic-code-intelligence
-
-# Then use directly
-semantic-code-intelligence init
-semantic-code-intelligence stats
-semantic-code-mcp
-```
-
-### Manual Installation
-
-```bash
-# Clone the repository
 git clone https://github.com/tryingET/semantic-code-intelligence.git
 cd semantic-code-intelligence
-
-# Install dependencies (using Bun)
-bun install
-
-# Initialize the project
-just init
-
-# Start all servers (HTTP API on 7000, MCP HTTP on 7001)
-just start
-
-# Check server status
-just status
-
-# View logs
-just logs
-
-# Stop servers when done
-just stop
+bun install --frozen-lockfile
+bun run build:all
+bun run alpha:mvp:check
 ```
 
-### Using with an MCP Client
+Equivalent repository command:
 
-Add to your `.mcp.json`:
+```bash
+just alpha-mvp-check
+```
+
+The public npm package is not currently an assumed distribution channel. Use the source checkout or an explicitly provisioned local/global CLI. For target-repository usage, see [docs/project/target-repo-cli-usage.md](docs/project/target-repo-cli-usage.md).
+
+## Run local services
+
+```bash
+just start
+```
+
+Default local addresses:
+
+| Surface | Address | Override |
+|---|---|---|
+| HTTP API | `http://localhost:7000` | `HTTP_API_PORT` |
+| MCP Streamable HTTP | `http://localhost:7001/mcp` | `MCP_HTTP_PORT` |
+| LSP TCP | port `7002` | `LSP_SERVER_PORT` |
+
+Useful checks:
+
+```bash
+curl -sS http://localhost:7000/health
+curl -sS 'http://localhost:7000/metrics?format=json' | jq .
+curl -sS http://localhost:7001/health
+just status
+```
+
+Runtime configuration and storage adapter settings are documented in [CONFIG.md](CONFIG.md).
+
+## MCP configuration
+
+Build first, then point an MCP stdio client at the generated entrypoint:
 
 ```json
 {
   "mcpServers": {
     "semantic-code-intelligence": {
       "command": "bun",
-      "args": ["run", "./dist/mcp/mcp.js"],
-      "type": "stdio",
-      "description": "Semantic code intelligence LSP with 5-layer architecture"
-    },
-    "semantic-code-intelligence-http": {
-      "type": "streamable-http",
-      "url": "http://localhost:7001/mcp",
-      "description": "Semantic code intelligence LSP with Streamable HTTP transport (requires 'just start')"
+      "args": [
+        "run",
+        "/absolute/path/to/semantic-code-intelligence/dist/mcp/mcp.js"
+      ]
     }
   }
 }
 ```
 
-## Configuration
+For a long-lived MCP host, initialize Streamable HTTP at `POST http://localhost:7001/mcp` and retain the returned `Mcp-Session-Id` header.
 
-### Port Configuration
-The system uses the following default ports (all configurable via environment variables):
+A client that supports Streamable HTTP can use:
 
-| Service | Default Port | Environment Variable | Description |
-|---------|-------------|---------------------|-------------|
-| HTTP API | 7000 | `HTTP_API_PORT` | REST API for LSP operations |
-| MCP HTTP | 7001 | `MCP_HTTP_PORT` | Model Context Protocol server (Streamable HTTP) |
-| LSP Server | 7002 | `LSP_SERVER_PORT` | Language Server Protocol |
-
-### Project Configuration
-
-Create `.semantic-code-intelligence-config.yaml` in your project root:
-
-```yaml
-version: 1.0.0
-
-# Server configuration (optional - defaults shown)
-server:
-  ports:
-    httpAPI: 7000
-    mcpHTTP: 7001
-    lspServer: 7002
-
-# Layer configuration uses canonical layer1..layer5 keys.
-layers:
-  layer1:
-    enabled: true
-    timeout: 200
-    maxResults: 100
-    fileTypes: [ts, tsx, js, jsx, py, java, go, rust]
-
-  layer2:
-    enabled: true
-    timeout: 100
-    languages: [typescript, javascript, python]
-    maxFileSize: 1048576
-
-  layer3:
-    enabled: true
-    dbPath: .ontology/ontology.db
-    cacheSize: 1000
-
-  layer4:
-    enabled: true
-    adapter: sqlite
-    dbPath: .ontology/ontology.db
-    augmentExplore: true
-
-  layer5:
-    enabled: true
-    dbPath: .ontology/ontology.db
-    learningThreshold: 3
-    confidenceThreshold: 0.7
-    maxPatterns: 1000
-    maxDepth: 3
-    autoApplyThreshold: 0.9
-
-# Cache and performance tuning
-cache:
-  memory:
-    maxSize: 524288000
-    ttl: 3600
-
-performance:
-  maxConcurrentRequests: 10
-  requestTimeout: 5000
-```
-
-### Tools Preferences
-
-Optional tooling preferences improve developer experience without changing server behavior when unavailable.
-
-- File discovery: set `performance.tools.fileDiscovery.prefer` to:
-  - `auto` (default): prefer `fd` if available; fallback to `rg --files`.
-  - `rg`: always use `rg --files` (respects .gitignore).
-  - `fd`: use `fd` for listing files (Git-aware by default).
-
-- CLI tree view: set `performance.tools.tree.prefer` to:
-  - `auto` (default): prefer `eza -T` if available; fallback to `tree`; else minimal listing.
-  - `eza` | `tree` | `none`.
-
-Examples:
-
-```yaml
-performance:
-  tools:
-    fileDiscovery:
-      prefer: auto   # or 'fd' | 'rg'
-    tree:
-      prefer: auto   # or 'eza' | 'tree' | 'none'
-```
-
-CLI example using tree view:
-
-```bash
-semantic-code-intelligence explore parseFile --file src --summary --tree --tree-depth 3
-```
-
-## Monitoring & Metrics
-
-You can inspect system health and performance via an HTTP endpoint or the CLI.
-
-- HTTP metrics (defaults to port 7000):
-  - JSON: `GET /metrics?format=json` (consolidated Layer 1, 2, and 4 metrics)
-  - Prometheus: `GET /metrics?format=prometheus`
-  - Examples:
-    ```bash
-    curl -s http://localhost:7000/metrics?format=json | jq .
-    curl -s http://localhost:7000/metrics?format=prometheus
-    ```
-
-- CLI stats:
-  - Installed binary:
-    ```bash
-    semantic-code-intelligence stats
-    ```
-  - Development (without build):
-    ```bash
-    bun run src/servers/cli.ts stats
-    ```
-
-- Performance env knobs (see CONFIG.md for details):
-  - `ENHANCED_GREP_DEFAULT_TIMEOUT_MS`, `ENHANCED_GREP_MAX_PROCESSES`
-  - `PERF_P95_TARGET_MS`, `PERF_P99_TARGET_MS`, `PERF_CONCURRENCY_P95_TARGET_MS`
-
-#### CLI Layer 3 (Symbol Map + Rename Planner)
-
-Build a targeted symbol map (declarations/references/imports/exports):
-
-```bash
-# JSON output for tooling
-semantic-code-intelligence symbol-map MySymbol --max-files 10 --json
-
-# Pretty summary
-semantic-code-intelligence symbol-map MySymbol --max-files 10
-
-# Justfile helpers
-just symbol-map MySymbol
-```
-
-Plan a rename (preview only; does not apply changes):
-
-```bash
-# JSON preview
-semantic-code-intelligence plan-rename OldName NewName --json
-
-# Human-readable preview
-semantic-code-intelligence plan-rename OldName NewName
-
-# Justfile helper
-just plan-rename OldName NewName
-```
-
-### Environment Overrides (Escalation/AST)
-
-The following environment variables allow quick tuning without code changes:
-
-- `ESCALATION_L2_BUDGET_MS`: Layer 2 (AST) budget in milliseconds (e.g., `150` or `200`).
-- `ESCALATION_L1_CONFIDENCE_THRESHOLD`: Raise Layer 1 top‑confidence threshold to trigger AST (e.g., `0.8`).
-- `ESCALATION_L1_AMBIGUITY_MAX_FILES`: Trip AST sooner when many files match (e.g., `3`).
-- `ESCALATION_L1_REQUIRE_FILENAME_MATCH`: `1|true` to escalate when top file basenames don’t include the identifier.
-
-Examples:
-
-```bash
-export ESCALATION_L2_BUDGET_MS=150
-export ESCALATION_L1_CONFIDENCE_THRESHOLD=0.8
-export ESCALATION_L1_AMBIGUITY_MAX_FILES=3
-export ESCALATION_L1_REQUIRE_FILENAME_MATCH=1
-```
-
-### Language Server Interop (Optional)
-
-Layer 3 (Symbol Map + Rename Planner) can optionally consult native language servers (e.g., tsserver) to improve precision on complex cases.
-
-- Enable locally via environment:
-
-```bash
-export PROVIDERS_TS_ENABLE=1
-export PROVIDERS_TS_BUDGET_MS=120  # time budget for provider calls
-```
-
-- Behavior:
-  - Provider is strictly budgeted/cancellable; planner always produces a plan even without provider.
-  - Provider results are merged with AST findings with provenance. Our planner validates final edit ranges.
-  - Default in CI: provider disabled unless explicitly enabled.
-    tokenOverlapThreshold: 0.5
-    semanticSimilarityThreshold: 0.7
-  
-  context:
-    windowSize: 3
-    includeComments: true
-    includeStrings: false
-
-# Pattern learning
-patterns:
-  synonyms:
-    get: [fetch, retrieve, load, obtain]
-    set: [update, modify, change, assign]
-    create: [make, build, generate, produce]
-    delete: [remove, destroy, eliminate]
-  
-  transformations:
-    camelCase: true
-    snake_case: true
-    PascalCase: true
-    kebab-case: true
-```
-
-## Usage
-
-### Basic Usage
-
-Once installed and configured, the LSP proxy automatically enhances these operations:
-
-#### Enhanced "Go to Definition" 
-```typescript
-// Instead of just exact matches, finds:
-const getUserData = () => {...}
-const fetchUserInfo = () => {...}  // ← Found via fuzzy matching
-const loadUser = () => {...}       // ← Found via semantic similarity
-```
-
-#### Intelligent Renaming
-```typescript
-// Rename getUserData → getUser
-// Automatically suggests:
-// - getUserProfile → getUserProfile  
-// - fetchUserData → fetchUser (pattern learned)
-// - UserDataService → UserService (propagation)
-// - getUserDataTest → getUserTest (test sync)
-```
-
-#### Predictive Completion
-```typescript
-// Type "get" and see predictions based on learned patterns:
-// - getUser (high confidence - recently used pattern)
-// - fetchUser (medium confidence - synonym pattern)
-// - loadUser (low confidence - semantic similarity)
-```
-
-### Advanced Usage
-
-#### Custom Propagation Rules
-```typescript
-// Add custom rules for your architecture
-ontology.addPropagationRule(new CustomRule(
-    'api_endpoint_sync',
-    'Syncs API endpoints with route handlers',
-    async (change, context) => {
-        if (change.identifier.endsWith('Endpoint')) {
-            return [{
-                target: change.identifier.replace('Endpoint', 'Handler'),
-                suggestion: change.to?.replace('Endpoint', 'Handler'),
-                confidence: 0.9,
-                reason: 'API endpoint-handler synchronization'
-            }];
-        }
-        return [];
-    }
-));
-```
-
-#### Pattern Analysis
-```typescript
-// Analyze what patterns the system has learned
-const stats = await ontology.getPatternStatistics();
-console.log(`Learned ${stats.totalPatterns} patterns`);
-console.log(`Top pattern: ${stats.topPatterns[0].description}`);
-```
-
-#### Concept Exploration
-```typescript
-// Explore the concept graph
-const concept = await ontology.findConcept('getUserData');
-const related = ontology.getRelatedConcepts(concept.id);
-console.log(`Found ${related.length} related concepts`);
-```
-
-## Integration
-
-### VS Code Extension
-Create `.vscode/settings.json`:
 ```json
 {
-  "semanticCodeIntelligence.enabled": true,
-  "semanticCodeIntelligence.server.path": "semantic-code-intelligence",
-  "semanticCodeIntelligence.fuzzyMatching.enabled": true,
-  "semanticCodeIntelligence.patternLearning.enabled": true,
-  "semanticCodeIntelligence.propagation.autoApply": false
+  "mcpServers": {
+    "semantic-code-intelligence-http": {
+      "type": "streamable-http",
+      "url": "http://localhost:7001/mcp"
+    }
+  }
 }
 ```
 
-#### Custom LSP Methods (Layer 3)
-- `symbol/buildSymbolMap`: Build a targeted map of declarations/references/imports/exports for a symbol.
-- `refactor/planRename`: Produce a preview WorkspaceEdit for safely renaming a symbol.
+## CLI examples
 
-Example (from an extension):
-```ts
-// Using the public Extension API
-const api = await vscode.extensions.getExtension('tryingET.semantic-code-intelligence')?.activate();
-const symbolMap = await api?.buildSymbolMap('MySymbol', { astOnly: true, maxFiles: 10 });
-const plan = await api?.planRename('OldName', 'NewName');
+Run the CLI from the repository being inspected so paths remain target-relative.
+
+Bounded file read:
+
+```bash
+semantic-code-intelligence workflow read_file \
+  --args '{"path":"README.md","range":{"startLine":1,"endLine":40}}' \
+  --json
 ```
 
-Direct LanguageClient usage:
-```ts
-await client.sendRequest('symbol/buildSymbolMap', { symbol: 'MySymbol', astOnly: true, maxFiles: 10 });
-await client.sendRequest('refactor/planRename', { oldName: 'OldName', newName: 'NewName' });
+Text search:
+
+```bash
+semantic-code-intelligence workflow text_search \
+  --args '{"query":"alpha-mvp-check","path":"."}' \
+  --json
 ```
 
-#### Performance Tuning (Env Overrides)
-Quick knobs for local/CI tuning (documented in NEXT_STEPS):
-- `ESCALATION_POLICY` = `auto|always|never`
-- `ESCALATION_L2_BUDGET_MS`
-- `ESCALATION_L1_CONFIDENCE_THRESHOLD`
-- `ESCALATION_L1_AMBIGUITY_MAX_FILES`
-- `ESCALATION_L1_REQUIRE_FILENAME_MATCH`
+Definition and references:
 
-These influence smart escalation between Layer 1/2/3 for precision and performance.
+```bash
+semantic-code-intelligence find CodeAnalyzer --json
+semantic-code-intelligence references CodeAnalyzer --json
+```
 
-### MCP Integration
-The proxy integrates with MCP clients and tools:
-- Uses `Grep` for fast content search
-- Uses `Glob` for file pattern matching  
-- Uses `LS` for directory structure analysis
+Generic HTTP call:
 
-### CI/CD Integration
+```bash
+curl -sS -X POST http://localhost:7000/api/v1/tools/call \
+  -H 'content-type: application/json' \
+  -d '{
+    "name": "read_file",
+    "arguments": {
+      "path": "README.md",
+      "range": {"startLine": 1, "endLine": 40}
+    }
+  }' | jq .
+```
 
-CI/review automation is a later phase. The current repo-owned CI-style evidence path is the Alpha MVP validation bundle:
+## Preview-first patch workflow
+
+The primary autonomous-safe path is `safe_write`. Preview remains the default. A caller supplies the patch and explicit commands; check recommendations are advisory and do not silently alter the selected commands.
+
+```bash
+semantic-code-intelligence workflow safe_write \
+  --args "$(jq -n \
+    --rawfile patch change.diff \
+    '{patch:$patch,commands:["bun run typecheck"],recommendChecks:true,apply:false}')" \
+  --json
+```
+
+Guarded apply additionally requires:
+
+```bash
+export ALLOW_SNAPSHOT_APPLY=1
+```
+
+Do not enable guarded apply until the returned diff and checks have been reviewed.
+
+## Snapshot retention
+
+Snapshot materialization lives under `.ontology/snapshots/`. To prevent dogfood and test loops from accumulating stale snapshots, `OverlayStore.createSnapshot()` performs best-effort local cleanup by default:
+
+- target at most `SCI_SNAPSHOT_MAX_KEEP` snapshots per workspace root (default `25`), while preserving snapshots with active materialization locks;
+- delete unlocked snapshots older than `SCI_SNAPSHOT_MAX_AGE_DAYS` (default `3`);
+- throttle routine age scans with `SCI_SNAPSHOT_CLEANUP_INTERVAL_MS` (default `300000`) and `SCI_SNAPSHOT_CLEANUP_EVERY` (default `25` snapshot creations); count pressure bypasses the throttle;
+- set `SCI_SNAPSHOT_AUTO_CLEANUP=0` only when deliberately preserving diagnostic snapshots.
+
+Manual cleanup:
+
+```bash
+just snap_clean 25 3
+```
+
+Or, with the HTTP server running:
+
+```bash
+curl -sS -X POST http://localhost:7000/api/v1/snapshots/clean \
+  -H 'content-type: application/json' \
+  -d '{"maxKeep":25,"maxAgeDays":3}' | jq .
+```
+
+Snapshot metadata and narrow artifacts may persist across CLI processes. SCI does not claim a general durable session or canonical evidence database; promote durable execution evidence through Agent Kernel.
+
+## Validation and dogfooding
+
+Canonical Alpha validation:
 
 ```bash
 bun run alpha:mvp:check
@@ -515,414 +268,72 @@ bun run alpha:mvp:check
 just alpha-mvp-check
 ```
 
-Do not treat pull-request annotations, autonomous suggestions, dashboards, or production deployment as supported product surfaces until a later decision names their user, interface contract, validation evidence, and rollback boundary.
-
-## Development
-
-### Building from Source
-```bash
-# Install dependencies
-bun install
-
-# Run in development mode
-bun run dev
-
-# Build adapters/CLI
-bun run build:all
-
-# Run tests
-just test
-
-# Run the closed Alpha MVP validation bundle
-just alpha-mvp-check
-```
-
-### Architecture
-
-The system consists of several key components:
-
-1. **Fast Search Layer (Layer 1)** (`src/layers/layer1-fast-search.ts`)
-   - Integrates with Grep, Glob, LS tooling via Layer 1 (Fast Search)
-   - Provides fast, initial filtering of search results
-
-2. **Tree-sitter Layer** (`src/layers/tree-sitter.ts`)
-   - Parses code into AST for structural understanding
-   - Extracts semantic relationships and design patterns
-
-3. **Ontology Engine** (`src/ontology/ontology-engine.ts`)
-   - Manages concept lifecycle and relationships
-   - Builds and maintains the knowledge graph
-
-4. **Pattern Learner** (`src/patterns/pattern-learner.ts`)
-   - Learns from developer refactoring actions
-   - Builds confidence-scored pattern library
-
-5. **Knowledge Spreader** (`src/propagation/knowledge-spreader.ts`)
-   - Propagates changes across related concepts
-   - Applies architectural rules and patterns
-
-### Testing
+Focused development checks:
 
 ```bash
-# Fast sliced test runner
-just test
-
-# Closed Alpha MVP validation bundle
-just alpha-mvp-check
-
-# Package-script equivalent
-bun run alpha:mvp:check
-
-# Targeted tests
-bun test tests/alpha-mvp-tool-contract.test.ts
-
-# Optional legacy/perf/coverage surfaces
-just test-perf
-just test-coverage
-
-# Command-surface drift guard
+bun run typecheck
 bun run command-surface:check
-```
-
-#### Local Testing (Sliced + Batched)
-
-Use the sliced/batched runners for fast, predictable local feedback. By default, `just test` and `bun run test` run the test suite in slices and batches, mirroring our CI approach. Use `bun run test:raw` only when you intentionally want one monolithic `bun test` process for debugging.
-
-Examples:
-
-```bash
-# Fast default (auto-sliced + batched)
+bun run alpha:mvp:test
 just test
-bun run test
-
-# Single slice (K of N)
-just test-sliced 6 2
-
-# All slices sequentially
 just test-slices 6
-
-# CI-like run locally (6 slices, steady batch size)
-just test-ci-like
-
-# Tune via env vars (larger batches are opt-in)
-SLICES=6 BATCH_SIZE=2 TIMEOUT=180000 BUN_JOBS=1 just test-fast
 ```
 
-Notes:
-- `bun run command-surface:check` guards package, workflow, and review-template commands against drifting back to broad raw `bun test`, stale CLI paths, or unfrozen root installs.
-- `SLICES` = number of slices (defaults to 4 if not set in some runners).
-- `BATCH_SIZE` = number of files per `bun test` invocation. Normal local/agent runners default to `1` to avoid mixed HTTP/CLI test contention; larger batches are explicit opt-in.
-- `TIMEOUT` = per-batch timeout in ms (default 180000).
-- `BUN_JOBS=1` is recommended for stability and lower variance.
-
-### Debugging
-
-Enable debug logging:
-```bash
-export DEBUG=semantic-code-intelligence:*
-semantic-code-mcp
-```
-
-View internal state:
-```bash
-# Get statistics
-curl http://localhost:7000/stats
-
-# Get concept graph
-curl http://localhost:7000/concepts
-
-# Get learned patterns
-curl http://localhost:7000/patterns
-```
-
-## ⚡ Performance Notes (Alpha Evidence)
-
-The closed Alpha MVP bundle records coarse latency evidence for representative harnessed-LLM workflows and compares current elapsed-time maxima against `docs/project/alpha-evidence-latency-baseline.json`.
-
-Use these commands for current evidence:
+Dogfood and evidence producers:
 
 ```bash
+bun run alpha:mvp:dogfood
+bun run self:dogfood:cli
+bun run structural:dogfood
+bun run graph:dogfood
+bun run recommend-checks:dogfood
+bun run safe-write:dogfood
+bun run alpha:evidence:check
 bun run alpha:evidence:history
 bun run alpha:evidence:packet
-just alpha-mvp-check
 ```
 
-Current Alpha evidence is useful for catching obvious regressions in the supported first-user path. It is **not** production p95/p99 evidence, cross-machine performance characterization, or a general guarantee for very large repositories. See `docs/project/interactive-slo-guidance.md` and `docs/project/phase-1-closure-review.md` for the boundary.
+Generated `.test-results/*.json` evidence proves the current tested run only. It is not canonical AK evidence, a production SLO history, or a guarantee for every target repository.
 
-### Historical benchmark notes
-
-Older benchmark tables in this repo may reference sub-100ms targets, cache hit rates, or large-repo scale. Treat those as historical notes unless refreshed through the current Alpha evidence path or a later production-readiness decision.
-
-### Optimization Notes
-
-#### Smart Cache Configuration
-```yaml
-# Zone-based caching with file change detection
-cache:
-  zones:
-    "node_modules/**": 3600    # Dependencies: 1 hour TTL
-    "src/**": 10              # Source code: 10 seconds TTL
-    "**/*.tmp": 1             # Temp files: 1 second TTL
-  fileChangeDetection: true   # Never returns stale data
-  dependencyTracking: true    # Invalidates dependent files
-```
-
-#### Performance Tuning
-1. **Layer Optimization**: Disable unused layers for better performance.
-2. **Cache Zones**: Configure TTL based on change frequency.
-3. **Confidence Thresholds**: Higher = fewer suggestions, faster responses.
-4. **Database Optimization**: keep storage behind configured adapters and avoid hard-coding DB assumptions into higher layers.
-5. **Monitoring**: use current CLI/HTTP health and evidence commands; dashboard-style monitoring is later-phase unless explicitly promoted.
-
-## 🔧 Troubleshooting Guide
-
-### Health Check First
-```bash
-# Quick system check
-just health
-# ✅ HTTP API (7000): HEALTHY
-# ✅ MCP HTTP (7001): HEALTHY
-
-# Detailed status
-just status
-# Shows PID and service status
-
-# Check logs
-just logs
-# Real-time log monitoring
-```
-
-### Common Issues & Solutions
-
-#### 🚨 Servers Won't Start
-```bash
-# Check port conflicts
-lsof -i :7000 :7001 :7002
-
-# Use custom ports if needed
-export HTTP_API_PORT=8000 MCP_HTTP_PORT=8001 LSP_SERVER_PORT=8002
-just start
-
-# Clean restart
-just stop
-rm -rf .ontology/pids/*
-just start
-
-# Nuclear option: reset everything
-just clean-all
-just init
-just start
-```
-
-#### ⚡ Performance Issues
-```bash
-# Check system resources
-top -p $(cat .ontology/pids/*.pid)
-
-# Monitor cache performance
-curl http://localhost:7000/api/v1/monitoring | jq '.cache'
-
-# Database optimization
-SQLITE_OPTIMIZE=true just start
-
-# Clear cache if needed
-rm -rf .ontology/cache/*
-just restart
-```
-
-#### 🧠 Learning System Issues
-```bash
-# Check learning statistics
-curl http://localhost:7000/api/v1/stats | jq '.learning'
-
-# Reset learning if corrupted
-rm .ontology/concepts.db
-just restart
-
-# Enable debug logging
-DEBUG=semantic-code-intelligence:* just dev
-```
-
-#### 🌐 Web UI Not Loading
-```bash
-# Check if web UI is enabled
-docker-compose ps web-ui
-
-# Manual nginx check
-curl -I http://localhost:8080
-
-# Restart web services
-docker-compose restart web-ui nginx
-```
-
-### Advanced Diagnostics
-
-#### Database Issues
-```bash
-# Check database integrity
-sqlite3 .ontology/concepts.db "PRAGMA integrity_check;"
-
-# Database statistics
-sqlite3 .ontology/concepts.db ".tables"
-sqlite3 .ontology/concepts.db "SELECT COUNT(*) FROM concepts;"
-```
-
-#### Memory Leaks
-```bash
-# Monitor memory usage over time
-while true; do
-  ps aux | grep bun | grep -v grep
-  sleep 60
-done
-
-# Heap dump analysis (if available)
-bun --expose-gc --inspect src/servers/http.ts
-```
-
-## 🛠 Comprehensive Troubleshooting
-
-For detailed troubleshooting beyond the quick fixes above:
-
-- **[📖 Complete Troubleshooting Guide](docs/TROUBLESHOOTING.md)** - Comprehensive solutions for all issues
-- **[⚡ Quick Reference](docs/TROUBLESHOOTING_QUICK_REFERENCE.md)** - Common commands and fixes
-
-### 🔧 Diagnostic Tools
-
-Built-in diagnostic commands for system health monitoring:
+Repository integrity checks:
 
 ```bash
-# System health check
-just health-check
-
-# Analyze system logs
-just analyze-logs  
-
-# Full diagnostic report
-just diagnostics
-
-# Save diagnostic report for support
-just save-diagnostics
+./scripts/ci/portable.sh
+./scripts/ci/full.sh  # additionally requires live AK authority access
 ```
 
-### 💾 Backup & Recovery
+## Current status and non-goals
 
-Protect your system data and configuration:
+Phase 1 is closed as an Alpha MVP substrate for bounded harnessed coding sessions. Current work should be limited to:
 
-```bash
-# Create backup
-just backup
+- concrete maintenance and regression fixes;
+- targeted hardening tied to a named closure gap;
+- explicit review before Phase 2 IDE, dashboard, or workbench work.
 
-# List available backups
-just list-backups
+Not currently supported as product commitments:
 
-# Restore from backup
-just restore-backup <backup-name>
+- production Kubernetes or hosted deployment;
+- polished VS Code or human IDE workflows;
+- complete whole-program call graphs;
+- production p95/p99 or cross-machine SLOs;
+- marketplace, analytics, or AI-training claims;
+- autonomous unreviewed writes;
+- canonical task, decision, direction, or evidence authority.
 
-# Emergency system reset
-just emergency-reset
-```
+Historical production, deployment, roadmap, and benchmark documents are retained only as historical material where marked. Current authority for scope and runtime work is Agent Kernel plus the project posture and Alpha contract linked at the top of this README.
 
-### 🆘 Getting Help
+## Contributing
 
-1. **Check local health**: run `just health` and `just status`.
-2. **Read Documentation**: start with `docs/project/product-posture.md`, `docs/project/alpha-mvp-contract.md`, and guides in `/docs/`.
-3. **Search Issues**: [GitHub Issues](https://github.com/tryingET/semantic-code-intelligence/issues).
-4. **Create Bug Report**: use issue templates with system info and the failing command.
-5. **Performance Issues**: include output from `just stats`, `just health`, and relevant Alpha evidence commands.
+Normal work follows the repository’s main-first policy and an AK-backed scoped task when operational work is being tracked.
 
-### Support Information Template
-```bash
-# Include this information when reporting issues:
-echo "System Information:"
-echo "==================="
-uname -a
-bun --version
-just --version
+Before closeout, run the narrowest relevant checks and then the canonical gate appropriate to the change. Do not report generated SCI evidence as durable AK evidence without explicit promotion through the AK evidence surface.
 
-echo -e "\nService Status:"
-just health
+See:
 
-echo -e "\nSystem Stats:"
-curl -s http://localhost:7000/api/v1/stats | jq .
+- [AGENTS.md](AGENTS.md)
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+- [TESTING_STRATEGY.md](TESTING_STRATEGY.md)
+- [docs/engineering.local.md](docs/engineering.local.md)
 
-echo -e "\nRecent Errors:"
-tail -n 50 .ontology/logs/*.log | grep ERROR
-```
+## License
 
-## 🤝 Contributing
-
-We welcome contributions. The project is currently alpha; start with the Phase 1 validation path before treating broader surfaces as supported.
-
-### Quick Development Setup
-```bash
-# 1. Fork and clone
-git clone https://github.com/tryingET/semantic-code-intelligence.git
-cd semantic-code-intelligence
-
-# 2. Install dependencies
-bun install
-
-# 3. Start development environment
-just dev
-
-# 4. Run tests to verify setup (fast default)
-just test
-
-# 5. Check code quality
-just check
-```
-
-### Contribution Workflow
-1. **Create Feature Branch**: `git checkout -b feature/your-feature`
-2. **Implement Changes**: Follow existing patterns and architecture
-3. **Add Tests**: Use `tests/` directory with Bun test framework
-4. **Validate Quality**: Run `just check` before committing
-5. **Submit PR**: Use provided PR template with checklist
-
-### Testing Requirements
-- **Unit Tests**: For core logic changes
-- **Integration Tests**: For protocol adapter changes
-- **Performance Tests**: For optimization changes
-- **All Tests Pass**: `just test-all` must succeed
-
-### Code Standards
-- **TypeScript**: Strict mode with exact optional properties
-- **Biome**: Auto-formatting and linting
-- **Architecture**: Follow unified core pattern
-- **Documentation**: Update README for user-facing changes
-
-## 📄 License
-
-MIT License - see [LICENSE](LICENSE) for details.
-
-## 🗓️ Roadmap
-
-### ✅ Phase 1 closed — Harnessed LLM Alpha MVP substrate
-- Product posture, Alpha MVP contract, and closure boundary are documented.
-- MCP, HTTP, direct adapter, MCP HTTP, MCP stdio, and CLI fallback coverage exercise the first-user tool surface.
-- Preview-first patch planning, `safe_write`, validation plans, check recommendations, graph-impact evidence, and evidence packets are covered by the repeatable bundle.
-- One-command validation: `just alpha-mvp-check`.
-
-### Current next-work rule
-Do **not** keep adding Phase 1 dogfood waves by default. Continue only for:
-- Alpha maintenance/regression fixes when the evidence bundle fails or an operator reports a concrete substrate bug;
-- targeted hardening tied to a named closure-review gap and a measurable trigger;
-- an explicit Phase 2 review before developer workbench, IDE, dashboard, or human-facing polish work.
-
-### Later phases
-- Developer workbench / VS Code polish after explicit Phase 2 authority.
-- CI and review automation consuming the same snapshot and patch-check primitives.
-- Productized deployment and dashboards after productization evidence.
-- Marketplace, analytics, and AI-training features as roadmap only.
-
----
-
-## Alpha Status
-
-Semantic Code Intelligence is **not yet ready for production use**. It has a credible Phase 1 harnessed-LLM Alpha MVP validation path:
-
-```bash
-just alpha-mvp-check
-```
-
-Treat production deployment, dashboard, marketplace, analytics, and AI-training material as roadmap unless a later AK direction/wave promotes it with evidence.
+Apache License 2.0. See [LICENSE](LICENSE).

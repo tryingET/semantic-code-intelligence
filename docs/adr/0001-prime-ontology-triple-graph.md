@@ -3,7 +3,12 @@ summary: "ADR-0001: Prime Ontology Engine and Triple Graph Storage for the Seman
 read_when:
   - "You need 0001 prime ontology triple graph information for Semantic Code Intelligence."
   - "You are changing docs/adr/0001-prime-ontology-triple-graph.md or related behavior."
-type: "reference"
+type: "adr"
+system4d:
+  container: "SCI Layer 4 ontology and pluggable StoragePort architecture."
+  compass: "Keep semantic enrichment bounded and storage-independent without promoting roadmap surfaces into Alpha commitments."
+  engine: "PrimeEngine proposal, triple-compatible adapters, budgets, feature flags, and cross-protocol contracts."
+  fog: "Unaccepted proposal status, semantic-quality limits, and risk of coupling higher layers to one storage backend."
 ---
 
 # ADR-0001: Prime Ontology Engine and Triple Graph Storage

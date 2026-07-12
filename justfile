@@ -290,6 +290,9 @@ snap_diff id:
 snap_status id:
     @{{bun}} run scripts/snapshot-tools.ts status {{id}}
 
+snap_clean max_keep="25" max_age_days="3":
+    @{{bun}} run src/servers/cli.ts snapshots clean --max-keep {{max_keep}} --max-age-days {{max_age_days}}
+
 
 snap_progress id:
     @{{bun}} run scripts/snapshot-tools.ts progress {{id}}
@@ -1166,11 +1169,16 @@ test-endpoints:
     @curl -s http://localhost:7001/health | jq . || echo "Failed"
     @echo ""
     @echo "HTTP API Stats:"
-    @curl -s http://localhost:7000/stats | jq '.ontology' || echo "Failed"
+    @curl -s http://localhost:7000/api/v1/stats | jq '.data // .' || echo "Failed"
 
-# Full CI/CD simulation
-ci: clean install build-all lint test-all test-coverage package-extension
-    @echo "✓ CI pipeline complete!"
+# Canonical Alpha CI surface used by normal repository work.
+ci:
+    ./scripts/ci/portable.sh
+    bun run alpha:mvp:check
+
+# Opt-in broad legacy/IDE/coverage suite. This is not the Alpha release gate.
+ci-extended: clean install build-all lint test-all test-coverage package-extension
+    @echo "✓ extended validation complete"
 
 # === TROUBLESHOOTING & DIAGNOSTICS ===
 

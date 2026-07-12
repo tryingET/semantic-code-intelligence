@@ -1,56 +1,34 @@
 ---
-summary: "Session Prompt (MCP Clients) for the Semantic Code Intelligence repo."
+summary: "Optional MCP-client session prompt aligned with SCI Alpha posture and Agent Kernel authority."
 read_when:
-  - "You need CLAUDE SESSION PROMPT information for Semantic Code Intelligence."
-  - "You are changing CLAUDE_SESSION_PROMPT.md or related behavior."
+  - "You need a copy-paste prompt for a coding session in this repository."
 type: "reference"
 ---
 
-# Session Prompt (MCP Clients)
+# Session prompt for MCP clients
 
-Copy and paste this at the start of each session:
+Copy and adapt this prompt when the client does not already load repository instructions:
 
----
+```text
+Work in the Semantic Code Intelligence repository.
 
-Please follow this workflow for our session:
+1. Read AGENTS.md, docs/project/product-posture.md,
+   docs/project/alpha-mvp-contract.md, and docs/project/alpha-mvp-validation.md.
+2. Inspect git status before editing and preserve unrelated dirty work.
+3. If I supplied an Agent Kernel task id, inspect and claim that exact task,
+   obey its scope, and treat AK as task/direction/decision/evidence authority.
+   Do not derive the active queue from PROJECT_STATUS.md or NEXT_STEPS.md;
+   those files are historical.
+4. Prefer SCI navigation and preview-first patch workflows when practical.
+5. Implement the smallest coherent fix and run focused checks before the
+   relevant wider gate.
+6. Report only commands and evidence actually observed. Local SCI snapshots
+   and .test-results files are not durable AK evidence unless promoted through AK.
+7. Do not advance AK decision lifecycle state without an explicit instruction
+   naming the decision and target state.
+8. Preserve the Phase 1 Alpha boundary: MCP/HTTP/CLI agent workflows are the
+   supported product; IDE, deployment, publication, and dashboard work require
+   separate current authority.
+```
 
-1. **Read Project Context** (in this order):
-   - Read VISION.md to understand the project goals
-   - Read PROJECT_STATUS.md to understand current state
-   - Read NEXT_STEPS.md to see what needs to be done
-
-2. **Create Task List**:
-   - Use TodoWrite to create a task list based on NEXT_STEPS.md
-   - Each task should be specific and achievable
-   - Start with all tasks as "pending"
-
-3. **For Each Task**:
-   - Mark task as "in_progress" before starting
-   - Implement the task completely
-   - Test/verify the implementation works
-   - Update PROJECT_STATUS.md with what was accomplished
-   - Update NEXT_STEPS.md (remove completed items, add new discoveries)
-   - Mark task as "completed"
-   - Report success/failure with specific details
-
-4. **After Each Task**:
-   - If task failed: Update TodoWrite with why it failed and what needs to be fixed
-   - If task succeeded: Continue to next task
-   - If new issues discovered: Add them to TodoWrite
-
-5. **End of Session**:
-   - Update PROJECT_STATUS.md with final state
-   - Update NEXT_STEPS.md with remaining work
-   - Provide summary of:
-     - What was accomplished
-     - What's still broken
-     - What should be done next session
-
-**Important Rules**:
-- Always update documentation after EACH task, not at the end
-- If something doesn't work, document WHY in PROJECT_STATUS.md
-- Keep NEXT_STEPS.md focused on actionable items only
-- Test everything before marking as complete
-- Report specific error messages and file locations
-
-Start by reading the three documents now and creating your TodoWrite list.
+The live operator request and exact AK task, when present, determine the bounded objective. Do not create a parallel TODO authority store.

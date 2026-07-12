@@ -8,7 +8,7 @@ type: "reference"
 
 # Documentation Index
 
-This repository implements a protocol‑agnostic core with thin adapters for MCP (stdio/HTTP), HTTP API, LSP, and CLI. This index highlights how to run it, where to configure it, and how to use the primary workflows.
+This repository implements a protocol-agnostic core with MCP (stdio/HTTP), HTTP, CLI, and LSP adapters. The supported Phase 1 Alpha surface is MCP/HTTP/CLI for harnessed coding agents; LSP and learning/pipeline features remain experimental or later-phase.
 
 ## Quick Start
 
@@ -54,7 +54,7 @@ This repository implements a protocol‑agnostic core with thin adapters for MCP
   - Generic: `semantic-code-intelligence workflow <name> --args '<json>' [--json]`
   - Rename safely: `semantic-code-intelligence rename-safely <old> <new> [-f file] [--no-checks] [--cmd <...>] [-t sec] [--json]`
   - Patch + checks (snapshot‑safe): `semantic-code-intelligence patch-checks-in-snapshot [-s snapshot] [-p patch.diff] [--cmd <...>] [-t sec] [--only-touched] [--json]`
-  - Pipelines (L5):
+  - Experimental L5 pipelines (registered implementation surface, not an Alpha commitment):
     - List: `semantic-code-intelligence pipelines list [--json]`
     - Run: `semantic-code-intelligence pipelines run <id> [--json]`
     - Runs: `semantic-code-intelligence pipelines runs <id> --limit 5 [--json]`

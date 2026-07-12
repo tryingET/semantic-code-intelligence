@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-07-12T12:21:22.192497506+00:00",
+  "task_id": 3814,
+  "entity_version": 6,
+  "commit_sha": null,
+  "scope": {
+    "allowed_paths": [
+      ".github/workflows/**",
+      "CLAUDE.md",
+      "CLAUDE_SESSION_PROMPT.md",
+      "CONFIG.md",
+      "DEPLOYMENT*.md",
+      "FEEDBACK_LOOP_VALIDATION_REPORT.md",
+      "IMPLEMENTATION_PLAN.md",
+      "NEXT_STEPS.md",
+      "PRODUCTION_DEPLOYMENT_NEXT_STEPS.md",
+      "PROJECT_STATUS.md",
+      "README.md",
+      "TESTING_STRATEGY.md",
+      "docs/**",
+      "governance/**",
+      "justfile",
+      "package.json",
+      "policy/**",
+      "scripts/**",
+      "src/core/overlay-store.ts",
+      "tests/**/*.md",
+      "tests/build-command-surface.test.ts",
+      "tests/overlay-store-retention.test.ts",
+      "tests/task-scope-snapshot-check.test.ts"
+    ],
+    "required_paths": [
+      ".github/workflows/alpha-mvp.yml",
+      "README.md",
+      "governance/work-items.json",
+      "policy/engineering-lane.json"
+    ],
+    "forbidden_paths": []
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}

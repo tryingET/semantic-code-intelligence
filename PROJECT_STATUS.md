@@ -1,21 +1,22 @@
 ---
-summary: "Ontology‑LSP — Project Status (Concise) for the Semantic Code Intelligence repo."
+summary: "Historical December 2025 Semantic Code Intelligence project-status snapshot."
 read_when:
-  - "You need PROJECT STATUS information for Semantic Code Intelligence."
-  - "You are changing PROJECT_STATUS.md or related behavior."
-type: "reference"
+  - "You are investigating historical status claims or implementation provenance."
+type: "archive"
 ---
 
-# Ontology‑LSP — Project Status (Concise)
+# Historical project status snapshot
 
-This is a condensed project status. Detailed historical updates have been moved to `docs/status/`.
+> **Archived status:** This file preserves a December 2025 implementation snapshot. It is not current product, task, or direction authority. Read `docs/project/product-posture.md`, `docs/project/phase-1-closure-review.md`, and live Agent Kernel state for current posture and work.
+
+Detailed historical updates are retained under `docs/status/`.
 
 Links
 - Vision and roadmap: `VISION.md`, `NEXT_STEPS.md`
 - Condensed monthly changes: `docs/status/CHANGES-2025-09.md`
 - Workflows and tools: `docs/WORKFLOWS.md`, `CONFIG.md`
 
-## Current Status
+## Status at capture time
 
 - Core: unified `CodeAnalyzer` + `LayerManager` orchestrate L1–L5; adapters remain thin.
 - Adapters: HTTP, MCP (HTTP/stdio), CLI, and LSP share a unified tool surface (workflows + snapshot-safe editing) with standardized, protocol-shaped error envelopes (including MCP HTTP invalid JSON and CLI workflow JSON errors).
@@ -54,9 +55,11 @@ Links
 - Learning pipelines: scheduling is in-process only (no external cron) and currently supports a bounded schedule subset; pipeline CRUD (enable/disable/update schedule) and metrics/drift tracking are not yet GA.
 - CI/workflows: multiple overlapping workflows exist (`ci.yml`, `test.yml`, `ontology-check.yml`); unify/retire legacy ones to avoid inconsistent gating.
 
-## Next Steps (Pointers)
+## Historical next-step pointers
 
-- See `NEXT_STEPS.md` — recommended focus order:
+The following list is retained for provenance and is not the active queue. Use `ak task ready` for current executable work.
+
+- Former `NEXT_STEPS.md` focus order:
   - 0.3 E2E Cross-Protocol Wiring (error shape + schema parity ≥80% consistency)
   - 0.36 Learning Pipelines Persistence (feature-gated, DB-backed schedules)
   - 0.35 Graph Expand Hardening (remaining)

@@ -8,7 +8,7 @@ type: "reference"
 
 # Workflows & Recipes
 
-Run high‑value workflows deterministically via the Ontology‑LSP tool surface. Prefer HTTP tools in CI; MCP (HTTP or stdio) is fine for local dev.
+Run high-value workflows deterministically through the Semantic Code Intelligence Alpha surface. Prefer MCP for harnessed clients, HTTP tools/call for deterministic parity, and CLI for local fallback.
 
 ## Quick Start
 
@@ -199,13 +199,11 @@ Prompts suggest tool sequences; they do not execute tools.
   - `PatchChecksInSnapshotResult`
 - Tool call response (HTTP): `{ success, result, error? }` (result is parsed JSON for workflows)
 
-### CI Dogfood Summary Artifact
+### Alpha CI evidence artifacts
 
-CI runs `just dogfood_ci` (HTTP tools) and captures its stdout into `dogfood-summary.json`.
+The canonical `.github/workflows/alpha-mvp.yml` runs `bun run alpha:mvp:check` and uploads generated `.test-results/*.json` artifacts. The dogfood producers and evidence boundaries are documented in `docs/project/alpha-mvp-validation.md`.
 
-- Producer: `scripts/dogfood-ci.ts`
-- Schema: `docs/dogfood-summary.schema.json`
-- CI workflow: `.github/workflows/ci.yml` (artifact name: `dogfood-summary`)
+`just dogfood_ci` and `docs/dogfood-summary.schema.json` remain local/legacy diagnostic surfaces; they are not the current automatic CI contract.
 
 ## Tips
 - Prefer HTTP tools in CI; for local dev, MCP stdio via `./mcp-wrapper.sh` is convenient (ensure clean stdout).

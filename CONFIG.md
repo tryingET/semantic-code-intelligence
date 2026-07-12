@@ -71,7 +71,7 @@ Settings are loaded in this priority order:
 - `L2_MAX_PARSE_FILES` - Max files Layer 2 (AST) parses per request (default: 20; clamp 1–100). Useful to reduce variance in perf/CI.
   - Numeric values are clamped: values ≤ 0 become 1; values > 100 become 100.
   - Non-numeric/invalid values fall back to the default of 20.
-  - CI recommendation: set `L2_MAX_PARSE_FILES=12` for perf-gated CI jobs to stabilize p95 on typical runners (see .github/workflows/ci.yml).
+  - Optional extended-validation recommendation: set `L2_MAX_PARSE_FILES=12` when explicitly running performance-gated jobs. The canonical `.github/workflows/alpha-mvp.yml` does not claim production performance coverage.
 - `LIST_SYMBOLS_AST` - When set to `1`, `list_symbols` tool uses an AST-backed path (Tree-sitter) for improved coverage; gracefully falls back to a fast regex scanner when grammars are unavailable.
 - Snapshot checks timeout clamp: all tools that run commands inside snapshots (e.g., `run_checks`, `patch_checks_in_snapshot`, `rename_safely`) accept `timeoutSec` but are centrally clamped to 1–600 seconds per command. The HTTP adapter already enforces this; core now applies the same cap for MCP/CLI parity.
 

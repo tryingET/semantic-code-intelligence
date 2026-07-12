@@ -1,18 +1,18 @@
 ---
-summary: "Production Deployment - Next Steps Guide for the Semantic Code Intelligence repo."
+summary: "Historical production-deployment checklist; not current SCI authority or a supported runbook."
 read_when:
-  - "You need PRODUCTION DEPLOYMENT NEXT STEPS information for Semantic Code Intelligence."
-  - "You are changing PRODUCTION_DEPLOYMENT_NEXT_STEPS.md or related behavior."
-type: "reference"
+  - "You are investigating historical SCI deployment planning."
+type: "archive"
 ---
 
-# Production Deployment - Next Steps Guide
+# Historical production deployment checklist
 
-## 🎯 Current Status: 100% PRODUCTION READY
+> **Superseded and non-executable:** SCI is currently a Phase 1 Alpha MVP substrate, not a production-ready deployment product. The commands and credentials workflow below are retained only as historical planning material. Do not execute them without a new, explicitly authorized productization and release contract.
 
-**System Status**: All critical blockers resolved, production deployment ready  
-**Verification Complete**: ✅ Builds, ✅ Performance, ✅ Health Endpoints, ✅ Docker Config  
-**Next Action**: Execute production deployment with proper Docker/K8s permissions
+## Historical reported status
+
+**Former claim**: critical blockers resolved and deployment ready
+**Current authority**: `docs/project/product-posture.md` and live Agent Kernel direction/tasks
 
 ---
 

@@ -498,66 +498,9 @@ CMD ["bun", "run", "dist/index.js"]
 
 ---
 
-### **CI/CD with GitHub Actions**
+### **CI with GitHub Actions**
 
-**.github/workflows/ci.yml:**
-```yaml
-name: CI
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-
-jobs:
-  quality:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Type check
-        run: bun run typecheck
-
-      - name: Lint and format check
-        run: bun run check
-
-      - name: Run tests
-        run: bun test --coverage
-
-      - name: Upload coverage
-        uses: codecov/codecov-action@v3
-        with:
-          file: ./coverage/lcov.info
-
-  build:
-    needs: quality
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: latest
-
-      - name: Build Docker image
-        run: docker build -t app:latest .
-
-      - name: Push to registry
-        run: |
-          echo ${{ secrets.DOCKER_PASSWORD }} | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
-          docker tag app:latest ${{ secrets.DOCKER_USERNAME }}/app:latest
-          docker push ${{ secrets.DOCKER_USERNAME }}/app:latest
-```
+SCI's canonical automatic gate is `.github/workflows/alpha-mvp.yml`. It pins Bun 1.3.12, runs portable repository integrity, installs from the lockfile, and executes `bun run alpha:mvp:check`. Deployment, publication, coverage, broad E2E, and performance workflows are separate opt-in concerns and must not be folded into the Alpha gate without current product/release authority.
 
 ---
 

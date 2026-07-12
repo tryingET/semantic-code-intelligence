@@ -1,347 +1,120 @@
 ---
-summary: "Frequently Asked Questions (FAQ) for the Semantic Code Intelligence repo."
+summary: "Frequently asked questions for the supported Semantic Code Intelligence Alpha surface."
 read_when:
-  - "You need FAQ information for Semantic Code Intelligence."
-  - "You are changing docs/FAQ.md or related behavior."
+  - "You need installation, interface, safety, language, or product-boundary answers for SCI."
 type: "reference"
 ---
 
-# Frequently Asked Questions (FAQ)
+# Frequently asked questions
 
-## General Questions
+## What is Semantic Code Intelligence?
 
-### What is Semantic Code Intelligence?
+SCI is a local-first code-navigation and change-planning substrate for harnessed coding agents. It exposes bounded reads/search, definition and reference navigation, graph-impact hints, check recommendations, preview-first snapshot patches, explicit checks, and guarded application through MCP, HTTP, and CLI.
 
-Semantic Code Intelligence is an enhanced Language Server Protocol implementation that adds intelligent code understanding through:
-- Fuzzy matching for identifiers
-- Pattern learning from refactoring history
-- Conceptual relationships between code elements
-- Automated change propagation
-- Multi-language support (TypeScript, JavaScript, Python)
+It is not a replacement for language-specific compilers or type checkers, and its Alpha graph evidence is not a complete whole-program semantic model.
 
-### How does it differ from standard LSP servers?
+## Who is the current user?
 
-Unlike traditional LSP servers that rely on exact string matching, Semantic Code Intelligence:
-- Understands conceptual relationships between identifiers
-- Learns from your refactoring patterns
-- Suggests related changes when you rename symbols
-- Provides fuzzy search capabilities
-- Maintains a knowledge graph of your codebase
+The Phase 1 user is a harnessed LLM coding session running in Pi, Claude Code, Cursor, or a comparable tool host. Human IDE polish, dashboards, CI review products, deployment, and package publication are later-phase concerns.
 
-### What languages are supported?
+See `docs/project/product-posture.md`.
 
-Currently supported:
-- TypeScript (.ts, .tsx)
-- JavaScript (.js, .jsx)
-- Python (.py)
+## How do I install it?
 
-Coming soon:
-- Go
-- Rust
-- Java
-- C/C++
-
-## Installation & Setup
-
-### How do I install Semantic Code Intelligence?
-
-#### Via NPM (Global Installation):
-```bash
-npm install -g semantic-code-intelligence
-```
-
-#### Via Bun:
-```bash
-bun add -g semantic-code-intelligence
-```
-
-#### VS Code Extension:
-1. Download the `.vsix` file from releases
-2. Install: `code --install-extension semantic-code-intelligence-1.0.0.vsix`
-
-### Why is Bun required?
-
-Bun provides:
-- Native SQLite support (no compilation needed)
-- Faster build times (50ms vs several seconds)
-- Better performance for file operations
-- Simplified dependency management
-- Built-in TypeScript support
-
-### Can I use it without Bun?
-
-The server requires Bun to run, but the VS Code extension handles this automatically. You don't need Bun installed globally if you're only using the extension.
-
-## Configuration
-
-### Where is the configuration stored?
-
-Configuration is stored in multiple places:
-1. `.ontology/config.json` - Project-specific settings
-2. VS Code settings - Extension configuration
-3. `.semantic-code-ignore` - File exclusion patterns
-4. Environment variables - Runtime overrides
-
-### How do I exclude files from analysis?
-
-Create a `.semantic-code-ignore` file in your project root:
-```
-# Dependencies
-node_modules/
-vendor/
-
-# Build outputs
-dist/
-build/
-
-# Custom patterns
-*.generated.ts
-test-data/
-```
-
-### Can I adjust performance settings?
-
-Yes, in your VS Code settings:
-```json
-{
-  "semanticCodeIntelligence.performance.workers": 2,
-  "semanticCodeIntelligence.performance.cacheSize": "250MB",
-  "semanticCodeIntelligence.propagation.maxDepth": 2
-}
-```
-
-## Features
-
-### How does fuzzy matching work?
-
-Fuzzy matching uses multiple strategies:
-1. **Edit distance**: Finds similar spellings (e.g., "getUserId" matches "getUserID")
-2. **Token overlap**: Matches partial names (e.g., "getUser" matches "getUserInfo")
-3. **Semantic similarity**: Understands synonyms (e.g., "fetch" matches "get")
-
-### What is pattern learning?
-
-Pattern learning observes your refactoring habits:
-- When you rename `getUserData` to `fetchUserData`
-- It learns the pattern: `get* → fetch*`
-- Next time, it suggests `fetchOrderData` when you rename `getOrderData`
-
-### How does change propagation work?
-
-When you rename a symbol:
-1. Finds all direct references (exact matches)
-2. Identifies related concepts (fuzzy matches)
-3. Suggests related changes based on patterns
-4. Auto-applies high-confidence suggestions
-5. Shows lower-confidence suggestions for review
-
-### What is the concept graph?
-
-The concept graph is a knowledge representation of your code:
-- Nodes represent code concepts (functions, classes, variables)
-- Edges represent relationships (calls, extends, imports)
-- Weights indicate relationship strength
-- Used for intelligent navigation and refactoring
-
-## Troubleshooting
-
-### Extension not activating?
-
-1. Check VS Code version (requires 1.74.0+)
-2. Reload window: `Ctrl+Shift+P` → "Developer: Reload Window"
-3. Check output panel: View → Output → "Semantic Code Intelligence Language Server"
-4. Verify Bun is accessible: `bun --version`
-
-### Server crashes or high CPU usage?
-
-1. Reduce worker count in settings
-2. Clear cache: `semantic-code-intelligence clear-cache`
-3. Check `.semantic-code-ignore` patterns
-4. Reduce propagation depth
-5. Check available memory
-
-### Fuzzy matching not working?
-
-1. Verify fuzzy matching is enabled
-2. Check threshold settings
-3. Ensure file types are supported
-4. Clear and rebuild index
-
-### Pattern learning not working?
-
-1. Patterns require 3+ similar renames to learn
-2. Check confidence threshold (default 0.7)
-3. Verify database isn't corrupted
-4. Check write permissions for `.ontology/`
-
-## HTTP API
-
-### How do I start the API server?
+Use a source checkout unless your environment has explicitly provisioned the CLI:
 
 ```bash
-# Default port 7000
-semantic-code-intelligence api
-
-# Custom port
-ONTOLOGY_API_PORT=8080 semantic-code-intelligence api
-
-# With CORS enabled
-ONTOLOGY_API_CORS=true semantic-code-intelligence api
+git clone https://github.com/tryingET/semantic-code-intelligence.git
+cd semantic-code-intelligence
+bun install --frozen-lockfile
+bun run build:all
+bun run alpha:mvp:check
 ```
 
-### What endpoints are available?
+The public npm registry is not currently an assumed distribution channel, so do not rely on `npm install -g` or `bunx` in portable instructions.
 
-- `GET /stats` - Ontology statistics
-- `GET /concepts?identifier=name` - Find concept
-- `GET /patterns` - Learned patterns
-- `POST /analyze` - Analyze codebase
-- `POST /suggest` - Get refactoring suggestions
-- `GET /export` - Export ontology data
-- `POST /import` - Import ontology data
-- `GET /health` - Health check
+## Which interfaces are supported?
 
-### How do I integrate with CI/CD?
+In order:
 
-Use the GitHub Actions workflow:
-```yaml
-- name: Ontology Check
-  run: |
-    bunx semantic-code-intelligence analyze
-    bunx semantic-code-intelligence stats
-```
+1. MCP stdio or MCP Streamable HTTP;
+2. HTTP `POST /api/v1/tools/call`;
+3. CLI `workflow <name>`.
 
-## Performance
+LSP and VS Code implementation code exists but is not a polished or supported Phase 1 product commitment.
 
-### How much memory does it use?
+## Which tools are supported?
 
-Typical memory usage:
-- Small projects (<1000 files): 50-100MB
-- Medium projects (1000-10000 files): 100-300MB
-- Large projects (>10000 files): 300-500MB
+The canonical 20-tool list is maintained in `docs/project/alpha-mvp-contract.md` and `src/core/tools/alpha-mvp-contract.ts`. The runtime registry also contains legacy and experimental tools, but protocol adapters do not expose those through the default Alpha membrane.
 
-Configurable via cache settings.
+## What languages are supported?
 
-### How fast is it?
+Support varies by operation and backend:
 
-Performance benchmarks:
-- Initial indexing: ~100 files/second
-- Fuzzy search: <50ms for most queries
-- Pattern matching: <10ms per pattern
-- Rename propagation: <200ms for typical refactoring
+- text and bounded file workflows are language-neutral;
+- Tree-sitter-backed AST behavior is strongest where a configured parser exists;
+- graph expansion has characterized TypeScript/JavaScript, Python, Rust, Go, and fallback behavior;
+- ast-grep structural workflows support languages available in the installed ast-grep runtime.
 
-### Can it handle large codebases?
+A structured fallback or explicit unsupported status is valid Alpha behavior. Do not infer uniform semantic richness across languages.
 
-Yes, optimizations for large codebases:
-- Incremental indexing
-- Bloom filters for negative lookups
-- LRU cache for frequent queries
-- Parallel processing with workers
-- Configurable memory limits
+## Does SCI write files automatically?
 
-## Privacy & Security
+Preview is the default. Patch workflows stage a diff in a snapshot and run caller-selected checks without changing the canonical working tree.
 
-### Is my code sent anywhere?
+Application requires an apply-capable workflow, passing checks, explicit apply intent, and:
 
-No, Semantic Code Intelligence runs entirely locally:
-- All processing happens on your machine
-- No network requests except for updates
-- Database stored in `.ontology/` folder
-- No telemetry or analytics
-
-### What data is stored?
-
-The local database stores:
-- Identifier names and locations
-- Learned patterns (anonymized)
-- Concept relationships
-- Cache data
-
-No source code content is stored.
-
-### Can I exclude sensitive files?
-
-Yes, use `.semantic-code-ignore`:
-```
-.env
-secrets/
-*.key
-*.pem
-config/production.json
-```
-
-## Contributing
-
-### How can I contribute?
-
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for:
-- Development setup
-- Coding standards
-- Pull request process
-- Testing guidelines
-
-### Where do I report bugs?
-
-1. Check existing issues on GitHub
-2. Create a new issue with:
-   - Clear description
-   - Steps to reproduce
-   - System information
-   - Error logs
-
-### Can I add support for a new language?
-
-Yes! To add language support:
-1. Add tree-sitter grammar
-2. Implement parser adapter
-3. Add language configuration
-4. Write tests
-5. Submit PR
-
-## Advanced Usage
-
-### Can I use it programmatically?
-
-Yes, via the API:
-```typescript
-import { OntologyEngine } from 'semantic-code-intelligence';
-
-const engine = new OntologyEngine('./my-project');
-const concept = await engine.findConcept('getUserData');
-```
-
-### How do I export/import ontology data?
-
-Export:
 ```bash
-semantic-code-intelligence export > ontology-backup.json
+export ALLOW_SNAPSHOT_APPLY=1
 ```
 
-Import:
+`safe_write` additionally verifies the applied tree against the reviewed snapshot and returns rollback evidence.
+
+## What HTTP endpoints should I use?
+
+Current primary endpoints include:
+
+- `GET /health`
+- `GET /metrics?format=json|prometheus`
+- `GET /openapi.json`
+- `POST /api/v1/tools/call`
+- `GET /api/v1/stats`
+- `GET /api/v1/snapshots`
+- `POST /api/v1/snapshots/clean`
+- MCP Streamable HTTP at port 7001 under `/mcp`
+
+Treat older `/concepts`, `/patterns`, `/analyze`, `/suggest`, `/export`, and `/import` examples as historical unless they appear in the current OpenAPI document and supported Alpha contract.
+
+## How do I integrate SCI with CI?
+
+The repository’s current Alpha gate is:
+
 ```bash
-semantic-code-intelligence import ontology-backup.json
+bun run alpha:mvp:check
 ```
 
-### Can I customize pattern matching?
+This validates SCI itself. SCI is not yet a supported general-purpose pull-request annotation or autonomous review product.
 
-Yes, in configuration:
-```json
-{
-  "patterns": {
-    "synonyms": {
-      "get": ["fetch", "retrieve", "load"],
-      "set": ["update", "modify", "change"]
-    },
-    "transformations": {
-      "camelCase": true,
-      "snake_case": true
-    }
-  }
-}
-```
+## Where is configuration documented?
 
-## More Questions?
+See `CONFIG.md`. Default local ports are:
 
-- Check the [documentation](./index.md)
-- Join our [discussions](https://github.com/tryingET/semantic-code-intelligence/discussions)
-- Open an [issue](https://github.com/tryingET/semantic-code-intelligence/issues)
-- Contact maintainers
+- HTTP API: 7000 (`HTTP_API_PORT`)
+- MCP HTTP: 7001 (`MCP_HTTP_PORT`)
+- LSP TCP: 7002 (`LSP_SERVER_PORT`)
+
+## How are snapshots retained?
+
+Snapshots live under `.ontology/snapshots/`. Automatic cleanup defaults to 25 snapshots per workspace and a three-day age bound. See the snapshot-retention section in `README.md` for environment overrides and manual cleanup.
+
+## Is generated evidence durable?
+
+`.test-results/*.json` and snapshot artifacts are local run evidence. They do not become canonical task, decision, direction, or durable evidence truth. Agent Kernel owns those facts and must receive any explicit evidence promotion.
+
+## Is SCI production ready?
+
+No. Phase 1 is closed as an Alpha MVP substrate. Passing validation does not establish production p95/p99, cross-machine stability, complete graphs, polished IDE UX, package publication, or production deployment readiness.
+
+## Where should I report or plan work?
+
+Use Agent Kernel tasks for executable work and deferments. Do not use `NEXT_STEPS.md`, `PROJECT_STATUS.md`, session TODOs, or generated evidence files as a parallel backlog.

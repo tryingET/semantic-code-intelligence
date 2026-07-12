@@ -21,14 +21,19 @@ type: "reference"
 Do not treat manual JSON edits as the live source of truth.
 If you are migrating a legacy JSON-first monorepo, import once, then continue from AK and re-export the projection.
 
-## Workflow
+## Routine workflow
 
-Use plain installed `ak` as the canonical operator path:
+Use plain installed `ak` as the canonical operator path. Export after task-state changes and before closeout:
+
+```bash
+ak work-items export --repo . --path governance/work-items.json
+ak work-items check --repo . --path governance/work-items.json
+```
+
+The import path is migration-only. Do not run it during routine work:
 
 ```bash
 ak work-items import --repo . --path governance/work-items.json
-ak work-items export --repo . --path governance/work-items.json
-ak work-items check --repo . --path governance/work-items.json
 ```
 
 ## Optional explicit task-scope snapshots
@@ -38,7 +43,8 @@ When a monorepo AK task needs explicit scope:
 - author/update it in AK via `ak task scope show|set|update ...`
 - keep repo-side copies under `governance/task-scopes/AK-<TASK-ID>.snapshot.json` as frozen exports
 - refresh a checked-in snapshot with `mkdir -p governance/task-scopes && ak task scope export <TASK-ID> > governance/task-scopes/AK-<TASK-ID>.snapshot.json`
-- verify checked-in snapshots with `./scripts/check-task-scope-snapshots.sh` before commit or in CI
+- reconcile checked-in snapshots against live AK with `./scripts/check-task-scope-snapshots.sh` before closeout
+- use `./scripts/check-task-scope-snapshots.sh --offline` on generic CI runners to validate only the frozen export contract; offline success does not prove live AK reconciliation
 - keep package/app consumers pointed at the monorepo-root snapshot instead of inventing per-member task-scope files
 
 ## Brownfield migration boundary
@@ -56,11 +62,9 @@ Optional schema-only validation:
 cue vet governance/work-items.json governance/work-items.cue
 ```
 
-## State machine
+## Task lifecycle
 
-```
-triage → queued → doing → review → done
-```
+Agent Kernel owns the executable task states and legal transitions. Do not duplicate a lifecycle enum in this projection guide; inspect the installed `ak task` machine/help surfaces when automation needs the current contract.
 
 ## Program vs project/monorepo
 

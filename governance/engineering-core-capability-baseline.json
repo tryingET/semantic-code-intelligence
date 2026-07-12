@@ -33,7 +33,7 @@
   },
   "catalog": {
     "source": "packaged",
-    "version": "0.7.0"
+    "version": "0.8.0"
   },
   "checks": [
     {
@@ -63,8 +63,8 @@
     {
       "evidence": [],
       "id": "pin",
-      "status": "pass",
-      "summary": "pin posture: released-match"
+      "status": "warn",
+      "summary": "pin posture: workspace-local-unpinned"
     },
     {
       "evidence": [],
@@ -90,9 +90,9 @@
   "consumer_commands_executed": false,
   "external_models_invoked": false,
   "mutations_performed": [],
-  "package_version": "0.7.0",
-  "pin_posture": "released-match",
+  "package_version": "0.8.0",
+  "pin_posture": "workspace-local-unpinned",
   "repository": "/home/tryinget/ai-society/softwareco/owned/semantic-code-intelligence",
   "schema": "engineering-doctor-v1",
-  "status": "healthy"
+  "status": "degraded"
 }

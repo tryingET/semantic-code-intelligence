@@ -379,44 +379,9 @@ const TEST_CONFIG = {
 
 ## 📋 Integration with CI/CD
 
-### GitHub Actions Configuration
-```yaml
-name: E2E Tests
-on: [push, pull_request]
+### GitHub Actions configuration
 
-jobs:
-  e2e-test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: latest
-          
-      - name: Install dependencies
-        run: bun install
-        
-      - name: Run E2E tests (local only for CI)
-        run: |
-          USE_LOCAL_REPOS=true bun test tests/e2e/
-        env:
-          E2E_MEMORY_LIMIT: 2048
-          
-      - name: Run full E2E tests (nightly)
-        if: github.event_name == 'schedule'
-        run: |
-          E2E_FULL_TEST=true bun test tests/e2e/
-        timeout-minutes: 60
-        
-      - name: Upload performance reports
-        uses: actions/upload-artifact@v3
-        if: always()
-        with:
-          name: e2e-performance-reports
-          path: tests/e2e/results/
-```
+E2E is not part of the automatic Alpha gate. Run it only through an explicitly enabled extended-validation path with the repository's pinned Bun version and target-repository safety controls.
 
 ### Performance Regression Detection
 ```yaml

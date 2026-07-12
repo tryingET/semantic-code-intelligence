@@ -282,20 +282,9 @@ If consistency tests show protocol differences:
 
 ## Integration with CI/CD
 
-### GitHub Actions Configuration
-```yaml
-name: Integration Tests
-on: [push, pull_request]
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: oven-sh/setup-bun@v1
-      - run: bun install --frozen-lockfile
-      - run: bun run test:coverage
-      - run: bun test tests/performance.test.ts --timeout 180000
-```
+### GitHub Actions configuration
+
+The active gate is `.github/workflows/alpha-mvp.yml` with Bun 1.3.12 and `bun run alpha:mvp:check`. Coverage and performance suites are opt-in and do not establish Alpha or production readiness.
 
 ### Performance Regression Detection
 ```bash

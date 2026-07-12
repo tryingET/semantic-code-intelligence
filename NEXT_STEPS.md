@@ -1,19 +1,17 @@
 ---
-summary: "NEXTSTEPS.md - What to Do Next for the Semantic Code Intelligence repo."
+summary: "Historical pre-closure SCI backlog retained for provenance."
 read_when:
-  - "You need NEXT STEPS information for Semantic Code Intelligence."
-  - "You are changing NEXT_STEPS.md or related behavior."
-type: "reference"
+  - "You are investigating why older SCI roadmap items were proposed."
+type: "archive"
 ---
 
-# NEXT_STEPS.md - What to Do Next
+# Historical pre-closure backlog
 
-> **Purpose**: Forward-looking action items ONLY. No history, no completed items.
-> For completed work, see PROJECT_STATUS.md
+> **Archived backlog:** This file is not the active queue. It predates the Phase 1 closure posture and is retained for provenance only. Use live Agent Kernel tasks for executable work and `docs/project/product-posture.md` for current scope.
 
 ---
 
-## 🚀 Immediate Priorities (Active Work)
+## Former immediate priorities
 
 ### 0.3 E2E Cross-Protocol Wiring
 - MCP HTTP transport parity: keep live-socket envelope tests green and explicit about HTTP semantics (invalid JSON → 400 + JSON; JSON-RPC tool errors → 200 + SSE with error payload)
@@ -384,10 +382,12 @@ Proceed with staged rollout while storage adapters and type-safety improvements 
 
 ---
 
-## 🧭 Where to Start in a New Context
+## Historical context-start instructions
 
-- Read PROJECT_STATUS.md (top sections) to see current state
-- Review `test-output.txt` for latest full-suite logs
+These instructions are retained only as part of the archived backlog. For current work, read `AGENTS.md`, current project posture, and the exact live AK task.
+
+- Formerly: read `PROJECT_STATUS.md` for the captured state
+- Formerly: review `test-output.txt` for full-suite logs
 - Validate the suite (fast default):
   - `just test`
   - Single slice: `just test-sliced <N> <K>`
