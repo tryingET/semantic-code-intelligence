@@ -1353,14 +1353,15 @@
         {
           "id": "AK-TASK-3814",
           "title": "Resolve SCI audit drift across docs, validation, CI, and AK projections",
-          "state": "doing",
+          "state": "done",
           "tasks": [
             {
               "text": "Resolve SCI audit drift across docs, validation, CI, and AK projections (task #3814)",
-              "done": false
+              "done": true
             }
           ],
-          "dod": "Task reaches done in society.db with evidence recorded."
+          "dod": "Task reaches done in society.db with evidence recorded.",
+          "completed_at": "2026-07-12"
         }
       ]
     }
