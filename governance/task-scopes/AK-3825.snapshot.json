@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-07-12T13:19:47.373673320+00:00",
+  "task_id": 3825,
+  "entity_version": 2,
+  "commit_sha": null,
+  "scope": {
+    "allowed_paths": [
+      "governance/task-scopes/AK-*.snapshot.json",
+      "governance/work-items.json",
+      "src/core/overlay-store.ts",
+      "tests/overlay-store-retention.test.ts"
+    ],
+    "required_paths": [
+      "src/core/overlay-store.ts",
+      "tests/overlay-store-retention.test.ts"
+    ],
+    "forbidden_paths": []
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}

@@ -198,4 +198,123 @@ describe('OverlayStore snapshot retention', () => {
         expect(existsSync(transient)).toBe(false);
         expect(store.ensureSnapshot(snap.id, { workspaceRoot }).id).toBe(snap.id);
     });
+
+    test('cross-instance cleanup cannot delete a snapshot while runChecks copies its materialization', async () => {
+        rememberEnv();
+        process.env.SCI_SNAPSHOT_AUTO_CLEANUP = '0';
+        const workspaceRoot = tempWorkspace();
+        const store = new OverlayStore();
+        const cleaner = new OverlayStore();
+        const snap = store.createSnapshot(false, { workspaceRoot });
+        const originalCreateCheckWorkspace = (store as any).createCheckWorkspace.bind(store);
+        let protectedDuringCopy = false;
+        (store as any).createCheckWorkspace = async (...args: unknown[]) => {
+            await cleaner.cleanup(0, Number.MAX_SAFE_INTEGER, { workspaceRoot });
+            protectedDuringCopy = existsSync(join(snapshotRoot(workspaceRoot), snap.id, 'metadata.json'));
+            return originalCreateCheckWorkspace(...args);
+        };
+
+        const result = await store.runChecks(snap.id, ['true'], 5, { workspaceRoot });
+
+        expect(result.ok).toBe(true);
+        expect(protectedDuringCopy).toBe(true);
+        await cleaner.cleanup(0, Number.MAX_SAFE_INTEGER, { workspaceRoot });
+        expect(existsSync(join(snapshotRoot(workspaceRoot), snap.id))).toBe(false);
+    });
+
+    test('cross-instance cleanup cannot delete a snapshot during apply consumption', async () => {
+        rememberEnv();
+        process.env.SCI_SNAPSHOT_AUTO_CLEANUP = '0';
+        const workspaceRoot = tempWorkspace();
+        const store = new OverlayStore();
+        const cleaner = new OverlayStore();
+        const snap = store.createSnapshot(false, { workspaceRoot });
+        let protectedDuringApply = false;
+        (store as any).applyToWorkingTreeWithLease = async () => {
+            await cleaner.cleanup(0, Number.MAX_SAFE_INTEGER, { workspaceRoot });
+            protectedDuringApply = existsSync(join(snapshotRoot(workspaceRoot), snap.id, 'metadata.json'));
+            return { ok: true, output: '', elapsedMs: 0 };
+        };
+
+        const result = await store.applyToWorkingTree(snap.id, { check: true, workspaceRoot });
+
+        expect(result.ok).toBe(true);
+        expect(protectedDuringApply).toBe(true);
+        await cleaner.cleanup(0, Number.MAX_SAFE_INTEGER, { workspaceRoot });
+        expect(existsSync(join(snapshotRoot(workspaceRoot), snap.id))).toBe(false);
+    });
+
+    test('runChecks holds the usage lock through command execution', async () => {
+        rememberEnv();
+        process.env.SCI_SNAPSHOT_AUTO_CLEANUP = '0';
+        const workspaceRoot = tempWorkspace();
+        const store = new OverlayStore();
+        const cleaner = new OverlayStore();
+        const snap = store.createSnapshot(false, { workspaceRoot });
+        let protectedDuringCommand = false;
+        (store as any).runChecksWithLease = async () => {
+            await cleaner.cleanup(0, 0, { workspaceRoot });
+            protectedDuringCommand = existsSync(join(snapshotRoot(workspaceRoot), snap.id, 'metadata.json'));
+            return { ok: true, output: '', elapsedMs: 0, commands: [] };
+        };
+
+        const result = await store.runChecks(snap.id, ['true'], 5, { workspaceRoot });
+
+        expect(result.ok).toBe(true);
+        expect(protectedDuringCommand).toBe(true);
+    });
+
+    test('cleanup winning before runChecks lock acquisition fails closed without resurrection', async () => {
+        rememberEnv();
+        process.env.SCI_SNAPSHOT_AUTO_CLEANUP = '0';
+        const workspaceRoot = tempWorkspace();
+        const store = new OverlayStore();
+        const cleaner = new OverlayStore();
+        const snap = store.createSnapshot(false, { workspaceRoot });
+        const originalWithMaterializeLock = (store as any).withMaterializeLock.bind(store);
+        let deletedBeforeLock = false;
+        (store as any).withMaterializeLock = async (...args: unknown[]) => {
+            await cleaner.cleanup(0, Number.MAX_SAFE_INTEGER, { workspaceRoot });
+            deletedBeforeLock = !existsSync(join(snapshotRoot(workspaceRoot), snap.id));
+            return originalWithMaterializeLock(...args);
+        };
+
+        let rejected = false;
+        try {
+            await store.runChecks(snap.id, ['true'], 5, { workspaceRoot });
+        } catch {
+            rejected = true;
+        }
+
+        expect(deletedBeforeLock).toBe(true);
+        expect(rejected).toBe(true);
+        expect(existsSync(join(snapshotRoot(workspaceRoot), snap.id))).toBe(false);
+    });
+
+    test('cleanup winning before apply lock acquisition fails closed without resurrection', async () => {
+        rememberEnv();
+        process.env.SCI_SNAPSHOT_AUTO_CLEANUP = '0';
+        const workspaceRoot = tempWorkspace();
+        const store = new OverlayStore();
+        const cleaner = new OverlayStore();
+        const snap = store.createSnapshot(false, { workspaceRoot });
+        const originalWithMaterializeLock = (store as any).withMaterializeLock.bind(store);
+        let deletedBeforeLock = false;
+        (store as any).withMaterializeLock = async (...args: unknown[]) => {
+            await cleaner.cleanup(0, Number.MAX_SAFE_INTEGER, { workspaceRoot });
+            deletedBeforeLock = !existsSync(join(snapshotRoot(workspaceRoot), snap.id));
+            return originalWithMaterializeLock(...args);
+        };
+
+        let rejected = false;
+        try {
+            await store.applyToWorkingTree(snap.id, { check: true, workspaceRoot });
+        } catch {
+            rejected = true;
+        }
+
+        expect(deletedBeforeLock).toBe(true);
+        expect(rejected).toBe(true);
+        expect(existsSync(join(snapshotRoot(workspaceRoot), snap.id))).toBe(false);
+    });
 });
