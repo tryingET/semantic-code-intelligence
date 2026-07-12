@@ -2,8 +2,8 @@
   "schema_version": 1,
   "exported_at": "2026-07-12T15:33:35.867097183+00:00",
   "task_id": 3833,
-  "entity_version": 2,
-  "commit_sha": null,
+  "entity_version": 3,
+  "commit_sha": "baf81d9",
   "scope": {
     "allowed_paths": [
       "docs/project/evidence-review-handoff-contract.md",
