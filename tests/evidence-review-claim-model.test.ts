@@ -15,6 +15,7 @@ import { join, relative } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const script = 'scripts/summarize-evidence-review.ts';
+const sampleInputFixture = 'tests/fixtures/evidence-review-validation-plan-input.json';
 const sampleOutputFixture = 'tests/fixtures/evidence-review-claim-model-sample.json';
 const testArtifactRoot = join(process.cwd(), '.test-results', 'evidence-review-tests');
 
@@ -26,44 +27,7 @@ cleanupTestArtifacts();
 afterAll(cleanupTestArtifacts);
 
 function sampleValidationPlan() {
-    return {
-        schema: 'semantic-code-intelligence.validation_plan.v1',
-        workflow: 'patch_checks_in_snapshot',
-        status: 'checks_passed',
-        touchedFiles: ['src/example.ts'],
-        risk: { level: 'low', category: 'source_change' },
-        commands: {
-            selected: ['bun test tests/example.test.ts'],
-            recommendedMinimum: ['bun run typecheck'],
-            recommendedBroader: ['bun run typecheck', 'bun test'],
-            recommendationsAppliedToSelected: false,
-        },
-        checks: { ok: true, elapsedMs: 42, commands: [{ command: 'bun test tests/example.test.ts', ok: true }] },
-        graphImpact: {
-            seed: { kind: 'file', value: 'src/example.ts' },
-            languageSupport: {
-                language: 'typescript',
-                support: 'tree_sitter_best_effort',
-                supportedEdges: ['imports', 'exports', 'callers', 'callees'],
-            },
-            backend: 'tree_sitter',
-            freshness: 'current',
-            requestedEdges: ['imports', 'exports', 'callers'],
-            hasImpactEvidence: false,
-            counts: { imports: 0, exports: 0, callers: 0, callees: 0 },
-            evidence: [
-                { edge: 'imports', count: 0, status: 'empty_or_unavailable', limitations: [] },
-                { edge: 'exports', count: 0, status: 'empty_or_unavailable', limitations: [] },
-                { edge: 'callers', count: 0, status: 'limited', limitations: ['callers: fallback-shaped evidence'] },
-            ],
-            limitations: ['fallback: graph expand unavailable'],
-            callerContextCount: 0,
-            planningHints: ['inspect callers manually if risk increases'],
-        },
-        artifacts: { overlayDiff: 'snapshot://example/overlay.diff', status: 'snapshot://example/status' },
-        rollback: {},
-        apply: { applied: false },
-    };
+    return JSON.parse(readFileSync(sampleInputFixture, 'utf8'));
 }
 
 function workspaceTempDir(prefix: string) {

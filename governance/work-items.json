@@ -1388,6 +1388,18 @@
           ],
           "dod": "Task reaches done in society.db with evidence recorded.",
           "completed_at": "2026-07-12"
+        },
+        {
+          "id": "AK-TASK-3831",
+          "title": "Verify Phase 2 evidence-review reconsideration gates and owner handoff boundary",
+          "state": "doing",
+          "tasks": [
+            {
+              "text": "Verify Phase 2 evidence-review reconsideration gates and owner handoff boundary (task #3831)",
+              "done": false
+            }
+          ],
+          "dod": "Task reaches done in society.db with evidence recorded."
         }
       ]
     }
