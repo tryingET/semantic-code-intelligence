@@ -359,6 +359,7 @@ describe('evidence review claim model', () => {
         const { stdout } = runSummary(plan, ['--format', 'json']);
         const review = JSON.parse(stdout);
 
+        expect(review.outcome.ok).toBeNull();
         expect(artifactById(review, 'validation-execution')?.observedStatus).toBe('unavailable');
         expect(claimById(review, 'checks-result')?.status).toBe('unresolved');
         expect(claimById(review, 'checks-result')?.status).not.toBe('contradicted');
@@ -376,17 +377,19 @@ describe('evidence review claim model', () => {
     });
 
     test('snapshot artifact durability distinguishes materialized files, snapshot pointers, and path escapes', () => {
+        // Artifact projection itself is covered below together with durability classification.
         const dir = workspaceTempDir('materialized-artifact-');
         const overlayPath = join(dir, 'overlay.diff');
         writeFileSync(overlayPath, 'diff --git a/example b/example\n');
         const relativeOverlay = relative(process.cwd(), overlayPath);
 
         const { stdout: materializedStdout } = runSummary(
-            clonePlan({ artifacts: { overlayDiff: relativeOverlay } }),
+            clonePlan({ artifacts: { overlayDiff: relativeOverlay, unknownArtifact: 'must-not-project' } }),
             ['--format', 'json'],
             dir
         );
         const materializedReview = JSON.parse(materializedStdout);
+        expect(materializedReview.artifacts).toEqual({ overlayDiff: relativeOverlay });
         expect(artifactById(materializedReview, 'snapshot-artifacts')).toMatchObject({
             observedStatus: 'observed',
             durability: 'materialized_local',
@@ -509,12 +512,10 @@ describe('evidence review claim model', () => {
         const review = JSON.parse(stdout);
 
         expect(review.outcome.applied).toBe(false);
-        expect(review.verification.semanticFailures.map((failure: any) => failure.code)).toContain(
-            'verification_applied_mismatch'
-        );
-        expect(review.verification.semanticFailures.map((failure: any) => failure.code)).toContain(
-            'verification_preview_diff_match_not_applicable'
-        );
+        expect(review.verification.semanticFailures).toEqual([
+            expect.stringMatching(/^verification_applied_mismatch:/),
+            expect.stringMatching(/^verification_preview_diff_match_not_applicable:/),
+        ]);
         expect(artifactById(review, 'apply-verification')?.observedStatus).toBe('failed');
         expect(claimById(review, 'apply-verification')?.status).toBe('contradicted');
     });
@@ -577,12 +578,12 @@ describe('evidence review claim model', () => {
         const { stdout } = runSummary(plan, ['--format', 'json']);
         const review = JSON.parse(stdout);
 
-        expect(review.graphImpact.limitations).toContain(
-            'graph impact evidence unavailable or not observed; do not infer no impact from absence'
-        );
+        expect(review.graphImpact.limitations).toEqual([
+            expect.stringContaining('Graph normalization limitation:'),
+        ]);
         expect(review.limitations[0]).toMatchObject({
             id: 'graph-impact-limitation-1',
-            limitation: 'graph impact evidence unavailable or not observed; do not infer no impact from absence',
+            limitation: expect.stringContaining('rendered unavailable as zero'),
             sourceArtifact: 'graph-impact',
             severity: 'warning',
         });
@@ -590,9 +591,8 @@ describe('evidence review claim model', () => {
         expect(claimById(review, 'graph-limitations')?.limitedBy).toEqual(['graph-impact-limitation-1']);
 
         const { stdout: markdown } = runSummary(plan, ['--format', 'markdown']);
-        expect(markdown).toContain(
-            'graph impact evidence unavailable or not observed; do not infer no impact from absence'
-        );
+        expect(markdown).toContain('Graph normalization limitation:');
+        expect(markdown).toContain('rendered unavailable as zero');
     });
 
     test('alpha packet preserves file-impact graph limitations in review output', () => {
@@ -689,15 +689,16 @@ describe('evidence review claim model', () => {
         expect(markdown).toContain('src/example.ts ⏎ ## FORGED GRAPH SEED ⏎ \\[secret\\]\\(file:///tmp/secret\\)');
         expect(markdown).toContain('imports ⏎ ## FORGED REQUESTED EDGE ⏎ \\[secret\\]\\(file:///tmp/secret\\)');
         expect(markdown).toContain(
-            'imports ⏎ ## FORGED EDGE STATUS — status=limited ⏎ ## GREEN; count=0; limitations=\\*\\*safe\\*\\* ⏎ \\[secret\\]\\(file:///tmp/secret\\)'
+            'imports ⏎ ## FORGED EDGE STATUS — status=empty\\_or\\_unavailable; count=0; limitations=\\*\\*safe\\*\\* ⏎ \\[secret\\]\\(file:///tmp/secret\\)'
         );
+        expect(markdown).not.toContain('## GREEN');
         expect(markdown).not.toContain('\n## FORGED GRAPH SEED');
         expect(markdown).not.toContain('\n## FORGED REQUESTED EDGE');
         expect(markdown).not.toContain('[secret](file:///tmp/secret)');
         expect(markdown).not.toContain('**safe**');
     });
 
-    test('markdown output neutralizes target status preserved text', () => {
+    test('alpha packet does not project untyped target status into v1 output', () => {
         const packet = {
             schema: 'semantic-code-intelligence.alpha_evidence_packet.v1',
             ok: true,
@@ -706,9 +707,76 @@ describe('evidence review claim model', () => {
         };
         const { stdout: markdown } = runSummary(packet, ['--format', 'markdown']);
 
-        expect(markdown).toContain('yes ⏎ ## TARGET FORGED STATUS ⏎ \\[secret\\]\\(file:///tmp/secret\\)');
-        expect(markdown).not.toContain('\n## TARGET FORGED STATUS');
-        expect(markdown).not.toContain('[secret](file:///tmp/secret)');
+        expect(markdown).toContain('Target status preserved: not applicable');
+        expect(markdown).not.toContain('TARGET FORGED STATUS');
+        expect(markdown).not.toContain('file:///tmp/secret');
+    });
+
+    test('summary fails closed before emitting schema-invalid bounded fields', () => {
+        const base = sampleValidationPlan();
+        const cases = [
+            {
+                label: 'negative elapsed time',
+                plan: clonePlan({ checks: { ...base.checks, elapsedMs: -1 } }),
+            },
+            {
+                label: 'oversized rationale',
+                plan: clonePlan({ rationale: ['rationale-secret-' + 'x'.repeat(9_000)] }),
+            },
+            {
+                label: 'oversized check command',
+                plan: clonePlan({
+                    checks: {
+                        ...base.checks,
+                        commands: [{ command: 'command-secret-' + 'x'.repeat(3_000), ok: true }],
+                    },
+                }),
+            },
+            {
+                label: 'control-bearing risk',
+                plan: clonePlan({ risk: { level: 'low\u0001risk-secret', category: 'source_change' } }),
+            },
+            {
+                label: 'oversized source workflow',
+                plan: clonePlan({ workflow: 'workflow-secret-' + 'x'.repeat(600) }),
+            },
+            {
+                label: 'control-bearing outcome status',
+                plan: clonePlan({ status: 'checks_passed\u0001status-secret' }),
+            },
+            {
+                label: 'oversized artifact path',
+                plan: clonePlan({ artifacts: { overlayDiff: 'artifact-secret-' + 'x'.repeat(3_000) } }),
+            },
+            {
+                label: 'normalization limitation overflow',
+                plan: clonePlan({
+                    graphImpact: {
+                        hasImpactEvidence: false,
+                        counts: { imports: -1, exports: 0, callers: 0, callees: 0 },
+                        evidence: [],
+                        limitations: Array.from({ length: 256 }, (_, index) => `limitation-${index}`),
+                        callerContextCount: 0,
+                        planningHints: [],
+                    },
+                }),
+            },
+        ];
+
+        for (const entry of cases) {
+            const dir = workspaceTempDir('schema-bound-');
+            const inputPath = join(dir, 'input.json');
+            writeFileSync(inputPath, JSON.stringify(entry.plan));
+            const result = spawnSync(
+                'bun',
+                ['run', script, '--input', relative(process.cwd(), inputPath), '--format', 'json'],
+                { cwd: process.cwd(), encoding: 'utf8' }
+            );
+            expect(result.status, entry.label).not.toBe(0);
+            expect(result.stdout, entry.label).toBe('');
+            expect(result.stderr, entry.label).toContain('evidence-review: Invalid');
+            expect(result.stderr, entry.label).not.toContain('secret');
+        }
     });
 
     test('summary rejects oversized evidence inputs before parsing', () => {
@@ -1001,14 +1069,14 @@ describe('evidence review claim model', () => {
         const evidence = {
             schema: 'semantic-code-intelligence.target_validation_plan_dogfood.v1',
             ok: true,
-            target: { label: 'external-target', cleanAfter: true },
+            target: { label: 'external-target', cleanAfter: true, privatePath: '/must/not/project' },
             calls: [{ payload: { validationPlan: sampleValidationPlan() } }],
         };
         const { stdout } = runSummary(evidence, ['--extract', 'validationPlan', '--format', 'json']);
         const review = JSON.parse(stdout);
 
         expect(review.source.kind).toBe('validation_plan');
-        expect(review.scope.target.label).toBe('external-target');
+        expect(review.scope.target).toEqual({ label: 'external-target', cleanAfter: true });
         expect(review.outcome.ok).toBe(true);
     });
 

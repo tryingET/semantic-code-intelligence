@@ -1,0 +1,65 @@
+{
+  "schema": "semantic-code-intelligence.validation_plan.v1",
+  "workflow": "patch_checks_in_snapshot",
+  "mode": "preview_validate",
+  "snapshot": "00000000-0000-4000-8000-000000000000",
+  "status": "checks_passed",
+  "touchedFiles": [
+    "index.ts"
+  ],
+  "risk": {
+    "level": "low",
+    "category": "mixed_change",
+    "fileCount": 1
+  },
+  "commands": {
+    "selected": [
+      "true"
+    ],
+    "requested": [
+      "true"
+    ],
+    "recommendedMinimum": [
+      "bun run typecheck"
+    ],
+    "recommendedBroader": [
+      "bun run typecheck"
+    ],
+    "recommendationsAppliedToSelected": false
+  },
+  "rationale": [
+    {
+      "reason": "fallback_unknown_change_shape",
+      "files": [
+        "index.ts"
+      ],
+      "command": "bun run typecheck"
+    }
+  ],
+  "graphImpact": null,
+  "checks": {
+    "ok": true,
+    "elapsedMs": 169,
+    "commands": [
+      {
+        "command": "true",
+        "ok": true,
+        "elapsedMs": 12,
+        "exitCode": 0,
+        "timedOut": false
+      }
+    ]
+  },
+  "artifacts": {
+    "overlayDiff": "snapshot://00000000-0000-4000-8000-000000000000/overlay.diff",
+    "status": "snapshot://00000000-0000-4000-8000-000000000000/status",
+    "progress": "snapshot://00000000-0000-4000-8000-000000000000/progress"
+  },
+  "apply": {
+    "applied": false,
+    "guardSatisfied": false
+  },
+  "rollback": null,
+  "verification": null,
+  "note": "Evidence summary only; it does not select, append, or enforce validation commands."
+}

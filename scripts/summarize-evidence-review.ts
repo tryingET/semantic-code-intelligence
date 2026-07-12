@@ -251,6 +251,246 @@ function firstString(values: unknown[]): string | null {
   return null;
 }
 
+const UNSAFE_SCHEMA_TEXT = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]/;
+
+function schemaText(value: any, maximumCodePoints: number, label: string): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    Array.from(value).length > maximumCodePoints ||
+    UNSAFE_SCHEMA_TEXT.test(value)
+  ) {
+    throw new Error(`Invalid ${label} in evidence input`);
+  }
+  return value;
+}
+
+function schemaStrings(value: any, maximumCodePoints: number, label: string, maximumItems = 256): string[] {
+  const items = arr(value);
+  if (items.length > maximumItems) throw new Error(`Too many ${label} values in evidence input`);
+  return items.map((item, index) => schemaText(item, maximumCodePoints, `${label}[${index}]`));
+}
+
+function nullableSchemaText(value: any, maximumCodePoints: number, label: string): string | null {
+  return value === null || value === undefined ? null : schemaText(value, maximumCodePoints, label);
+}
+
+function normalizedTarget(value: any) {
+  if (value === null || value === undefined) return null;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Invalid target in evidence input');
+  }
+  return {
+    label: schemaText(value.label, 512, 'target label'),
+    cleanAfter: typeof value.cleanAfter === 'boolean' ? value.cleanAfter : null,
+  };
+}
+
+function normalizedArtifacts(value: any): Record<string, string | null> {
+  if (value === null || value === undefined) return {};
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Invalid artifacts in evidence input');
+  }
+  const artifacts: Record<string, string | null> = {};
+  for (const key of ['overlayDiff', 'status', 'progress']) {
+    if (Object.hasOwn(value, key)) {
+      artifacts[key] = nullableSchemaText(value[key], 2_048, `artifact ${key}`);
+    }
+  }
+  return artifacts;
+}
+
+function normalizedRisk(value: any) {
+  if (value === null || value === undefined) return null;
+  if (!value || typeof value !== 'object') throw new Error('Invalid risk in evidence input');
+  return {
+    level: schemaText(value.level, 64, 'risk level'),
+    category: schemaText(value.category, 128, 'risk category'),
+  };
+}
+
+function normalizedRationale(value: any): string[] {
+  const items = arr(value);
+  if (items.length > 256) throw new Error('Too many rationale values in evidence input');
+  return items.flatMap((item: any, index: number) => {
+    if (typeof item === 'string') return [schemaText(item, 8_192, `rationale[${index}]`)];
+    if (!item || typeof item !== 'object') return [];
+    const fields = [
+      typeof item.reason === 'string'
+        ? `reason=${schemaText(item.reason, 8_192, `rationale[${index}].reason`)}`
+        : null,
+      typeof item.command === 'string'
+        ? `command=${schemaText(item.command, 2_048, `rationale[${index}].command`)}`
+        : null,
+      Array.isArray(item.files)
+        ? `files=${schemaStrings(item.files, 2_048, `rationale[${index}].files`).join(',')}`
+        : null,
+    ].filter((field): field is string => field !== null);
+    return fields.length
+      ? [schemaText(fields.join('; '), 8_192, `rationale[${index}] projection`)]
+      : [];
+  });
+}
+
+function normalizedSemanticFailures(value: any): string[] {
+  const items = arr(value);
+  if (items.length > 256) throw new Error('Too many verification semantic failures');
+  return items.map((item: any, index: number) => {
+    if (typeof item === 'string') {
+      return schemaText(item, 8_192, `verification semantic failure[${index}]`);
+    }
+    if (!item || typeof item !== 'object') {
+      throw new Error(`Invalid verification semantic failure[${index}]`);
+    }
+    const code = schemaText(item.code, 128, `verification semantic failure[${index}] code`);
+    const message = schemaText(
+      item.message,
+      8_192,
+      `verification semantic failure[${index}] message`,
+    );
+    return schemaText(`${code}: ${message}`, 8_192, `verification semantic failure[${index}]`);
+  });
+}
+
+function normalizedCheckCommands(value: any) {
+  const items = arr(value);
+  if (items.length > 128) throw new Error('Too many check command receipts in evidence input');
+  return items.flatMap((item: any, index: number) => {
+    if (!item || typeof item !== 'object' || typeof item.command !== 'string' || !item.command) return [];
+    return [
+      {
+        command: schemaText(item.command, 2_048, `check command[${index}]`),
+        ok: typeof item.ok === 'boolean' ? item.ok : null,
+      },
+    ];
+  });
+}
+
+function normalizedGraphImpact(value: any) {
+  const present = value !== null && value !== undefined;
+  if (present && (typeof value !== 'object' || Array.isArray(value))) {
+    throw new Error('Invalid graph impact in evidence input');
+  }
+  const graph = present ? value : {};
+  const normalizationIssues: string[] = [];
+  const rawSeed = graph.seed && typeof graph.seed === 'object' ? graph.seed : null;
+  let seed = null;
+  if (rawSeed) {
+    if (
+      (rawSeed.kind === 'file' || rawSeed.kind === 'symbol') &&
+      typeof rawSeed.value === 'string' &&
+      rawSeed.value
+    ) {
+      seed = {
+        kind: rawSeed.kind,
+        value: schemaText(rawSeed.value, 2_048, 'graph seed value'),
+      };
+    } else {
+      normalizationIssues.push('invalid graph seed rendered unavailable');
+    }
+  }
+  let languageSupport = null;
+  if (graph.languageSupport && typeof graph.languageSupport === 'object') {
+    languageSupport = {
+      language: schemaText(graph.languageSupport.language, 128, 'graph language'),
+      support: schemaText(graph.languageSupport.support, 128, 'graph language support'),
+      supportedEdges: schemaStrings(
+        graph.languageSupport.supportedEdges,
+        8_192,
+        'graph supported edges',
+      ),
+    };
+  } else if (present && graph.languageSupport !== null && graph.languageSupport !== undefined) {
+    normalizationIssues.push('invalid graph language support rendered unavailable');
+  }
+  const rawCounts = graph.counts && typeof graph.counts === 'object' ? graph.counts : {};
+  const count = (name: string): number => {
+    const candidate = rawCounts[name];
+    if (Number.isInteger(candidate) && candidate >= 0 && candidate <= 1_000_000) return candidate;
+    if (present) normalizationIssues.push(`graph ${name} count rendered unavailable as zero`);
+    return 0;
+  };
+  const evidenceItems = arr(graph.evidence);
+  if (evidenceItems.length > 256) throw new Error('Too many graph evidence entries in evidence input');
+  const evidence = evidenceItems.map((item: any, index: number) => {
+    if (!item || typeof item !== 'object') throw new Error(`Invalid graph evidence[${index}] in evidence input`);
+    const limitations = schemaStrings(
+      item.limitations,
+      8_192,
+      `graph evidence[${index}] limitations`,
+    );
+    const edgeCount =
+      Number.isInteger(item.count) && item.count >= 0 && item.count <= 1_000_000
+        ? item.count
+        : 0;
+    if (edgeCount !== item.count) {
+      normalizationIssues.push(`graph evidence[${index}] count rendered unavailable as zero`);
+    }
+    const status = ['limited', 'evidence', 'empty_or_unavailable'].includes(item.status)
+      ? item.status
+      : 'empty_or_unavailable';
+    if (status !== item.status) {
+      normalizationIssues.push(`graph evidence[${index}] status rendered empty or unavailable`);
+    }
+    return {
+      edge: schemaText(item.edge, 128, `graph evidence[${index}] edge`),
+      count: edgeCount,
+      status,
+      limitations,
+    };
+  });
+  const callerContextCount =
+    Number.isInteger(graph.callerContextCount) &&
+    graph.callerContextCount >= 0 &&
+    graph.callerContextCount <= 1_000_000
+      ? graph.callerContextCount
+      : 0;
+  if (present && callerContextCount !== graph.callerContextCount) {
+    normalizationIssues.push('graph caller context count rendered unavailable as zero');
+  }
+  const normalizedCounts = {
+    imports: count('imports'),
+    exports: count('exports'),
+    callers: count('callers'),
+    callees: count('callees'),
+  };
+  const limitations = schemaStrings(graph.limitations, 8_192, 'graph limitations');
+  if (normalizationIssues.length > 0) {
+    if (limitations.length >= 256) {
+      throw new Error('Invalid graph limitations after normalization');
+    }
+    const shownIssues = normalizationIssues.slice(0, 32);
+    const omittedCount = normalizationIssues.length - shownIssues.length;
+    const suffix = omittedCount > 0 ? `; ${omittedCount} additional normalization issues omitted` : '';
+    limitations.push(
+      schemaText(
+        `Graph normalization limitation: ${shownIssues.join('; ')}${suffix}.`,
+        8_192,
+        'graph normalization limitation',
+      ),
+    );
+  }
+  return {
+    seed,
+    languageSupport,
+    backend:
+      typeof graph.backend === 'string'
+        ? schemaText(graph.backend, 128, 'graph backend')
+        : null,
+    freshness:
+      typeof graph.freshness === 'string'
+        ? schemaText(graph.freshness, 128, 'graph freshness')
+        : null,
+    requestedEdges: schemaStrings(graph.requestedEdges, 8_192, 'graph requested edges'),
+    hasImpactEvidence: normalizationIssues.length === 0 && graph.hasImpactEvidence === true,
+    counts: normalizedCounts,
+    evidence,
+    limitations,
+    callerContextCount,
+    planningHints: schemaStrings(graph.planningHints, 8_192, 'graph planning hints'),
+  };
+}
+
 function hasUriScheme(value: string): boolean {
   return /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value);
 }
@@ -503,8 +743,16 @@ function detectInput(raw: any): { kind: string; payload: any; packet?: any } {
 function normalizeRollback(plan: any) {
   const applied = plan?.apply?.applied === true;
   const rawCommand = typeof plan?.rollback?.command === 'string' && plan.rollback.command.trim() ? plan.rollback.command : null;
-  const command = rawCommand && rollbackCommandIsPlausible(rawCommand) ? rawCommand : null;
-  const inversePatch = firstString([plan?.rollback?.inversePatch, plan?.rollback?.inversePatchPath, plan?.rollback?.artifact]);
+  const command =
+    rawCommand && rollbackCommandIsPlausible(rawCommand)
+      ? schemaText(rawCommand, 2_048, 'rollback command')
+      : null;
+  const rawInversePatch = firstString([
+    plan?.rollback?.inversePatch,
+    plan?.rollback?.inversePatchPath,
+    plan?.rollback?.artifact,
+  ]);
+  const inversePatch = nullableSchemaText(rawInversePatch, 2_048, 'rollback inverse patch');
   const inversePatchSummary = inversePatch ? summarizeArtifactRefs([inversePatch]) : null;
   const hasMaterializedInversePatch = inversePatchSummary?.materialized === true;
   if (command) {
@@ -552,69 +800,79 @@ function normalizeRollback(plan: any) {
 function normalizeVerification(plan: any) {
   const verification = plan?.verification && typeof plan.verification === 'object' ? plan.verification : null;
   const semantic = validateValidationPlanSemantics(plan);
+  let diagnostics = null;
+  if (verification?.diagnostics !== null && verification?.diagnostics !== undefined) {
+    const value =
+      typeof verification.diagnostics === 'string'
+        ? verification.diagnostics
+        : JSON.stringify(verification.diagnostics);
+    diagnostics = schemaText(value, 8_192, 'verification diagnostics');
+  }
   return {
     applied: typeof verification?.applied === 'boolean' ? verification.applied : null,
-    appliedDiffMatchesSnapshot: typeof verification?.appliedDiffMatchesSnapshot === 'boolean' ? verification.appliedDiffMatchesSnapshot : null,
-    method: typeof verification?.method === 'string' ? verification.method : null,
-    diagnostics: verification?.diagnostics && typeof verification.diagnostics === 'object' ? verification.diagnostics : null,
-    semanticFailures: semantic.failures,
+    appliedDiffMatchesSnapshot:
+      typeof verification?.appliedDiffMatchesSnapshot === 'boolean'
+        ? verification.appliedDiffMatchesSnapshot
+        : null,
+    method: nullableSchemaText(verification?.method, 256, 'verification method'),
+    diagnostics,
+    semanticFailures: normalizedSemanticFailures(semantic.failures),
   };
 }
 
 function normalizeValidationPlan(plan: any, packet?: any) {
-  const graph = plan?.graphImpact || {};
   return {
     schema: 'semantic-code-intelligence.evidence_review.v1',
-    source: { kind: 'validation_plan', schema: plan?.schema || null, workflow: plan?.workflow || null },
+    source: {
+      kind: 'validation_plan',
+      schema: nullableSchemaText(plan?.schema, 256, 'source schema'),
+      workflow: nullableSchemaText(plan?.workflow, 512, 'source workflow'),
+    },
     outcome: {
-      ok: plan?.checks?.ok === true,
-      status: plan?.status || null,
+      ok: typeof plan?.checks?.ok === 'boolean' ? plan.checks.ok : null,
+      status: schemaText(plan?.status, 128, 'outcome status'),
       previewOnly: plan?.apply?.applied !== true,
       applied: plan?.apply?.applied === true,
       productionReady: false,
     },
     scope: {
-      touchedFiles: strings(plan?.touchedFiles),
-      risk: plan?.risk || null,
-      target: packet?.target || null,
+      touchedFiles: schemaStrings(plan?.touchedFiles, 2_048, 'touched files'),
+      risk: normalizedRisk(plan?.risk),
+      target: normalizedTarget(packet?.target),
     },
     commands: {
-      selected: strings(plan?.commands?.selected),
-      recommendedMinimum: strings(plan?.commands?.recommendedMinimum),
-      recommendedBroader: strings(plan?.commands?.recommendedBroader),
+      selected: schemaStrings(plan?.commands?.selected, 2_048, 'selected commands', 128),
+      recommendedMinimum: schemaStrings(
+        plan?.commands?.recommendedMinimum,
+        2_048,
+        'recommended minimum commands',
+        128,
+      ),
+      recommendedBroader: schemaStrings(
+        plan?.commands?.recommendedBroader,
+        2_048,
+        'recommended broader commands',
+        128,
+      ),
       recommendationsAppliedToSelected: plan?.commands?.recommendationsAppliedToSelected === true,
-      rationale: arr(plan?.rationale),
+      rationale: normalizedRationale(plan?.rationale),
     },
     checks: {
       ok: typeof plan?.checks?.ok === 'boolean' ? plan.checks.ok : null,
-      elapsedMs: typeof plan?.checks?.elapsedMs === 'number' ? plan.checks.elapsedMs : null,
-      commands: plan?.checks?.commands || null,
+      elapsedMs:
+        plan?.checks?.elapsedMs === null || plan?.checks?.elapsedMs === undefined
+          ? null
+          : typeof plan.checks.elapsedMs === 'number' &&
+              plan.checks.elapsedMs >= 0 &&
+              plan.checks.elapsedMs <= 86_400_000
+            ? plan.checks.elapsedMs
+            : (() => {
+                throw new Error('Invalid check elapsed time in evidence input');
+              })(),
+      commands: normalizedCheckCommands(plan?.checks?.commands),
     },
-    graphImpact: {
-      seed: graph?.seed && typeof graph.seed === 'object' ? { kind: String(graph.seed.kind || 'unknown'), value: String(graph.seed.value || '') } : null,
-      languageSupport: graph?.languageSupport && typeof graph.languageSupport === 'object'
-        ? {
-            language: String(graph.languageSupport.language || 'unknown'),
-            support: String(graph.languageSupport.support || 'unknown'),
-            supportedEdges: strings(graph.languageSupport.supportedEdges),
-          }
-        : null,
-      backend: typeof graph?.backend === 'string' ? graph.backend : null,
-      freshness: typeof graph?.freshness === 'string' ? graph.freshness : null,
-      requestedEdges: strings(graph?.requestedEdges),
-      hasImpactEvidence: graph?.hasImpactEvidence === true,
-      counts: graph?.counts || {},
-      evidence: arr(graph?.evidence).map((item: any) => ({
-        edge: typeof item?.edge === 'string' ? item.edge : 'unknown',
-        count: typeof item?.count === 'number' ? item.count : 0,
-        status: typeof item?.status === 'string' ? item.status : 'unknown',
-        limitations: strings(item?.limitations),
-      })),
-      limitations: strings(graph?.limitations),
-      callerContextCount: typeof graph?.callerContextCount === 'number' ? graph.callerContextCount : null,
-      planningHints: strings(graph?.planningHints),
-    },
-    artifacts: plan?.artifacts || {},
+    graphImpact: normalizedGraphImpact(plan?.graphImpact),
+    artifacts: normalizedArtifacts(plan?.artifacts),
     rollback: normalizeRollback(plan),
     verification: normalizeVerification(plan),
     safety: {
@@ -632,10 +890,45 @@ function normalizeValidationPlan(plan: any, packet?: any) {
 
 function normalizeAlphaPacket(packet: any) {
   const plan = firstValidationPlan(packet);
-  const base = plan ? normalizeValidationPlan(plan, packet) : normalizeValidationPlan({ schema: 'semantic-code-intelligence.validation_plan.v1', workflow: 'alpha_evidence_packet', checks: { ok: packet?.ok === true }, commands: {} }, packet);
+  const alphaStatus = packet?.ok === true ? 'evidence_packet_ok' : 'evidence_packet_not_ok';
+  const base = plan
+    ? normalizeValidationPlan({ ...plan, status: plan?.status || alphaStatus })
+    : normalizeValidationPlan({
+        schema: 'semantic-code-intelligence.validation_plan.v1',
+        workflow: 'alpha_evidence_packet',
+        status: alphaStatus,
+        checks: { ok: packet?.ok === true },
+        commands: {},
+      });
+  const fileGraph = packet?.graphImpact?.fileImpact;
+  const packetGraph = fileGraph && typeof fileGraph === 'object' ? fileGraph : {};
+  const graphImpact = normalizedGraphImpact({
+    hasImpactEvidence:
+      packetGraph.hasImpactEvidence === true || base.graphImpact.hasImpactEvidence === true,
+    seed: packetGraph.seed ?? base.graphImpact.seed,
+    languageSupport: packetGraph.languageSupport ?? base.graphImpact.languageSupport,
+    backend: packetGraph.backend ?? base.graphImpact.backend,
+    freshness: packetGraph.freshness ?? base.graphImpact.freshness,
+    requestedEdges: arr(packetGraph.requestedEdges).concat(base.graphImpact.requestedEdges || []),
+    counts: packetGraph.counts ?? base.graphImpact.counts,
+    evidence: arr(packetGraph.evidence).concat(base.graphImpact.evidence || []),
+    limitations: arr(packetGraph.limitations).concat(
+      arr(packet?.graphImpact?.symbolImpact?.limitations),
+      base.graphImpact.limitations || [],
+    ),
+    planningHints: arr(packetGraph.planningHints).concat(base.graphImpact.planningHints || []),
+    callerContextCount:
+      packet?.graphImpact?.impact?.callerContext?.callerContextCount ??
+      packetGraph.callerContextCount ??
+      base.graphImpact.callerContextCount,
+  });
   return {
     ...base,
-    source: { kind: 'alpha_packet', schema: packet?.schema || null, workflow: 'alpha_evidence_packet' },
+    source: {
+      kind: 'alpha_packet',
+      schema: nullableSchemaText(packet?.schema, 256, 'alpha packet schema'),
+      workflow: 'alpha_evidence_packet',
+    },
     outcome: {
       ...base.outcome,
       ok: packet?.ok === true,
@@ -653,19 +946,7 @@ function normalizeAlphaPacket(packet: any) {
       failedGateChecks: strings(packet?.evidenceGate?.failedChecks),
       budgetsMs: packet?.evidenceGate?.budgetsMs || null,
     },
-    graphImpact: {
-      hasImpactEvidence: packet?.graphImpact?.fileImpact?.hasImpactEvidence === true || base.graphImpact.hasImpactEvidence,
-      seed: packet?.graphImpact?.fileImpact?.seed || base.graphImpact.seed,
-      languageSupport: packet?.graphImpact?.fileImpact?.languageSupport || base.graphImpact.languageSupport,
-      backend: packet?.graphImpact?.fileImpact?.backend || base.graphImpact.backend,
-      freshness: packet?.graphImpact?.fileImpact?.freshness || base.graphImpact.freshness,
-      requestedEdges: strings(packet?.graphImpact?.fileImpact?.requestedEdges).concat(base.graphImpact.requestedEdges || []),
-      counts: packet?.graphImpact?.fileImpact?.counts || base.graphImpact.counts,
-      evidence: arr(packet?.graphImpact?.fileImpact?.evidence).concat(base.graphImpact.evidence || []),
-      limitations: strings(packet?.graphImpact?.fileImpact?.limitations).concat(strings(packet?.graphImpact?.symbolImpact?.limitations), base.graphImpact.limitations),
-      planningHints: strings(packet?.graphImpact?.fileImpact?.planningHints).concat(base.graphImpact.planningHints),
-      callerContextCount: packet?.graphImpact?.impact?.callerContext?.callerContextCount ?? packet?.graphImpact?.fileImpact?.callerContextCount ?? base.graphImpact.callerContextCount ?? null,
-    },
+    graphImpact,
     safety: {
       ...base.safety,
       alphaPacketProves: strings(packet?.operatorSummary?.proves),
@@ -676,12 +957,29 @@ function normalizeAlphaPacket(packet: any) {
 
 function normalizeTargetDogfood(evidence: any) {
   const plan = arr(evidence?.calls).map((call: any) => call?.payload?.validationPlan).find((p: any) => p?.schema === 'semantic-code-intelligence.validation_plan.v1');
-  const base = normalizeValidationPlan(plan || { schema: 'semantic-code-intelligence.validation_plan.v1', workflow: 'target_validation_plan_dogfood', checks: { ok: evidence?.ok === true }, commands: {} }, evidence);
+  const base = normalizeValidationPlan(
+    plan || {
+      schema: 'semantic-code-intelligence.validation_plan.v1',
+      workflow: 'target_validation_plan_dogfood',
+      status: evidence?.ok === true ? 'target_dogfood_ok' : 'target_dogfood_not_ok',
+      checks: { ok: evidence?.ok === true },
+      commands: {},
+    },
+    evidence,
+  );
   return {
     ...base,
-    source: { kind: 'target_dogfood', schema: evidence?.schema || null, workflow: 'target_validation_plan_dogfood' },
+    source: {
+      kind: 'target_dogfood',
+      schema: nullableSchemaText(evidence?.schema, 256, 'target dogfood schema'),
+      workflow: 'target_validation_plan_dogfood',
+    },
     outcome: { ...base.outcome, ok: evidence?.ok === true, status: evidence?.ok === true ? 'target_dogfood_ok' : 'target_dogfood_not_ok' },
-    scope: { ...base.scope, target: evidence?.target || null, sourceKind: evidence?.selectedPaths?.sourceKind || null },
+    scope: {
+      ...base.scope,
+      target: normalizedTarget(evidence?.target),
+      sourceKind: evidence?.selectedPaths?.sourceKind || null,
+    },
     safety: { ...base.safety, targetStatusPreserved: evidence?.target?.statusPreserved === true || evidence?.target?.cleanAfter === true },
   };
 }
@@ -896,8 +1194,33 @@ function withConceptualModel(review: any) {
   ];
 
   const reviewWithConcepts = { ...reviewWithLimitations, evidenceArtifacts, limitations: reviewLimitations, claims, authorityBoundaries, operatorDecisionPoints };
-  validateReferenceIntegrity(reviewWithConcepts);
-  return { ...reviewWithConcepts, handoffReadiness: buildHandoffReadiness(reviewWithConcepts) };
+  const canonicalReview = {
+    ...reviewWithConcepts,
+    scope: {
+      touchedFiles: reviewWithConcepts.scope?.touchedFiles || [],
+      risk: reviewWithConcepts.scope?.risk ?? null,
+      target: reviewWithConcepts.scope?.target ?? null,
+    },
+    checks: {
+      ok: reviewWithConcepts.checks?.ok ?? null,
+      elapsedMs: reviewWithConcepts.checks?.elapsedMs ?? null,
+      commands: reviewWithConcepts.checks?.commands || [],
+      ...(typeof reviewWithConcepts.checks?.bundleGateOk === 'boolean'
+        ? { bundleGateOk: reviewWithConcepts.checks.bundleGateOk }
+        : {}),
+    },
+    safety: {
+      sourceMutated: reviewWithConcepts.safety?.sourceMutated === true,
+      targetStatusPreserved:
+        typeof reviewWithConcepts.safety?.targetStatusPreserved === 'boolean'
+          ? reviewWithConcepts.safety.targetStatusPreserved
+          : null,
+      authorityBoundary: reviewWithConcepts.safety?.authorityBoundary,
+      productionBoundary: reviewWithConcepts.safety?.productionBoundary,
+    },
+  };
+  validateReferenceIntegrity(canonicalReview);
+  return { ...canonicalReview, handoffReadiness: buildHandoffReadiness(canonicalReview) };
 }
 
 function normalize(raw: any) {

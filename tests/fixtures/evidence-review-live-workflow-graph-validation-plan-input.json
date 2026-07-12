@@ -1,0 +1,114 @@
+{
+  "schema": "semantic-code-intelligence.validation_plan.v1",
+  "workflow": "patch_checks_in_snapshot",
+  "mode": "preview_validate",
+  "snapshot": "00000000-0000-4000-8000-000000000000",
+  "status": "checks_passed",
+  "touchedFiles": [
+    "index.ts"
+  ],
+  "risk": {
+    "level": "low",
+    "category": "mixed_change",
+    "fileCount": 1
+  },
+  "commands": {
+    "selected": [
+      "true"
+    ],
+    "requested": [
+      "true"
+    ],
+    "recommendedMinimum": [
+      "bun run typecheck"
+    ],
+    "recommendedBroader": [
+      "bun run typecheck"
+    ],
+    "recommendationsAppliedToSelected": false
+  },
+  "rationale": [
+    {
+      "reason": "fallback_unknown_change_shape",
+      "files": [
+        "index.ts"
+      ],
+      "command": "bun run typecheck"
+    }
+  ],
+  "graphImpact": {
+    "seed": {
+      "kind": "file",
+      "value": "index.ts"
+    },
+    "languageSupport": {
+      "language": "typescript",
+      "support": "tree_sitter_best_effort",
+      "supportedEdges": [
+        "imports",
+        "exports",
+        "callers",
+        "callees"
+      ]
+    },
+    "backend": "tree_sitter",
+    "freshness": "current",
+    "requestedEdges": [
+      "imports",
+      "exports",
+      "callers",
+      "callees"
+    ],
+    "hasImpactEvidence": true,
+    "counts": {
+      "imports": 1,
+      "exports": 1,
+      "callers": 0,
+      "callees": 0
+    },
+    "evidence": [
+      {
+        "edge": "imports",
+        "count": 1,
+        "status": "evidence",
+        "limitations": []
+      },
+      {
+        "edge": "callers",
+        "count": 0,
+        "status": "unexpected_status",
+        "limitations": []
+      }
+    ],
+    "limitations": [],
+    "callerContextCount": 0,
+    "planningHints": [
+      "Inspect import impact before apply."
+    ]
+  },
+  "checks": {
+    "ok": true,
+    "elapsedMs": 169,
+    "commands": [
+      {
+        "command": "true",
+        "ok": true,
+        "elapsedMs": 12,
+        "exitCode": 0,
+        "timedOut": false
+      }
+    ]
+  },
+  "artifacts": {
+    "overlayDiff": "snapshot://00000000-0000-4000-8000-000000000000/overlay.diff",
+    "status": "snapshot://00000000-0000-4000-8000-000000000000/status",
+    "progress": "snapshot://00000000-0000-4000-8000-000000000000/progress"
+  },
+  "apply": {
+    "applied": false,
+    "guardSatisfied": false
+  },
+  "rollback": null,
+  "verification": null,
+  "note": "Evidence summary only; it does not select, append, or enforce validation commands."
+}

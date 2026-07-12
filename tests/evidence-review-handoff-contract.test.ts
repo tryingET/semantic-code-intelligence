@@ -283,6 +283,95 @@ describe('evidence review consumer handoff contract', () => {
         expect(produced).toEqual(parse(currentOutputPath));
     });
 
+    test('normalizes current patch-check workflow evidence into the strict v1 consumer shape', () => {
+        const result = spawnSync(
+            'bun',
+            [
+                'run',
+                'scripts/summarize-evidence-review.ts',
+                '--input',
+                'tests/fixtures/evidence-review-live-workflow-validation-plan-input.json',
+                '--format',
+                'json',
+            ],
+            { cwd: process.cwd(), encoding: 'utf8' }
+        );
+        expect(result.status, result.stderr).toBe(0);
+        const produced = JSON.parse(result.stdout);
+        expectConforms(produced);
+        expect(produced.scope.risk).toEqual({ level: 'low', category: 'mixed_change' });
+        expect(produced.commands.rationale).toEqual([
+            'reason=fallback_unknown_change_shape; command=bun run typecheck; files=index.ts',
+        ]);
+        expect(produced.checks.commands).toEqual([{ command: 'true', ok: true }]);
+        expect(produced.graphImpact).toMatchObject({
+            seed: null,
+            counts: { imports: 0, exports: 0, callers: 0, callees: 0 },
+            callerContextCount: 0,
+            hasImpactEvidence: false,
+        });
+    });
+
+    test('preserves valid graph evidence without promoting malformed status data', () => {
+        const result = spawnSync(
+            'bun',
+            [
+                'run',
+                'scripts/summarize-evidence-review.ts',
+                '--input',
+                'tests/fixtures/evidence-review-live-workflow-graph-validation-plan-input.json',
+                '--format',
+                'json',
+            ],
+            { cwd: process.cwd(), encoding: 'utf8' }
+        );
+        expect(result.status, result.stderr).toBe(0);
+        const produced = JSON.parse(result.stdout);
+        expectConforms(produced);
+        expect(produced.graphImpact.evidence[0]).toEqual({
+            edge: 'imports',
+            count: 1,
+            status: 'evidence',
+            limitations: [],
+        });
+        expect(produced.graphImpact.evidence[1]).toEqual({
+            edge: 'callers',
+            count: 0,
+            status: 'empty_or_unavailable',
+            limitations: [],
+        });
+        expect(produced.graphImpact.hasImpactEvidence).toBe(false);
+        expect(produced.graphImpact.limitations).toContain(
+            'Graph normalization limitation: graph evidence[1] status rendered empty or unavailable.'
+        );
+        expect(produced.claims.find((claim: any) => claim.id === 'graph-limitations')?.status).toBe('weakened');
+    });
+
+    test('routes alpha-packet graph overrides through the same no-promotion normalization', () => {
+        const result = spawnSync(
+            'bun',
+            [
+                'run',
+                'scripts/summarize-evidence-review.ts',
+                '--input',
+                'tests/fixtures/evidence-review-live-alpha-packet-input.json',
+                '--format',
+                'json',
+            ],
+            { cwd: process.cwd(), encoding: 'utf8' }
+        );
+        expect(result.status, result.stderr).toBe(0);
+        const produced = JSON.parse(result.stdout);
+        expectConforms(produced);
+        expect(produced.source.kind).toBe('alpha_packet');
+        expect(produced.graphImpact.evidence[0].status).toBe('evidence');
+        expect(produced.graphImpact.evidence[1].status).toBe('empty_or_unavailable');
+        expect(produced.graphImpact.hasImpactEvidence).toBe(false);
+        expect(produced.graphImpact.limitations).toContain(
+            'Graph normalization limitation: graph evidence[1] status rendered empty or unavailable.'
+        );
+    });
+
     test('rejects adversarial unknown fields, hostile terminal text, and dangling references', () => {
         const review = parse(adversarialPath);
         expect(validate(review)).toBe(false);
