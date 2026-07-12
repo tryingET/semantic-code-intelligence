@@ -1401,6 +1401,18 @@
           ],
           "dod": "Task reaches done in society.db with evidence recorded.",
           "completed_at": "2026-07-12"
+        },
+        {
+          "id": "AK-TASK-3833",
+          "title": "Revise Phase 2 evidence-review consumer handoff contract for Pi owner re-review",
+          "state": "doing",
+          "tasks": [
+            {
+              "text": "Revise Phase 2 evidence-review consumer handoff contract for Pi owner re-review (task #3833)",
+              "done": false
+            }
+          ],
+          "dod": "Task reaches done in society.db with evidence recorded."
         }
       ]
     }

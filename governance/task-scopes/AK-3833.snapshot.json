@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-07-12T15:33:35.867097183+00:00",
+  "task_id": 3833,
+  "entity_version": 2,
+  "commit_sha": null,
+  "scope": {
+    "allowed_paths": [
+      "docs/project/evidence-review-handoff-contract.md",
+      "governance/task-scopes/AK-*.snapshot.json",
+      "governance/work-items.json",
+      "schemas/evidence-review-v1.schema.json",
+      "tests/evidence-review-handoff-contract.test.ts",
+      "tests/fixtures/evidence-review-handoff-*.json"
+    ],
+    "required_paths": [
+      "docs/project/evidence-review-handoff-contract.md",
+      "schemas/evidence-review-v1.schema.json",
+      "tests/evidence-review-handoff-contract.test.ts"
+    ],
+    "forbidden_paths": []
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}
