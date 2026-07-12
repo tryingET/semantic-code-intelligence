@@ -2,8 +2,8 @@
   "schema_version": 1,
   "exported_at": "2026-07-12T13:19:47.373673320+00:00",
   "task_id": 3825,
-  "entity_version": 2,
-  "commit_sha": null,
+  "entity_version": 3,
+  "commit_sha": "64fec80",
   "scope": {
     "allowed_paths": [
       "governance/task-scopes/AK-*.snapshot.json",

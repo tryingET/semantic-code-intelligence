@@ -1366,14 +1366,15 @@
         {
           "id": "AK-TASK-3825",
           "title": "Close snapshot cleanup race across active check and apply consumption",
-          "state": "doing",
+          "state": "done",
           "tasks": [
             {
               "text": "Close snapshot cleanup race across active check and apply consumption (task #3825)",
-              "done": false
+              "done": true
             }
           ],
-          "dod": "Task reaches done in society.db with evidence recorded."
+          "dod": "Task reaches done in society.db with evidence recorded.",
+          "completed_at": "2026-07-12"
         }
       ]
     }
