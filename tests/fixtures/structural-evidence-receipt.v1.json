@@ -1,0 +1,83 @@
+{
+  "schema": "semantic-code-intelligence.structural_evidence_receipt.v1",
+  "request": {
+    "question": "Where is the structural workflow service defined?",
+    "seeds": [
+      {
+        "id": "seed:structural-workflow",
+        "kind": "path",
+        "value": "src/core/workflows/structural-workflow.ts"
+      }
+    ],
+    "operations": [
+      "find_definition"
+    ],
+    "limits": {
+      "maxCandidates": 20,
+      "maxCandidatesPerFile": 5,
+      "maxEvidenceBytes": 65536,
+      "timeoutMs": 30000
+    }
+  },
+  "requestDigest": "sha256:af048bc8b03c8a0da150afc2535305782a1ccc160598d644cab5ad7c9e69b3f7",
+  "repository": {
+    "snapshotId": "snapshot-fixture-v1",
+    "baseFingerprint": "git:6bebdc2f709e394f",
+    "observedFingerprint": "git:6bebdc2f709e394f",
+    "stableAcrossExecution": true
+  },
+  "producer": {
+    "name": "semantic-code-intelligence",
+    "version": "2.0.0",
+    "workflow": "structural-evidence-export-v1"
+  },
+  "backend": {
+    "name": "ast-grep",
+    "version": "0.40.5",
+    "executable": {
+      "name": "ast-grep",
+      "version": "0.40.5"
+    },
+    "outcome": {
+      "status": "succeeded",
+      "exitCode": 0,
+      "message": "structural evidence collected"
+    }
+  },
+  "evidence": [
+    {
+      "id": "candidate:sha256:4c74e4554965eb2ed60104a7acaa712af4eda807ce7fcd5e0d8872e29ce82810",
+      "identity": {
+        "path": "src/core/workflows/structural-workflow.ts",
+        "kind": "definition",
+        "range": {
+          "start": {
+            "line": 104,
+            "column": 13
+          },
+          "end": {
+            "line": 104,
+            "column": 38
+          }
+        },
+        "symbol": "StructuralWorkflowService"
+      },
+      "operation": "find_definition",
+      "snippet": "export class StructuralWorkflowService",
+      "byteCount": 38,
+      "provenance": {
+        "backend": "ast-grep",
+        "workflow": "structural-evidence-export-v1"
+      }
+    }
+  ],
+  "summary": {
+    "returnedCount": 1,
+    "totalObservedCount": 1,
+    "evidenceBytes": 38,
+    "capped": false,
+    "complete": true
+  },
+  "limitations": [],
+  "receiptDigest": "sha256:e2f4ec00c2e8891952efbd8102f7dad9483ca0854d712fbf8ffa9f855f34734d"
+}

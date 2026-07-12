@@ -1,0 +1,227 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://semantic-code-intelligence.dev/schemas/structural-evidence-receipt.v1.schema.json",
+  "title": "Semantic Code Intelligence structural evidence receipt v1",
+  "description": "Read-only structural evidence export receipt. This contract describes evidence and does not rank, select, budget, or pack consumer context.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "request", "requestDigest", "repository", "producer", "backend", "evidence", "summary", "limitations", "receiptDigest"],
+  "properties": {
+    "schema": { "const": "semantic-code-intelligence.structural_evidence_receipt.v1" },
+    "request": { "$ref": "#/$defs/request" },
+    "requestDigest": { "$ref": "#/$defs/digest" },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["snapshotId", "baseFingerprint", "observedFingerprint", "stableAcrossExecution"],
+      "properties": {
+        "snapshotId": { "$ref": "#/$defs/opaqueFingerprint" },
+        "baseFingerprint": { "$ref": "#/$defs/opaqueFingerprint" },
+        "observedFingerprint": { "$ref": "#/$defs/opaqueFingerprint" },
+        "stableAcrossExecution": { "type": "boolean" }
+      }
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "workflow"],
+      "properties": {
+        "name": { "const": "semantic-code-intelligence" },
+        "version": { "$ref": "#/$defs/provenanceToken" },
+        "workflow": { "$ref": "#/$defs/provenanceToken" }
+      }
+    },
+    "backend": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "executable", "outcome"],
+      "properties": {
+        "name": { "$ref": "#/$defs/provenanceToken" },
+        "version": { "$ref": "#/$defs/provenanceToken" },
+        "executable": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "version"],
+          "properties": {
+            "name": { "$ref": "#/$defs/provenanceToken" },
+            "version": { "$ref": "#/$defs/provenanceToken" }
+          }
+        },
+        "outcome": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "exitCode", "message"],
+          "properties": {
+            "status": { "enum": ["succeeded", "failed", "timed_out", "unavailable"] },
+            "exitCode": { "type": ["integer", "null"] },
+            "message": { "type": "string", "maxLength": 2000 }
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": { "$ref": "#/$defs/evidenceCandidate" }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["returnedCount", "totalObservedCount", "evidenceBytes", "capped", "complete"],
+      "properties": {
+        "returnedCount": { "type": "integer", "minimum": 0 },
+        "totalObservedCount": { "type": "integer", "minimum": 0 },
+        "evidenceBytes": { "type": "integer", "minimum": 0 },
+        "capped": { "type": "boolean" },
+        "complete": { "type": "boolean" }
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message", "affectsCompleteness"],
+        "properties": {
+          "code": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$" },
+          "message": { "type": "string", "minLength": 1, "maxLength": 2000 },
+          "affectsCompleteness": { "type": "boolean" }
+        }
+      }
+    },
+    "receiptDigest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "opaqueFingerprint": { "type": "string", "minLength": 16, "maxLength": 256, "pattern": "^[A-Za-z0-9._:-]+$" },
+    "nonEmpty128": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": ".*\\S.*" },
+    "provenanceToken": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$" },
+    "operation": { "enum": ["structural_search", "find_definition", "find_references", "graph_expand", "ast_query"] },
+    "position": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["line", "column"],
+      "properties": {
+        "line": { "type": "integer", "minimum": 0 },
+        "column": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["question", "seeds", "operations", "limits"],
+      "properties": {
+        "question": { "type": "string", "minLength": 1, "maxLength": 4000, "pattern": ".*\\S.*" },
+        "seeds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "kind", "value"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^seed:[a-z0-9][a-z0-9._-]{0,127}$" },
+              "kind": { "enum": ["path", "symbol", "text"] },
+              "value": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": ".*\\S.*" }
+            }
+          }
+        },
+        "operations": { "type": "array", "minItems": 1, "maxItems": 16, "items": { "$ref": "#/$defs/operation" } },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["maxCandidates", "maxCandidatesPerFile", "maxEvidenceBytes", "timeoutMs"],
+          "properties": {
+            "maxCandidates": { "type": "integer", "minimum": 1, "maximum": 10000 },
+            "maxCandidatesPerFile": { "type": "integer", "minimum": 1, "maximum": 10000 },
+            "maxEvidenceBytes": { "type": "integer", "minimum": 1, "maximum": 67108864 },
+            "timeoutMs": { "type": "integer", "minimum": 1, "maximum": 120000 }
+          }
+        }
+      }
+    },
+    "relativePath": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": ".*\\S.*" },
+    "evidenceSymbol": { "type": "string", "minLength": 1, "maxLength": 1024, "pattern": ".*\\S.*" },
+    "evidenceRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "$ref": "#/$defs/position" },
+        "end": { "$ref": "#/$defs/position" }
+      }
+    },
+    "evidenceIdentity": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "kind", "range"],
+          "properties": {
+            "path": { "$ref": "#/$defs/relativePath" },
+            "kind": { "const": "match" },
+            "range": { "$ref": "#/$defs/evidenceRange" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "kind", "range", "symbol"],
+          "properties": {
+            "path": { "$ref": "#/$defs/relativePath" },
+            "kind": { "enum": ["definition", "reference"] },
+            "range": { "$ref": "#/$defs/evidenceRange" },
+            "symbol": { "$ref": "#/$defs/evidenceSymbol" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "kind", "symbol"],
+          "properties": {
+            "path": { "$ref": "#/$defs/relativePath" },
+            "kind": { "const": "graph_node" },
+            "symbol": { "$ref": "#/$defs/evidenceSymbol" },
+            "range": { "$ref": "#/$defs/evidenceRange" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "kind", "symbol", "relatedPath", "relatedSymbol", "edgeType"],
+          "properties": {
+            "path": { "$ref": "#/$defs/relativePath" },
+            "kind": { "const": "graph_edge" },
+            "symbol": { "$ref": "#/$defs/evidenceSymbol" },
+            "relatedPath": { "$ref": "#/$defs/relativePath" },
+            "relatedSymbol": { "$ref": "#/$defs/evidenceSymbol" },
+            "edgeType": { "enum": ["import", "export", "caller", "callee", "semantic"] }
+          }
+        }
+      ]
+    },
+    "evidenceCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "identity", "operation", "snippet", "byteCount", "provenance"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^candidate:sha256:[a-f0-9]{64}$" },
+        "identity": { "$ref": "#/$defs/evidenceIdentity" },
+        "operation": { "$ref": "#/$defs/operation" },
+        "snippet": { "type": "string", "minLength": 1, "maxLength": 20000, "pattern": ".*\\S.*" },
+        "byteCount": { "type": "integer", "minimum": 1 },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["backend", "workflow"],
+          "properties": {
+            "backend": { "$ref": "#/$defs/provenanceToken" },
+            "workflow": { "$ref": "#/$defs/provenanceToken" }
+          }
+        }
+      }
+    }
+  }
+}
