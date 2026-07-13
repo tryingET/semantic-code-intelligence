@@ -26,6 +26,28 @@ function recipeBody(justfile: string, recipeName: string): string {
     return match?.groups?.body ?? '';
 }
 
+function createLoopFixture(): string {
+    const dir = mkdtempSync(join(tmpdir(), 'sci-loop-command-contract-'));
+    writeFileSync(join(dir, 'justfile'), readText('justfile'));
+    const init = spawnSync('git', ['init'], { cwd: dir, encoding: 'utf8' });
+    expect(init.status, init.stderr || init.stdout).toBe(0);
+    spawnSync('git', ['config', 'user.email', 'test@example.invalid'], { cwd: dir, encoding: 'utf8' });
+    spawnSync('git', ['config', 'user.name', 'Test User'], { cwd: dir, encoding: 'utf8' });
+    spawnSync('git', ['config', 'commit.gpgSign', 'false'], { cwd: dir, encoding: 'utf8' });
+    spawnSync('git', ['add', 'justfile'], { cwd: dir, encoding: 'utf8' });
+    const commit = spawnSync('git', ['commit', '-m', 'fixture'], { cwd: dir, encoding: 'utf8' });
+    expect(commit.status, commit.stderr || commit.stdout).toBe(0);
+    return dir;
+}
+
+function runLoopRecipe(dir: string, recipe: string, env: NodeJS.ProcessEnv = {}, workingDirectory: string = dir) {
+    return spawnSync('just', ['--justfile', join(dir, 'justfile'), '--working-directory', workingDirectory, recipe], {
+        cwd: workingDirectory,
+        encoding: 'utf8',
+        env: { ...process.env, ...env },
+    });
+}
+
 describe('build command surface', () => {
     test('GitHub workflow YAML files parse', () => {
         const workflowFiles = readdirSync('.github/workflows').filter((file) => /\.ya?ml$/.test(file));
@@ -46,6 +68,158 @@ describe('build command surface', () => {
         const report = JSON.parse(proc.stdout) as { ok: boolean; violations: unknown[] };
         expect(report.ok).toBe(true);
         expect(report.violations).toEqual([]);
+    });
+
+    test('repo loop impact classifier distinguishes clean, expanded, and wide changes', () => {
+        const dir = createLoopFixture();
+        try {
+            const clean = runLoopRecipe(dir, '_loop-impact-classify');
+            expect(clean.status, clean.stderr || clean.stdout).toBe(0);
+            expect(clean.stdout).toContain('impact=bounded');
+            expect(clean.stdout).toContain('next=just loop-verify-fast');
+
+            mkdirSync(join(dir, 'docs'));
+            writeFileSync(join(dir, 'docs', 'note.md'), 'changed\n');
+            const expanded = runLoopRecipe(dir, '_loop-impact-classify');
+            expect(expanded.status, expanded.stderr || expanded.stdout).toBe(0);
+            expect(expanded.stdout).toContain('impact=expanded');
+            expect(expanded.stdout).toContain('next=just loop-impact-run');
+
+            mkdirSync(join(dir, 'src'));
+            writeFileSync(join(dir, 'src', 'runtime.ts'), 'export {};\n');
+            const wide = runLoopRecipe(dir, '_loop-impact-classify');
+            expect(wide.status, wide.stderr || wide.stdout).toBe(0);
+            expect(wide.stdout).toContain('impact=wide');
+            expect(wide.stdout).toContain('next=just loop-impact-wide');
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('repo loop classifier covers the full repo and tracked runtime path transitions', () => {
+        const dir = createLoopFixture();
+        try {
+            mkdirSync(join(dir, 'subdir'));
+            mkdirSync(join(dir, 'src'));
+            writeFileSync(join(dir, 'src', 'runtime.ts'), 'export {};\n');
+            const fromSubdir = runLoopRecipe(dir, '_loop-impact-classify', {}, join(dir, 'subdir'));
+            expect(fromSubdir.status, fromSubdir.stderr || fromSubdir.stdout).toBe(0);
+            expect(fromSubdir.stdout).toContain('- src/runtime.ts');
+            expect(fromSubdir.stdout).toContain('impact=wide');
+
+            spawnSync('git', ['add', 'src/runtime.ts'], { cwd: dir, encoding: 'utf8' });
+            const commit = spawnSync('git', ['commit', '-m', 'runtime fixture'], { cwd: dir, encoding: 'utf8' });
+            expect(commit.status, commit.stderr || commit.stdout).toBe(0);
+            mkdirSync(join(dir, 'docs'));
+            const renameOut = spawnSync('git', ['mv', 'src/runtime.ts', 'docs/runtime.ts'], {
+                cwd: dir,
+                encoding: 'utf8',
+            });
+            expect(renameOut.status, renameOut.stderr || renameOut.stdout).toBe(0);
+            const movedOut = runLoopRecipe(dir, '_loop-impact-classify');
+            expect(movedOut.status, movedOut.stderr || movedOut.stdout).toBe(0);
+            expect(movedOut.stdout).toContain('- docs/runtime.ts');
+            expect(movedOut.stdout).toContain('- src/runtime.ts');
+            expect(movedOut.stdout).toContain('impact=wide');
+
+            spawnSync('git', ['reset', '--hard', 'HEAD'], { cwd: dir, encoding: 'utf8' });
+            const deletion = spawnSync('git', ['rm', 'src/runtime.ts'], { cwd: dir, encoding: 'utf8' });
+            expect(deletion.status, deletion.stderr || deletion.stdout).toBe(0);
+            const deleted = runLoopRecipe(dir, '_loop-impact-classify');
+            expect(deleted.status, deleted.stderr || deleted.stdout).toBe(0);
+            expect(deleted.stdout).toContain('- src/runtime.ts');
+            expect(deleted.stdout).toContain('impact=wide');
+
+            spawnSync('git', ['reset', '--hard', 'HEAD'], { cwd: dir, encoding: 'utf8' });
+            writeFileSync(join(dir, 'src', 'runtime.ts'), 'export const changed = true;\n');
+            const modified = runLoopRecipe(dir, '_loop-impact-classify');
+            expect(modified.status, modified.stderr || modified.stdout).toBe(0);
+            expect(modified.stdout).toContain('- src/runtime.ts');
+            expect(modified.stdout).toContain('impact=wide');
+
+            spawnSync('git', ['reset', '--hard', 'HEAD'], { cwd: dir, encoding: 'utf8' });
+            mkdirSync(join(dir, 'notes'));
+            const renameToNotes = spawnSync('git', ['mv', 'src/runtime.ts', 'notes/runtime.ts'], {
+                cwd: dir,
+                encoding: 'utf8',
+            });
+            expect(renameToNotes.status, renameToNotes.stderr || renameToNotes.stdout).toBe(0);
+            spawnSync('git', ['add', '-A'], { cwd: dir, encoding: 'utf8' });
+            const notesCommit = spawnSync('git', ['commit', '-m', 'notes fixture'], { cwd: dir, encoding: 'utf8' });
+            expect(notesCommit.status, notesCommit.stderr || notesCommit.stdout).toBe(0);
+            const renameIn = spawnSync('git', ['mv', 'notes/runtime.ts', 'src/runtime.ts'], {
+                cwd: dir,
+                encoding: 'utf8',
+            });
+            expect(renameIn.status, renameIn.stderr || renameIn.stdout).toBe(0);
+            const movedIn = runLoopRecipe(dir, '_loop-impact-classify');
+            expect(movedIn.status, movedIn.stderr || movedIn.stdout).toBe(0);
+            expect(movedIn.stdout).toContain('- src/runtime.ts');
+            expect(movedIn.stdout).toContain('- notes/runtime.ts');
+            expect(movedIn.stdout).toContain('impact=wide');
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('repo loop impact commands fail closed before selecting unsafe validation', () => {
+        const outsideGit = mkdtempSync(join(tmpdir(), 'sci-loop-command-no-git-'));
+        writeFileSync(join(outsideGit, 'justfile'), readText('justfile'));
+        try {
+            const noGit = runLoopRecipe(outsideGit, '_loop-impact-classify');
+            expect(noGit.status).not.toBe(0);
+            expect(noGit.stderr).toContain('loop impact classification requires readable git status');
+        } finally {
+            rmSync(outsideGit, { recursive: true, force: true });
+        }
+
+        const dir = createLoopFixture();
+        try {
+            mkdirSync(join(dir, 'src'));
+            writeFileSync(join(dir, 'src', 'runtime.ts'), 'export {};\n');
+            const automaticWide = runLoopRecipe(dir, 'loop-impact-run');
+            expect(automaticWide.status).toBe(2);
+            expect(automaticWide.stdout).toContain('selected_impact=wide');
+            expect(automaticWide.stdout).toContain('wide impact requires explicit acceptance');
+            expect(automaticWide.stdout).not.toContain('validation_scope=normal sliced/batched test path');
+
+            const missingReason = runLoopRecipe(dir, 'loop-impact-wide', { LOOP_WIDE_REASON: '' });
+            expect(missingReason.status).toBe(2);
+            expect(missingReason.stdout).toContain('reason=missing LOOP_WIDE_REASON');
+            expect(missingReason.stdout).not.toContain('validation_scope=CI-like');
+
+            const whitespaceReason = runLoopRecipe(dir, 'loop-impact-wide', { LOOP_WIDE_REASON: ' \t\n ' });
+            expect(whitespaceReason.status).toBe(2);
+            expect(whitespaceReason.stdout).toContain('reason=missing LOOP_WIDE_REASON');
+            expect(whitespaceReason.stdout).not.toContain('validation_scope=CI-like');
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('repo loop recipes preserve diagnostic, delegation, and authority boundaries', () => {
+        const justfile = readText('justfile');
+        const doctor = recipeBody(justfile, 'loop-doctor');
+        const fast = recipeBody(justfile, 'loop-verify-fast');
+        const plan = recipeBody(justfile, 'loop-impact-plan');
+        const run = recipeBody(justfile, 'loop-impact-run');
+        const wide = recipeBody(justfile, 'loop-impact-wide');
+        const landing = recipeBody(justfile, 'loop-landing-check');
+
+        expect(doctor).toContain('set +e');
+        expect(doctor).toContain('result=diagnostic');
+        expect(doctor).toContain('_loop-scope-check 0');
+        expect(doctor).toContain('authority_boundary=diagnostic-only');
+        expect(fast).toContain('just test-smoke');
+        expect(plan).toContain('authority_boundary=plan-only');
+        expect(run).toContain('wide impact requires explicit acceptance');
+        expect(run).toContain('just test');
+        expect(wide).toContain('LOOP_WIDE_REASON');
+        expect(wide).toContain('just test-ci-like');
+        expect(landing.indexOf('@just --quiet _loop-scope-check 1')).toBeLessThan(
+            landing.indexOf('@just alpha-mvp-check')
+        );
+        expect(landing).toContain('AK/CI/release/governance authority remains outside this command');
     });
 
     test('command-surface audit normalizes workflow run blocks for normal-suite slices', () => {

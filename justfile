@@ -767,11 +767,25 @@ _loop-impact-classify:
     python3 - <<'PY'
     import subprocess
 
-    raw = subprocess.run(
-        ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", "."],
+    root_result = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
         check=False,
         stdout=subprocess.PIPE,
-    ).stdout.split(b"\0")
+        stderr=subprocess.DEVNULL,
+    )
+    if root_result.returncode != 0:
+        raise SystemExit("loop impact classification requires readable git status")
+    repo_root = root_result.stdout.decode("utf-8", "surrogateescape").strip()
+    status_result = subprocess.run(
+        ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", "."],
+        cwd=repo_root,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    if status_result.returncode != 0:
+        raise SystemExit("loop impact classification requires readable git status")
+    raw = status_result.stdout.split(b"\0")
 
     paths = []
     index = 0
@@ -785,7 +799,13 @@ _loop-impact-classify:
         path = text[3:] if len(text) > 3 else ""
         if path:
             paths.append(path)
-        index += 2 if ("R" in status or "C" in status) else 1
+        if "R" in status or "C" in status:
+            index += 1
+            if index < len(raw):
+                original_path = raw[index].decode("utf-8", "surrogateescape")
+                if original_path:
+                    paths.append(original_path)
+        index += 1
 
     wide_prefixes = ("src/", "bin/", "scripts/", "tests/", "vscode-client/", ".github/")
     wide_exact = {"package.json", "bun.lock", "tsconfig.json", "tsconfig.build.json"}
@@ -870,7 +890,8 @@ loop-impact-run:
 loop-impact-wide:
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ -z "${LOOP_WIDE_REASON:-}" ]; then
+    reason=${LOOP_WIDE_REASON:-}
+    if [ -z "$(printf '%s' "$reason" | tr -d '[:space:]')" ]; then
         echo "phase=loop-impact-wide"
         echo "result=blocked"
         echo "reason=missing LOOP_WIDE_REASON for explicitly accepted wide validation"

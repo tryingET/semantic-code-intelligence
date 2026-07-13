@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-05-26T16:29:39.634784197+00:00",
+  "task_id": 3414,
+  "entity_version": 5,
+  "commit_sha": null,
+  "scope": {
+    "allowed_paths": [
+      "governance/task-scopes/AK-3414.snapshot.json",
+      "justfile",
+      "tests/build-command-surface.test.ts"
+    ],
+    "required_paths": [
+      "governance/task-scopes/AK-3414.snapshot.json",
+      "justfile",
+      "tests/build-command-surface.test.ts"
+    ],
+    "forbidden_paths": []
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}
