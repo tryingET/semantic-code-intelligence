@@ -16,6 +16,20 @@ The first user is the **harnessed LLM coding session**: an LLM operating inside 
 
 Human IDE users, CI/review automation, dashboards, marketplace-style pattern assets, and production deployments are later phases unless they directly support the first user.
 
+## Operating model
+
+SCI does not require a fixed Vision → Strategy → roadmap → task document ladder.
+Current authority and context are layered deliberately:
+
+1. [`VISION.md`](../../VISION.md) is the durable north star; [`vision.md`](vision.md) is its project-local pointer.
+2. This file defines phased product posture and scope boundaries.
+3. Installed Agent Kernel (`ak`) is canonical for live strategic frames, tasks, decisions, evidence, and lineage. The current frame key is `SF2` (display ID `AK.V5.SF02`) — Alpha maintenance and evidence-led direction discovery.
+4. Repository ADRs record accepted human-readable policy. They do not create or advance AK decision state.
+5. Implementation proceeds through an explicitly scoped AK task, owner-repo mutation, the smallest truthful validation, evidence, and closeout.
+6. A fresh decision membrane is required when work changes authority, compatibility, ownership, persistence, mutation capability, publication posture, or broad product direction.
+
+Planning and review documents support this process but are not parallel runtime authority. Superseded decisions `46` and `47` remain superseded.
+
 ## First-user thesis
 
 Harnessed LLM coding sessions need a reliable code-navigation and edit-planning substrate more than they need another general search tool.
@@ -102,7 +116,7 @@ Do not keep adding Phase 1 dogfood waves by default. Future work should be one o
 - targeted hardening tied to a named closure-review gap and the AK-backed backlog in `docs/project/alpha-maintenance-backlog.md`;
 - an explicit Phase 2 decision review for human workbench/IDE/dashboard scope.
 
-IW52 produced a Phase 2 planning draft in `docs/project/phase-2-planning-decision.md`, but its AK decision record (`46`) was superseded after the operator rejected unilateral DB decision advancement. IW53 defines the evidence review contract in `docs/project/evidence-review-contract.md`; IW54 adds the non-mutating summary producer. Further Phase 2 authority requires explicit review.
+IW52 produced a Phase 2 planning draft, but its AK decision record (`46`) was superseded after the operator rejected unilateral DB decision advancement. Later accepted work completed one bounded Phase 2 vertical slice: SCI normalizes strict `semantic-code-intelligence.evidence_review.v1`, and the owning Pi repository validates and inertly renders it through `pi-evidence-review`. [ADR-0003](../adr/0003-authorize-bounded-evidence-review-consumer-handoff.md) records that narrow authorization and supersedes ADR-0002's temporary deferral. It does not activate a broad IDE/dashboard phase or revive decisions `46` or `47`.
 
 Remaining non-blocking gaps after closure:
 
@@ -112,15 +126,17 @@ Remaining non-blocking gaps after closure:
 - durable snapshot/session semantics where process-local CLI or adapter state is insufficient;
 - validating interface guidance (`docs/project/interface-choice-guide.md`) in future target sessions when a concrete operator need appears.
 
-## Phase 2: Developer workbench
+## Phase 2: Operator workbench evidence
 
-Human-facing IDE and dashboard experiences become primary only after an explicit Phase 2 decision review. The current draft suggests an operator-facing evidence/workbench support surface for supervised harnessed-LLM sessions, but it is not accepted implementation authority.
+The first bounded Phase 2 slice is delivered: an operator supervising a harnessed LLM coding session can inspect normalized SCI evidence in Pi through an inert, read-only panel. SCI owns normalization; Pi owns validation and rendering. The completed slice does not execute commands, mutate repositories, persist approvals, activate links, normalize raw packets, or claim AK authority.
 
-Candidate surfaces:
+Current posture is **observation under frame `SF2`** (display ID `AK.V5.SF02`), not broad workbench expansion. Real-session evidence should drive producer or consumer corrections. A dashboard, VS Code extension, durable evidence store, interactive decision recording, or new mutation semantics requires a fresh explicit decision and owner-scoped implementation wave.
 
-- VS Code extension backed by the same core contracts;
-- dashboard for graph/search/check evidence;
-- CLI workflows for humans who prefer terminal-first navigation;
+Later candidate surfaces remain:
+
+- VS Code integration backed by stable core contracts;
+- a broader graph/search/check dashboard;
+- terminal-first operator workflows beyond read-only evidence inspection;
 - local project setup helpers.
 
 ## Phase 3: CI and review automation

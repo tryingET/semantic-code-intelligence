@@ -1,9 +1,9 @@
 ---
-summary: "IW72 verification of ADR-0002 Phase 2 evidence-review reconsideration gates and the remaining host-owner boundary."
+summary: "Historical IW72 verification of ADR-0002 gates before the host-owner gate was subsequently satisfied."
 read_when:
   - "You are deciding whether SCI Phase 2 evidence review may move beyond CLI/markdown/JSON."
   - "You need current evidence for ADR-0002 reconsideration gates."
-  - "You are preparing a Pi/operator-workbench owner review request."
+  - "You need the historical basis for the completed Pi/operator-workbench owner handoff."
 type: "review"
 system4d:
   container: "SCI Phase 2 evidence-review reconsideration under ADR-0002 and AK authority boundaries."
@@ -17,13 +17,15 @@ system4d:
 Date: 2026-07-12  
 Wave: IW72 — Phase 2 evidence-review reconsideration gate verification  
 AK task: `3831`  
-Status: SCI-local gates verified; host handoff remains blocked
+Status: historical gate review; host-owner gate was subsequently satisfied and ADR-0003 authorizes the bounded consumer
 
-## Decision boundary
+> **Subsequent outcome:** This document records the state at IW72. The operator later authorized the Pi owner implementation; Pi tasks `3843`, `3853`, and `3855` delivered and hardened the read-only consumer, and SCI task `3866` completed live producer conformance proof. See [ADR-0003](../adr/0003-authorize-bounded-evidence-review-consumer-handoff.md). The producer's generated `blocked / cli_only` value remains intentionally conservative and is not the external owner-acceptance record.
 
-This review attends to Phase 2 within the accepted repository policy in `docs/adr/0002-defer-evidence-review-handoff.md`. It does not revive or advance superseded AK decisions `46` or `47`, accept a new AK decision, authorize Pi/operator-workbench work, or authorize an SCI-owned UI.
+## Decision boundary at IW72
 
-The current lawful SCI surface remains read-only CLI/markdown/JSON evidence review. A future host handoff requires explicit acceptance from the Pi/operator-workbench owner scope.
+This review attended to Phase 2 within the then-current repository policy in `docs/adr/0002-defer-evidence-review-handoff.md`. It did not revive or advance superseded AK decisions `46` or `47`, accept a new AK decision, authorize Pi/operator-workbench work, or authorize an SCI-owned UI.
+
+At IW72, the lawful SCI surface remained read-only CLI/markdown/JSON evidence review and a future host handoff still required explicit acceptance from the Pi/operator-workbench owner scope. ADR-0003 records the later bounded acceptance; the remaining assessment is historical evidence.
 
 ## Reconsideration gate assessment
 
@@ -101,4 +103,4 @@ A positive answer authorizes preparation/review of a handoff contract only. It d
 
 ## Current conclusion
 
-Phase 2 is attended through a verified reconsideration review. SCI-local readiness evidence is complete for ADR-0002 gates 1–5. Host-owner acceptance remains the sole blocking reconsideration gate, so the repository must remain on the CLI/markdown/JSON path until that external acceptance is explicit.
+At IW72, SCI-local readiness evidence was complete for ADR-0002 gates 1–5 and host-owner acceptance was still missing. That final gate was subsequently satisfied through explicit operator authorization and owner-repo implementation. ADR-0003 now governs the bounded read-only handoff. This does not authorize broader Phase 2 UI, persistence, execution, publication, or AK decision advancement.

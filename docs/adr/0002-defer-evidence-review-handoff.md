@@ -14,9 +14,10 @@ system4d:
 
 # ADR-0002: Defer Evidence Review Handoff Until Claim Model Is Schema-Ready
 
-Status: Accepted
+Status: Superseded by [ADR-0003](0003-authorize-bounded-evidence-review-consumer-handoff.md)
 Date: 2026-05-19
 Accepted: 2026-05-19 by explicit operator instruction (`do 1` after being offered “Accept/reject proposed ADR-0002 explicitly”)
+Superseded: 2026-07-12 after all reconsideration gates, explicit Pi owner authorization, implementation, and live producer-to-consumer proof
 Authors: Semantic Code Intelligence Team
 
 ## Authority note
@@ -24,6 +25,10 @@ Authors: Semantic Code Intelligence Team
 This is an operator-accepted, human-readable repository policy artifact for the narrow Option A deferral described below. It governs repository work within that scope, but it is not DB-native AK decision lifecycle state and must not be represented as an accepted AK decision.
 
 AK decisions `46` and `47` remain superseded. Neither this artifact nor its acceptance task revives, advances, or replaces those records. Any future AK decision transition requires an explicit instruction naming the decision and target state.
+
+## Supersession note
+
+ADR-0002 accurately records the temporary deferral boundary and remains historical context. ADR-0003 supersedes only that deferral after the schema, read-only, owner-acceptance, implementation, and live-proof gates completed. It does not convert decisions `46` or `47` into authority or authorize broader Phase 2 work.
 
 ## Context
 
@@ -166,4 +171,4 @@ Observed result:
 
 ## Follow-up
 
-IW64 begins aligning `semantic-code-intelligence.evidence_review.v1` with the conceptual claim model by adding first-class evidence artifacts, claims, authority boundaries, and operator decision points to the summary output. IW65 adds regression coverage for that model, IW66 wires the claim-model test into the alpha validation surface, IW67 adds `tests/fixtures/evidence-review-claim-model-sample.json` as a committed normalized sample, IW68 adds read-only boundary regression coverage for the summary renderer, and IW69 defines durable vs ephemeral snapshot evidence semantics in `docs/project/durable-snapshot-evidence-boundary.md`. Later hardening keeps local validation execution from being treated as `authority_durable` without AK evidence or an explicit command transcript, requires selected-command evidence before supporting selected-check claims, consumes distinct execution evidence entries for duplicate selected command strings, makes command-level selected-check failures contradict aggregate clean-pass claims, keeps structural command-distinction support separate from unavailable validation execution, keeps alpha packet bundle gates distinct from selected-command execution, preserves embedded apply posture when rendering packet-level evidence, keeps absent graph evidence visible as a first-class limitation, enforces limitation reference integrity, neutralizes markdown-forgery and inline-markdown text, refuses oversized evidence input before parsing including post-open growth, contains summary inputs to workspace-contained regular JSON files with path-escape, symlink-escape, TOCTOU replacement/mutation, missing/unreadable, non-regular input refusal, and fd-link fallback, validates missing/unsupported CLI options before input parsing, supports validationPlan extraction for every supported evidence input kind that embeds one, keeps the committed normalized sample fixture matched to current output, sanitizes CLI errors so unsupported schemas, malformed JSON, unsupported formats, and unsupported extract modes do not expose stack traces, source paths, or reflected caller-controlled text, and adds a conservative `handoffReadiness` report that keeps ADR-0002 host handoff blocked unless explicit Pi/operator-workbench owner acceptance exists outside SCI. Handoff or UI work remains blocked until all reconsideration gates above are present and Pi/operator-workbench owner scope acceptance is recorded outside SCI.
+IW64 and later waves aligned `semantic-code-intelligence.evidence_review.v1` with the conceptual claim model, added adversarial and read-only boundary coverage, and defined durable versus ephemeral evidence semantics. IW72 verified gates 1–5. The Pi owner then explicitly accepted and implemented the bounded consumer under tasks `3843`, `3853`, and `3855`; SCI task `3866` repaired a live producer conformance defect found by the strict consumer. ADR-0003 records the resulting accepted boundary and live proof. Broader host capabilities and Phase 2 product expansion remain unauthorized.

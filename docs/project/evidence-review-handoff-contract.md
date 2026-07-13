@@ -1,9 +1,9 @@
 ---
-summary: "Draft consumer handoff contract for bounded, read-only rendering of SCI normalized evidence review v1."
+summary: "Accepted consumer handoff contract for bounded, read-only rendering of SCI normalized evidence review v1."
 read_when:
   - "You are reviewing the SCI-to-Pi evidence review consumer boundary."
   - "You are validating semantic-code-intelligence.evidence_review.v1 fixtures or schema compatibility."
-  - "You need the security, rendering, or cross-owner acceptance conditions for a future consumer."
+  - "You need the security, rendering, or cross-owner acceptance conditions for the current consumer."
 type: "contract"
 ---
 
@@ -11,19 +11,20 @@ type: "contract"
 
 Date: 2026-07-12
 
-Status: review preparation; no host implementation authorization
+Status: accepted and implemented for the bounded read-only Pi consumer defined by ADR-0003
 
 ## Purpose and authority
 
-This document defines the proposed handoff of an already normalized
-`semantic-code-intelligence.evidence_review.v1` value from SCI to a future read-only
-consumer. It is a contract review artifact, not authorization to implement a Pi package,
-runtime panel, command runner, durable store, or integration.
+This document defines the accepted handoff of an already normalized
+`semantic-code-intelligence.evidence_review.v1` value from SCI to the bounded read-only Pi
+consumer authorized by ADR-0003. It does not authorize a command runner, durable store,
+interactive decision surface, broader dashboard, or other integration.
 
-SCI remains the sole producer and normalizer. A consumer may validate and render the
+SCI remains the sole producer and normalizer. The consumer may validate and render the
 normalized value; it must not reinterpret raw validation plans, alpha packets, command
 receipts, or graph output into this schema. Decisions 46 and 47 remain superseded. This
-contract does not revive them, advance AK state, or supersede ADR-0002.
+contract does not revive them or advance AK state. ADR-0003 supersedes ADR-0002's temporary
+host-handoff deferral while retaining its authority safeguards.
 
 The canonical machine contract is
 [`schemas/evidence-review-v1.schema.json`](../../schemas/evidence-review-v1.schema.json).
@@ -38,7 +39,7 @@ object boundary.
 | Transport/invoker | Delivering a bounded sequence of UTF-8 JSON bytes from an explicitly selected source | Normalization, implicit file discovery, command execution, URI fetching |
 | Consumer | Pre-parse limits, schema and semantic validation, inert rendering, visible rejection diagnostics | Evidence generation, authority promotion, mutation, hidden recommendations |
 | Operator | Any decision made after inspecting displayed evidence and limitations | Automatic acceptance attributed by SCI or the consumer |
-| Pi/operator-workbench owner | Acceptance or rejection of any future host implementation | SCI governance or producer semantics |
+| Pi/operator-workbench owner | The accepted bounded consumer implementation and any future host capability decision | SCI governance or producer semantics |
 
 All input is untrusted at the consumer boundary, including values emitted by an SCI
 process, committed fixtures, filenames, paths, URIs, commands, markdown, and purported
@@ -50,19 +51,24 @@ acceptance.
 The consumer accepts exactly one complete normalized JSON object with discriminator
 `semantic-code-intelligence.evidence_review.v1`.
 
-A future owner may choose one of these explicit delivery modes:
+An owner may choose one of these bounded delivery modes:
 
 1. **In-memory value** — preferred when SCI and the consumer already share a bounded call.
 2. **Standard input** — acceptable only as a single bounded UTF-8 JSON value; stdin is data,
    never a shell program or interactive protocol.
-3. **File** — acceptable only when the operator/invoker explicitly names one regular JSON
+3. **Explicit file** — acceptable only when the operator/invoker names one regular JSON
    file contained by the selected workspace.
+4. **Operator-requested bounded picker** — accepted for an empty interactive invocation only
+   when traversal, candidates, full validations, and displayed matches are capped; symlinks
+   and generated/heavy trees are skipped; every candidate passes the complete v1 reader and
+   validator before display; and the selected file is revalidated before rendering.
 
-There is no default filename search, globbing, directory walk, newest-file selection,
-clipboard import, environment-variable expansion, or URI input. The consumer must not
-invoke the SCI producer itself. It must not treat raw `validationPlan`, alpha evidence
-packet, target-dogfood packet, markdown, JSONL, or partial object input as normalizable.
-Those are producer inputs and must be rejected by the consumer.
+There is no unbounded search, newest-file auto-selection, clipboard import,
+environment-variable expansion, or URI input. Headless invocation must fail before picker
+discovery or file access. The consumer must not invoke the SCI producer itself. It must not
+treat raw `validationPlan`, alpha evidence packet, target-dogfood packet, markdown, JSONL,
+or partial object input as normalizable. Those are producer inputs and must be rejected by
+the consumer.
 
 ### File containment
 
@@ -77,6 +83,8 @@ succeed:
 - file growth cannot bypass the byte cap;
 - unreadable, missing, escaped, or indeterminate files produce a generic rejection without
   reflecting hostile content or leaking host paths.
+
+Picker traversal applies the same containment posture to each opened directory and candidate. The accepted Pi implementation additionally bounds traversal to 256 directories, 4,096 entries, 512 JSON candidates, 128 full validations, and 50 displayed matches.
 
 An in-memory or stdin delivery has no authority to name a workspace. Path-like strings in
 the payload remain inert display text.
@@ -156,7 +164,8 @@ A renderer presents normalized producer facts; it does not recompute claims. It 
 - preserve visible distinctions among selected commands, observed receipts, and advisory
   recommendations;
 - show outcome, preview/applied posture, production boundary, limitations, claim status,
-  authority boundaries, durability, citation requirements, and handoff blocked status;
+  authority boundaries, durability, citation requirements, and producer-reported handoff
+  readiness without rewriting it;
 - show absent/null/unknown/inapplicable states explicitly rather than omit or turn them
   green;
 - keep source order where meaningful and use IDs to make references inspectable;
@@ -172,7 +181,8 @@ terminal behavior and fonts vary:
 
 - strip or visibly escape ANSI/OSC/CSI sequences and all remaining non-printing controls;
 - normalize CR/LF for the selected surface and prevent cursor movement or line overwrite;
-- escape markdown/HTML metacharacters; do not parse payload markdown;
+- preserve ordinary printable punctuation in a plain-text TUI; if a future surface uses
+  Markdown or HTML, escape for that surface and never parse payload markup;
 - do not allow headings, code fences, emphasis, tables, images, or status badges to be
   created by payload text;
 - expose suspicious or replaced text without echoing it into a terminal control channel;
@@ -236,15 +246,13 @@ presence of this document or a green SCI test does not satisfy another owner's r
 |---|---|---|---|---|
 | Normalized fields, enums, nulls, references | Proposes and verifies | Reviews consumability | Reviews spoofing/authority risk | All three accept |
 | Byte/depth/item/string limits | Verifies producer fixture fits | Owns equal-or-stricter enforcement | Reviews denial-of-service posture | All three accept |
-| File/stdin/in-memory transport | Documents producer output only | Owns invocation and containment | Reviews TOCTOU/path boundary | Host and security accept |
+| File/stdin/in-memory/picker transport | Documents producer output only | Owns invocation, bounded discovery, and containment | Reviews TOCTOU/path/resource boundary | Host and security accept |
 | Inert terminal/web rendering | Supplies adversarial fixture | Owns escaping and accessibility | Reviews ANSI/control/bidi/link behavior | Host and security accept |
 | Displayed-only decision points | Supplies normalized data | Owns read-only presentation | Operator accepts no hidden/preselected action | Host and operator accept |
 | Any interaction, persistence, command, or link activation | No authority granted | Must propose a separate contract | Explicit capability/security review | Not accepted by this contract |
 | Governance/AK/production readiness | No change | No change | Existing authority remains controlling | Out of scope |
 
-A future implementation review must cite explicit acceptance evidence for every applicable
-row. Silence, code availability, schema readiness, generated handoff gates, peer reports,
-or superseded decisions 46/47 are not acceptance.
+The bounded implementation cites explicit acceptance and validation evidence through ADR-0003, Pi tasks `3843`, `3853`, and `3855`, and SCI task `3866`. Generated handoff gates remain producer-local facts and do not certify external acceptance. Silence, code availability, schema readiness, peer reports, or superseded decisions 46/47 are not acceptance for any broader capability.
 
 ## Golden evidence and review checks
 
@@ -258,5 +266,4 @@ or superseded decisions 46/47 are not acceptance.
 - `tests/evidence-review-handoff-contract.test.ts` checks the schema boundary, both goldens,
   the current fixture, hostile text, references, null/unknown fields, and resource limits.
 
-These artifacts prepare a cross-owner review. They do not authorize a Pi package, runtime
-UI, merge, release, or governance transition.
+These artifacts continue to gate the accepted bounded consumer and future compatible changes. ADR-0003 records package and runtime-panel authorization for this scope only. They do not authorize publication, broader UI, interaction, persistence, command execution, release, or another governance transition.

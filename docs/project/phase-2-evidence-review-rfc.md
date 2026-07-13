@@ -1,5 +1,5 @@
 ---
-summary: "ADR-ready narrow RFC for Phase 2 evidence review deferral; not accepted authority."
+summary: "Historical RFC that led to ADR-0002 deferral and the later bounded handoff authorized by ADR-0003."
 read_when:
   - "You need the revised draft RFC for Phase 2 evidence review."
   - "You are reviewing whether the evidence review summary path should advance toward ADR readiness."
@@ -11,7 +11,7 @@ type: "revised-draft-rfc"
 
 Date: 2026-05-19
 Wave: IW60 — Phase 2 RFC ADR candidate narrowing
-Status: **ADR-ready for narrow Option A deferral decision; not accepted authority**
+Status: **historical RFC; Option A was accepted by ADR-0002 and later superseded for the bounded consumer by ADR-0003**
 
 ## Authority note
 
@@ -22,6 +22,10 @@ AK decisions `46` and `47` were superseded after the operator rejected unilatera
 Review notes for the previous revision: `docs/project/phase-2-evidence-review-rfc-review.md`.
 
 This revision narrows the ADR candidate decision to Option A deferral and includes read-only validation evidence for the current summary producer. It does not create governance acceptance, implementation authority, or AK decision lifecycle state.
+
+## Subsequent outcome
+
+ADR-0002 accepted the temporary deferral proposed here. After all reconsideration gates were satisfied, the operator explicitly authorized the Pi owner implementation. Pi tasks `3843`, `3853`, and `3855` delivered and hardened the inert consumer; SCI task `3866` repaired live producer conformance and completed real producer-to-consumer proof. [ADR-0003](../adr/0003-authorize-bounded-evidence-review-consumer-handoff.md) now governs that narrow delivered slice. The options and recommendations below remain historical and do not authorize broader Phase 2 work.
 
 ## Problem / intent source
 
@@ -418,10 +422,8 @@ A reviewer should decide:
 6. What evidence must be attached to prove rendering is read-only and non-mutating?
 7. What operator decisions should the review support without automating or authorizing them?
 
-## ADR-readiness status
+## ADR-readiness status at IW60
 
-ADR-ready only for the narrow Option A deferral decision stated above.
+At IW60 this RFC was ADR-ready only for the narrow Option A deferral decision stated above. It was not then ADR-ready for Option B, Option C, Pi/operator-workbench handoff, UI rendering, schema implementation, production readiness, or AK decision lifecycle advancement.
 
-Not ADR-ready for Option B, Option C, Pi/operator-workbench handoff, UI rendering, schema implementation, production readiness, or AK decision lifecycle advancement.
-
-A later ADR or implementation wave must not broaden this decision without explicit review. Any AK decision lifecycle creation or advancement still requires explicit operator approval or the repo's accepted governance procedure.
+ADR-0002 subsequently accepted Option A, and ADR-0003 later superseded that deferral only for the delivered bounded consumer. Broader capability still requires explicit review. Any AK decision lifecycle creation or advancement requires explicit operator approval or the repo's accepted governance procedure.

@@ -12,7 +12,7 @@ type: "decision"
 Date: 2026-05-19  
 Wave: IW52 — Phase 2 planning draft
 Former AK decision: `46` — superseded after operator rejected unilateral DB decision advancement
-Status: draft planning artifact; implementation not started
+Status: historical planning draft; its first bounded evidence-review slice was later authorized and delivered under ADR-0003
 
 ## Draft recommendation
 
@@ -21,6 +21,8 @@ Status: draft planning artifact; implementation not started
 The first Phase 2 direction should make the closed Phase 1 Alpha substrate easier for a human operator to inspect and steer during harnessed-LLM coding sessions.
 
 This draft does not authorize implementation of a VS Code extension, dashboard, marketplace, production deployment, analytics, or new mutation semantics. It also does not carry accepted AK decision authority after decision `46` was superseded.
+
+Subsequent owner-scoped work delivered only the narrow evidence-review slice through SCI's normalized v1 producer and Pi's inert read-only consumer. [ADR-0003](../adr/0003-authorize-bounded-evidence-review-consumer-handoff.md) records that authorization. This document remains planning history and does not authorize the broader candidates below.
 
 ## Target user
 
@@ -80,19 +82,8 @@ Phase 2 work must be rollbackable without damaging the Phase 1 substrate:
 | Marketplace/pattern economy | Later productization, not operator workbench validation. |
 | New mutation/apply semantics | Phase 1 guarded apply is accepted; changes need separate compatibility decision. |
 
-## Next executable wave
+## Current continuation boundary
 
-IW53 produced the evidence review contract in `docs/project/evidence-review-contract.md`. IW54 implemented the smallest non-mutating renderer/summary producer for the contract as `bun run evidence-review:summary`.
+IW53 produced the evidence review contract, IW54 implemented the non-mutating SCI summary producer, ADR-0002 temporarily deferred host work, and ADR-0003 later authorized the delivered bounded Pi consumer after all gates and owner acceptance completed.
 
-Recommended next wave:
-
-**Governance repair or explicit Phase 2 decision review**
-
-Before any further Phase 2 handoff or implementation, review this draft under the proper decision boundary. Do not treat superseded decision `46` as accepted authority.
-
-IW56 adds draft-only problem-intent and RFC artifacts:
-
-- `docs/project/phase-2-evidence-review-problem-intent.md`
-- `docs/project/phase-2-evidence-review-rfc.md`
-
-They are not reviewed, revised, or ADR-ready.
+The next default is observation in real supervised sessions, not another interface build. Producer or consumer defects may proceed as Alpha maintenance through scoped AK tasks. A dashboard, IDE extension, persistence, interaction, new mutation semantics, or broad Phase 2 strategic frame requires a fresh explicit decision membrane. Superseded decision `46` remains non-authoritative.
