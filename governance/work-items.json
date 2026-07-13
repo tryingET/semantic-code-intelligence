@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-07-12",
+  "updated_at": "2026-07-13",
   "owner": "@project-owners",
   "project_name": "semantic-code-intelligence",
   "milestones": [
@@ -726,14 +726,15 @@
         {
           "id": "AK-TASK-3166",
           "title": "Alpha maintenance: calibrate performance evidence history",
-          "state": "queued",
+          "state": "done",
           "tasks": [
             {
               "text": "Alpha maintenance: calibrate performance evidence history (task #3166)",
-              "done": false
+              "done": true
             }
           ],
-          "dod": "Task reaches done in society.db with evidence recorded."
+          "dod": "Task reaches done in society.db with evidence recorded.",
+          "completed_at": "2026-07-13"
         },
         {
           "id": "AK-TASK-3167",
@@ -751,14 +752,15 @@
         {
           "id": "AK-TASK-3168",
           "title": "Alpha maintenance: target dogfood issue template",
-          "state": "queued",
+          "state": "done",
           "tasks": [
             {
               "text": "Alpha maintenance: target dogfood issue template (task #3168)",
-              "done": false
+              "done": true
             }
           ],
-          "dod": "Task reaches done in society.db with evidence recorded."
+          "dod": "Task reaches done in society.db with evidence recorded.",
+          "completed_at": "2026-07-13"
         },
         {
           "id": "AK-TASK-3172",
@@ -1163,38 +1165,41 @@
         {
           "id": "AK-TASK-3406",
           "title": "Adopt repo loop validation contract",
-          "state": "queued",
+          "state": "done",
           "tasks": [
             {
               "text": "Adopt repo loop validation contract (task #3406)",
-              "done": false
+              "done": true
             }
           ],
-          "dod": "Task reaches done in society.db with evidence recorded."
+          "dod": "Task reaches done in society.db with evidence recorded.",
+          "completed_at": "2026-07-13"
         },
         {
           "id": "AK-TASK-3414",
           "title": "Add regression coverage for repo loop validation command semantics",
-          "state": "queued",
+          "state": "done",
           "tasks": [
             {
               "text": "Add regression coverage for repo loop validation command semantics (task #3414)",
-              "done": false
+              "done": true
             }
           ],
-          "dod": "Task reaches done in society.db with evidence recorded."
+          "dod": "Task reaches done in society.db with evidence recorded.",
+          "completed_at": "2026-07-13"
         },
         {
           "id": "AK-TASK-3417",
           "title": "Implement nexus invariant hardening for rename, LSP containment, HTTP errors, and loop cleanliness",
-          "state": "queued",
+          "state": "done",
           "tasks": [
             {
               "text": "Implement nexus invariant hardening for rename, LSP containment, HTTP errors, and loop cleanliness (task #3417)",
-              "done": false
+              "done": true
             }
           ],
-          "dod": "Task reaches done in society.db with evidence recorded."
+          "dod": "Task reaches done in society.db with evidence recorded.",
+          "completed_at": "2026-07-13"
         },
         {
           "id": "AK-TASK-3418",
@@ -1277,14 +1282,15 @@
         {
           "id": "AK-TASK-3459",
           "title": "Harden MCP HTTP lifecycle and snapshot evidence durability",
-          "state": "queued",
+          "state": "done",
           "tasks": [
             {
               "text": "Harden MCP HTTP lifecycle and snapshot evidence durability (task #3459)",
-              "done": false
+              "done": true
             }
           ],
-          "dod": "Task reaches done in society.db with evidence recorded."
+          "dod": "Task reaches done in society.db with evidence recorded.",
+          "completed_at": "2026-07-13"
         },
         {
           "id": "AK-TASK-3460",
@@ -1315,14 +1321,15 @@
         {
           "id": "AK-TASK-3471",
           "title": "Clarify packaged npm script contract for source-only validation commands",
-          "state": "queued",
+          "state": "done",
           "tasks": [
             {
               "text": "Clarify packaged npm script contract for source-only validation commands (task #3471)",
-              "done": false
+              "done": true
             }
           ],
-          "dod": "Task reaches done in society.db with evidence recorded."
+          "dod": "Task reaches done in society.db with evidence recorded.",
+          "completed_at": "2026-07-13"
         },
         {
           "id": "AK-TASK-3707",
@@ -1414,6 +1421,58 @@
           ],
           "dod": "Task reaches done in society.db with evidence recorded.",
           "completed_at": "2026-07-12"
+        },
+        {
+          "id": "AK-TASK-3866",
+          "title": "Restore live SCI evidence review producer conformance with v1 consumer schema",
+          "state": "done",
+          "tasks": [
+            {
+              "text": "Restore live SCI evidence review producer conformance with v1 consumer schema (task #3866)",
+              "done": true
+            }
+          ],
+          "dod": "Task reaches done in society.db with evidence recorded.",
+          "completed_at": "2026-07-12"
+        },
+        {
+          "id": "AK-TASK-3890",
+          "title": "Align SCI Phase 2 governance with completed bounded Pi evidence-review handoff",
+          "state": "done",
+          "tasks": [
+            {
+              "text": "Align SCI Phase 2 governance with completed bounded Pi evidence-review handoff (task #3890)",
+              "done": true
+            }
+          ],
+          "dod": "Task reaches done in society.db with evidence recorded.",
+          "completed_at": "2026-07-13"
+        },
+        {
+          "id": "AK-TASK-3895",
+          "title": "Reconcile SF2 maintenance queue against committed implementation evidence",
+          "state": "done",
+          "tasks": [
+            {
+              "text": "Reconcile SF2 maintenance queue against committed implementation evidence (task #3895)",
+              "done": true
+            }
+          ],
+          "dod": "Task reaches done in society.db with evidence recorded.",
+          "completed_at": "2026-07-13"
+        },
+        {
+          "id": "AK-TASK-3899",
+          "title": "Refresh SF2 governance projections after queue reconciliation",
+          "state": "done",
+          "tasks": [
+            {
+              "text": "Refresh SF2 governance projections after queue reconciliation (task #3899)",
+              "done": true
+            }
+          ],
+          "dod": "Task reaches done in society.db with evidence recorded.",
+          "completed_at": "2026-07-13"
         }
       ]
     }
