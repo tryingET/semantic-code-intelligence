@@ -134,8 +134,9 @@ describe('Error envelope parity (edge cases)', () => {
             // @ts-expect-error - intentionally invalid
             await adapter.handleDefinition(null);
             throw new Error('Expected LSP error');
-        } catch (err: any) {
-            expect(err?.code).toBe(-32602);
+        } catch (err) {
+            expect(err).toBeInstanceOf(Error);
+            expect((err as Error & { code?: unknown }).code).toBe(-32602);
         }
     });
 

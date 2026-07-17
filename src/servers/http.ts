@@ -78,6 +78,13 @@ interface HTTPServerConfig {
     enableLegacyPipelines?: boolean;
 }
 
+interface HTTPServerStatus {
+    running: boolean;
+    config: HTTPServerConfig;
+    adapter: unknown;
+    timestamp: number;
+}
+
 async function readSnapshotArtifactText(dir: string | undefined, file: string, fallback: string): Promise<string> {
     if (!dir) return fallback;
     try {
@@ -115,7 +122,7 @@ function statusForThrownError(err: unknown): number {
     return isCoreError(err) ? statusForCoreErrorCode(err.code) : 500;
 }
 
-function envelopeForThrownError(err: unknown): { code: string; message: string; data?: any } {
+function envelopeForThrownError(err: unknown): { code: string; message: string; data?: unknown } {
     if (isCoreError(err)) {
         return { code: err.code, message: err.message, data: err.data };
     }
@@ -130,7 +137,7 @@ export class HTTPServer {
     private toolExecutor!: ToolExecutor;
     private config: HTTPServerConfig;
     private serverConfig: ServerConfig;
-    private server: any = null;
+    private server: ReturnType<typeof serve> | null = null;
     // No external port registry; honor env or defaults
 
     constructor(config: HTTPServerConfig = {}) {
@@ -466,7 +473,7 @@ export class HTTPServer {
                                     },
                                 }
                             );
-                        } catch (err: any) {
+                        } catch (err) {
                             try {
                                 recordToolEnd('http', 'unknown', 0, false);
                             } catch {}
@@ -966,7 +973,7 @@ export class HTTPServer {
                                 status: 200,
                                 headers: { 'Content-Type': 'application/json', ...corsHeadersForRequest(request) },
                             });
-                        } catch (err: any) {
+                        } catch (err) {
                             try {
                                 recordToolEnd('http', 'graph_expand_fallback', Date.now() - t0, false);
                             } catch {}
@@ -1269,7 +1276,7 @@ export class HTTPServer {
     /**
      * Get server status and diagnostics
      */
-    getStatus(): Record<string, any> {
+    getStatus(): HTTPServerStatus {
         return {
             running: this.server !== null,
             config: this.config,

@@ -95,9 +95,9 @@ export class ErrorHandler {
     ): Promise<T> {
         const effectiveOptions: RecoveryOptions = {
             ...this.defaultOptions,
-            ...(this.options as RecoveryOptions),
-            ...(options || {}),
-        } as RecoveryOptions;
+            ...this.options,
+            ...options,
+        };
         const operationKey = `${context.component}:${context.operation}`;
 
         // Check circuit breaker
