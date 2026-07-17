@@ -67,6 +67,25 @@ test('patch_checks_in_snapshot fails closed before checks when patch staging fai
     });
 });
 
+test('safe_write fails closed before checks when patch staging fails', async () => {
+    await withMcp(async (mcp) => {
+        const res = await mcp.handleToolCall('safe_write', {
+            patch: staleApplyPatch,
+            commands: ['bash -lc "echo SHOULD_NOT_RUN"'],
+            timeoutSec: 30,
+        });
+        const out = parseContent(res);
+
+        expect(res.isError).toBe(false);
+        expect(out.workflow).toBe('safe_write');
+        expect(out.ok).toBe(false);
+        expect(out.reason).toBe('patch_stage_failed');
+        expect(out.checks).toBe(null);
+        expect(out.applied).toBe(false);
+        expect(String(JSON.stringify(out.stage))).toContain('apply_patch hunk did not match');
+    });
+});
+
 test('run_checks command failures remain domain outcomes rather than tool errors', async () => {
     await withMcp(async (mcp) => {
         const snapRes = await mcp.handleToolCall('get_snapshot', { preferExisting: false });
