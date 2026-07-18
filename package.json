@@ -6,7 +6,7 @@
   "type": "module",
   "main": "dist/core/index.js",
   "bin": {
-    "sci": "./bin/semantic-code-intelligence",
+    "sci": "./bin/sci",
     "semantic-code-intelligence": "./bin/semantic-code-intelligence",
     "semantic-code-mcp": "./bin/semantic-code-mcp"
   },
@@ -15,6 +15,7 @@
     "url": "https://github.com/tryingET/semantic-code-intelligence"
   },
   "files": [
+    "bin/sci",
     "bin/semantic-code-intelligence",
     "bin/semantic-code-mcp",
     "dist/",
@@ -30,7 +31,7 @@
     "build:mcp-stdio": "bun run scripts/build-server.ts mcp-stdio",
     "build:http": "bun run scripts/build-server.ts http",
     "build:cli": "bun run scripts/build-server.ts cli",
-    "cli:install-local": "bun run build:cli && bun link",
+    "cli:install-local": "bun run public-surface:check && bun link",
     "start": "bun run dist/lsp/lsp.js --stdio",
     "start:mcp": "bun run dist/mcp/mcp.js",
     "dev": "bun run src/servers/lsp.ts",
@@ -54,6 +55,9 @@
     "build:mcp-http": "bun run scripts/build-server.ts mcp-http",
     "build:mcp-enhanced": "bun run scripts/build-server.ts mcp-enhanced",
     "prepack": "bun run public-surface:check",
+    "production:artifact": "bun run scripts/build-local-production-artifact.ts",
+    "production:dogfood": "bun run scripts/dogfood-local-production-candidate.ts --json",
+    "production:candidate:check": "bun run typecheck && bun test tests/local-production-candidate.test.ts && bun run production:dogfood",
     "alpha:mvp:test": "bun test tests/alpha-mvp-tool-contract.test.ts tests/alpha-mvp-mcp-parity.test.ts tests/alpha-mvp-mcp-http-protocol.test.ts tests/alpha-mvp-mcp-stdio-protocol.test.ts tests/alpha-mvp-cli-parity.test.ts",
     "alpha:mvp:dogfood": "bun run scripts/dogfood-alpha-mvp.ts --json",
     "self:dogfood:cli": "mkdir -p .test-results && bun run scripts/dogfood-self-hosted-cli.ts --json > .test-results/self-hosted-cli-dogfood.json",
@@ -175,6 +179,9 @@
       "build:mcp-http",
       "build:mcp-enhanced",
       "prepack",
+      "production:artifact",
+      "production:dogfood",
+      "production:candidate:check",
       "alpha:mvp:test",
       "alpha:mvp:dogfood",
       "self:dogfood:cli",

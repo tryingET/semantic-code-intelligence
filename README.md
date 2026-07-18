@@ -10,7 +10,7 @@ type: "reference"
 
 Semantic Code Intelligence (SCI) is a local-first code-navigation and change-planning substrate for **harnessed LLM coding sessions**. It gives coding agents bounded repository reads, symbol and graph context, preview-first patches, explicit checks, and reviewable evidence through MCP, HTTP, and CLI contracts.
 
-Phase 1 is closed as an **Alpha MVP substrate**. SCI is not a production-ready deployment product, polished IDE product, canonical task/evidence store, or whole-program semantic oracle.
+Phase 1 is closed as an **Alpha MVP substrate**. ADR-0004 additionally defines a bounded **local single-user production candidate** for an installed runtime tarball used through CLI or MCP stdio by a trusted operator on a trusted repository. SCI is not a hosted or multi-tenant production service, polished IDE product, canonical task/evidence store, or whole-program semantic oracle.
 
 Read first:
 
@@ -113,6 +113,18 @@ just alpha-mvp-check
 ```
 
 The public npm package is not currently an assumed distribution channel. Use the source checkout or an explicitly provisioned local/global CLI. For target-repository usage, see [docs/project/target-repo-cli-usage.md](docs/project/target-repo-cli-usage.md).
+
+## Local single-user production candidate
+
+Build and dogfood the exact local runtime artifact with:
+
+```bash
+bun run production:candidate:check
+```
+
+This creates an ignored versioned tarball and manifest, installs it into an isolated directory, and exercises the installed CLI and MCP stdio bins against a non-mutating fixture. The evidence packet is written to `.test-results/local-production-candidate.json`; `candidateReady: true` additionally requires a tracked-clean source commit.
+
+The candidate trust boundary is one trusted local operator and one trusted repository. Repository checks are not sandboxed hostile-code execution. HTTP, MCP HTTP, LSP, Docker, Compose, Kubernetes, package publication, hosted operation, and multiple tenants remain unsupported production claims. See [the production-candidate contract](docs/project/local-single-user-production-readiness.md).
 
 ## Run local services
 
@@ -303,7 +315,7 @@ Repository integrity checks:
 
 ## Current status and non-goals
 
-Phase 1 is closed as an Alpha MVP substrate for bounded harnessed coding sessions. Current work should be limited to:
+Phase 1 is closed as an Alpha MVP substrate for bounded harnessed coding sessions. The separate ADR-0004 local production candidate is limited to the installed CLI/MCP-stdio artifact and its executable dogfood contract. Current work should be limited to:
 
 - concrete maintenance and regression fixes;
 - targeted hardening tied to a named closure gap;
@@ -311,7 +323,8 @@ Phase 1 is closed as an Alpha MVP substrate for bounded harnessed coding session
 
 Not currently supported as product commitments:
 
-- production Kubernetes or hosted deployment;
+- HTTP/MCP HTTP/LSP production service support;
+- production Docker, Compose, Kubernetes, or hosted deployment;
 - polished VS Code or human IDE workflows;
 - complete whole-program call graphs;
 - production p95/p99 or cross-machine SLOs;

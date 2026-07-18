@@ -55,7 +55,7 @@ function checkPackageEntrypoints(): void {
     }
   }
 
-  const requiredFiles = ['bin/semantic-code-intelligence', 'bin/semantic-code-mcp', 'dist/', 'README.md', 'LICENSE'];
+  const requiredFiles = ['bin/sci', 'bin/semantic-code-intelligence', 'bin/semantic-code-mcp', 'dist/', 'README.md', 'LICENSE'];
   for (const required of requiredFiles) {
     if (!pkg.files?.includes(required)) {
       add('package.json', 'package-files-missing-required-entry', `files lacks ${required}`, `Keep ${required} in package.json files.`);
@@ -87,6 +87,16 @@ function checkPackageEntrypoints(): void {
       continue;
     }
     requireExisting(match[1], 'package-bin-target-missing', `Run bun run build:all or fix the ${name} wrapper target.`);
+  }
+
+  const binPaths = Object.values(pkg.bin || {});
+  if (new Set(binPaths).size !== binPaths.length) {
+    add(
+      'package.json',
+      'package-bin-path-duplicate',
+      `bin paths must be unique: ${binPaths.join(', ')}`,
+      'Use one thin wrapper path per declared bin so the runtime archive has no duplicate members.'
+    );
   }
 }
 

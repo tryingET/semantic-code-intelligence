@@ -942,52 +942,33 @@ analyze-pr pr="":
 
 # === DEPLOYMENT (VISION.md) ===
 
-# Build for production
+# Build the accepted local single-user production-candidate artifact.
 build-prod:
-    @echo "🔨 Building for production..."
-    {{bun}} build src/servers/lsp.ts --target=bun --outdir=dist/lsp --minify
-    {{bun}} build src/servers/http.ts --target=bun --outdir=dist/api --minify
-    {{bun}} build src/servers/mcp-stdio-entry.ts --target=bun --outfile=dist/mcp/mcp.js --minify
-    {{bun}} build src/servers/cli.ts --target=bun --outdir=dist/cli --minify --sourcemap
+    {{bun}} run production:artifact
 
-# Build Docker image
-docker-build: build-prod
-    @echo "🐳 Building Docker image..."
-    docker build -t semantic-code-intelligence:2.0.0 .
-    docker tag semantic-code-intelligence:2.0.0 semantic-code-intelligence:latest
-    @echo "✅ Docker image built"
+# Container deployment is not part of ADR-0004. Keep these familiar recipe
+# names fail-closed so stale automation cannot publish an unverified image.
+docker-build:
+    @echo "❌ Docker is not a supported SCI production-candidate artifact."
+    @echo "Use: bun run production:candidate:check"
+    @exit 2
 
-# Push Docker image to registry
-docker-push registry="ghcr.io/tryingET": docker-build
-    @echo "📤 Pushing Docker image to {{registry}}..."
-    docker tag semantic-code-intelligence:latest {{registry}}/semantic-code-intelligence:latest
-    docker tag semantic-code-intelligence:2.0.0 {{registry}}/semantic-code-intelligence:2.0.0
-    docker push {{registry}}/semantic-code-intelligence:latest
-    docker push {{registry}}/semantic-code-intelligence:2.0.0
-    @echo "✅ Docker images pushed"
+docker-push registry="unsupported":
+    @echo "❌ Container publication is not authorized by ADR-0004 (registry={{registry}})."
+    @exit 2
 
-# Start local development with Docker Compose
 docker-dev:
-    @echo "🐳 Starting Docker Compose development environment..."
-    @if [ ! -f .env ]; then cp .env.sample .env; echo "Created .env from .env.sample - please configure it"; fi
-    docker-compose up -d
-    @echo "✅ Development environment started"
-    @echo "📊 Grafana: http://localhost:3000 (admin/admin)"
-    @echo "📈 Prometheus: http://localhost:9090"
-    @echo "🔍 Jaeger: http://localhost:16686"
+    @echo "❌ The stale Compose stack was removed because it did not match the canonical runtime."
+    @echo "Use source-checkout services with: just start"
+    @exit 2
 
-# Stop Docker Compose development
 docker-dev-stop:
-    @echo "🛑 Stopping Docker Compose development..."
-    docker-compose down
-    @echo "✅ Development environment stopped"
+    @echo "❌ No supported Docker Compose stack exists. Use: just stop"
+    @exit 2
 
-# Stop and clean Docker Compose
 docker-dev-clean:
-    @echo "🧹 Cleaning Docker Compose development..."
-    docker-compose down -v --remove-orphans
-    docker system prune -f
-    @echo "✅ Development environment cleaned"
+    @echo "❌ No supported Docker Compose stack exists; broad Docker cleanup is intentionally unavailable."
+    @exit 2
 
 # Roadmap-only Kubernetes staging deploy; not part of the Alpha MVP supported path.
 deploy-staging: docker-build test-all
@@ -1063,40 +1044,23 @@ deploy: docker-build
     @echo "🚀 Quick deploy to staging (no tests)..."
     @just deploy-staging
 
-# Rollback deployment
-rollback namespace="semantic-code-intelligence":
-    @echo "↩️  Rolling back deployment in {{namespace}}..."
-    kubectl rollout undo deployment/semantic-code-intelligence -n {{namespace}}
-    kubectl rollout status deployment/semantic-code-intelligence -n {{namespace}} --timeout=300s
-    @echo "✅ Rollback complete!"
+# Kubernetes operations are not authorized by ADR-0004. These names remain
+# as fail-closed compatibility guards for stale local automation.
+rollback namespace="unsupported":
+    @echo "❌ Kubernetes rollback is not a supported SCI operation (namespace={{namespace}})."
+    @exit 2
 
-# Check deployment status
-deploy-status namespace="semantic-code-intelligence":
-    @echo "📊 Deployment Status for {{namespace}}"
-    @echo "=================================="
-    kubectl get pods -n {{namespace}} -l app.kubernetes.io/name=semantic-code-intelligence
-    kubectl get services -n {{namespace}} -l app.kubernetes.io/name=semantic-code-intelligence
-    kubectl get ingress -n {{namespace}}
-    @echo ""
-    @echo "Recent events:"
-    kubectl get events -n {{namespace}} --sort-by='.lastTimestamp' | tail -10
+deploy-status namespace="unsupported":
+    @echo "❌ Kubernetes deployment status is outside the supported local candidate (namespace={{namespace}})."
+    @exit 2
 
-# Scale deployment
-scale replicas="3" namespace="semantic-code-intelligence":
-    @echo "📈 Scaling deployment to {{replicas}} replicas in {{namespace}}..."
-    kubectl scale deployment/semantic-code-intelligence --replicas={{replicas}} -n {{namespace}}
-    kubectl rollout status deployment/semantic-code-intelligence -n {{namespace}} --timeout=300s
-    @echo "✅ Scaled to {{replicas}} replicas"
+scale replicas="unsupported" namespace="unsupported":
+    @echo "❌ Kubernetes scaling is not authorized (replicas={{replicas}}, namespace={{namespace}})."
+    @exit 2
 
-# Port forward for local testing
-port-forward namespace="semantic-code-intelligence":
-    @echo "🔀 Port forwarding from {{namespace}}..."
-    @echo "📍 HTTP API: http://localhost:7000"
-    @echo "📍 MCP HTTP: http://localhost:7001" 
-    @echo "Press Ctrl+C to stop"
-    kubectl port-forward -n {{namespace}} svc/semantic-code-intelligence-http 7000:7000 &
-    kubectl port-forward -n {{namespace}} svc/semantic-code-intelligence-mcp 7001:7001 &
-    wait
+port-forward namespace="unsupported":
+    @echo "❌ Kubernetes port forwarding is outside the supported local candidate (namespace={{namespace}})."
+    @exit 2
 
 # === UTILITIES ===
 

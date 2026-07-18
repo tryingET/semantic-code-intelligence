@@ -20,7 +20,7 @@ The main configuration is defined in `src/core/config/server-config.ts`.
 
 | Service | Default Port | Environment Variable | Purpose |
 |---------|-------------|---------------------|---------|
-| **Production** | | | |
+| **Local service surfaces (Alpha)** | | | |
 | HTTP API Server | 7000 | `HTTP_API_PORT` | Main REST API for ontology operations |
 | MCP HTTP Server | 7001 | `MCP_HTTP_PORT` | MCP protocol over Streamable HTTP |
 | LSP Server | 7002 (or stdio) | `LSP_SERVER_PORT` | Language Server Protocol (TCP or stdio mode) |
@@ -144,22 +144,21 @@ The configuration module includes validation to ensure:
 - Ports are in valid range (1024-65535)
 - Required settings are present
 
-## Development vs Production
+## Runtime support levels
 
-### Development (default)
-- Verbose logging
-- CORS enabled with permissive settings
-- Shorter cache TTL
-- More retries
+### Source-checkout development and Alpha services
 
-### Production
+HTTP and MCP HTTP are local Alpha surfaces. Keep them loopback-bound. CORS is a browser-origin control, not authentication, and SCI does not currently provide a production network authentication boundary.
+
+### Local single-user production candidate
+
+ADR-0004 limits the production candidate to an installed runtime tarball used by one trusted local operator through CLI or MCP stdio:
+
 ```bash
-NODE_ENV=production bun run start
+bun run production:candidate:check
 ```
-- Optimized performance settings
-- Stricter CORS settings
-- Longer cache TTL
-- Authentication required
+
+The candidate assumes a trusted repository. `run_checks` can execute constrained repository commands and is not a hostile-code sandbox. `NODE_ENV=production` changes runtime mode; it does not promote HTTP/MCP HTTP, provide authentication, or authorize network exposure.
 
 ### Test Environment
 ```bash
@@ -332,7 +331,7 @@ Troubleshooting:
 
 Notes:
 - If Postgres is not configured, the adapter’s `initialize()` will no-op and related tests are skipped.
-- For production deployments, use managed Postgres with pooling and SSL; configure timeouts and budgets per SLOs.
+- Postgres remains an adapter option, not a supported hosted-production deployment claim. A future network-service decision must define pooling, TLS, operations, and SLOs.
 
 ### Metrics & Dashboards
 

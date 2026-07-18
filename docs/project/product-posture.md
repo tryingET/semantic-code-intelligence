@@ -118,6 +118,12 @@ Do not keep adding Phase 1 dogfood waves by default. Future work should be one o
 
 IW52 produced a Phase 2 planning draft, but its AK decision record (`46`) was superseded after the operator rejected unilateral DB decision advancement. Later accepted work completed one bounded Phase 2 vertical slice: SCI normalizes strict `semantic-code-intelligence.evidence_review.v1`, and the owning Pi repository validates and inertly renders it through `pi-evidence-review`. [ADR-0003](../adr/0003-authorize-bounded-evidence-review-consumer-handoff.md) records that narrow authorization and supersedes ADR-0002's temporary deferral. It does not activate a broad IDE/dashboard phase or revive decisions `46` or `47`.
 
+### Local single-user production candidate
+
+[ADR-0004](../adr/0004-local-single-user-production-candidate.md) authorizes one bounded productization slice: a versioned local runtime tarball, installed and dogfooded through CLI and MCP stdio by one trusted operator on one trusted repository. The executable contract is `docs/project/local-single-user-production-readiness.md` and the acceptance command is `bun run production:candidate:check`.
+
+This candidate does not promote HTTP, MCP HTTP, LSP, Docker, Compose, Kubernetes, public package distribution, hosted operation, untrusted code, or multi-tenancy to production support. The Alpha evidence bundle remains Alpha evidence; only the separate packaged-artifact gate supports the narrower local candidate claim.
+
 Remaining non-blocking gaps after closure:
 
 - richer semantic graph behavior beyond characterized fallback shapes and best-effort caller context;
@@ -152,14 +158,16 @@ Candidate surfaces:
 
 ## Phase 4: Productization and deployment
 
-Production deployments, marketplace/pattern economy, analytics, and AI-training claims are not alpha commitments. Keep them as roadmap material until Phase 1 and Phase 2 have evidence.
+ADR-0004 delivers the first deliberately narrow productization target: local tarball installation for CLI and MCP stdio under a trusted single-user boundary. Broader production deployments, marketplace/pattern economy, analytics, and AI-training claims remain roadmap material.
 
-Promotion criteria before treating these as supported:
+Promotion criteria before treating any broader surface as supported:
 
-- stable contracts;
-- repeatable install and startup;
-- dogfood evidence on at least one nontrivial repo through the installed CLI target-cwd model;
-- documented rollback and data-retention posture;
+- a fresh decision naming the user, trust boundary, and release owner;
+- stable contracts and a reproducible release artifact;
+- executable install, startup, rollback, and recovery proof for that artifact;
+- production p95/p99, concurrency, and soak evidence for the named target;
+- authentication, authorization, TLS, command isolation, and tenant/workspace separation for network or multi-user operation;
+- documented retention, backup, restore, incident, and upgrade posture;
 - clear owner boundaries for task/evidence/governance state.
 
 ## Non-goals for alpha

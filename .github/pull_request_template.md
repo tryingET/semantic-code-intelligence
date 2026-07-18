@@ -48,7 +48,7 @@
 # List the test commands you ran
 bun run test
 bun test tests/unified-core.test.ts
-just build-prod
+bun run production:candidate:check
 # etc.
 ```
 

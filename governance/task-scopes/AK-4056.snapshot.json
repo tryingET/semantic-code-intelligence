@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-07-18T09:19:56.547084809+00:00",
+  "task_id": 4056,
+  "entity_version": 3,
+  "commit_sha": null,
+  "scope": {
+    "allowed_paths": [
+      ".github/pull_request_template.md",
+      ".github/workflows/alpha-mvp.yml",
+      "CONFIG.md",
+      "Dockerfile",
+      "README.md",
+      "bin/sci",
+      "docker-compose.yml",
+      "docs/adr/0004-local-single-user-production-candidate.md",
+      "docs/project/local-single-user-production-readiness-rfc.md",
+      "docs/project/local-single-user-production-readiness.md",
+      "docs/project/product-posture.md",
+      "governance/task-scopes/AK-*.snapshot.json",
+      "justfile",
+      "package.json",
+      "scripts/build-local-production-artifact.ts",
+      "scripts/check-public-runtime-surface.ts",
+      "scripts/dogfood-local-production-candidate.ts",
+      "tests/local-production-candidate.test.ts"
+    ],
+    "required_paths": [
+      "bin/sci",
+      "docs/adr/0004-local-single-user-production-candidate.md",
+      "docs/project/local-single-user-production-readiness-rfc.md",
+      "package.json",
+      "scripts/build-local-production-artifact.ts",
+      "scripts/dogfood-local-production-candidate.ts",
+      "tests/local-production-candidate.test.ts"
+    ],
+    "forbidden_paths": []
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}
