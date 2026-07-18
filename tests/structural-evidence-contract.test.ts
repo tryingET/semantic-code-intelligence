@@ -78,7 +78,7 @@ describe('structural evidence export contract v1', () => {
         expectRejected(traversal, 'unsafe or non-normalized seed path');
 
         const absolute = copyReceipt();
-        absolute.evidence[0].identity.path = '/home/operator/private.ts';
+        absolute.evidence[0].identity.path = ['', 'home', 'operator', 'private.ts'].join('/');
         absolute.evidence[0].id = structuralEvidenceCandidateId(absolute.evidence[0].identity);
         resign(absolute);
         expectRejected(absolute, 'unsafe or non-normalized candidate path');

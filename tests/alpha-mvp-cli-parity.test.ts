@@ -29,7 +29,13 @@ function runCli(args: string[], options: { cwd?: string } = {}): Promise<CliResu
     return new Promise((resolve) => {
         const proc = spawn(bun, ['run', cliEntry, ...args], {
             cwd: options.cwd,
-            env: { ...process.env, SILENT_MODE: 'true', STDIO_MODE: 'true', ALLOW_SNAPSHOT_APPLY: '' },
+            env: {
+                ...process.env,
+                ...(options.cwd ? { SEMANTIC_CODE_WORKSPACE: options.cwd } : {}),
+                SILENT_MODE: 'true',
+                STDIO_MODE: 'true',
+                ALLOW_SNAPSHOT_APPLY: '',
+            },
             stdio: ['ignore', 'pipe', 'pipe'],
         });
         let stdout = '';
