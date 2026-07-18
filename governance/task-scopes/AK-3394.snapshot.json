@@ -2,8 +2,8 @@
   "schema_version": 1,
   "exported_at": "2026-05-25T05:13:20.955070496+00:00",
   "task_id": 3394,
-  "entity_version": 9,
-  "commit_sha": null,
+  "entity_version": 10,
+  "commit_sha": "f70e473",
   "scope": {
     "allowed_paths": [
       "governance/task-scopes/AK-3394.snapshot.json",
