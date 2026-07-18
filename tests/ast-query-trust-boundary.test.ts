@@ -173,16 +173,19 @@ describe('ast_query workspace trust boundary', () => {
     test('MCP ast_query queries staged snapshot overlay syntax without mutating live workspace results', async () => {
         const liveText = 'function liveAstSnapshotOnly() { return "live"; }';
         const snapshotText = 'function stagedAstSnapshotOnly() { return "snapshot"; }';
-        const absPath = uniqueWorkspacePath('.tmp-ast-query-snapshot-file');
-        const relPath = relative(process.cwd(), absPath);
+        const workspaceRoot = track(mkdtempSync(join(tmpdir(), 'sci-ast-query-snapshot-workspace-')));
+        const relPath = 'target.ts';
+        const absPath = join(workspaceRoot, relPath);
         writeFileSync(absPath, `${liveText}\n`);
 
-        const mcp = new MCPAdapter(undefined as any);
+        const mcp = new MCPAdapter({ config: { workspaceRoot }, initialize: async () => {} } as any);
         const snapshot = await freshSnapshot(mcp);
-        await mcp.handleToolCall('propose_patch', {
+        const stageResult = await mcp.handleToolCall('propose_patch', {
             snapshot,
             patch: updateOneLineDiff(relPath, liveText, snapshotText),
         });
+        expect(stageResult.isError).toBe(false);
+        expect(parseToolJson(stageResult)).toMatchObject({ accepted: true, snapshot });
 
         const snapshotResult = await mcp.handleToolCall('ast_query', {
             language: 'typescript',

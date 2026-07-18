@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-07-18T05:37:39.790376804+00:00",
+  "task_id": 4037,
+  "entity_version": 3,
+  "commit_sha": null,
+  "scope": {
+    "allowed_paths": [
+      "governance/task-scopes/AK-4037.snapshot.json",
+      "tests/ast-query-trust-boundary.test.ts"
+    ],
+    "required_paths": [
+      "governance/task-scopes/AK-4037.snapshot.json",
+      "tests/ast-query-trust-boundary.test.ts"
+    ],
+    "forbidden_paths": []
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}
