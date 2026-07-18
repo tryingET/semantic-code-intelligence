@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-05-25T05:13:20.955070496+00:00",
+  "task_id": 3394,
+  "entity_version": 9,
+  "commit_sha": null,
+  "scope": {
+    "allowed_paths": [
+      "governance/task-scopes/AK-3394.snapshot.json",
+      "src/core/workflows/safe-write-workflow.ts",
+      "src/core/workflows/snapshot-patch-workflow.ts",
+      "src/servers/http-core-routes.ts",
+      "src/servers/http-graph-snapshot-routes.ts",
+      "src/servers/http-pipeline-routes.ts",
+      "src/servers/http-request-handler.ts",
+      "src/servers/http-route-context.ts",
+      "src/servers/http-static-files.ts",
+      "src/servers/http-streaming.ts",
+      "src/servers/http.ts",
+      "src/servers/mcp-http-protocol.ts",
+      "src/servers/mcp-http-routes.ts",
+      "src/servers/mcp-http-sessions.ts",
+      "src/servers/mcp-http.ts",
+      "tests/**"
+    ],
+    "required_paths": [
+      "governance/task-scopes/AK-3394.snapshot.json",
+      "src/core/workflows/safe-write-workflow.ts",
+      "src/core/workflows/snapshot-patch-workflow.ts",
+      "src/servers/http-core-routes.ts",
+      "src/servers/http-graph-snapshot-routes.ts",
+      "src/servers/http-pipeline-routes.ts",
+      "src/servers/http-request-handler.ts",
+      "src/servers/http-route-context.ts",
+      "src/servers/http-static-files.ts",
+      "src/servers/http-streaming.ts",
+      "src/servers/http.ts",
+      "src/servers/mcp-http-protocol.ts",
+      "src/servers/mcp-http-routes.ts",
+      "src/servers/mcp-http-sessions.ts",
+      "src/servers/mcp-http.ts"
+    ],
+    "forbidden_paths": []
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}
