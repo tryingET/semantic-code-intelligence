@@ -2,8 +2,8 @@
   "schema_version": 1,
   "exported_at": "2026-07-18T09:19:56.547084809+00:00",
   "task_id": 4056,
-  "entity_version": 3,
-  "commit_sha": null,
+  "entity_version": 4,
+  "commit_sha": "1aca36c86d1ecc6a3da56d8fe385fdcc9497eeb3",
   "scope": {
     "allowed_paths": [
       ".github/pull_request_template.md",
