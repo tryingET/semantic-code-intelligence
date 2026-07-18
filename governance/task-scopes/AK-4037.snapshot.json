@@ -2,8 +2,8 @@
   "schema_version": 1,
   "exported_at": "2026-07-18T05:37:39.790376804+00:00",
   "task_id": 4037,
-  "entity_version": 3,
-  "commit_sha": null,
+  "entity_version": 4,
+  "commit_sha": "9de55c2",
   "scope": {
     "allowed_paths": [
       "governance/task-scopes/AK-4037.snapshot.json",
