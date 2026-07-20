@@ -16,7 +16,8 @@ Use the interface that matches the operator context, not the one with the most f
 For Phase 1, the first user is a harnessed LLM coding session. The safest default is:
 
 ```text
-inside a target repo -> installed/global CLI workflow calls
+Pi with native SCI tools -> composite native tool calls over session-scoped MCP stdio
+inside a target repo without native tools -> installed/global CLI workflow calls
 long-lived MCP client -> MCP HTTP
 stdio-only MCP host -> MCP stdio
 deterministic parity testing -> HTTP /api/v1/tools/call
@@ -33,7 +34,8 @@ bounded discovery -> graph impact -> recommend checks -> preview/check -> valida
 
 | Situation | Prefer | Why | Avoid |
 |---|---|---|---|
-| Maintaining SCI itself in a Pi/terminal session | CLI workflow from the SCI repo cwd | It is fast, machine-readable, and dogfoods the target-cwd model without server lifecycle overhead. | Raw shell for discovery when an SCI primitive exists. |
+| Maintaining SCI itself in Pi with `pi-semantic-code-intelligence` registered | Native composite SCI tools | Tool schemas and composite-first routing are visible to the model; one session-scoped MCP stdio process avoids shell JSON and per-call startup friction. | Manual primitive chains when a matching composite is sufficient. |
+| Maintaining SCI itself in a terminal session without native tools | Installed/global CLI composite workflow from the SCI repo cwd | Preserves machine-readable target-cwd behavior as the fallback. | One CLI process per primitive when a composite exists. |
 | Working in another repository | Installed/global CLI from that target repo cwd | Keeps target paths relative and prevents SCI from hardcoding machine-local repo paths. | Committed docs/scripts with absolute target paths. |
 | A harness already speaks MCP over HTTP | MCP HTTP | Best fit for long-lived MCP clients that can initialize once and call tools repeatedly. | Spawning many short-lived CLI processes if the host already maintains an MCP session. |
 | A host only supports MCP stdio | MCP stdio | Valid Alpha path when stdout protocol cleanliness matters. | Logging or diagnostics on stdout; use stderr for diagnostics. |
@@ -121,11 +123,14 @@ They do not prove MCP client compatibility by themselves. Pair them with MCP HTT
 
 Regardless of interface:
 
-1. Use bounded discovery first (`read_file`, `text_search`, `symbol_search`, `find_definition`, `find_references`, `graph_expand`).
-2. Use `recommend_checks` for advisory command selection when touched files or graph impact are known.
-3. Use `patch_checks_in_snapshot` or `safe_write` preview for a reviewed diff/check path.
-4. Inspect `validationPlan` for selected commands, recommendation evidence, check result, snapshot artifacts, apply posture, and rollback links.
-5. Apply only through guarded paths when explicitly intended.
+1. Start with the smallest matching composite: `explore_symbol_impact`, `locate_confirm_definition`, `rename_safely`, `structural_patch_checks`, `patch_checks_in_snapshot`, or `safe_write`.
+2. Use bounded native reads after the composite identifies relevant files; decompose into SCI primitives only when the composite evidence is insufficient.
+3. Use `recommend_checks` for advisory command selection when touched files or graph impact are known.
+4. Use `patch_checks_in_snapshot` or `safe_write` preview for a reviewed diff/check path.
+5. Inspect `validationPlan` for selected commands, recommendation evidence, check result, snapshot artifacts, apply posture, and rollback links.
+6. Apply only through guarded paths when explicitly intended.
+
+For real-task dogfood, distinguish agent-efficiency evidence from primitive contract coverage. Record `sciCompositeCalls`, justified `nativeFallbacks`, `rawShellAvoided`, elapsed time, and whether preview left the workspace unchanged.
 
 `recommend_checks` and `validationPlan` are evidence surfaces. They do not silently choose, append, or enforce validation commands.
 

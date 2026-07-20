@@ -6,7 +6,7 @@ export const PREFERRED_WORKFLOW_TOOL_SPECS: ToolSpec[] = [
             name: 'rename_safely',
             title: 'Rename Safely (Snapshot + Checks)',
             description:
-                'Use for: safe symbol rename across files. Avoid: ad-hoc search/replace. Returns: { ok, changes, snapshot, next_actions }',
+                "PREFERRED first call for a symbol rename. Plans the cross-file rename in a snapshot and optionally runs checks. Do not decompose into search/reference/edit primitives unless this workflow is insufficient. Returns: { ok, changes, snapshot, next_actions }.",
             category: 'workflow',
             execution: { longRunning: true, disableRetries: true },
             inputSchema: {
@@ -35,7 +35,7 @@ export const PREFERRED_WORKFLOW_TOOL_SPECS: ToolSpec[] = [
             name: 'explore_symbol_impact',
             title: 'Explore Symbol Impact',
             description:
-                'Use for: quick impact analysis (defs/map/neighbors). Avoid: large raw dumps. Returns: { definitions, symbolMap, neighbors }',
+                "PREFERRED first call for unfamiliar code changes involving a symbol. Combines definition lookup, AST symbol mapping, and graph-neighbor impact. Do not manually chain search/definition/reference primitives unless this result is insufficient. Returns: { definitions, symbolMap, neighbors }.",
             category: 'workflow',
             inputSchema: {
                 type: 'object',
@@ -53,7 +53,7 @@ export const PREFERRED_WORKFLOW_TOOL_SPECS: ToolSpec[] = [
             name: 'patch_checks_in_snapshot',
             title: 'Patch Checks in Snapshot',
             description:
-                'Use for: validate a unified diff safely. Avoid: editing working tree. Returns: { ok, elapsedMs, output_tail }',
+                "PREFERRED one-call validation for a prepared unified diff. Stages the patch in an SCI snapshot, runs exact checks, and returns evidence without editing the working tree. Returns: { ok, elapsedMs, output_tail }.",
             category: 'workflow',
             execution: { longRunning: true, disableRetries: true, requiresPatchValidation: true },
             inputSchema: {
@@ -94,7 +94,7 @@ export const PREFERRED_WORKFLOW_TOOL_SPECS: ToolSpec[] = [
             name: 'locate_confirm_definition',
             title: 'Locate & Confirm Definition',
             description:
-                'Use for: precise go-to-def. Avoid: guessing. Returns: { attempts: [fast, precise], definitions }',
+                "PREFERRED first call when a symbol definition is uncertain. Performs fast lookup and a precise retry when ambiguous; use bounded reads after it identifies candidates. Returns: { attempts: [fast, precise], definitions }.",
             category: 'workflow',
             inputSchema: {
                 type: 'object',
@@ -127,7 +127,7 @@ export const PREFERRED_WORKFLOW_TOOL_SPECS: ToolSpec[] = [
             name: 'safe_write',
             title: 'Safe Write (Preview → Checks → Guarded Apply)',
             description:
-                'Use for: autonomous-safe write path. Stages a patch, runs checks, optionally applies only with apply:true and ALLOW_SNAPSHOT_APPLY=1, and returns risk/rollback/artifact evidence.',
+                "PREFERRED one-call patch preview/check path. Stages a patch, runs checks, and returns risk/rollback/artifact evidence. Keep apply:false unless mutation is explicitly requested; apply also requires ALLOW_SNAPSHOT_APPLY=1.",
             category: 'workflow',
             execution: { longRunning: true, disableRetries: true, requiresPatchValidation: true },
             inputSchema: {

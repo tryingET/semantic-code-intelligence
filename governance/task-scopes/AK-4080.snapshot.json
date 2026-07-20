@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-07-20T03:09:08.944853196+00:00",
+  "task_id": 4080,
+  "entity_version": 2,
+  "commit_sha": null,
+  "scope": {
+    "allowed_paths": [
+      "AGENTS.md",
+      "docs/project/interface-choice-guide.md",
+      "governance/task-scopes/AK-*.snapshot.json",
+      "package.json",
+      "scripts/dogfood-composite-first.ts",
+      "src/core/tools/tool-specs-alpha.ts",
+      "src/core/tools/tool-specs-preferred-workflows.ts",
+      "tests/composite-workflow-discoverability.test.ts"
+    ],
+    "required_paths": [
+      "AGENTS.md",
+      "docs/project/interface-choice-guide.md",
+      "tests/composite-workflow-discoverability.test.ts"
+    ],
+    "forbidden_paths": []
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}

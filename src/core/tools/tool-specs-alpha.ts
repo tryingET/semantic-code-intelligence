@@ -163,7 +163,7 @@ export const ALPHA_TOOL_SPECS: ToolSpec[] = [
         name: 'structural_patch_checks',
         title: 'Structural Patch Checks (ast-grep + Snapshot)',
         description:
-            'Generate an ast-grep structural rewrite diff, stage it in a snapshot, run checks, and optionally apply only when ALLOW_SNAPSHOT_APPLY=1.',
+            "PREFERRED one-call path for structural transformations. Generates an ast-grep rewrite diff, stages it in a snapshot, and runs checks. Keep apply:false unless mutation is explicitly requested; apply also requires ALLOW_SNAPSHOT_APPLY=1.",
         category: 'workflow',
         execution: { longRunning: true, disableRetries: true },
         inputSchema: {

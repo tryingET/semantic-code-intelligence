@@ -72,13 +72,21 @@ At a glance (local testing quick path): use `just test` for fast, sliced + batch
 - Add or adjust tests narrowly around the fix (when applicable).
 - Keep public types stable unless a breaking change is approved.
 
-### SCI‑First Editing Policy
+### SCI Composite-First Editing Policy
 
-- Prefer Semantic Code Intelligence workflows for navigation, patch planning, and validation evidence when they are practical for the change.
-- **Exception: markdown docs (`*.md`) may be edited directly when the change is textual and low risk.**
-- Use `patch_checks_in_snapshot` for preview-first diffs and checks when exercising SCI mutation planning; apply only when separately authorized.
-- Prefer MCP HTTP/stdio for client-contract validation; use the CLI as the target-repo fallback/global command surface.
-- For external repos, invoke an installed/global `semantic-code-intelligence` from the target repo cwd. Do not bake target repo paths into SCI source or docs.
+Before raw search/read chains on unfamiliar code, call the smallest matching composite workflow:
+
+- unknown symbol or change impact → `explore_symbol_impact`
+- uncertain definition → `locate_confirm_definition`
+- symbol rename → `rename_safely`
+- syntax-shaped transformation → `structural_patch_checks`
+- prepared patch preview/check → `patch_checks_in_snapshot` or `safe_write` with `apply:false`
+
+Do not decompose a composite into primitive SCI calls unless its result is insufficient. Use bounded native `read`/`edit` after the workflow identifies the relevant files. Straightforward Markdown or exact textual edits may use native tools directly.
+
+When native SCI Pi tools are registered, prefer them. Otherwise use MCP from a long-lived client or the installed/global CLI from the target repo cwd. If SCI is unavailable or fails, state the fallback briefly before using native search/read tools. Never bake target repo paths into SCI source or docs.
+
+Apply remains separately authorized: keep preview workflows at `apply:false` unless the operator explicitly requests mutation and the server-side apply guard is enabled.
 
 3) Validate
 - Build: `bun run build:all`.
@@ -231,12 +239,12 @@ curl -sS -X POST -H "content-type: application/json" -H "Mcp-Session-Id: $MCP_SE
 
 ### Dogfood Workflows (expected during changes)
 
-- Use the prompts to exercise end‑to‑end flows during development:
-  - `plan-safe-rename` → calls `plan_rename` then `workflow_safe_rename` (snapshot + checks)
-  - `investigate-symbol` → `explore_codebase` (conceptual on/off) → `build_symbol_map` (astOnly) → `graph_expand`
-  - `quick-patch-checks` → `get_snapshot` → `propose_patch` → `run_checks`
-- Validate results are structured, errors are JSON‑RPC with codes, and latencies are within budgets.
-- Prefer small fixtures under `tests/fixtures` when iterating.
+Keep two purposes distinct:
+
+- **Real-task usage:** composite first → one or two bounded reads → native exact edit or SCI patch construction → `safe_write apply:false` / `patch_checks_in_snapshot` evidence.
+- **Contract coverage:** primitive calls may be exercised individually to prove registration, parity, errors, and result shapes. Do not present this as the optimal agent workflow.
+
+For real-task evidence, record the composite calls, justified native fallbacks, primitive shell/search chains avoided, elapsed time, and whether preview left the workspace unchanged. Validate structured results, JSON-RPC errors, and latency budgets with small fixtures.
 
 ### Quick helpers
 - `just dogfood` (stdio MCP fast path; bounded workspace)
