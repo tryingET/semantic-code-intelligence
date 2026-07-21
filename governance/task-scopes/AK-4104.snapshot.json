@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-07-21T18:06:33.166948195+00:00",
+  "task_id": 4104,
+  "entity_version": 3,
+  "commit_sha": "66edc8dce97242cba30f02a1b6be6a1e0a7a179b",
+  "scope": {
+    "allowed_paths": [
+      "docs/project/interface-choice-guide.md",
+      "governance/task-scopes/AK-4104.snapshot.json",
+      "src/core/workflows/symbol-workflow.ts",
+      "tests/symbol-workflow-service.test.ts"
+    ],
+    "required_paths": [
+      "governance/task-scopes/AK-4104.snapshot.json",
+      "src/core/workflows/symbol-workflow.ts",
+      "tests/symbol-workflow-service.test.ts"
+    ],
+    "forbidden_paths": []
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}

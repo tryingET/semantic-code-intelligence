@@ -125,6 +125,7 @@ Regardless of interface:
 
 1. Start with the smallest matching composite: `explore_symbol_impact`, `locate_confirm_definition`, `rename_safely`, `structural_patch_checks`, `patch_checks_in_snapshot`, or `safe_write`.
 2. Use bounded native reads after the composite identifies relevant files; decompose into SCI primitives only when the composite evidence is insufficient.
+   `explore_symbol_impact` only reports `ok:true` when definition or declaration evidence confirms the symbol. An `ok:false`, `isError:false` result with `symbolResolution.status: "unconfirmed"` is a completed bounded search, not a transport failure. A `status: "indeterminate"` or `degraded:true` result means a subcall failed or returned an unstructured result; do not infer symbol absence. Inspect `partial`, `symbolResolution.issues`, and the tailored `next_actions` before falling back.
 3. Use `recommend_checks` for advisory command selection when touched files or graph impact are known.
 4. Use `patch_checks_in_snapshot` or `safe_write` preview for a reviewed diff/check path.
 5. Inspect `validationPlan` for selected commands, recommendation evidence, check result, snapshot artifacts, apply posture, and rollback links.

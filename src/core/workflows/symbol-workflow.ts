@@ -89,17 +89,73 @@ export class SymbolWorkflowService {
                 : { symbol, edges: ['callers', 'callees'], depth, limit }
         );
 
+        const definitionResult = inspectWorkflowResult('find_definition', definitions);
+        const symbolMapResult = inspectWorkflowResult('build_symbol_map', symbolMap);
+        const neighborsResult = inspectWorkflowResult('graph_expand', neighbors);
+        const definitionOut = definitionResult.value;
+        const symbolMapOut = symbolMapResult.value;
+        const neighborsOut = neighborsResult.value;
+        const issues = [definitionResult.issue, symbolMapResult.issue, neighborsResult.issue].filter(
+            (issue): issue is string => !!issue
+        );
+        const definitionCount = definitionResult.issue
+            ? 0
+            : Array.isArray(definitionOut.definitions)
+              ? definitionOut.definitions.length
+              : 0;
+        const declarationCount = symbolMapResult.issue
+            ? 0
+            : Array.isArray(symbolMapOut.declarations)
+              ? symbolMapOut.declarations.length
+              : 0;
+        const referenceCount = symbolMapResult.issue
+            ? 0
+            : Array.isArray(symbolMapOut.references)
+              ? symbolMapOut.references.length
+              : 0;
+        const symbolConfirmed = definitionCount > 0 || declarationCount > 0;
+        const hasImpactEvidence = !neighborsResult.issue && neighborsOut?.impactSummary?.hasImpactEvidence === true;
+        const status = symbolConfirmed ? 'confirmed' : issues.length > 0 ? 'indeterminate' : 'unconfirmed';
+        const nextActions = symbolConfirmed
+            ? issues.length > 0
+                ? ['Open top definition', 'Inspect incomplete subcall evidence before planning broad changes.']
+                : ['Open top definition', 'Inspect low-confidence callers']
+            : status === 'indeterminate'
+              ? [
+                    'Retry explore_symbol_impact after inspecting the reported subcall issues.',
+                    'Do not infer that the symbol is absent from incomplete workflow evidence.',
+                ]
+              : referenceCount > 0
+                ? [
+                      'Retry locate_confirm_definition without a file filter before planning a change.',
+                      'Inspect reference candidates; references alone do not confirm a workspace definition.',
+                  ]
+                : [
+                      'Check the symbol spelling or retry without a file filter.',
+                      'Use bounded text search only if composite definition evidence remains insufficient.',
+                  ];
+
         return {
             payload: {
-                ok: true,
-                definitions: parseWorkflowResult(definitions),
-                symbolMap: parseWorkflowResult(symbolMap),
-                neighbors: parseWorkflowResult(neighbors),
+                ok: symbolConfirmed,
+                partial: !symbolConfirmed && (referenceCount > 0 || hasImpactEvidence),
+                degraded: issues.length > 0,
+                symbolResolution: {
+                    status,
+                    definitionCount,
+                    declarationCount,
+                    referenceCount,
+                    hasImpactEvidence,
+                    issues,
+                },
+                definitions: definitionOut,
+                symbolMap: symbolMapOut,
+                neighbors: neighborsOut,
                 tips: [
                     'Prefer files whose basename includes the symbol for quick AST validation.',
                     'Escalate to precise mode when candidates ≥ 3 or confidence is low.',
                 ],
-                next_actions: ['Open top definition', 'Inspect low-confidence callers'],
+                next_actions: nextActions,
             },
             isError: false,
         };
@@ -159,6 +215,26 @@ export class SymbolWorkflowService {
     private async safeRename(args: Record<string, any>) {
         return this.deps.safeRename(args);
     }
+}
+
+type InspectedWorkflowResult = {
+    value: Record<string, any>;
+    issue: string | null;
+};
+
+function inspectWorkflowResult(label: string, result: SnapshotWorkflowResult): InspectedWorkflowResult {
+    const parsed = parseWorkflowResult(result);
+    if (result?.isError) {
+        return { value: isRecord(parsed) ? parsed : {}, issue: `${label}: error_result` };
+    }
+    if (!isRecord(parsed)) {
+        return { value: {}, issue: `${label}: unstructured_result` };
+    }
+    return { value: parsed, issue: null };
+}
+
+function isRecord(value: unknown): value is Record<string, any> {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
 export function parseWorkflowResult(result: any): any {
