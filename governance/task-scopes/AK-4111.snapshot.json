@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-07-21T18:36:38.523841370+00:00",
+  "task_id": 4111,
+  "entity_version": 3,
+  "commit_sha": "66ea4e909bc63a6ec3e310ed444532618eb2cb57",
+  "scope": {
+    "allowed_paths": [
+      "governance/task-scopes/AK-4111.snapshot.json",
+      "src/core/code-graph-language.ts",
+      "src/core/code-graph.ts"
+    ],
+    "required_paths": [
+      "governance/task-scopes/AK-4111.snapshot.json",
+      "src/core/code-graph-language.ts",
+      "src/core/code-graph.ts"
+    ],
+    "forbidden_paths": []
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}
