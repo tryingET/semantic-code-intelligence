@@ -1,6 +1,16 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { spawn, spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+    chmodSync,
+    existsSync,
+    mkdtempSync,
+    readdirSync,
+    readFileSync,
+    rmSync,
+    symlinkSync,
+    writeFileSync,
+} from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { validateStructuralEvidenceReceipt } from '../src/core/workflows/structural-evidence-contract.js';
@@ -80,6 +90,59 @@ describe('experimental structural evidence CLI', () => {
         expect(receipt.evidence).toHaveLength(1);
         expect(run(root, 'git', ['status', '--porcelain=v1', '--untracked-files=all']).stdout).toBe(before);
         expect(existsSync(join(root, '.ontology'))).toBe(false);
+    });
+
+    test('SIGTERM during post-publication shutdown preserves a valid receipt and exit 0', async () => {
+        const root = createRepository();
+        const requestPath = writeRequest();
+        let observePush!: () => void;
+        const pushObserved = new Promise<void>((resolve) => {
+            observePush = resolve;
+        });
+        const server = createServer(() => {
+            observePush();
+            // Keep the response pending so the CLI remains in asynchronous shutdown.
+        });
+        await new Promise<void>((resolve, reject) => {
+            server.once('error', reject);
+            server.listen(0, '127.0.0.1', resolve);
+        });
+        const address = server.address();
+        if (!address || typeof address === 'string') throw new Error('missing test pushgateway address');
+
+        const child = spawn('bun', ['run', cli, 'experimental', 'structural-evidence-receipt', '-F', requestPath], {
+            cwd: root,
+            stdio: ['ignore', 'pipe', 'pipe'],
+            env: {
+                ...process.env,
+                PUSHGATEWAY_URL: `http://127.0.0.1:${address.port}`,
+                PUSHGATEWAY_TIMEOUT_MS: '250',
+            },
+        });
+        let stdout = '';
+        let stderr = '';
+        child.stdout.on('data', (chunk) => {
+            stdout += String(chunk);
+        });
+        child.stderr.on('data', (chunk) => {
+            stderr += String(chunk);
+        });
+        await Promise.race([
+            pushObserved,
+            Bun.sleep(3_000).then(() => {
+                throw new Error('timed out waiting for post-publication shutdown');
+            }),
+        ]);
+        child.kill('SIGTERM');
+        const exit = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => {
+            child.on('close', (code, signal) => resolve({ code, signal }));
+        });
+        server.closeAllConnections();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+
+        expect(exit).toEqual({ code: 0, signal: null });
+        expect(stderr).toBe('');
+        expect(validateStructuralEvidenceReceipt(JSON.parse(stdout)).ok).toBe(true);
     });
 
     test('uses stderr and no receipt stdout for invalid or symlinked request files', () => {
@@ -162,5 +225,54 @@ describe('experimental structural evidence CLI', () => {
         expect(readdirSync(captureBase)).toEqual([]);
         expect(run(root, 'git', ['status', '--porcelain=v1', '--untracked-files=all']).stdout).toBe('');
         expect(existsSync(join(root, '.ontology'))).toBe(false);
+    });
+
+    test('SIGTERM preserves code 143 for a non-export workflow command', async () => {
+        const root = createRepository();
+        const harnessRoot = mkdtempSync(join(tmpdir(), 'sci-workflow-cli-signal-'));
+        roots.push(harnessRoot);
+        const binRoot = join(harnessRoot, 'bin');
+        const pidFile = join(harnessRoot, 'backend.pid');
+        expect(spawnSync('mkdir', ['-p', binRoot]).status).toBe(0);
+        const fakeBackend = join(binRoot, 'ast-grep');
+        writeFileSync(
+            fakeBackend,
+            `#!/usr/bin/env bash\nif [[ "$1" == "--version" ]]; then echo 'ast-grep 9.9.9'; exit 0; fi\necho $$ > "$SCI_TEST_PID_FILE"\nwhile :; do sleep 1; done\n`,
+            'utf8'
+        );
+        chmodSync(fakeBackend, 0o755);
+        const child = spawn(
+            'bun',
+            [
+                'run',
+                cli,
+                'workflow',
+                'structural_search',
+                '--args',
+                JSON.stringify({ language: 'ts', pattern: 'const $A = $B', paths: ['sample.ts'] }),
+                '--json',
+            ],
+            {
+                cwd: root,
+                stdio: ['ignore', 'pipe', 'pipe'],
+                env: {
+                    ...process.env,
+                    PATH: `${binRoot}:${process.env.PATH ?? ''}`,
+                    PUSHGATEWAY_URL: '',
+                    SCI_TEST_PID_FILE: pidFile,
+                },
+            }
+        );
+        await waitForFile(pidFile);
+        child.kill('SIGTERM');
+        const exit = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => {
+            child.on('close', (code, signal) => resolve({ code, signal }));
+        });
+        const backendPid = Number(readFileSync(pidFile, 'utf8').trim());
+        try {
+            process.kill(backendPid, 'SIGKILL');
+        } catch {}
+
+        expect(exit).toEqual({ code: 143, signal: null });
     });
 });

@@ -2,11 +2,8 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
-    normalizeStructuralPaths,
-    runStructuralProcess,
-    StructuralWorkflowService,
-} from '../src/core/workflows/structural-workflow.js';
+import { runStructuralEvidenceProcess } from '../src/core/workflows/structural-evidence-process.js';
+import { normalizeStructuralPaths, StructuralWorkflowService } from '../src/core/workflows/structural-workflow.js';
 
 const roots: string[] = [];
 function tempWorkspace() {
@@ -88,21 +85,74 @@ describe('StructuralWorkflowService', () => {
         );
     });
 
+    test('treats option-shaped paths as operands in shared search and rewrite workflows', async () => {
+        const workspaceRoot = tempWorkspace();
+        writeFileSync(join(workspaceRoot, '--help.ts'), 'const optionValue = 1;\n', 'utf8');
+        const service = new StructuralWorkflowService({ workspaceRoot: () => workspaceRoot });
+
+        const searched = await service.structuralSearch({
+            language: 'ts',
+            pattern: 'const $A = $B',
+            paths: ['--help.ts'],
+        });
+        expect(searched.isError).toBe(false);
+        expect((searched.payload as any).matches[0].file).toBe('--help.ts');
+
+        const checked = await service.structuralPatchChecks({
+            language: 'ts',
+            pattern: 'const $A = $B',
+            rewrite: 'let $A = $B',
+            paths: ['--help.ts'],
+            commands: ['true'],
+            timeoutSec: 10,
+            apply: false,
+        });
+        expect(checked.isError).toBe(false);
+        expect((checked.payload as any).patch.files).toEqual(['--help.ts']);
+    });
+
     test('kills a resistant descendant even when the direct child closes on SIGTERM', async () => {
         const workspaceRoot = tempWorkspace();
         const descendant = "process.on('SIGTERM',()=>{});setInterval(()=>{},1000)";
         const parent = `const {spawn}=require('node:child_process');const c=spawn(process.execPath,['-e',${JSON.stringify(
             descendant
         )}],{stdio:['ignore','ignore','ignore']});console.log(c.pid);setInterval(()=>{},1000)`;
-        const result = await runStructuralProcess(process.execPath, ['-e', parent], {
+        const startedAt = Date.now();
+        const result = await runStructuralEvidenceProcess(process.execPath, ['-e', parent], {
             cwd: workspaceRoot,
             timeoutMs: 100,
             maxBuffer: 64 * 1024,
+            terminationGraceMs: 100,
+            terminationDeadlineMs: 1_000,
         });
 
+        expect(Date.now() - startedAt).toBeLessThan(1_500);
         expect(result.timedOut).toBe(true);
+        expect(result.terminationConfirmed).toBe(true);
         const descendantPid = Number(result.stdout.trim());
         expect(Number.isSafeInteger(descendantPid)).toBe(true);
         expect(() => process.kill(descendantPid, 0)).toThrow();
+    });
+
+    test('returns an unconfirmed result within the hard termination deadline when the tree probe persists', async () => {
+        const workspaceRoot = tempWorkspace();
+        const startedAt = Date.now();
+        const result = await runStructuralEvidenceProcess(
+            process.execPath,
+            ['-e', 'setInterval(()=>{},1000)'],
+            {
+                cwd: workspaceRoot,
+                timeoutMs: 20,
+                maxBuffer: 64 * 1024,
+                terminationGraceMs: 25,
+                terminationDeadlineMs: 100,
+            },
+            { processTreeExists: () => true }
+        );
+
+        expect(Date.now() - startedAt).toBeLessThan(500);
+        expect(result.timedOut).toBe(true);
+        expect(result.terminationConfirmed).toBe(false);
+        expect(result.stderr).toContain('termination was not confirmed within 100ms');
     });
 });

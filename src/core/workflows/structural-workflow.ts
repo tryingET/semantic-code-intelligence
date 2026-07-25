@@ -54,93 +54,44 @@ export async function normalizeStructuralPaths(pathsArg: any, workspaceRoot: str
 export async function runStructuralProcess(
     command: string,
     args: string[],
-    options: { cwd: string; timeoutMs: number; maxBuffer: number; signal?: AbortSignal }
+    options: { cwd: string; timeoutMs: number; maxBuffer: number }
 ): Promise<{ status: number | null; stdout: string; stderr: string; timedOut: boolean; outputExceeded: boolean }> {
     return await new Promise((resolve) => {
-        const detached = process.platform !== 'win32';
-        const proc = spawn(command, args, { cwd: options.cwd, detached, stdio: ['ignore', 'pipe', 'pipe'] });
+        const proc = spawn(command, args, { cwd: options.cwd, stdio: ['ignore', 'pipe', 'pipe'] });
         let stdout = '';
         let stderr = '';
         let settled = false;
-        let terminating = false;
-        let timedOut = false;
         let outputExceeded = false;
-        let closeStatus: number | null = null;
-        let killTimer: ReturnType<typeof setTimeout> | undefined;
-        let groupPollTimer: ReturnType<typeof setTimeout> | undefined;
-        const killProcessTree = (signal: NodeJS.Signals) => {
-            try {
-                if (detached && proc.pid) process.kill(-proc.pid, signal);
-                else proc.kill(signal);
-            } catch {}
-        };
-        const processGroupExists = (): boolean => {
-            if (!detached || !proc.pid) return false;
-            try {
-                process.kill(-proc.pid, 0);
-                return true;
-            } catch {
-                return false;
-            }
-        };
-        const abort = () => {
-            stderr += '\nprocess aborted';
-            terminate();
-        };
-        const finish = (status: number | null) => {
+        const finish = (status: number | null, timedOut: boolean) => {
             if (settled) return;
             settled = true;
             clearTimeout(timer);
-            if (killTimer) clearTimeout(killTimer);
-            if (groupPollTimer) clearTimeout(groupPollTimer);
-            options.signal?.removeEventListener('abort', abort);
             resolve({ status, stdout, stderr, timedOut, outputExceeded });
         };
-        const awaitTerminatedGroup = () => {
-            killProcessTree('SIGKILL');
-            if (!processGroupExists()) {
-                finish(closeStatus);
-                return;
-            }
-            groupPollTimer = setTimeout(awaitTerminatedGroup, 25);
-            groupPollTimer.unref?.();
-        };
-        function terminate() {
-            if (terminating) return;
-            terminating = true;
-            killProcessTree('SIGTERM');
-            killTimer = setTimeout(awaitTerminatedGroup, 250);
-            killTimer.unref?.();
-        }
         const append = (kind: 'stdout' | 'stderr', chunk: unknown) => {
-            if (terminating) return;
             const next = kind === 'stdout' ? stdout + String(chunk) : stderr + String(chunk);
             if (Buffer.byteLength(next, 'utf8') > options.maxBuffer) {
                 outputExceeded = true;
                 stderr += `\nprocess output exceeded ${options.maxBuffer} bytes`;
-                terminate();
+                proc.kill('SIGTERM');
+                finish(null, false);
                 return;
             }
             if (kind === 'stdout') stdout = next;
             else stderr = next;
         };
         const timer = setTimeout(() => {
-            timedOut = true;
             stderr += `\nprocess timed out after ${options.timeoutMs}ms`;
-            terminate();
+            proc.kill('SIGTERM');
+            finish(null, true);
         }, options.timeoutMs);
-        options.signal?.addEventListener('abort', abort, { once: true });
-        if (options.signal?.aborted) abort();
         proc.stdout?.on('data', (chunk) => append('stdout', chunk));
         proc.stderr?.on('data', (chunk) => append('stderr', chunk));
         proc.on('error', (error) => {
             stderr += error instanceof Error ? error.message : String(error);
-            finish(null);
+            finish(null, false);
         });
-        proc.on('close', (code) => {
-            closeStatus = code;
-            if (!terminating || !detached) finish(code);
-        });
+        proc.on('close', (code) => finish(code, false));
     });
 }
 
@@ -250,7 +201,7 @@ export class StructuralWorkflowService {
         const maxBuffer = Math.max(64 * 1024, Math.min(32 * 1024 * 1024, Number(args?.maxBuffer || 8 * 1024 * 1024)));
         const proc = await runStructuralProcess(
             backend.command,
-            ['run', '--pattern', pattern, '--lang', language, '--json=stream', ...paths],
+            ['run', '--pattern', pattern, '--lang', language, '--json=stream', '--', ...paths],
             {
                 cwd: this.workspaceRoot,
                 maxBuffer,
@@ -375,7 +326,7 @@ export class StructuralWorkflowService {
         const maxBuffer = Math.max(64 * 1024, Math.min(32 * 1024 * 1024, Number(args?.maxBuffer || 16 * 1024 * 1024)));
         const proc = await runStructuralProcess(
             bin,
-            ['run', '--pattern', pattern, '--rewrite', rewrite, '--lang', language, '--json=stream', ...paths],
+            ['run', '--pattern', pattern, '--rewrite', rewrite, '--lang', language, '--json=stream', '--', ...paths],
             { cwd: this.workspaceRoot, maxBuffer, timeoutMs }
         );
         if (proc.status !== 0 && (String(proc.stderr || '').trim() || proc.timedOut || proc.outputExceeded)) {

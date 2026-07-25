@@ -19,15 +19,35 @@ import {
     validateStructuralEvidenceReceipt,
 } from './structural-evidence-contract.js';
 import {
+    materializeRawCommit,
+    type RunGitBytes,
+    runGitBytes,
+    structuralEvidenceGitEnvironment,
+} from './structural-evidence-git-snapshot.js';
+import { runStructuralEvidenceProcess, type StructuralEvidenceProcessResult } from './structural-evidence-process.js';
+import {
     type AstGrepBackend,
     findAstGrepBackend,
     normalizeStructuralPaths,
-    runStructuralProcess,
     structuralProcessErrorPayload,
 } from './structural-workflow.js';
 
 const EXPORT_WORKFLOW = 'structural-evidence-export-v1';
 const MAX_PROCESS_BUFFER = 32 * 1024 * 1024;
+const COMPLETE_SCAN_IGNORE_ARGS = [
+    '--no-ignore',
+    'hidden',
+    '--no-ignore',
+    'dot',
+    '--no-ignore',
+    'exclude',
+    '--no-ignore',
+    'global',
+    '--no-ignore',
+    'parent',
+    '--no-ignore',
+    'vcs',
+] as const;
 
 interface GitResult {
     status: number | null;
@@ -37,10 +57,20 @@ interface GitResult {
 
 export interface StructuralEvidenceExportDependencies {
     findBackend(): AstGrepBackend | null;
-    runProcess: typeof runStructuralProcess;
+    runProcess(
+        command: string,
+        args: string[],
+        options: {
+            cwd: string;
+            timeoutMs: number;
+            maxBuffer: number;
+            signal?: AbortSignal;
+        }
+    ): Promise<StructuralEvidenceProcessResult>;
     makeTemporaryRoot(): Promise<string>;
     removeTemporaryRoot(root: string): Promise<void>;
     runGit(cwd: string | null, args: string[]): GitResult;
+    runGitBytes: RunGitBytes;
 }
 
 export interface StructuralEvidenceExportOptions {
@@ -57,7 +87,7 @@ interface SearchSeedValues {
 
 const defaultDependencies: StructuralEvidenceExportDependencies = {
     findBackend: findAstGrepBackend,
-    runProcess: runStructuralProcess,
+    runProcess: runStructuralEvidenceProcess,
     makeTemporaryRoot: () => mkdtemp(path.join(tmpdir(), 'sci-structural-evidence-')),
     removeTemporaryRoot: (root) => rm(root, { recursive: true, force: true }),
     runGit: (cwd, args) => {
@@ -66,11 +96,7 @@ const defaultDependencies: StructuralEvidenceExportDependencies = {
             encoding: 'utf8',
             maxBuffer: 4 * 1024 * 1024,
             timeout: 30_000,
-            env: {
-                ...process.env,
-                GIT_LFS_SKIP_SMUDGE: '1',
-                GIT_OPTIONAL_LOCKS: '0',
-            },
+            env: structuralEvidenceGitEnvironment(),
         });
         return {
             status: result.status,
@@ -78,6 +104,7 @@ const defaultDependencies: StructuralEvidenceExportDependencies = {
             stderr: String(result.stderr || ''),
         };
     },
+    runGitBytes,
 };
 
 function invalid(message: string, data?: Record<string, unknown>): CoreError {
@@ -138,46 +165,6 @@ function parseSearchSeeds(request: StructuralEvidenceRequest): SearchSeedValues 
     };
 }
 
-async function materializeCommit(
-    sourceRoot: string,
-    commit: string,
-    temporaryRoot: string,
-    directoryName: string,
-    dependencies: StructuralEvidenceExportDependencies
-): Promise<string> {
-    const captureRoot = path.join(temporaryRoot, directoryName);
-    gitOutput(
-        dependencies.runGit(null, [
-            '-c',
-            'core.hooksPath=/dev/null',
-            'clone',
-            '--quiet',
-            '--no-checkout',
-            '--no-local',
-            '--',
-            sourceRoot,
-            captureRoot,
-        ]),
-        'git snapshot clone'
-    );
-    gitOutput(
-        dependencies.runGit(captureRoot, ['-c', 'core.hooksPath=/dev/null', 'checkout', '--quiet', '--detach', commit]),
-        'git snapshot checkout'
-    );
-    const capturedCommit = gitOutput(
-        dependencies.runGit(captureRoot, ['rev-parse', '--verify', 'HEAD']),
-        'captured HEAD'
-    );
-    if (capturedCommit !== commit) throw new CoreError('Internal', 'captured repository commit mismatch');
-    const capturedStatus = gitOutput(
-        dependencies.runGit(captureRoot, ['status', '--porcelain=v1', '--untracked-files=all']),
-        'captured status'
-    );
-    if (capturedStatus) throw new CoreError('Internal', 'captured repository was not clean');
-    await rm(path.join(captureRoot, '.git'), { recursive: true, force: true });
-    return captureRoot;
-}
-
 function parseStrictAstGrepJsonLines(stdout: string): Record<string, unknown>[] {
     const trimmed = stdout.trim();
     if (!trimmed) return [];
@@ -196,7 +183,7 @@ function sourcePosition(buffer: Buffer, byteOffset: number): { line: number; col
     const prefix = new TextDecoder('utf-8', { fatal: true }).decode(buffer.subarray(0, byteOffset));
     const lines = prefix.split('\n');
     const lastLine = lines[lines.length - 1] ?? '';
-    return { line: lines.length - 1, column: lastLine.length };
+    return { line: lines.length - 1, column: [...lastLine].length };
 }
 
 async function assertRegularPathWithoutSymlinks(root: string, relativePath: string): Promise<void> {
@@ -384,24 +371,34 @@ export async function exportStructuralEvidenceReceipt(
                 throw new CoreError('Internal', 'temporary capture root must be outside the target repository');
             }
         }
-        const queryRoot = await materializeCommit(
+        const queryRoot = await materializeRawCommit(
             repository.root,
             repository.commit,
             temporaryRoots[0],
             'query',
-            dependencies
+            dependencies.runGitBytes
         );
-        const verificationRoot = await materializeCommit(
+        const verificationRoot = await materializeRawCommit(
             repository.root,
             repository.commit,
             temporaryRoots[1],
             'verification',
-            dependencies
+            dependencies.runGitBytes
         );
         const paths = await normalizeStructuralPaths(seeds.paths, queryRoot);
         const processResult = await dependencies.runProcess(
             backend.command,
-            ['run', '--pattern', seeds.pattern, '--lang', seeds.language, '--json=stream', ...paths],
+            [
+                'run',
+                '--pattern',
+                seeds.pattern,
+                '--lang',
+                seeds.language,
+                '--json=stream',
+                ...COMPLETE_SCAN_IGNORE_ARGS,
+                '--',
+                ...paths,
+            ],
             {
                 cwd: queryRoot,
                 timeoutMs: request.limits.timeoutMs,
@@ -409,7 +406,13 @@ export async function exportStructuralEvidenceReceipt(
                 signal: options.signal,
             }
         );
-        if (processResult.status !== 0 || processResult.timedOut || processResult.outputExceeded) {
+        if (
+            processResult.status !== 0 ||
+            processResult.timedOut ||
+            processResult.outputExceeded ||
+            processResult.aborted === true ||
+            processResult.terminationConfirmed === false
+        ) {
             const failure = structuralProcessErrorPayload(processResult, 'ast-grep run');
             throw new CoreError('Internal', failure.message || failure.code, failure);
         }

@@ -1,6 +1,15 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+    existsSync,
+    mkdirSync,
+    mkdtempSync,
+    readdirSync,
+    readFileSync,
+    rmSync,
+    symlinkSync,
+    writeFileSync,
+} from 'node:fs';
 import { rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -338,6 +347,240 @@ describe('experimental structural evidence exporter', () => {
                 signal: controller.signal,
             })
         ).rejects.toThrow('aborted');
+    });
+
+    test('uses the fixed complete-scan ignore policy and an option terminator for every path list', async () => {
+        const root = createRepository();
+        writeFileSync(join(root, '--help.ts'), 'const optionShaped = 1;\n', 'utf8');
+        writeFileSync(join(root, '.hidden.ts'), 'const hidden = 1;\n', 'utf8');
+        writeFileSync(join(root, 'dot-ignored.ts'), 'const dotIgnored = 1;\n', 'utf8');
+        writeFileSync(join(root, 'global-ignored.ts'), 'const globalIgnored = 1;\n', 'utf8');
+        writeFileSync(join(root, '.ignore'), 'dot-ignored.ts\n', 'utf8');
+        const globalIgnoreRoot = mkdtempSync(join(tmpdir(), 'sci-evidence-global-ignore-'));
+        roots.push(globalIgnoreRoot);
+        const excludesFile = join(globalIgnoreRoot, 'global-ignore');
+        const globalConfig = join(globalIgnoreRoot, 'gitconfig');
+        writeFileSync(excludesFile, 'global-ignored.ts\n', 'utf8');
+        writeFileSync(globalConfig, `[core]\n\texcludesFile = ${excludesFile}\n`, 'utf8');
+        run(root, 'git', [
+            'add',
+            '-f',
+            '--',
+            '--help.ts',
+            '.hidden.ts',
+            'dot-ignored.ts',
+            'global-ignored.ts',
+            '.ignore',
+        ]);
+        run(root, 'git', ['commit', '--quiet', '-m', 'add ignored and option-shaped sources']);
+
+        const previousGlobalConfig = process.env.GIT_CONFIG_GLOBAL;
+        process.env.GIT_CONFIG_GLOBAL = globalConfig;
+        try {
+            const allSources = request({
+                seeds: [
+                    { id: 'seed:language', kind: 'text', value: 'ts' },
+                    { id: 'seed:pattern', kind: 'text', value: 'const $A = $B' },
+                ],
+            });
+            const allReceipt = await exportStructuralEvidenceReceipt(allSources, { workspaceRoot: root });
+            expect([...new Set(allReceipt.evidence.map((item) => item.identity.path))].sort()).toEqual([
+                '--help.ts',
+                '.hidden.ts',
+                'dot-ignored.ts',
+                'global-ignored.ts',
+                'sample.ts',
+            ]);
+
+            let observedArgs: string[] = [];
+            const dependencies: Partial<StructuralEvidenceExportDependencies> = {
+                runProcess: async (command, args, options) => {
+                    observedArgs = args;
+                    const { runStructuralEvidenceProcess } = await import(
+                        '../src/core/workflows/structural-evidence-process.js'
+                    );
+                    return await runStructuralEvidenceProcess(command, args, options);
+                },
+            };
+            const optionReceipt = await exportStructuralEvidenceReceipt(
+                request({
+                    seeds: [
+                        { id: 'seed:language', kind: 'text', value: 'ts' },
+                        { id: 'seed:pattern', kind: 'text', value: 'const $A = $B' },
+                        { id: 'seed:option', kind: 'path', value: '--help.ts' },
+                    ],
+                }),
+                { workspaceRoot: root, dependencies }
+            );
+            expect(optionReceipt.evidence.map((item) => item.identity.path)).toEqual(['--help.ts']);
+            const terminator = observedArgs.indexOf('--');
+            expect(terminator).toBeGreaterThan(0);
+            expect(observedArgs.slice(terminator + 1)).toEqual(['--help.ts']);
+            expect(observedArgs.slice(0, terminator)).toEqual(
+                expect.arrayContaining(['--no-ignore', 'hidden', 'dot', 'exclude', 'global', 'parent', 'vcs'])
+            );
+            expect(observedArgs.filter((arg) => arg === '--no-ignore')).toHaveLength(6);
+        } finally {
+            if (previousGlobalConfig === undefined) delete process.env.GIT_CONFIG_GLOBAL;
+            else process.env.GIT_CONFIG_GLOBAL = previousGlobalConfig;
+        }
+    });
+
+    test('materializes exact Git blob bytes despite ident and EOL checkout attributes', async () => {
+        const root = createRepository();
+        writeFileSync(join(root, '.gitattributes'), 'filtered.ts ident text eol=crlf\n', 'utf8');
+        writeFileSync(join(root, 'filtered.ts'), 'const marker = "$Id$";\nconst alpha = 1;\n', 'utf8');
+        run(root, 'git', ['add', '.gitattributes', 'filtered.ts']);
+        run(root, 'git', ['commit', '--quiet', '-m', 'add filtered source']);
+        const rawResult = spawnSync('git', ['-C', root, 'cat-file', 'blob', 'HEAD:filtered.ts']);
+        expect(rawResult.status).toBe(0);
+        const rawBlob = Buffer.from(rawResult.stdout || '');
+        expect(rawBlob.toString('utf8')).toContain('$Id$');
+        let searchedBytes = Buffer.alloc(0);
+        const snippet = 'const alpha = 1;';
+        const byteStart = rawBlob.indexOf(snippet);
+        const dependencies: Partial<StructuralEvidenceExportDependencies> = {
+            findBackend: () => ({ command: '/usr/bin/ast-grep', name: 'ast-grep', version: '0.42.0' }),
+            runProcess: async (_command, _args, options) => {
+                searchedBytes = readFileSync(join(options.cwd, 'filtered.ts'));
+                return {
+                    status: 0,
+                    stdout: `${JSON.stringify({
+                        file: 'filtered.ts',
+                        text: snippet,
+                        range: {
+                            byteOffset: { start: byteStart, end: byteStart + Buffer.byteLength(snippet) },
+                            start: { line: 1, column: 0 },
+                            end: { line: 1, column: [...snippet].length },
+                        },
+                    })}\n`,
+                    stderr: '',
+                    timedOut: false,
+                    outputExceeded: false,
+                };
+            },
+        };
+
+        const receipt = await exportStructuralEvidenceReceipt(
+            request({
+                seeds: [
+                    { id: 'seed:language', kind: 'text', value: 'ts' },
+                    { id: 'seed:pattern', kind: 'text', value: 'const $A = $B' },
+                    { id: 'seed:filtered', kind: 'path', value: 'filtered.ts' },
+                ],
+            }),
+            { workspaceRoot: root, dependencies }
+        );
+
+        expect(searchedBytes).toEqual(rawBlob);
+        expect(receipt.evidence[0].snippet).toBe(snippet);
+    });
+
+    test('disables Git replacement objects for cleanliness, fingerprint, and raw blob capture', async () => {
+        const root = createRepository();
+        const originalCommit = run(root, 'git', ['rev-parse', '--verify', 'HEAD']);
+        writeFileSync(join(root, 'sample.ts'), 'const replacementOnly = 9;\n', 'utf8');
+        run(root, 'git', ['add', 'sample.ts']);
+        const replacementTree = run(root, 'git', ['write-tree']);
+        const replacementCommit = run(root, 'git', ['commit-tree', replacementTree, '-m', 'replacement fixture']);
+        run(root, 'git', ['reset', '--hard', originalCommit]);
+        run(root, 'git', ['replace', originalCommit, replacementCommit]);
+
+        const receipt = await exportStructuralEvidenceReceipt(request(), { workspaceRoot: root });
+
+        expect(receipt.repository.snapshotId).toBe(`git:${originalCommit}`);
+        expect(receipt.evidence.map((item) => item.snippet)).toEqual(['const alpha = 1;', 'const beta = 2;']);
+        expect(receipt.evidence.map((item) => item.snippet).join('\n')).not.toContain('replacementOnly');
+    });
+
+    test('verifies BMP and astral scalar columns across multiline match boundaries', async () => {
+        const root = createRepository();
+        const prefix = 'const prefix = "é😀"; ';
+        const snippet = 'const alpha = {\n  value: "💡"\n};';
+        const source = `${prefix}${snippet}\n`;
+        writeFileSync(join(root, 'unicode.ts'), source, 'utf8');
+        run(root, 'git', ['add', 'unicode.ts']);
+        run(root, 'git', ['commit', '--quiet', '-m', 'add unicode source']);
+        const sourceBytes = Buffer.from(source, 'utf8');
+        const byteStart = Buffer.byteLength(prefix, 'utf8');
+        const byteEnd = byteStart + Buffer.byteLength(snippet, 'utf8');
+        const unicodeRequest = request({
+            seeds: [
+                { id: 'seed:language', kind: 'text', value: 'ts' },
+                { id: 'seed:pattern', kind: 'text', value: 'const $A = $B' },
+                { id: 'seed:unicode', kind: 'path', value: 'unicode.ts' },
+            ],
+        });
+        const dependencies: Partial<StructuralEvidenceExportDependencies> = {
+            findBackend: () => ({ command: '/usr/bin/ast-grep', name: 'ast-grep', version: '0.42.0' }),
+            runProcess: async () => ({
+                status: 0,
+                stdout: `${JSON.stringify({
+                    file: 'unicode.ts',
+                    text: snippet,
+                    range: {
+                        byteOffset: { start: byteStart, end: byteEnd },
+                        start: { line: 0, column: [...prefix].length },
+                        end: { line: 2, column: 2 },
+                    },
+                })}\n`,
+                stderr: '',
+                timedOut: false,
+                outputExceeded: false,
+            }),
+        };
+
+        const receipt = await exportStructuralEvidenceReceipt(unicodeRequest, { workspaceRoot: root, dependencies });
+        expect(sourceBytes.subarray(byteStart, byteEnd).toString('utf8')).toBe(snippet);
+        expect(receipt.evidence[0].identity.range).toEqual({
+            start: { line: 0, column: [...prefix].length },
+            end: { line: 2, column: 2 },
+        });
+
+        dependencies.runProcess = async () => ({
+            status: 0,
+            stdout: `${JSON.stringify({
+                file: 'unicode.ts',
+                text: snippet,
+                range: {
+                    byteOffset: { start: byteStart, end: byteEnd },
+                    start: { line: 0, column: prefix.length },
+                    end: { line: 2, column: 2 },
+                },
+            })}\n`,
+            stderr: '',
+            timedOut: false,
+            outputExceeded: false,
+        });
+        await expect(
+            exportStructuralEvidenceReceipt(unicodeRequest, { workspaceRoot: root, dependencies })
+        ).rejects.toThrow('line and column range');
+    });
+
+    test('unconfirmed backend termination fails publication after standalone capture cleanup', async () => {
+        const root = createRepository();
+        let cleanupCalls = 0;
+        const dependencies: Partial<StructuralEvidenceExportDependencies> = {
+            findBackend: () => ({ command: '/usr/bin/ast-grep', name: 'ast-grep', version: '0.42.0' }),
+            runProcess: async () => ({
+                status: null,
+                stdout: '',
+                stderr: 'process termination was not confirmed within 25ms',
+                timedOut: true,
+                outputExceeded: false,
+                aborted: false,
+                terminationConfirmed: false,
+            }),
+            removeTemporaryRoot: async (temporaryRoot) => {
+                cleanupCalls += 1;
+                await rm(temporaryRoot, { recursive: true, force: true });
+            },
+        };
+
+        await expect(exportStructuralEvidenceReceipt(request(), { workspaceRoot: root, dependencies })).rejects.toThrow(
+            'termination was not confirmed'
+        );
+        expect(cleanupCalls).toBe(2);
     });
 
     test('changing only the question changes the request and receipt digests', async () => {
