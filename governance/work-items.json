@@ -1596,14 +1596,15 @@
         {
           "id": "AK-TASK-4150",
           "title": "Refresh SCI AK work-items projection after owner task completion",
-          "state": "doing",
+          "state": "done",
           "tasks": [
             {
               "text": "Refresh SCI AK work-items projection after owner task completion (task #4150)",
-              "done": false
+              "done": true
             }
           ],
-          "dod": "Task reaches done in society.db with evidence recorded."
+          "dod": "Task reaches done in society.db with evidence recorded.",
+          "completed_at": "2026-07-25"
         }
       ]
     }
