@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-07-13",
+  "updated_at": "2026-07-25",
   "owner": "@project-owners",
   "project_name": "semantic-code-intelligence",
   "milestones": [
@@ -1141,26 +1141,28 @@
         {
           "id": "AK-TASK-3387",
           "title": "Reduce pre-existing explicit-any lint debt in lifecycle/error-boundary surfaces",
-          "state": "queued",
+          "state": "done",
           "tasks": [
             {
               "text": "Reduce pre-existing explicit-any lint debt in lifecycle/error-boundary surfaces (task #3387)",
-              "done": false
+              "done": true
             }
           ],
-          "dod": "Task reaches done in society.db with evidence recorded."
+          "dod": "Task reaches done in society.db with evidence recorded.",
+          "completed_at": "2026-07-17"
         },
         {
           "id": "AK-TASK-3394",
           "title": "Split over-budget protocol and snapshot workflow files",
-          "state": "queued",
+          "state": "done",
           "tasks": [
             {
               "text": "Split over-budget protocol and snapshot workflow files (task #3394)",
-              "done": false
+              "done": true
             }
           ],
-          "dod": "Task reaches done in society.db with evidence recorded."
+          "dod": "Task reaches done in society.db with evidence recorded.",
+          "completed_at": "2026-07-18"
         },
         {
           "id": "AK-TASK-3406",
@@ -1473,6 +1475,135 @@
           ],
           "dod": "Task reaches done in society.db with evidence recorded.",
           "completed_at": "2026-07-13"
+        },
+        {
+          "id": "AK-TASK-3931",
+          "title": "Promote reviewed structural evidence receipt Phase-A contract candidate",
+          "state": "done",
+          "tasks": [
+            {
+              "text": "Promote reviewed structural evidence receipt Phase-A contract candidate (task #3931)",
+              "done": true
+            }
+          ],
+          "dod": "Task reaches done in society.db with evidence recorded.",
+          "completed_at": "2026-07-13"
+        },
+        {
+          "id": "AK-TASK-4034",
+          "title": "Stabilize Alpha CLI parity and migration hygiene fixtures",
+          "state": "done",
+          "tasks": [
+            {
+              "text": "Stabilize Alpha CLI parity and migration hygiene fixtures (task #4034)",
+              "done": true
+            }
+          ],
+          "dod": "Task reaches done in society.db with evidence recorded.",
+          "completed_at": "2026-07-18"
+        },
+        {
+          "id": "AK-TASK-4037",
+          "title": "Stabilize snapshot AST query trust-boundary fixture",
+          "state": "done",
+          "tasks": [
+            {
+              "text": "Stabilize snapshot AST query trust-boundary fixture (task #4037)",
+              "done": true
+            }
+          ],
+          "dod": "Task reaches done in society.db with evidence recorded.",
+          "completed_at": "2026-07-18"
+        },
+        {
+          "id": "AK-TASK-4056",
+          "title": "Establish local single-user production candidate artifact and dogfood",
+          "state": "done",
+          "tasks": [
+            {
+              "text": "Establish local single-user production candidate artifact and dogfood (task #4056)",
+              "done": true
+            }
+          ],
+          "dod": "Task reaches done in society.db with evidence recorded.",
+          "completed_at": "2026-07-18"
+        },
+        {
+          "id": "AK-TASK-4080",
+          "title": "Make SCI composite workflows the discoverable first-choice path",
+          "state": "done",
+          "tasks": [
+            {
+              "text": "Make SCI composite workflows the discoverable first-choice path (task #4080)",
+              "done": true
+            }
+          ],
+          "dod": "Task reaches done in society.db with evidence recorded.",
+          "completed_at": "2026-07-20"
+        },
+        {
+          "id": "AK-TASK-4104",
+          "title": "Make explore_symbol_impact truthful for unconfirmed symbols",
+          "state": "done",
+          "tasks": [
+            {
+              "text": "Make explore_symbol_impact truthful for unconfirmed symbols (task #4104)",
+              "done": true
+            }
+          ],
+          "dod": "Task reaches done in society.db with evidence recorded.",
+          "completed_at": "2026-07-21"
+        },
+        {
+          "id": "AK-TASK-4111",
+          "title": "Extract graph language helpers from oversized code graph",
+          "state": "done",
+          "tasks": [
+            {
+              "text": "Extract graph language helpers from oversized code graph (task #4111)",
+              "done": true
+            }
+          ],
+          "dod": "Task reaches done in society.db with evidence recorded.",
+          "completed_at": "2026-07-21"
+        },
+        {
+          "id": "AK-TASK-4141",
+          "title": "Implement experimental SCI structural evidence exporter Phase B",
+          "state": "done",
+          "tasks": [
+            {
+              "text": "Implement experimental SCI structural evidence exporter Phase B (task #4141)",
+              "done": true
+            }
+          ],
+          "dod": "Task reaches done in society.db with evidence recorded.",
+          "completed_at": "2026-07-25"
+        },
+        {
+          "id": "AK-TASK-4143",
+          "title": "Add repository closeout receipt over existing landing gate",
+          "state": "done",
+          "tasks": [
+            {
+              "text": "Add repository closeout receipt over existing landing gate (task #4143)",
+              "done": true
+            }
+          ],
+          "dod": "Task reaches done in society.db with evidence recorded.",
+          "completed_at": "2026-07-25"
+        },
+        {
+          "id": "AK-TASK-4150",
+          "title": "Refresh SCI AK work-items projection after owner task completion",
+          "state": "doing",
+          "tasks": [
+            {
+              "text": "Refresh SCI AK work-items projection after owner task completion (task #4150)",
+              "done": false
+            }
+          ],
+          "dod": "Task reaches done in society.db with evidence recorded."
         }
       ]
     }
