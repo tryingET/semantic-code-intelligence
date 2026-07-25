@@ -1,8 +1,12 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { StructuralWorkflowService, normalizeStructuralPaths } from '../src/core/workflows/structural-workflow.js';
+import { join } from 'node:path';
+import {
+    normalizeStructuralPaths,
+    runStructuralProcess,
+    StructuralWorkflowService,
+} from '../src/core/workflows/structural-workflow.js';
 
 const roots: string[] = [];
 function tempWorkspace() {
@@ -12,7 +16,10 @@ function tempWorkspace() {
 }
 
 afterEach(() => {
-    while (roots.length) rmSync(roots.pop()!, { recursive: true, force: true });
+    while (roots.length) {
+        const root = roots.pop();
+        if (root) rmSync(root, { recursive: true, force: true });
+    }
 });
 
 describe('StructuralWorkflowService', () => {
@@ -79,5 +86,23 @@ describe('StructuralWorkflowService', () => {
         await expect(normalizeStructuralPaths(['out'], workspaceRoot)).rejects.toThrow(
             'structural path must stay within the workspace'
         );
+    });
+
+    test('kills a resistant descendant even when the direct child closes on SIGTERM', async () => {
+        const workspaceRoot = tempWorkspace();
+        const descendant = "process.on('SIGTERM',()=>{});setInterval(()=>{},1000)";
+        const parent = `const {spawn}=require('node:child_process');const c=spawn(process.execPath,['-e',${JSON.stringify(
+            descendant
+        )}],{stdio:['ignore','ignore','ignore']});console.log(c.pid);setInterval(()=>{},1000)`;
+        const result = await runStructuralProcess(process.execPath, ['-e', parent], {
+            cwd: workspaceRoot,
+            timeoutMs: 100,
+            maxBuffer: 64 * 1024,
+        });
+
+        expect(result.timedOut).toBe(true);
+        const descendantPid = Number(result.stdout.trim());
+        expect(Number.isSafeInteger(descendantPid)).toBe(true);
+        expect(() => process.kill(descendantPid, 0)).toThrow();
     });
 });

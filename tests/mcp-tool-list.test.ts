@@ -12,6 +12,7 @@ describe('MCP tool list formatting', () => {
         expect(names).toEqual([...ALPHA_MVP_TOOL_NAMES].sort());
         expect(names).not.toContain('rename_symbol');
         expect(names).not.toContain('generate_tests');
+        expect(names).not.toContain('structural_evidence_receipt');
         expect(readFile?.description).toContain('Read');
         expect(readFile?.inputSchema?.required).toContain('path');
         expect(readFile?.annotations).toEqual({ recommended: false });

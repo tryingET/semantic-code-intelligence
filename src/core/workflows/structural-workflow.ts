@@ -1,24 +1,38 @@
 import { spawn, spawnSync } from 'node:child_process';
 import * as fs from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { CoreError } from '../errors.js';
 import { overlayStore } from '../overlay-store.js';
 import { workspaceInputToPath } from '../workspace-input.js';
 import { openWorkspaceFileForRead, resolveWorkspacePath } from '../workspace-path.js';
-import { snapshotArtifactLinks, type SnapshotWorkflowResult } from './snapshot-patch-workflow.js';
+import { type SnapshotWorkflowResult, snapshotArtifactLinks } from './snapshot-patch-workflow.js';
 
-export function findAstGrepBinary(): string | null {
+export interface AstGrepBackend {
+    command: string;
+    name: 'ast-grep';
+    version: string;
+}
+
+export function findAstGrepBackend(): AstGrepBackend | null {
     const candidates = ['ast-grep', 'sg'];
-    for (const candidate of candidates) {
-        const found = spawnSync('bash', ['-lc', `command -v ${candidate}`], { stdio: 'pipe', encoding: 'utf8' });
-        if (found.status !== 0) continue;
-        const bin = String(found.stdout || '').trim();
-        if (!bin) continue;
-        const version = spawnSync(bin, ['--version'], { stdio: 'pipe', encoding: 'utf8' });
-        const text = `${version.stdout || ''}${version.stderr || ''}`.trim().toLowerCase();
-        if (candidate === 'ast-grep' || text.includes('ast-grep')) return bin;
+    for (const command of candidates) {
+        const result = spawnSync(command, ['--version'], {
+            cwd: tmpdir(),
+            stdio: 'pipe',
+            encoding: 'utf8',
+            timeout: 5_000,
+        });
+        const text = `${result.stdout || ''}${result.stderr || ''}`.trim();
+        if (result.status !== 0 || !text.toLowerCase().includes('ast-grep')) continue;
+        const version = text.match(/\b(\d+(?:\.\d+)+(?:[-+._][A-Za-z0-9.-]+)?)\b/)?.[1];
+        if (version) return { command, name: 'ast-grep', version };
     }
     return null;
+}
+
+export function findAstGrepBinary(): string | null {
+    return findAstGrepBackend()?.command ?? null;
 }
 
 export async function normalizeStructuralPaths(pathsArg: any, workspaceRoot: string): Promise<string[]> {
@@ -40,44 +54,93 @@ export async function normalizeStructuralPaths(pathsArg: any, workspaceRoot: str
 export async function runStructuralProcess(
     command: string,
     args: string[],
-    options: { cwd: string; timeoutMs: number; maxBuffer: number }
+    options: { cwd: string; timeoutMs: number; maxBuffer: number; signal?: AbortSignal }
 ): Promise<{ status: number | null; stdout: string; stderr: string; timedOut: boolean; outputExceeded: boolean }> {
     return await new Promise((resolve) => {
-        const proc = spawn(command, args, { cwd: options.cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+        const detached = process.platform !== 'win32';
+        const proc = spawn(command, args, { cwd: options.cwd, detached, stdio: ['ignore', 'pipe', 'pipe'] });
         let stdout = '';
         let stderr = '';
         let settled = false;
+        let terminating = false;
+        let timedOut = false;
         let outputExceeded = false;
-        const finish = (status: number | null, timedOut: boolean) => {
+        let closeStatus: number | null = null;
+        let killTimer: ReturnType<typeof setTimeout> | undefined;
+        let groupPollTimer: ReturnType<typeof setTimeout> | undefined;
+        const killProcessTree = (signal: NodeJS.Signals) => {
+            try {
+                if (detached && proc.pid) process.kill(-proc.pid, signal);
+                else proc.kill(signal);
+            } catch {}
+        };
+        const processGroupExists = (): boolean => {
+            if (!detached || !proc.pid) return false;
+            try {
+                process.kill(-proc.pid, 0);
+                return true;
+            } catch {
+                return false;
+            }
+        };
+        const abort = () => {
+            stderr += '\nprocess aborted';
+            terminate();
+        };
+        const finish = (status: number | null) => {
             if (settled) return;
             settled = true;
             clearTimeout(timer);
+            if (killTimer) clearTimeout(killTimer);
+            if (groupPollTimer) clearTimeout(groupPollTimer);
+            options.signal?.removeEventListener('abort', abort);
             resolve({ status, stdout, stderr, timedOut, outputExceeded });
         };
+        const awaitTerminatedGroup = () => {
+            killProcessTree('SIGKILL');
+            if (!processGroupExists()) {
+                finish(closeStatus);
+                return;
+            }
+            groupPollTimer = setTimeout(awaitTerminatedGroup, 25);
+            groupPollTimer.unref?.();
+        };
+        function terminate() {
+            if (terminating) return;
+            terminating = true;
+            killProcessTree('SIGTERM');
+            killTimer = setTimeout(awaitTerminatedGroup, 250);
+            killTimer.unref?.();
+        }
         const append = (kind: 'stdout' | 'stderr', chunk: unknown) => {
+            if (terminating) return;
             const next = kind === 'stdout' ? stdout + String(chunk) : stderr + String(chunk);
             if (Buffer.byteLength(next, 'utf8') > options.maxBuffer) {
                 outputExceeded = true;
                 stderr += `\nprocess output exceeded ${options.maxBuffer} bytes`;
-                proc.kill('SIGTERM');
-                finish(null, false);
+                terminate();
                 return;
             }
             if (kind === 'stdout') stdout = next;
             else stderr = next;
         };
         const timer = setTimeout(() => {
+            timedOut = true;
             stderr += `\nprocess timed out after ${options.timeoutMs}ms`;
-            proc.kill('SIGTERM');
-            finish(null, true);
+            terminate();
         }, options.timeoutMs);
+        options.signal?.addEventListener('abort', abort, { once: true });
+        if (options.signal?.aborted) abort();
         proc.stdout?.on('data', (chunk) => append('stdout', chunk));
         proc.stderr?.on('data', (chunk) => append('stderr', chunk));
         proc.on('error', (error) => {
             stderr += error instanceof Error ? error.message : String(error);
-            finish(null, false);
+            finish(null);
         });
-        proc.on('close', (code) => finish(code, false));
+        proc.on('close', (code) => {
+            closeStatus = code;
+            if (!terminating || !detached) finish(code);
+        });
     });
 }
 
@@ -174,8 +237,8 @@ export class StructuralWorkflowService {
         if (!language || !pattern) {
             return { text: 'language and pattern required', isError: true };
         }
-        const bin = findAstGrepBinary();
-        if (!bin) {
+        const backend = findAstGrepBackend();
+        if (!backend) {
             return {
                 payload: { ok: false, code: 'ast_grep_unavailable', message: 'ast-grep binary not found on PATH' },
                 isError: true,
@@ -186,7 +249,7 @@ export class StructuralWorkflowService {
         const timeoutMs = Math.max(1_000, Math.min(120_000, Number(args?.timeoutMs || 30_000)));
         const maxBuffer = Math.max(64 * 1024, Math.min(32 * 1024 * 1024, Number(args?.maxBuffer || 8 * 1024 * 1024)));
         const proc = await runStructuralProcess(
-            bin,
+            backend.command,
             ['run', '--pattern', pattern, '--lang', language, '--json=stream', ...paths],
             {
                 cwd: this.workspaceRoot,

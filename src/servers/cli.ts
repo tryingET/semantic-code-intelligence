@@ -46,6 +46,8 @@ class CLI {
     private toolExecutor!: any;
     private colorOutput = true;
     private commanderErrorOutput = '';
+    private activeAbortController?: AbortController;
+    private signalExitCode?: number;
 
     // Metrics tracking for CLI commands
     private currentCommand: string | null = null;
@@ -601,6 +603,42 @@ class CLI {
                 await this.handleInit(options);
             });
 
+        const experimental = this.program.command('experimental').description('Explicit experimental surfaces');
+        experimental
+            .command('structural-evidence-receipt')
+            .description('Export one read-only structural-search evidence receipt from a clean Git commit')
+            .requiredOption('-F, --request-file <path>', 'Prepared structural evidence request JSON')
+            .action(async (options) => {
+                this.startCommandMetrics('experimental_structural_evidence_receipt');
+                const controller = new AbortController();
+                this.activeAbortController = controller;
+                try {
+                    const body = this.readBoundedJsonInputFile(String(options.requestFile));
+                    const request = strictJsonParse(body);
+                    const { exportStructuralEvidenceReceipt } = await import(
+                        '../core/workflows/structural-evidence-export-workflow.js'
+                    );
+                    const receipt = await exportStructuralEvidenceReceipt(request, {
+                        workspaceRoot: process.cwd(),
+                        signal: controller.signal,
+                    });
+                    if (controller.signal.aborted || this.signalExitCode) {
+                        throw new CoreError('Internal', 'structural evidence receipt publication aborted');
+                    }
+                    await this.writeStream(process.stdout, `${JSON.stringify(receipt, null, 2)}\n`);
+                } catch (error) {
+                    this.markCommandFailed();
+                    if (!this.signalExitCode) {
+                        await this.writeStream(process.stderr, `${this.formatToolError(error, true)}\n`);
+                    }
+                    process.exitCode = this.signalExitCode ?? 1;
+                } finally {
+                    this.activeAbortController = undefined;
+                    if (this.signalExitCode) process.exitCode = this.signalExitCode;
+                    await this.shutdown();
+                }
+            });
+
         // Generic workflow executor (HTTP/MCP parity)
         this.program
             .command('workflow <name>')
@@ -1017,6 +1055,49 @@ class CLI {
         }
     }
 
+    private readBoundedJsonInputFile(requestedPath: string): string {
+        const inputPath = path.resolve(requestedPath);
+        if (typeof fs.constants.O_NOFOLLOW !== 'number') {
+            throw new CoreError('Internal', 'request-file no-follow reads are unavailable on this platform');
+        }
+        const nonblock = typeof fs.constants.O_NONBLOCK === 'number' ? fs.constants.O_NONBLOCK : 0;
+        const descriptor = fs.openSync(inputPath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | nonblock);
+        try {
+            const before = fs.fstatSync(descriptor);
+            if (!before.isFile() || before.size > 1024 * 1024) {
+                throw new CoreError('InvalidParams', 'request file must be a regular file of at most 1 MiB');
+            }
+            const chunks: Buffer[] = [];
+            let total = 0;
+            while (total <= 1024 * 1024) {
+                const chunk = Buffer.allocUnsafe(Math.min(64 * 1024, 1024 * 1024 + 1 - total));
+                const count = fs.readSync(descriptor, chunk, 0, chunk.length, null);
+                if (count === 0) break;
+                chunks.push(chunk.subarray(0, count));
+                total += count;
+            }
+            if (total > 1024 * 1024) throw new CoreError('InvalidParams', 'request file exceeds 1 MiB');
+            const after = fs.fstatSync(descriptor);
+            if (
+                before.dev !== after.dev ||
+                before.ino !== after.ino ||
+                before.size !== after.size ||
+                before.mtimeMs !== after.mtimeMs
+            ) {
+                throw new CoreError('InvalidParams', 'request file changed while being read');
+            }
+            return new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks, total));
+        } finally {
+            fs.closeSync(descriptor);
+        }
+    }
+
+    private async writeStream(stream: NodeJS.WriteStream, content: string): Promise<void> {
+        await new Promise<void>((resolve, reject) => {
+            stream.write(content, (error) => (error ? reject(error) : resolve()));
+        });
+    }
+
     private cliRelativeBase(): string {
         const root = path.resolve(this.workspaceRoot);
         const cwd = path.resolve(process.cwd());
@@ -1328,6 +1409,16 @@ build/
         }
     }
 
+    async handleSignal(exitCode: number): Promise<void> {
+        this.signalExitCode = exitCode;
+        if (this.activeAbortController) {
+            this.activeAbortController.abort();
+            return;
+        }
+        await this.shutdown();
+        process.exit(exitCode);
+    }
+
     async shutdown(): Promise<void> {
         // End command metrics tracking
         this.endCommandMetrics();
@@ -1359,14 +1450,12 @@ build/
 const cli = new CLI();
 
 // Handle shutdown gracefully
-process.on('SIGINT', async () => {
-    await cli.shutdown();
-    process.exit(0);
+process.on('SIGINT', () => {
+    void cli.handleSignal(130);
 });
 
-process.on('SIGTERM', async () => {
-    await cli.shutdown();
-    process.exit(0);
+process.on('SIGTERM', () => {
+    void cli.handleSignal(143);
 });
 
 // Run CLI with top-level await to ensure completion before exit (ESM)
