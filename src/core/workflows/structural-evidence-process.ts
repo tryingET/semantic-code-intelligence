@@ -154,19 +154,21 @@ export async function runStructuralEvidenceProcess(
         if (options.signal?.aborted) abort();
         proc.stdout?.on('data', (chunk) => append(stdoutChunks, chunk));
         proc.stderr?.on('data', (chunk) => append(stderrChunks, chunk));
-        proc.on('error', (error) => {
-            appendText(stderrChunks, error instanceof Error ? error.message : String(error));
-            closeStatus = null;
-            if (terminating && processTreeExists()) return;
-            finish(true);
-        });
-        proc.on('close', (code) => {
-            closeStatus = code;
-            if (!terminating) {
+        const finishOrSuperviseRemainingGroup = () => {
+            if (!processTreeExists()) {
                 finish(true);
                 return;
             }
-            if (!processTreeExists()) finish(true);
+            terminate();
+        };
+        proc.on('error', (error) => {
+            appendText(stderrChunks, error instanceof Error ? error.message : String(error));
+            closeStatus = null;
+            finishOrSuperviseRemainingGroup();
+        });
+        proc.on('close', (code) => {
+            closeStatus = code;
+            finishOrSuperviseRemainingGroup();
         });
     });
 }

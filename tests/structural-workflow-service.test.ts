@@ -134,6 +134,28 @@ describe('StructuralWorkflowService', () => {
         expect(() => process.kill(descendantPid, 0)).toThrow();
     });
 
+    test('supervises a same-group descendant left behind by a successful direct child', async () => {
+        const workspaceRoot = tempWorkspace();
+        const descendant = "process.on('SIGTERM',()=>{});setInterval(()=>{},1000)";
+        const parent = `const {spawn}=require('node:child_process');const c=spawn(process.execPath,['-e',${JSON.stringify(
+            descendant
+        )}],{stdio:['ignore','ignore','ignore']});console.log(c.pid);c.unref()`;
+        const result = await runStructuralEvidenceProcess(process.execPath, ['-e', parent], {
+            cwd: workspaceRoot,
+            timeoutMs: 2_000,
+            maxBuffer: 64 * 1024,
+            terminationGraceMs: 100,
+            terminationDeadlineMs: 1_000,
+        });
+
+        expect(result.status).toBe(0);
+        expect(result.timedOut).toBe(false);
+        expect(result.terminationConfirmed).toBe(true);
+        const descendantPid = Number(result.stdout.trim());
+        expect(Number.isSafeInteger(descendantPid)).toBe(true);
+        expect(() => process.kill(descendantPid, 0)).toThrow();
+    });
+
     test('returns an unconfirmed result within the hard termination deadline when the tree probe persists', async () => {
         const workspaceRoot = tempWorkspace();
         const startedAt = Date.now();
