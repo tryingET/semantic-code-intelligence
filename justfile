@@ -51,6 +51,7 @@ default:
     @echo "  just plan-rename <old> <new>   - Refactor: plan rename (preview)"
     @echo "  just safe-apply [file] [-- <cmd...>] - Stage diff safely in snapshot + checks"
     @echo "  just alpha-mvp-check     - Validate Phase 1 harnessed-LLM Alpha MVP surface"
+    @echo "  just loop-closeout-receipt - Record one repository-local landing-gate receipt"
     @echo "  just install-cli-local   - Build and link the SCI CLI for target-repo use"
     @echo "  just migration-hygiene   - Check migrated repo identity/local artifact hygiene"
     @echo ""
@@ -910,6 +911,10 @@ loop-landing-check:
     @just --quiet _loop-scope-check 1
     @echo "authority_boundary=repo-local readiness only; AK/CI/release/governance authority remains outside this command"
     @just alpha-mvp-check
+
+# Materialize one local receipt over the repo-declared landing gate
+loop-closeout-receipt:
+    @{{bun}} run scripts/repository-closeout-receipt.ts --json
 
 # === CLEANUP ===
 

@@ -205,6 +205,8 @@ describe('build command surface', () => {
         const run = recipeBody(justfile, 'loop-impact-run');
         const wide = recipeBody(justfile, 'loop-impact-wide');
         const landing = recipeBody(justfile, 'loop-landing-check');
+        const closeoutReceipt = recipeBody(justfile, 'loop-closeout-receipt');
+        const closeoutScript = readText('scripts/repository-closeout-receipt.ts');
 
         expect(doctor).toContain('set +e');
         expect(doctor).toContain('result=diagnostic');
@@ -220,6 +222,13 @@ describe('build command surface', () => {
             landing.indexOf('@just alpha-mvp-check')
         );
         expect(landing).toContain('AK/CI/release/governance authority remains outside this command');
+        expect(closeoutReceipt).toContain('scripts/repository-closeout-receipt.ts --json');
+        expect(closeoutReceipt).not.toContain('alpha-mvp-check');
+        expect(closeoutScript.match(/command: 'just loop-landing-check'/g)).toHaveLength(1);
+        expect(closeoutScript.match(/spawn\('just', \['loop-landing-check'\]/g)).toHaveLength(1);
+        expect(closeoutScript).not.toContain("'--command'");
+        expect(closeoutScript).toContain('ak_task_closure');
+        expect(closeoutScript).toContain('fcos_item_closure');
     });
 
     test('command-surface audit normalizes workflow run blocks for normal-suite slices', () => {
