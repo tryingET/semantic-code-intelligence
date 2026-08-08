@@ -23,7 +23,7 @@ Current authority and context are layered deliberately:
 
 1. [`VISION.md`](../../VISION.md) is the durable north star; [`vision.md`](vision.md) is its project-local pointer.
 2. This file defines phased product posture and scope boundaries.
-3. Installed Agent Kernel (`ak`) is canonical for live strategic frames, tasks, decisions, evidence, and lineage. The current frame key is `SF2` (display ID `AK.V5.SF02`) — Alpha maintenance and evidence-led direction discovery.
+3. Installed Agent Kernel (`ak`) is canonical for live strategic frames, tasks, decisions, evidence, and lineage. The current frame key is `SF2` (display ID `AK.V5.SF02`) — Alpha maintenance and evidence-led direction discovery. The active implementation wave is `IW77` (display ID `AK.V5.SF02.WW77`) — first-user adoption and friction proof. IW77 prospectively samples real owner-authorized tasks to measure composite-first procedure effectiveness, total discovery cost, validated task advancement, and evidence-backed friction without activating broad Phase 2 or publication scope; its measurement contract is [`first-user-adoption-friction-proof.md`](first-user-adoption-friction-proof.md).
 4. Repository ADRs record accepted human-readable policy. They do not create or advance AK decision state.
 5. Implementation proceeds through an explicitly scoped AK task, owner-repo mutation, the smallest truthful validation, evidence, and closeout.
 6. A fresh decision membrane is required when work changes authority, compatibility, ownership, persistence, mutation capability, publication posture, or broad product direction.
