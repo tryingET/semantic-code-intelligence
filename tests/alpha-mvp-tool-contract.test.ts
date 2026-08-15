@@ -181,6 +181,14 @@ describe('Alpha MVP tool contract', () => {
         expect(specs.get('patch_checks_in_snapshot')?.inputSchema?.properties?.impactSummary?.type).toBe('object');
         expect(specs.get('patch_checks_in_snapshot')?.inputSchema?.properties?.onlyTouched?.type).toBe('boolean');
         expect(specs.get('explore_symbol_impact')?.category).toBe('workflow');
+        expect(specs.get('explore_symbol_impact')?.inputSchema?.properties?.mode?.enum).toEqual([
+            'compact',
+            'standard',
+            'debug',
+        ]);
+        expect(specs.get('explore_symbol_impact')?.inputSchema?.properties?.maxFiles?.maximum).toBe(25);
+        expect(specs.get('explore_symbol_impact')?.inputSchema?.properties?.maxNextReads?.maximum).toBe(10);
+        expect(specs.get('explore_symbol_impact')?.inputSchema?.properties?.symbol?.maxLength).toBe(256);
         expect(specs.get('locate_confirm_definition')?.category).toBe('workflow');
     });
 });

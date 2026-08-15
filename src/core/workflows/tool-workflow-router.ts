@@ -76,6 +76,7 @@ export class ToolWorkflowRouter {
         });
         this.learningWorkflows = new LearningWorkflowService({ coreAnalyzer: this.coreAnalyzer });
         this.symbolWorkflows = new SymbolWorkflowService({
+            workspaceRoot: () => this.getWorkspaceRoot(),
             pickOntologySeedFile: (symbol) => this.pickOntologySeedFile(symbol),
             findDefinition: (args) => this.navigationWorkflows.findDefinition(args),
             buildSymbolMap: (args) => this.codeAnalysisWorkflows.buildSymbolMap(args),

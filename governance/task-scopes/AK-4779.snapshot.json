@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-08-15T21:27:09.757428595+00:00",
+  "task_id": 4779,
+  "entity_version": 9,
+  "commit_sha": null,
+  "scope": {
+    "allowed_paths": [
+      "diary/**",
+      "docs/project/alpha-mvp-contract.md",
+      "docs/project/alpha-mvp-validation.md",
+      "governance/task-scopes/AK-4779.snapshot.json",
+      "src/core/tools/tool-specs-preferred-workflows.ts",
+      "src/core/workflows/symbol-workflow.ts",
+      "src/core/workflows/tool-workflow-router.ts",
+      "tests/alpha-mvp-tool-contract.test.ts",
+      "tests/composite-workflow-discoverability.test.ts",
+      "tests/symbol-workflow-service.test.ts"
+    ],
+    "required_paths": [
+      "governance/task-scopes/AK-4779.snapshot.json",
+      "src/core/workflows/symbol-workflow.ts",
+      "src/core/workflows/tool-workflow-router.ts",
+      "tests/symbol-workflow-service.test.ts"
+    ],
+    "forbidden_paths": [
+      "src/layers/__tests__/test-cache-PaVDfX/**"
+    ]
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}
