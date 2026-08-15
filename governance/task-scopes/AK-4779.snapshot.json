@@ -2,8 +2,8 @@
   "schema_version": 1,
   "exported_at": "2026-08-15T21:27:09.757428595+00:00",
   "task_id": 4779,
-  "entity_version": 9,
-  "commit_sha": null,
+  "entity_version": 11,
+  "commit_sha": "d53d2f766fafe6e61c6fbdaa13601bc10cab21e3",
   "scope": {
     "allowed_paths": [
       "diary/**",
