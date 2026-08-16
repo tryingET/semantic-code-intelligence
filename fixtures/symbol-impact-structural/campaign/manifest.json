@@ -1,0 +1,549 @@
+{
+  "schema": "semantic-code-intelligence.symbol-impact-compact-corpus.v1",
+  "frozenAt": "2026-08-16",
+  "claimBoundary": "Bounded deterministic producer-disclosure evidence over frozen dependency inputs and real structural parser/source strata; not a universal reduction, live backend recall, graph accuracy, language-support, native-consumer, semantic-precision, or production guarantee.",
+  "modes": [
+    "compact",
+    "standard",
+    "debug"
+  ],
+  "acceptance": {
+    "medianReductionVsStandardPercent": 50,
+    "medianReductionVsDebugPercent": 60,
+    "minimumConfirmedFactRetentionPercent": 100,
+    "minimumRiskSignalRetentionPercent": 100,
+    "minimumActionableNextReadRetentionPercent": 100,
+    "maximumFalseConfirmations": 0,
+    "maximumUnsupportedConfidenceFailures": 0,
+    "maximumExpectedSignalMismatches": 0,
+    "maximumResolutionMismatches": 0,
+    "maximumOracleFailures": 0,
+    "maximumPacketBytes": 49152,
+    "maximumRawArtifactBytes": 3145728
+  },
+  "cases": [
+    {
+      "id": "ts-exported-class-low",
+      "language": "typescript",
+      "symbolKind": "class",
+      "symbol": "ExportedTsClass",
+      "definitionPaths": [
+        "fixtures/symbol-impact-structural/campaign/corpus/typescript.ts"
+      ],
+      "exported": true,
+      "fanout": 1,
+      "resolution": "confirmed",
+      "expectedSignals": {
+        "publicApi": "detected",
+        "state": "unknown",
+        "registry": "unknown",
+        "tests": "unknown"
+      },
+      "parserPosture": "supported"
+    },
+    {
+      "id": "ts-internal-function-high",
+      "language": "typescript",
+      "symbolKind": "function",
+      "symbol": "InternalTsFunction",
+      "definitionPaths": [
+        "fixtures/symbol-impact-structural/campaign/corpus/typescript.ts"
+      ],
+      "exported": false,
+      "fanout": 16,
+      "resolution": "confirmed",
+      "expectedSignals": {
+        "publicApi": "unknown",
+        "state": "detected",
+        "registry": "detected",
+        "tests": "detected"
+      },
+      "parserPosture": "supported"
+    },
+    {
+      "id": "ts-internal-method-low",
+      "language": "typescript",
+      "symbolKind": "method",
+      "symbol": "InternalTsMethod",
+      "definitionPaths": [
+        "fixtures/symbol-impact-structural/campaign/corpus/typescript.ts"
+      ],
+      "exported": false,
+      "fanout": 1,
+      "resolution": "confirmed",
+      "expectedSignals": {
+        "publicApi": "unknown",
+        "state": "detected",
+        "registry": "unknown",
+        "tests": "unknown"
+      },
+      "parserPosture": "supported"
+    },
+    {
+      "id": "ts-exported-variable-low",
+      "language": "typescript",
+      "symbolKind": "variable",
+      "symbol": "ExportedTsVariable",
+      "definitionPaths": [
+        "fixtures/symbol-impact-structural/campaign/corpus/typescript.ts"
+      ],
+      "exported": true,
+      "fanout": 1,
+      "resolution": "confirmed",
+      "expectedSignals": {
+        "publicApi": "detected",
+        "state": "unknown",
+        "registry": "unknown",
+        "tests": "unknown"
+      },
+      "parserPosture": "supported"
+    },
+    {
+      "id": "ts-exported-type-multiple",
+      "language": "typescript",
+      "symbolKind": "type",
+      "symbol": "MultiSiteType",
+      "definitionPaths": [
+        "fixtures/symbol-impact-structural/campaign/corpus/odd dir/Δ-zone/strange name.ts",
+        "fixtures/symbol-impact-structural/campaign/corpus/odd dir/Δ-zone/second-definition.ts"
+      ],
+      "exported": true,
+      "fanout": 2,
+      "resolution": "confirmed",
+      "expectedSignals": {
+        "publicApi": "detected",
+        "state": "unknown",
+        "registry": "unknown",
+        "tests": "unknown"
+      },
+      "parserPosture": "supported"
+    },
+    {
+      "id": "tsx-exported-function-low",
+      "language": "typescript-tsx",
+      "symbolKind": "function",
+      "symbol": "ExportedTsxComponent",
+      "definitionPaths": [
+        "fixtures/symbol-impact-structural/campaign/corpus/typescript.tsx"
+      ],
+      "exported": true,
+      "fanout": 1,
+      "resolution": "confirmed",
+      "expectedSignals": {
+        "publicApi": "detected",
+        "state": "unknown",
+        "registry": "unknown",
+        "tests": "unknown"
+      },
+      "parserPosture": "supported"
+    },
+    {
+      "id": "js-exported-function-low",
+      "language": "javascript",
+      "symbolKind": "function",
+      "symbol": "ExportedJsFunction",
+      "definitionPaths": [
+        "fixtures/symbol-impact-structural/campaign/corpus/javascript.js"
+      ],
+      "exported": true,
+      "fanout": 1,
+      "resolution": "confirmed",
+      "expectedSignals": {
+        "publicApi": "detected",
+        "state": "unknown",
+        "registry": "unknown",
+        "tests": "unknown"
+      },
+      "parserPosture": "supported"
+    },
+    {
+      "id": "js-internal-class-low",
+      "language": "javascript",
+      "symbolKind": "class",
+      "symbol": "InternalJsClass",
+      "definitionPaths": [
+        "fixtures/symbol-impact-structural/campaign/corpus/javascript.js"
+      ],
+      "exported": false,
+      "fanout": 1,
+      "resolution": "confirmed",
+      "expectedSignals": {
+        "publicApi": "unknown",
+        "state": "unknown",
+        "registry": "unknown",
+        "tests": "unknown"
+      },
+      "parserPosture": "supported"
+    },
+    {
+      "id": "js-internal-variable-high",
+      "language": "javascript",
+      "symbolKind": "variable",
+      "symbol": "InternalJsVariable",
+      "definitionPaths": [
+        "fixtures/symbol-impact-structural/campaign/corpus/javascript.js"
+      ],
+      "exported": false,
+      "fanout": 16,
+      "resolution": "confirmed",
+      "expectedSignals": {
+        "publicApi": "unknown",
+        "state": "unknown",
+        "registry": "unknown",
+        "tests": "unknown"
+      },
+      "parserPosture": "supported"
+    },
+    {
+      "id": "jsx-exported-function-low",
+      "language": "javascript-jsx",
+      "symbolKind": "function",
+      "symbol": "ExportedJsxComponent",
+      "definitionPaths": [
+        "fixtures/symbol-impact-structural/campaign/corpus/javascript.jsx"
+      ],
+      "exported": true,
+      "fanout": 1,
+      "resolution": "confirmed",
+      "expectedSignals": {
+        "publicApi": "detected",
+        "state": "unknown",
+        "registry": "unknown",
+        "tests": "unknown"
+      },
+      "parserPosture": "supported"
+    },
+    {
+      "id": "py-public-class-low",
+      "language": "python",
+      "symbolKind": "class",
+      "symbol": "PublicPyClass",
+      "definitionPaths": [
+        "fixtures/symbol-impact-structural/campaign/corpus/python.py"
+      ],
+      "exported": true,
+      "fanout": 1,
+      "resolution": "confirmed",
+      "expectedSignals": {
+        "publicApi": "detected",
+        "state": "unknown",
+        "registry": "unknown",
+        "tests": "unknown"
+      },
+      "parserPosture": "supported"
+    },
+    {
+      "id": "py-internal-function-high",
+      "language": "python",
+      "symbolKind": "function",
+      "symbol": "_internal_py_function",
+      "definitionPaths": [
+        "fixtures/symbol-impact-structural/campaign/corpus/python.py"
+      ],
+      "exported": false,
+      "fanout": 16,
+      "resolution": "confirmed",
+      "expectedSignals": {
+        "publicApi": "unknown",
+        "state": "unknown",
+        "registry": "unknown",
+        "tests": "unknown"
+      },
+      "parserPosture": "supported"
+    },
+    {
+      "id": "py-internal-method-low",
+      "language": "python",
+      "symbolKind": "method",
+      "symbol": "internal_py_method",
+      "definitionPaths": [
+        "fixtures/symbol-impact-structural/campaign/corpus/python.py"
+      ],
+      "exported": false,
+      "fanout": 1,
+      "resolution": "confirmed",
+      "expectedSignals": {
+        "publicApi": "unknown",
+        "state": "detected",
+        "registry": "unknown",
+        "tests": "unknown"
+      },
+      "parserPosture": "supported"
+    },
+    {
+      "id": "py-public-variable-low",
+      "language": "python",
+      "symbolKind": "variable",
+      "symbol": "PUBLIC_PY_VARIABLE",
+      "definitionPaths": [
+        "fixtures/symbol-impact-structural/campaign/corpus/python.py"
+      ],
+      "exported": true,
+      "fanout": 1,
+      "resolution": "confirmed",
+      "expectedSignals": {
+        "publicApi": "detected",
+        "state": "detected",
+        "registry": "unknown",
+        "tests": "unknown"
+      },
+      "parserPosture": "supported"
+    },
+    {
+      "id": "rust-public-type-low",
+      "language": "rust",
+      "symbolKind": "type",
+      "symbol": "PublicRustType",
+      "definitionPaths": [
+        "fixtures/symbol-impact-structural/campaign/corpus/rust.rs"
+      ],
+      "exported": true,
+      "fanout": 1,
+      "resolution": "confirmed",
+      "expectedSignals": {
+        "publicApi": "detected",
+        "state": "unknown",
+        "registry": "unknown",
+        "tests": "unknown"
+      },
+      "parserPosture": "supported"
+    },
+    {
+      "id": "rust-public-function-high",
+      "language": "rust",
+      "symbolKind": "function",
+      "symbol": "public_rust_function",
+      "definitionPaths": [
+        "fixtures/symbol-impact-structural/campaign/corpus/rust.rs"
+      ],
+      "exported": true,
+      "fanout": 16,
+      "resolution": "confirmed",
+      "symbolOnly": true,
+      "expectedSignals": {
+        "publicApi": "detected",
+        "state": "unknown",
+        "registry": "unknown",
+        "tests": "unknown"
+      },
+      "parserPosture": "supported"
+    },
+    {
+      "id": "rust-internal-method-low",
+      "language": "rust",
+      "symbolKind": "method",
+      "symbol": "internal_rust_method",
+      "definitionPaths": [
+        "fixtures/symbol-impact-structural/campaign/corpus/rust.rs"
+      ],
+      "exported": false,
+      "fanout": 1,
+      "resolution": "confirmed",
+      "expectedSignals": {
+        "publicApi": "unknown",
+        "state": "unknown",
+        "registry": "unknown",
+        "tests": "unknown"
+      },
+      "parserPosture": "supported"
+    },
+    {
+      "id": "go-exported-type-low",
+      "language": "go",
+      "symbolKind": "type",
+      "symbol": "ExportedGoType",
+      "definitionPaths": [
+        "fixtures/symbol-impact-structural/campaign/corpus/go.go"
+      ],
+      "exported": true,
+      "fanout": 1,
+      "resolution": "confirmed",
+      "expectedSignals": {
+        "publicApi": "detected",
+        "state": "unknown",
+        "registry": "unknown",
+        "tests": "unknown"
+      },
+      "parserPosture": "supported"
+    },
+    {
+      "id": "go-exported-function-high",
+      "language": "go",
+      "symbolKind": "function",
+      "symbol": "ExportedGoFunction",
+      "definitionPaths": [
+        "fixtures/symbol-impact-structural/campaign/corpus/go.go"
+      ],
+      "exported": true,
+      "fanout": 16,
+      "resolution": "confirmed",
+      "expectedSignals": {
+        "publicApi": "detected",
+        "state": "unknown",
+        "registry": "unknown",
+        "tests": "unknown"
+      },
+      "parserPosture": "supported"
+    },
+    {
+      "id": "go-internal-variable-low",
+      "language": "go",
+      "symbolKind": "variable",
+      "symbol": "internalGoVariable",
+      "definitionPaths": [
+        "fixtures/symbol-impact-structural/campaign/corpus/go.go"
+      ],
+      "exported": false,
+      "fanout": 1,
+      "resolution": "confirmed",
+      "expectedSignals": {
+        "publicApi": "unknown",
+        "state": "unknown",
+        "registry": "unknown",
+        "tests": "unknown"
+      },
+      "parserPosture": "supported"
+    },
+    {
+      "id": "unusual-path-exported-function",
+      "language": "typescript",
+      "symbolKind": "function",
+      "symbol": "OddPathFunction",
+      "definitionPaths": [
+        "fixtures/symbol-impact-structural/campaign/corpus/odd dir/Δ-zone/strange name.ts"
+      ],
+      "exported": true,
+      "fanout": 1,
+      "resolution": "confirmed",
+      "expectedSignals": {
+        "publicApi": "detected",
+        "state": "unknown",
+        "registry": "unknown",
+        "tests": "unknown"
+      },
+      "parserPosture": "supported"
+    },
+    {
+      "id": "unconfirmed-high-fanout",
+      "language": "typescript",
+      "symbolKind": "function",
+      "symbol": "AbsentCampaignSymbol",
+      "definitionPaths": [],
+      "exported": false,
+      "fanout": 16,
+      "resolution": "unconfirmed",
+      "expectedSignals": null,
+      "parserPosture": "not_run"
+    },
+    {
+      "id": "indeterminate-degraded-backends",
+      "language": "typescript",
+      "symbolKind": "function",
+      "symbol": "FailedCampaignSymbol",
+      "definitionPaths": [],
+      "exported": false,
+      "fanout": 0,
+      "resolution": "indeterminate",
+      "degraded": "all",
+      "expectedSignals": null,
+      "parserPosture": "not_run"
+    },
+    {
+      "id": "confirmed-degraded-graph",
+      "language": "typescript",
+      "symbolKind": "type",
+      "symbol": "ExportedTsType",
+      "definitionPaths": [
+        "fixtures/symbol-impact-structural/campaign/corpus/typescript.ts"
+      ],
+      "exported": true,
+      "fanout": 1,
+      "resolution": "confirmed",
+      "degraded": "graph",
+      "expectedSignals": {
+        "publicApi": "detected",
+        "state": "unknown",
+        "registry": "unknown",
+        "tests": "unknown"
+      },
+      "parserPosture": "supported"
+    },
+    {
+      "id": "conventional-name-negative-control",
+      "language": "typescript",
+      "symbolKind": "function",
+      "symbol": "ConventionalLookingInternal",
+      "definitionPaths": [
+        "fixtures/symbol-impact-structural/campaign/corpus/public-api-registry-state-store.test.ts"
+      ],
+      "exported": false,
+      "fanout": 1,
+      "resolution": "confirmed",
+      "expectNamingFallback": true,
+      "expectedSignals": {
+        "publicApi": "unknown",
+        "state": "unknown",
+        "registry": "unknown",
+        "tests": "unknown"
+      },
+      "parserPosture": "supported"
+    },
+    {
+      "id": "unsupported-language-confidence-control",
+      "language": "clojure-unsupported-control",
+      "symbolKind": "function",
+      "symbol": "unsupported-control",
+      "definitionPaths": [
+        "fixtures/symbol-impact-structural/campaign/corpus/unsupported.clj"
+      ],
+      "exported": false,
+      "fanout": 1,
+      "resolution": "confirmed",
+      "expectedSignals": {
+        "publicApi": "unknown",
+        "state": "unknown",
+        "registry": "unknown",
+        "tests": "unknown"
+      },
+      "parserPosture": "unsupported"
+    },
+    {
+      "id": "markdown-fallback-confidence-control",
+      "language": "markdown-unsupported-control",
+      "symbolKind": "function",
+      "symbol": "UnsupportedMarkdownSymbol",
+      "definitionPaths": [
+        "fixtures/symbol-impact-structural/campaign/corpus/unsupported.md"
+      ],
+      "exported": false,
+      "fanout": 1,
+      "resolution": "confirmed",
+      "expectedSignals": {
+        "publicApi": "unknown",
+        "state": "unknown",
+        "registry": "unknown",
+        "tests": "unknown"
+      },
+      "parserPosture": "unsupported"
+    },
+    {
+      "id": "unknown-extension-confidence-control",
+      "language": "unknown-extension-control",
+      "symbolKind": "variable",
+      "symbol": "UnknownExtensionSymbol",
+      "definitionPaths": [
+        "fixtures/symbol-impact-structural/campaign/corpus/unknown.weird"
+      ],
+      "exported": false,
+      "fanout": 1,
+      "resolution": "confirmed",
+      "expectedSignals": {
+        "publicApi": "unknown",
+        "state": "unknown",
+        "registry": "unknown",
+        "tests": "unknown"
+      },
+      "parserPosture": "unsupported"
+    }
+  ]
+}

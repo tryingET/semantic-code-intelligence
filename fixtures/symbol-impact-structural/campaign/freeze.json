@@ -1,0 +1,166 @@
+{
+  "schema": "semantic-code-intelligence.symbol-impact-compact-freeze.v1",
+  "aggregateSha256": "051599553f4249e6534741a6775aa14de9723e223ba70c1b2fe7792c551737c1",
+  "files": [
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/README.md",
+      "bytes": 6674,
+      "sha256": "05f14792079c9f9799a56b0ed2abbaffedd64fee8c61ea413af84c5f306d990b"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/corpus/fanout/ref-00.ts",
+      "bytes": 192,
+      "sha256": "588a11a9dda75f8439825e4b1deb8b0d7765d49ef5d93ced435d0409d7a7fa84"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/corpus/fanout/ref-01.ts",
+      "bytes": 192,
+      "sha256": "4ab0233aff113921b66f266ebc684b186233ad75fa2b6b29744d83d4af4a392f"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/corpus/fanout/ref-02.ts",
+      "bytes": 192,
+      "sha256": "421d697e32613b2ed3992f5d1d88850cd8f1de753be1e3e773f498ba6481dd39"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/corpus/fanout/ref-03.ts",
+      "bytes": 192,
+      "sha256": "d7dbfd03a8e3582522a321210a77a49c41ced0ed6fb672a7c46d8da42d590179"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/corpus/fanout/ref-04.ts",
+      "bytes": 192,
+      "sha256": "2044e4d223e8a483473684e2185f9900e91f10b9689d6dee6d93c8e3d6bd961b"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/corpus/fanout/ref-05.ts",
+      "bytes": 192,
+      "sha256": "4ecadb9b0cbafec442850a7c81fa00f1ec77225b1be4ccb31a46affb544e1f1a"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/corpus/fanout/ref-06.ts",
+      "bytes": 192,
+      "sha256": "c17830db1bf0b9e87143f1fc4eb347398b3b8f79f8aa2925d17ee9ba5cffb6a2"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/corpus/fanout/ref-07.ts",
+      "bytes": 192,
+      "sha256": "bbbd286491e4ba287e2c1aec163b43ea8c18582e2a7e49c2c7f41d692de901c6"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/corpus/fanout/ref-08.ts",
+      "bytes": 192,
+      "sha256": "c00d485dfd2dbf714752bc821701cd5f443cb593140a401d1ef55fecbdd624f8"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/corpus/fanout/ref-09.ts",
+      "bytes": 192,
+      "sha256": "bfdfb59bb11ba8410c054d31c105c8d3669f6327791c767fdeaaa8368540d0fe"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/corpus/fanout/ref-10.ts",
+      "bytes": 192,
+      "sha256": "45d6b5b0a73f157a34d4ef8357e9bef9179bd8230f51cf88012a2262704db657"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/corpus/fanout/ref-11.ts",
+      "bytes": 192,
+      "sha256": "dbe16d2cca2db0a51f0131a7e63ec913d8c1b320695a81e8beafcb1de2c6c91c"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/corpus/fanout/ref-12.ts",
+      "bytes": 192,
+      "sha256": "c8bf143f9aaa88f04b7c51eaafb78beb417b23ae1af1b75d35ef0d6f7207e1d7"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/corpus/fanout/ref-13.ts",
+      "bytes": 192,
+      "sha256": "36d44407087d8033b55e7e254be9d6efc600b9fb07661c8d1c17926bcae4be79"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/corpus/fanout/ref-14.ts",
+      "bytes": 192,
+      "sha256": "2b2ffaa668c5901339c8dee99f73d451da3d197609ceb9d683bf32bac0ac606d"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/corpus/fanout/ref-15.ts",
+      "bytes": 192,
+      "sha256": "296780ad69839f833a33b6fb1bb54529a87ffa05f14ff53960cd2bea35d80602"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/corpus/go.go",
+      "bytes": 224,
+      "sha256": "00037797f02ca1fc75baacc9163b1d0f560981100ad9c114f8d402456a8148f0"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/corpus/javascript.js",
+      "bytes": 180,
+      "sha256": "5d8491258169bf48b00adc5b582630a1f9fbaf4d90f73fab52030c6b4ab29ecb"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/corpus/javascript.jsx",
+      "bytes": 74,
+      "sha256": "bbcf07719f542a24938c91a1e5a20d023736b767b6ac199a7994a44ae684f61f"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/corpus/odd dir/Δ-zone/second-definition.ts",
+      "bytes": 47,
+      "sha256": "c4cbc7096eaf61b8aa51c0e62819360e446a1cd3160af6c6db160e6221a60af5"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/corpus/odd dir/Δ-zone/strange name.ts",
+      "bytes": 94,
+      "sha256": "19ed1e76450823ff0ee44411868440fa0965bdc19423b35d28fd76ac2608c124"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/corpus/public-api-registry-state-store.test.ts",
+      "bytes": 87,
+      "sha256": "8429837847bc60c7117b68616d9d3cf97780b8809f00e3894320db0433856471"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/corpus/python.py",
+      "bytes": 199,
+      "sha256": "a5af4d6bedb7becea3359c4003521350d4a2672a979005cb44a877845c77563e"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/corpus/rust.rs",
+      "bytes": 195,
+      "sha256": "0d6149b5c513fa2a3ce6cc9d12a939fdbf31fd14c8de0cabd9bdc2ad39eec0b3"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/corpus/typescript.ts",
+      "bytes": 541,
+      "sha256": "25523c62e1aa6f090ad47d25845b7a7ab9e611e643626e60711b3c6e181079da"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/corpus/typescript.tsx",
+      "bytes": 74,
+      "sha256": "6f0b2443d53d7d640f66742da4871fd8205efe870d0ea33c64e1fa77830f2364"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/corpus/unknown.weird",
+      "bytes": 23,
+      "sha256": "ec33158b53f1743ee5bceb81d3a89b7eab7845578ec7213e6e49fae50fd88c04"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/corpus/unsupported.clj",
+      "bytes": 32,
+      "sha256": "b904c525a9f2a0d32f7f708b2ece7ccb9be7e598a5c4d4538d009182d1272e75"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/corpus/unsupported.md",
+      "bytes": 60,
+      "sha256": "d833bd5e4e7c3a779f09c26d3ae4a87a391ea8ddcb3fc816d6bda8a78019b202"
+    },
+    {
+      "path": "fixtures/symbol-impact-structural/campaign/manifest.json",
+      "bytes": 15713,
+      "sha256": "dc3bd558888e8ec2be9aab7b3481e0ba2bfd4c064cfbd3e836a679590ea2036e"
+    },
+    {
+      "path": "tests/symbol-workflow-compact-evidence-campaign.test.ts",
+      "bytes": 26307,
+      "sha256": "fd7380206e66f8deab302166098790f47ca18c87ae0383d26fa41160c98e3323"
+    }
+  ]
+}
