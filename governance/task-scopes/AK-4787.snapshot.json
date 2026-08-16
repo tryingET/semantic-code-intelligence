@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-08-16T05:16:07.695118747+00:00",
+  "task_id": 4787,
+  "entity_version": 2,
+  "commit_sha": "415e400bf83497b55a1b1c4d2241abbf8de836c5",
+  "scope": {
+    "allowed_paths": [
+      "scripts/loop-scope-check.ts",
+      "tests/**"
+    ],
+    "required_paths": [
+      "scripts/loop-scope-check.ts"
+    ],
+    "forbidden_paths": []
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}
