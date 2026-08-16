@@ -173,6 +173,43 @@ try {
         count: impact?.definitions?.count,
         symbol: navigationSymbol,
     });
+    const standardImpact = await callTool(
+        'explore_symbol_impact',
+        { symbol: navigationSymbol, file: navigationFile, precise: true, depth: 1, limit: 10, mode: 'standard' },
+        'Verify normalized bounded standard evidence through HTTP tools/call.'
+    );
+    const debugImpact = callCliWorkflow(
+        'explore_symbol_impact',
+        { symbol: navigationSymbol, file: navigationFile, precise: true, depth: 1, limit: 10, mode: 'debug' },
+        'Verify bounded/redacted debug evidence through a fresh CLI workflow process.'
+    );
+    recordSemanticCheck(
+        'explore_symbol_impact_progressive_modes_differ',
+        impact?.details === 'mode: standard' &&
+            standardImpact?.details?.mode === 'standard' &&
+            standardImpact?.details?.diagnostics === undefined &&
+            debugImpact?.details?.mode === 'debug' &&
+            Array.isArray(debugImpact?.details?.diagnostics?.subcalls),
+        {
+            compact: impact?.details,
+            standard: standardImpact?.details?.mode,
+            debug: debugImpact?.details?.mode,
+        }
+    );
+    const standardDetailBytes = Buffer.byteLength(JSON.stringify(standardImpact?.details), 'utf8');
+    const debugDetailBytes = Buffer.byteLength(JSON.stringify(debugImpact?.details), 'utf8');
+    const standardPacketBytes = Buffer.byteLength(JSON.stringify(standardImpact), 'utf8');
+    const debugPacketBytes = Buffer.byteLength(JSON.stringify(debugImpact), 'utf8');
+    recordSemanticCheck(
+        'explore_symbol_impact_details_respect_byte_budgets',
+        Number(standardImpact?.details?.disclosure?.emittedBytes || 0) === standardDetailBytes &&
+            standardDetailBytes <= Number(standardImpact?.details?.disclosure?.byteBudget || 0) &&
+            Number(debugImpact?.details?.disclosure?.emittedBytes || 0) === debugDetailBytes &&
+            debugDetailBytes <= Number(debugImpact?.details?.disclosure?.byteBudget || 0) &&
+            standardPacketBytes <= Number(standardImpact?.details?.disclosure?.packetByteBudget || 0) &&
+            debugPacketBytes <= Number(debugImpact?.details?.disclosure?.packetByteBudget || 0),
+        { standardDetailBytes, debugDetailBytes, standardPacketBytes, debugPacketBytes }
+    );
     const located = await callTool(
         'locate_confirm_definition',
         { symbol: navigationSymbol, file: navigationFile, precise: true, maxResults: 10 },

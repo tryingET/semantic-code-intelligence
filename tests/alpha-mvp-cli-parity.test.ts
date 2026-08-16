@@ -153,6 +153,34 @@ describe('Alpha MVP CLI fallback parity', () => {
         expect(search.payload.results.length).toBeLessThanOrEqual(5);
     }, 60000);
 
+    test('generic workflow preserves explore_symbol_impact progressive modes across fresh CLI processes', async () => {
+        const results = new Map<string, any>();
+        for (const mode of ['compact', 'standard', 'debug']) {
+            const result = await workflow('explore_symbol_impact', {
+                symbol: 'handleToolCall',
+                file: 'src/adapters/mcp-adapter.ts',
+                precise: true,
+                depth: 1,
+                limit: 10,
+                mode,
+            });
+            expect(result.payload).toMatchObject({
+                schemaVersion: 1,
+                workflow: 'explore_symbol_impact',
+                ok: true,
+                status: 'confirmed',
+            });
+            results.set(mode, result.payload);
+        }
+
+        expect(results.get('compact').details).toBe('mode: standard');
+        expect(results.get('standard').details.mode).toBe('standard');
+        expect(results.get('standard').details).not.toHaveProperty('diagnostics');
+        expect(results.get('debug').details.mode).toBe('debug');
+        expect(results.get('debug').details.diagnostics.subcalls).toHaveLength(3);
+        expect(results.get('debug').definition).toEqual(results.get('compact').definition);
+    }, 60000);
+
     test('generic workflow command inspects snapshot metadata without materializing content by default', async () => {
         const workspace = await mkdtemp(path.join(tmpdir(), 'sci-cli-snapshot-metadata-'));
         try {

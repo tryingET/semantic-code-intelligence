@@ -43,6 +43,31 @@ describe('MCP workflows GA shapes', () => {
         expect(Array.isArray(obj.definitions)).toBe(true);
     }, 30000);
 
+    test('explore_symbol_impact: compact, standard, and debug preserve MCP parity', async () => {
+        const results = new Map<string, any>();
+        const impactFile = toFileUri('src/adapters/mcp-adapter.ts');
+        for (const mode of ['compact', 'standard', 'debug']) {
+            const res = await mcp.handleToolCall('explore_symbol_impact', {
+                symbol: 'handleToolCall',
+                file: impactFile,
+                precise: true,
+                depth: 1,
+                limit: 10,
+                mode,
+            });
+            const obj = await parse(res);
+            expect(obj).toMatchObject({ workflow: 'explore_symbol_impact', ok: true, status: 'confirmed' });
+            results.set(mode, obj);
+        }
+
+        expect(results.get('compact').details).toBe('mode: standard');
+        expect(results.get('standard').details.mode).toBe('standard');
+        expect(results.get('standard').details).not.toHaveProperty('diagnostics');
+        expect(results.get('debug').details.mode).toBe('debug');
+        expect(results.get('debug').details.diagnostics.subcalls).toHaveLength(3);
+        expect(results.get('debug').definition).toEqual(results.get('standard').definition);
+    }, 30000);
+
     test('rename_safely (runChecks=false): predictable shape', async () => {
         const res = await mcp.handleToolCall('rename_safely', {
             oldName: 'TestFunction',

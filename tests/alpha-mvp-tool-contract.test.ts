@@ -189,6 +189,12 @@ describe('Alpha MVP tool contract', () => {
         expect(specs.get('explore_symbol_impact')?.inputSchema?.properties?.maxFiles?.maximum).toBe(25);
         expect(specs.get('explore_symbol_impact')?.inputSchema?.properties?.maxNextReads?.maximum).toBe(10);
         expect(specs.get('explore_symbol_impact')?.inputSchema?.properties?.symbol?.maxLength).toBe(256);
+        expect(specs.get('explore_symbol_impact')?.description).toContain('compact returns only the decision packet');
+        expect(specs.get('explore_symbol_impact')?.description).toContain('24 KiB');
+        expect(specs.get('explore_symbol_impact')?.description).toContain('No unrestricted backend dumps');
+        expect(specs.get('explore_symbol_impact')?.inputSchema?.properties?.mode?.description).toContain(
+            'standard: normalized bounded evidence'
+        );
         expect(specs.get('locate_confirm_definition')?.category).toBe('workflow');
     });
 });
@@ -289,6 +295,36 @@ bindDescribe('Alpha MVP HTTP tools/call contract', () => {
         expect(Array.isArray(results.get('ast_query')?.results)).toBe(true);
         expect(results.get('graph_expand')?.schemaVersion).toBe(2);
         expect(results.get('graph_expand')?.neighbors).toBeDefined();
+    }, 30000);
+
+    test('explore_symbol_impact preserves progressive mode differences through HTTP tools/call', async () => {
+        const results = new Map<string, any>();
+        for (const mode of ['compact', 'standard', 'debug']) {
+            const { status, body } = await callTool(base, 'explore_symbol_impact', {
+                symbol: 'handleToolCall',
+                file: 'src/adapters/mcp-adapter.ts',
+                precise: true,
+                depth: 1,
+                limit: 10,
+                mode,
+            });
+            expect(status, `${mode} should return HTTP 200`).toBe(200);
+            expect(body.success, `${mode} should succeed`).toBe(true);
+            expect(body.result).toMatchObject({
+                schemaVersion: 1,
+                workflow: 'explore_symbol_impact',
+                ok: true,
+                status: 'confirmed',
+            });
+            results.set(mode, body.result);
+        }
+
+        expect(results.get('compact').details).toBe('mode: standard');
+        expect(results.get('standard').details).toMatchObject({ mode: 'standard' });
+        expect(results.get('standard').details).not.toHaveProperty('diagnostics');
+        expect(results.get('debug').details).toMatchObject({ mode: 'debug' });
+        expect(results.get('debug').details.diagnostics.subcalls).toHaveLength(3);
+        expect(results.get('debug').definition).toEqual(results.get('compact').definition);
     }, 30000);
 
     test('text_search caps individual result text while preserving match metadata', async () => {

@@ -1,6 +1,24 @@
-import { posix } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type { SnapshotWorkflowResult } from './snapshot-patch-workflow.js';
+import {
+    arrayOf,
+    boundedNumber,
+    buildSymbolImpactDetails,
+    canonicalPath,
+    classifyImpactSignals,
+    compareCompactLocations,
+    dedupeCompactPaths,
+    fitSymbolImpactPacket,
+    invokeSymbolImpactSubcall,
+    isRecord,
+    parseWorkflowResult,
+    safeDisclosureLabel,
+    safeDisclosurePath,
+    sanitizeDisclosureText,
+    SYMBOL_IMPACT_DISCLOSURE_BUDGETS,
+    uniqueStrings,
+} from './symbol-workflow-disclosure.js';
+
+export { parseWorkflowResult };
 
 export interface SymbolWorkflowDeps {
     workspaceRoot: () => string;
@@ -68,12 +86,18 @@ export class SymbolWorkflowService {
     }
 
     async exploreSymbol(args: Record<string, any>): Promise<SnapshotWorkflowResult> {
+        const workflowStarted = performance.now();
         const symbol = String(args?.symbol || '').trim();
         if (!symbol) return { text: 'symbol required', isError: true };
         if (symbol.length > 256) return { text: 'symbol exceeds 256 characters', isError: true };
 
         let file = typeof args?.file === 'string' ? args.file : undefined;
-        if (!file && this.deps.pickOntologySeedFile) file = (await this.deps.pickOntologySeedFile(symbol)) || undefined;
+        let ontologySeedElapsedMs: number | undefined;
+        if (!file && this.deps.pickOntologySeedFile) {
+            const ontologySeedStarted = performance.now();
+            file = (await this.deps.pickOntologySeedFile(symbol)) || undefined;
+            ontologySeedElapsedMs = performance.now() - ontologySeedStarted;
+        }
         const precise = (args?.precise ?? true) as boolean;
         const depth = boundedNumber(args?.depth, 1, 1, 5);
         const limit = boundedNumber(args?.limit, 50, 1, 200);
@@ -82,48 +106,74 @@ export class SymbolWorkflowService {
         const maxLimitations = boundedNumber(args?.maxLimitations, 3, 1, 10);
         const mode = args?.mode === 'standard' || args?.mode === 'debug' ? args.mode : 'compact';
         const workspaceRoot = canonicalPath(this.deps.workspaceRoot());
+        const disclosedSymbol = sanitizeDisclosureText(symbol, workspaceRoot, 256);
 
-        const [definitions, symbolMap] = await Promise.all([
-            this.deps.findDefinition({ symbol, file, precise, maxResults: limit }),
-            this.deps.buildSymbolMap({ symbol, file, maxFiles: Math.min(20, limit), astOnly: true }),
+        const definitionInput = { symbol, file, precise, maxResults: limit };
+        const symbolMapInput = { symbol, file, maxFiles: Math.min(20, limit), astOnly: true };
+        const [definitionResult, symbolMapResult] = await Promise.all([
+            invokeSymbolImpactSubcall('find_definition', definitionInput, () =>
+                this.deps.findDefinition(definitionInput)
+            ),
+            invokeSymbolImpactSubcall('build_symbol_map', symbolMapInput, () =>
+                this.deps.buildSymbolMap(symbolMapInput)
+            ),
         ]);
-        const definitionResult = inspectWorkflowResult('find_definition', definitions);
-        const symbolMapResult = inspectWorkflowResult('build_symbol_map', symbolMap);
         const definitionOut = definitionResult.value;
         const symbolMapOut = symbolMapResult.value;
-        const rawDefinitions = definitionResult.issue ? [] : arrayOf(definitionOut.definitions);
-        const rawDeclarations = symbolMapResult.issue ? [] : arrayOf(symbolMapOut.declarations);
-        const rawReferences = symbolMapResult.issue ? [] : arrayOf(symbolMapOut.references);
+        const definitionItems = definitionResult.issue ? [] : arrayOf(definitionOut.definitions);
+        const declarationItems = symbolMapResult.issue ? [] : arrayOf(symbolMapOut.declarations);
+        const referenceItems = symbolMapResult.issue ? [] : arrayOf(symbolMapOut.references);
+        const rawDefinitions = definitionItems.slice(0, SYMBOL_IMPACT_DISCLOSURE_BUDGETS.analyzedItemsPerSection);
+        const rawDeclarations = declarationItems.slice(0, SYMBOL_IMPACT_DISCLOSURE_BUDGETS.analyzedItemsPerSection);
+        const rawReferences = referenceItems.slice(0, SYMBOL_IMPACT_DISCLOSURE_BUDGETS.analyzedItemsPerSection);
+        const intakeTruncated = [definitionItems, declarationItems, referenceItems].some(
+            (items) => items.length > SYMBOL_IMPACT_DISCLOSURE_BUDGETS.analyzedItemsPerSection
+        );
         const confirmedCandidates = dedupeLocations(
             [...rawDefinitions, ...rawDeclarations].filter((item) => isDefinition(item, symbol, workspaceRoot)),
             workspaceRoot
         );
         const confirmedLocations = dedupeCompactPaths(
-            confirmedCandidates.map((item) => compactLocation(item, workspaceRoot)).sort(compareLocations)
+            confirmedCandidates.map((item) => compactLocation(item, workspaceRoot)).sort(compareCompactLocations)
         );
         const definition = confirmedLocations[0] || null;
 
         // Import/export impact is file-shaped. Resolve the symbol first so symbol-only calls
         // can seed graph expansion from confirmed evidence rather than omitting those edges.
         const graphFile = definition?.path || file;
-        const neighbors = await this.deps.graphExpand(
-            graphFile
-                ? { file: graphFile, symbol, edges: ['imports', 'exports', 'callers', 'callees'], depth, limit }
-                : { symbol, edges: ['callers', 'callees'], depth, limit }
+        const graphInput = graphFile
+            ? { file: graphFile, symbol, edges: ['imports', 'exports', 'callers', 'callees'], depth, limit }
+            : { symbol, edges: ['callers', 'callees'], depth, limit };
+        const neighborsResult = await invokeSymbolImpactSubcall('graph_expand', graphInput, () =>
+            this.deps.graphExpand(graphInput)
         );
-        const neighborsResult = inspectWorkflowResult('graph_expand', neighbors);
         const neighborsOut = neighborsResult.value;
+        const subcalls = [definitionResult, symbolMapResult, neighborsResult];
+        const totalElapsedMs = performance.now() - workflowStarted;
         const issues = [definitionResult.issue, symbolMapResult.issue, neighborsResult.issue].filter(
             (issue): issue is string => !!issue
         );
-        const hasImpactEvidence = !neighborsResult.issue && neighborsOut?.impactSummary?.hasImpactEvidence === true;
+        const impactSummary = isRecord(neighborsOut.impactSummary) ? neighborsOut.impactSummary : {};
+        const hasImpactEvidence = !neighborsResult.issue && impactSummary.hasImpactEvidence === true;
+        const graphNeighbors = isRecord(neighborsOut.neighbors) ? neighborsOut.neighbors : {};
+        const graphIntakeTruncated = ['exports', 'callers', 'imports', 'callees'].some(
+            (edge) => arrayOf(graphNeighbors[edge]).length > SYMBOL_IMPACT_DISCLOSURE_BUDGETS.analyzedItemsPerSection
+        );
         const status = definition ? 'confirmed' : issues.length > 0 ? 'indeterminate' : 'unconfirmed';
+        const backendLimitations = arrayOf(impactSummary.limitations);
+        const limitationIntakeTruncated =
+            backendLimitations.length > SYMBOL_IMPACT_DISCLOSURE_BUDGETS.analyzedLimitations;
         const limitations = uniqueStrings([
             ...(confirmedLocations.length > 1
                 ? ['Multiple definition candidates were found; impact includes every confirmed definition file.']
                 : []),
             ...issues,
-            ...arrayOf(neighborsOut?.impactSummary?.limitations).map((value) => boundedText(String(value), 200)),
+            ...(intakeTruncated || graphIntakeTruncated || limitationIntakeTruncated
+                ? ['Backend evidence exceeded an analysis budget and was truncated deterministically.']
+                : []),
+            ...backendLimitations
+                .slice(0, SYMBOL_IMPACT_DISCLOSURE_BUDGETS.analyzedLimitations)
+                .map((value) => sanitizeDisclosureText(String(value), workspaceRoot, 200)),
             ...(depth > 1 ? ['Impact ranking uses the backend’s bounded one-hop evidence.'] : []),
         ]).slice(0, maxLimitations);
 
@@ -133,14 +183,18 @@ export class SymbolWorkflowService {
                 schemaVersion: 1,
                 workflow: 'explore_symbol_impact',
                 ok: false,
-                symbol,
+                symbol: disclosedSymbol,
                 status,
                 degraded: issues.length > 0,
                 message:
                     status === 'indeterminate'
                         ? 'Definition not confirmed because one or more evidence sources failed; do not plan edits from this result.'
                         : 'Definition not confirmed; references or graph matches alone are insufficient to plan edits.',
-                evidence: { references: rawReferences.length, graphImpact: hasImpactEvidence, partial: hasPartialEvidence },
+                evidence: {
+                    references: rawReferences.length,
+                    graphImpact: hasImpactEvidence,
+                    partial: hasPartialEvidence,
+                },
                 nextReads: [
                     {
                         action: 'locate_confirm_definition',
@@ -151,8 +205,17 @@ export class SymbolWorkflowService {
                 ],
                 limitations,
             };
-            if (mode !== 'compact') packet.details = { definitions: definitionOut, symbolMap: symbolMapOut, neighbors: neighborsOut };
-            return { payload: packet, isError: false };
+            if (mode !== 'compact') {
+                packet.details = buildSymbolImpactDetails({
+                    mode,
+                    workspaceRoot,
+                    subcalls,
+                    limitations,
+                    totalElapsedMs,
+                    ontologySeedElapsedMs,
+                });
+            }
+            return { payload: fitSymbolImpactPacket(packet), isError: false };
         }
 
         const ranked = rankImpactedFiles(
@@ -172,7 +235,9 @@ export class SymbolWorkflowService {
         }
         const signals = impactSignals(ranked, files);
         const riskReasons = [
-            ...(signals.publicApi.detected ? ['Export/public API evidence means downstream consumers may be affected.'] : []),
+            ...(signals.publicApi.detected
+                ? ['Export/public API evidence means downstream consumers may be affected.']
+                : []),
             ...(signals.state.detected ? ['State or persistence-adjacent files require invariant review.'] : []),
             ...(signals.registry.detected ? ['Registry/plugin wiring may require coordinated updates.'] : []),
             ...(signals.tests.detected ? ['Existing impacted tests provide a focused validation target.'] : []),
@@ -187,13 +252,16 @@ export class SymbolWorkflowService {
         const nextReads = files.slice(0, maxNextReads).map((item: any, index: number) => ({
             path: item.path,
             line: item.line,
-            reason: index === 0 ? 'Start at the confirmed definition.' : `Verify ${item.reasons.slice(0, 2).join(' and ')} evidence.`,
+            reason:
+                index === 0
+                    ? 'Start at the confirmed definition.'
+                    : `Verify ${item.reasons.slice(0, 2).join(' and ')} evidence.`,
         }));
         const packet: Record<string, any> = {
             schemaVersion: 1,
             workflow: 'explore_symbol_impact',
             ok: true,
-            symbol,
+            symbol: disclosedSymbol,
             status,
             degraded: issues.length > 0,
             definition,
@@ -202,9 +270,19 @@ export class SymbolWorkflowService {
             editRisk: { level: risk, reasons: riskReasons.slice(0, 4), signals },
             nextReads,
             limitations,
-            details: mode === 'compact' ? 'mode: standard' : { definitions: definitionOut, symbolMap: symbolMapOut, neighbors: neighborsOut },
+            details:
+                mode === 'compact'
+                    ? 'mode: standard'
+                    : buildSymbolImpactDetails({
+                          mode,
+                          workspaceRoot,
+                          subcalls,
+                          limitations,
+                          totalElapsedMs,
+                          ontologySeedElapsedMs,
+                      }),
         };
-        return { payload: packet, isError: false };
+        return { payload: fitSymbolImpactPacket(packet), isError: false };
     }
 
     async locateConfirmDefinition(args: Record<string, any>): Promise<SnapshotWorkflowResult> {
@@ -278,46 +356,10 @@ type RankedFile = CompactLocation & {
     signals: string[];
 };
 
-function boundedNumber(value: unknown, fallback: number, min: number, max: number): number {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? Math.max(min, Math.min(max, Math.floor(parsed))) : fallback;
-}
-
-function arrayOf(value: unknown): any[] {
-    return Array.isArray(value) ? value : [];
-}
-
-function uniqueStrings(values: string[]): string[] {
-    return Array.from(new Set(values.filter(Boolean)));
-}
-
-function boundedText(value: string, maxCharacters: number): string {
-    return value.length <= maxCharacters ? value : `${value.slice(0, Math.max(0, maxCharacters - 1))}…`;
-}
-
 function locationPath(item: any, workspaceRoot?: string): string | null {
     const value = [item?.uri, item?.file, item?.path].find((candidate) => typeof candidate === 'string' && candidate);
     if (!value) return null;
-    let normalized: string;
-    if (value.startsWith('file://')) {
-        try {
-            normalized = canonicalPath(fileURLToPath(value));
-        } catch {
-            return null;
-        }
-    } else {
-        normalized = canonicalPath(value);
-    }
-    if (!workspaceRoot) return normalized;
-    const root = canonicalPath(workspaceRoot);
-    const absolute = posix.isAbsolute(normalized) ? normalized : canonicalPath(posix.join(root, normalized));
-    const relative = posix.relative(root, absolute);
-    if (relative === '..' || relative.startsWith('../') || posix.isAbsolute(relative)) return null;
-    return relative || '.';
-}
-
-function canonicalPath(value: string): string {
-    return posix.normalize(value.replaceAll('\\', '/'));
+    return workspaceRoot ? safeDisclosurePath(value, workspaceRoot) : canonicalPath(value);
 }
 
 function compactLocation(item: any, workspaceRoot?: string): CompactLocation {
@@ -326,9 +368,9 @@ function compactLocation(item: any, workspaceRoot?: string): CompactLocation {
         path: locationPath(item, workspaceRoot) || '',
         ...(Number.isFinite(start?.line) ? { line: Number(start.line) + 1 } : {}),
         ...(Number.isFinite(start?.character) ? { character: Number(start.character) + 1 } : {}),
-        ...(typeof item?.kind === 'string' ? { kind: item.kind } : {}),
+        ...(safeDisclosureLabel(item?.kind) ? { kind: safeDisclosureLabel(item.kind) } : {}),
         ...(Number.isFinite(item?.confidence) ? { confidence: Number(item.confidence) } : {}),
-        ...(typeof item?.source === 'string' ? { source: item.source } : {}),
+        ...(safeDisclosureLabel(item?.source) ? { source: safeDisclosureLabel(item.source) } : {}),
     };
 }
 
@@ -366,31 +408,6 @@ function dedupeLocations(items: any[], workspaceRoot?: string): any[] {
     });
 }
 
-function compareLocations(a: CompactLocation, b: CompactLocation): number {
-    return (b.confidence || 0) - (a.confidence || 0) || a.path.localeCompare(b.path) || (a.line || 0) - (b.line || 0);
-}
-
-function dedupeCompactPaths(items: CompactLocation[]): CompactLocation[] {
-    const seen = new Set<string>();
-    return items.filter((item) => {
-        if (seen.has(item.path)) return false;
-        seen.add(item.path);
-        return true;
-    });
-}
-
-function classifySignals(path: string, item: any, edge?: string): string[] {
-    const evidence = `${path} ${item?.kind || ''} ${item?.context || ''}`.toLowerCase();
-    return uniqueStrings([
-        edge === 'exports' || /(^|[/_.-])(public|api|index)([/_.-]|$)|\bexport\b/.test(evidence) ? 'publicApi' : '',
-        /(^|[/_.-])(state|store|reducer|schema|migration|database|db)([/_.-]|$)/.test(evidence) ? 'state' : '',
-        /(^|[/_.-])(registry|registries|plugin|plugins)([/_.-]|$)|\bregister(ed|ing)?\b/.test(evidence)
-            ? 'registry'
-            : '',
-        /(^|[/_.-])(__tests__|tests?|spec)([/_.-]|$)/.test(evidence) ? 'tests' : '',
-    ]);
-}
-
 function rankImpactedFiles(
     definition: CompactLocation,
     alternateDefinitions: CompactLocation[],
@@ -415,7 +432,7 @@ function rankImpactedFiles(
         current.score += score;
         if (!current.line && compact.line) current.line = compact.line;
         current.reasons = uniqueStrings([...current.reasons, reason]);
-        current.signals = uniqueStrings([...current.signals, ...classifySignals(path, item, edge)]);
+        current.signals = uniqueStrings([...current.signals, ...classifyImpactSignals(path, item, edge)]);
         files.set(path, current);
     };
     add(definition, 120, 'definition');
@@ -425,11 +442,21 @@ function rankImpactedFiles(
     const weights: Record<string, number> = { exports: 70, callers: 65, imports: 40, callees: 30 };
     const neighbors = isRecord(neighborsOut?.neighbors) ? neighborsOut.neighbors : {};
     for (const edge of ['exports', 'callers', 'imports', 'callees']) {
-        for (const item of arrayOf(neighbors[edge])) add(item, weights[edge], edge.slice(0, -1), edge);
+        for (const item of arrayOf(neighbors[edge]).slice(
+            0,
+            SYMBOL_IMPACT_DISCLOSURE_BUDGETS.analyzedItemsPerSection
+        )) {
+            add(item, weights[edge], edge.slice(0, -1), edge);
+        }
     }
     return Array.from(files.values())
         .map((item) => ({ ...item, score: Math.min(999, item.score) }))
-        .sort((a, b) => b.score - a.score || Number(b.signals.includes('publicApi')) - Number(a.signals.includes('publicApi')) || a.path.localeCompare(b.path));
+        .sort(
+            (a, b) =>
+                b.score - a.score ||
+                Number(b.signals.includes('publicApi')) - Number(a.signals.includes('publicApi')) ||
+                a.path.localeCompare(b.path)
+        );
 }
 
 function impactSignals(rankedFiles: RankedFile[], visibleFiles: RankedFile[]) {
@@ -443,38 +470,10 @@ function impactSignals(rankedFiles: RankedFile[], visibleFiles: RankedFile[]) {
             hiddenFiles: matches.length - visibleMatches.length,
         };
     };
-    return { publicApi: signal('publicApi'), state: signal('state'), registry: signal('registry'), tests: signal('tests') };
-}
-
-type InspectedWorkflowResult = {
-    value: Record<string, any>;
-    issue: string | null;
-};
-
-function inspectWorkflowResult(label: string, result: SnapshotWorkflowResult): InspectedWorkflowResult {
-    const parsed = parseWorkflowResult(result);
-    if (result?.isError) {
-        return { value: isRecord(parsed) ? parsed : {}, issue: `${label}: error_result` };
-    }
-    if (!isRecord(parsed)) {
-        return { value: {}, issue: `${label}: unstructured_result` };
-    }
-    return { value: parsed, issue: null };
-}
-
-function isRecord(value: unknown): value is Record<string, any> {
-    return !!value && typeof value === 'object' && !Array.isArray(value);
-}
-
-export function parseWorkflowResult(result: any): any {
-    if (!result || typeof result !== 'object') return result;
-    if ('payload' in result) return result.payload;
-    if ('text' in result) {
-        try {
-            return JSON.parse(result.text);
-        } catch {
-            return result.text;
-        }
-    }
-    return result;
+    return {
+        publicApi: signal('publicApi'),
+        state: signal('state'),
+        registry: signal('registry'),
+        tests: signal('tests'),
+    };
 }
