@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-08-16T07:58:41.336526209+00:00",
+  "task_id": 4799,
+  "entity_version": 3,
+  "commit_sha": "000bcc83cc815a070538f3a478948a5dbd3fdb04",
+  "scope": {
+    "allowed_paths": [
+      "docs/project/alpha-mvp-contract.md",
+      "docs/project/alpha-mvp-validation.md",
+      "fixtures/symbol-impact-structural/**",
+      "governance/task-scopes/AK-*.snapshot.json",
+      "scripts/dogfood-alpha-mvp.ts",
+      "src/core/code-graph*.ts",
+      "src/core/unified-analyzer.ts",
+      "src/core/workflows/symbol-workflow*.ts",
+      "tests/fixtures/symbol-impact-structural/**",
+      "tests/symbol-workflow*.test.ts"
+    ],
+    "required_paths": [],
+    "forbidden_paths": [
+      "src/layers/__tests__/test-cache-PaVDfX/**"
+    ]
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}
