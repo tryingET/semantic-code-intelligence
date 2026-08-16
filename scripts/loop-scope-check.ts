@@ -1,4 +1,11 @@
 #!/usr/bin/env bun
+// Frozen task-scope landing guard.
+// MAINTENANCE NOTE: snapshots must carry a landed commit_sha (HEAD ancestor);
+// export order is implement -> commit -> `ak task scope export --commit-sha <sha>`
+// -> commit snapshot -> closure. See AK-4787 and the AK-4779 closure runs
+// (transcendent-1786830891881 / transcendent-1786834204928) for the incident
+// where a null-bound snapshot passed this guard and surfaced only at
+// closure-gate, after terminal publication.
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
