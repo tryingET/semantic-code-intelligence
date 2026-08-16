@@ -18,7 +18,7 @@ function tempRepo(): string {
     return root;
 }
 
-function snapshot(root: string, id: number, scope: Record<string, unknown>): void {
+function snapshot(root: string, id: number, scope: Record<string, unknown>, commitSha?: string | null): void {
     const dir = join(root, 'governance', 'task-scopes');
     mkdirSync(dir, { recursive: true });
     writeFileSync(
@@ -27,6 +27,7 @@ function snapshot(root: string, id: number, scope: Record<string, unknown>): voi
             {
                 schema_version: 1,
                 task_id: id,
+                ...(commitSha === undefined ? {} : { commit_sha: commitSha }),
                 scope,
             },
             null,
@@ -34,6 +35,12 @@ function snapshot(root: string, id: number, scope: Record<string, unknown>): voi
         )}\n`,
         'utf8'
     );
+}
+
+function headSha(root: string): string {
+    const proc = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' });
+    expect(proc.status, proc.stderr).toBe(0);
+    return (proc.stdout || '').trim();
 }
 
 function commitAll(root: string): void {
@@ -124,6 +131,8 @@ describe('loop scope active authority selector', () => {
         try {
             snapshot(root, 3443, { allowed_paths: ['src'], required_paths: [], forbidden_paths: [] });
             commitAll(root);
+            snapshot(root, 3443, { allowed_paths: ['src'], required_paths: [], forbidden_paths: [] }, headSha(root));
+            commitAll(root);
             mkdirSync(join(root, 'src'), { recursive: true });
             writeFileSync(join(root, 'src', 'changed.ts'), 'export const changed = true;\n', 'utf8');
 
@@ -161,10 +170,118 @@ describe('loop scope active authority selector', () => {
                 required_paths: ['governance/task-scopes'],
                 forbidden_paths: [],
             });
+            commitAll(root);
+            snapshot(
+                root,
+                3443,
+                {
+                    allowed_paths: ['governance/task-scopes'],
+                    required_paths: ['governance/task-scopes'],
+                    forbidden_paths: [],
+                },
+                headSha(root)
+            );
 
             const result = run(root, { LOOP_TASK_ID: '3443' });
             expect(result.status, result.stderr).toBe(0);
             expect(result.stdout).toContain('task_scope_snapshot=governance/task-scopes/AK-3443.snapshot.json');
+            expect(result.stdout).toContain('scope_check=pass');
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
+});
+
+describe('frozen snapshot commit binding (AK-4787 regression)', () => {
+    test('unbound (null) commit_sha blocks the selected-task guard even when paths match', () => {
+        const root = tempRepo();
+        try {
+            writeFileSync(join(root, 'README.md'), '# seed\n', 'utf8');
+            commitAll(root);
+            snapshot(root, 4779, { allowed_paths: ['src/**'], required_paths: [], forbidden_paths: [] }, null);
+            mkdirSync(join(root, 'src'), { recursive: true });
+            writeFileSync(join(root, 'src', 'changed.ts'), 'export const changed = true;\n', 'utf8');
+
+            const result = run(root, { LOOP_TASK_ID: '4779' });
+            expect(result.status).toBe(2);
+            expect(result.stdout).toContain('snapshot_commit=unbound');
+            expect(result.stdout).toContain('scope_check=blocker reason=snapshot-commit-unbound');
+            expect(result.stdout).toContain('remediation=re-run "ak task scope export"');
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    test('absent commit_sha field blocks identically to null', () => {
+        const root = tempRepo();
+        try {
+            writeFileSync(join(root, 'README.md'), '# seed\n', 'utf8');
+            commitAll(root);
+            snapshot(root, 4787, { allowed_paths: ['src/**'], required_paths: [], forbidden_paths: [] });
+            mkdirSync(join(root, 'src'), { recursive: true });
+            writeFileSync(join(root, 'src', 'changed.ts'), 'x\n', 'utf8');
+
+            const result = run(root, { LOOP_TASK_ID: '4787' });
+            expect(result.status).toBe(2);
+            expect(result.stdout).toContain('scope_check=blocker reason=snapshot-commit-unbound');
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    test('commit_sha outside HEAD history blocks with re-export remediation', () => {
+        const root = tempRepo();
+        try {
+            writeFileSync(join(root, 'README.md'), '# seed\n', 'utf8');
+            commitAll(root);
+            // Branch off, commit there, never merge: not an ancestor of HEAD.
+            spawnSync('git', ['checkout', '-q', '-b', 'side'], { cwd: root, stdio: 'ignore' });
+            writeFileSync(join(root, 'side.txt'), 'side\n', 'utf8');
+            commitAll(root);
+            const sideSha = headSha(root);
+            spawnSync('git', ['checkout', '-q', 'main'], { cwd: root, stdio: 'ignore' });
+            snapshot(root, 4787, { allowed_paths: ['src/**'], required_paths: [], forbidden_paths: [] }, sideSha);
+            mkdirSync(join(root, 'src'), { recursive: true });
+            writeFileSync(join(root, 'src', 'changed.ts'), 'x\n', 'utf8');
+
+            const result = run(root, { LOOP_TASK_ID: '4787' });
+            expect(result.status).toBe(2);
+            expect(result.stdout).toContain('scope_check=blocker reason=snapshot-commit-not-in-history');
+            expect(result.stdout).toContain('remediation=re-export the task scope');
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    test('ancestor-bound commit_sha passes and reports the binding', () => {
+        const root = tempRepo();
+        try {
+            writeFileSync(join(root, 'README.md'), '# seed\n', 'utf8');
+            commitAll(root);
+            const base = headSha(root);
+            snapshot(root, 4779, { allowed_paths: ['src/**'], required_paths: [], forbidden_paths: [] }, base);
+            commitAll(root);
+            mkdirSync(join(root, 'src'), { recursive: true });
+            writeFileSync(join(root, 'src', 'changed.ts'), 'x\n', 'utf8');
+
+            const result = run(root, { LOOP_TASK_ID: '4779' });
+            expect(result.status, result.stderr).toBe(0);
+            expect(result.stdout).toContain(`snapshot_commit=${base.slice(0, 12)} bound`);
+            expect(result.stdout).toContain('scope_check=pass');
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    test('clean working tree with unbound snapshot does not require selection (unchanged semantics)', () => {
+        const root = tempRepo();
+        try {
+            snapshot(root, 4779, { allowed_paths: ['src/**'], required_paths: [], forbidden_paths: [] }, null);
+            commitAll(root);
+
+            const result = run(root, { LOOP_TASK_ID: '4779' });
+            expect(result.status, result.stderr).toBe(0);
+            expect(result.stdout).toContain('reason=no-dirty-paths');
             expect(result.stdout).toContain('scope_check=pass');
         } finally {
             rmSync(root, { recursive: true, force: true });

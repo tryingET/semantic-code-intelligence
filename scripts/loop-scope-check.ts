@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { minimatch } from 'minimatch';
 
 type SnapshotPayload = {
+  commit_sha?: unknown;
   scope?: {
     allowed_paths?: unknown[];
     required_paths?: unknown[];
@@ -147,6 +148,36 @@ if (!payload.scope || typeof payload.scope !== 'object') {
   process.stdout.write('scope_check=blocker reason=missing-scope-object\n');
   exitForBlocker();
 }
+
+// Commit binding: a frozen scope must be bound to a landed implementation commit.
+// Unbound (null/absent) snapshots pass path checks but cannot prove which landed
+// state the scope describes; discovering that only at the final closure phase
+// (after terminal publication) forces a post-terminal governance repair. Fail
+// fast here instead. Origin: AK-4779 closure runs transcendent-1786830891881 and
+// transcendent-1786834204928 both reached the closure gate with an unbound or
+// not-yet-committed snapshot and published closure_gate_incomplete.
+const commitSha = typeof payload.commit_sha === 'string' ? payload.commit_sha.trim() : '';
+if (!commitSha) {
+  process.stdout.write('snapshot_commit=unbound\n');
+  process.stdout.write('scope_check=blocker reason=snapshot-commit-unbound\n');
+  process.stdout.write(
+    'remediation=re-run "ak task scope export" after the implementation commit lands, then commit the refreshed snapshot\n'
+  );
+  exitForBlocker();
+}
+const ancestry = spawnSync('git', ['merge-base', '--is-ancestor', commitSha, 'HEAD'], {
+  stdio: ['ignore', 'pipe', 'pipe'],
+  encoding: 'utf8',
+});
+if (ancestry.status !== 0) {
+  process.stdout.write(`snapshot_commit=${commitSha.slice(0, 12)}\n`);
+  process.stdout.write(
+    `scope_check=blocker reason=snapshot-commit-not-in-history detail=${(ancestry.stderr || '').trim().slice(0, 200)}\n`
+  );
+  process.stdout.write('remediation=re-export the task scope from the landed implementation commit\n');
+  exitForBlocker();
+}
+process.stdout.write(`snapshot_commit=${commitSha.slice(0, 12)} bound\n`);
 
 const allowed = asStringList(payload.scope.allowed_paths);
 const required = asStringList(payload.scope.required_paths);
