@@ -362,19 +362,6 @@ export function dedupeCompactPaths<T extends { path: string }>(items: T[]): T[] 
     });
 }
 
-export function classifyImpactSignals(path: string, item: any, edge?: string): string[] {
-    const evidence =
-        `${path} ${String(item?.kind || '').slice(0, 80)} ${String(item?.context || '').slice(0, 200)}`.toLowerCase();
-    return uniqueStrings([
-        edge === 'exports' || /(^|[/_.-])(public|api|index)([/_.-]|$)|\bexport\b/.test(evidence) ? 'publicApi' : '',
-        /(^|[/_.-])(state|store|reducer|schema|migration|database|db)([/_.-]|$)/.test(evidence) ? 'state' : '',
-        /(^|[/_.-])(registry|registries|plugin|plugins)([/_.-]|$)|\bregister(ed|ing)?\b/.test(evidence)
-            ? 'registry'
-            : '',
-        /(^|[/_.-])(__tests__|tests?|spec)([/_.-]|$)/.test(evidence) ? 'tests' : '',
-    ]);
-}
-
 export function canonicalPath(value: string): string {
     return posix.normalize(value.replaceAll('\\', '/'));
 }

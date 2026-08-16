@@ -19,6 +19,9 @@ const port = Number(process.env.DOGFOOD_PORT || 7031);
 const base = `http://${host}:${port}`;
 const navigationSymbol = 'handleToolCall';
 const navigationFile = 'src/adapters/mcp-adapter.ts';
+const structuralRiskSymbol = 'ObliqueMarker';
+const structuralRiskFile = 'fixtures/symbol-impact-structural/facet.ts';
+const structuralRiskSignals = ['publicApi', 'state', 'registry', 'tests'] as const;
 const patchPlanningMarker = '<!-- alpha patch-planning parity snapshot-only marker -->';
 const patchPlanningTarget = 'docs/project/alpha-mvp-contract.md';
 const patchPlanningDiff = `diff --git a/${patchPlanningTarget} b/${patchPlanningTarget}
@@ -210,6 +213,46 @@ try {
             debugPacketBytes <= Number(debugImpact?.details?.disclosure?.packetByteBudget || 0),
         { standardDetailBytes, debugDetailBytes, standardPacketBytes, debugPacketBytes }
     );
+    const structuralRiskImpact = await callTool(
+        'explore_symbol_impact',
+        { symbol: structuralRiskSymbol, file: structuralRiskFile, precise: true, depth: 1, limit: 50, maxFiles: 10 },
+        'Dogfood structural public-API, state-write, registration, and test risk evidence against adversarial names.'
+    );
+    const structuralTruth: Record<(typeof structuralRiskSignals)[number], Set<string>> = {
+        publicApi: new Set(['fixtures/symbol-impact-structural/facet.ts']),
+        state: new Set(['fixtures/symbol-impact-structural/facet.ts']),
+        registry: new Set(['fixtures/symbol-impact-structural/mesh.ts']),
+        tests: new Set(['fixtures/symbol-impact-structural/verification.ts']),
+    };
+    const structuralFiles = [
+        'fixtures/symbol-impact-structural/facet.ts',
+        'fixtures/symbol-impact-structural/mesh.ts',
+        'fixtures/symbol-impact-structural/verification.ts',
+        'fixtures/symbol-impact-structural/public-api-index-registry-state-store.spec.ts',
+    ];
+    let structuralFalsePositives = 0;
+    let structuralFalseNegatives = 0;
+    for (const signal of structuralRiskSignals) {
+        const predicted = new Set<string>(structuralRiskImpact?.editRisk?.signals?.[signal]?.files || []);
+        for (const file of structuralFiles) {
+            if (predicted.has(file) && !structuralTruth[signal].has(file)) structuralFalsePositives++;
+            if (!predicted.has(file) && structuralTruth[signal].has(file)) structuralFalseNegatives++;
+        }
+    }
+    recordSemanticCheck(
+        'explore_symbol_impact_structural_signal_fixture_has_no_false_classifications',
+        structuralFalsePositives === 0 &&
+            structuralFalseNegatives === 0 &&
+            structuralRiskSignals.every(
+                (signal) => structuralRiskImpact?.editRisk?.signals?.[signal]?.status === 'detected'
+            ),
+        {
+            labels: structuralFiles.length * structuralRiskSignals.length,
+            falsePositives: structuralFalsePositives,
+            falseNegatives: structuralFalseNegatives,
+            signals: structuralRiskImpact?.editRisk?.signals,
+        }
+    );
     const located = await callTool(
         'locate_confirm_definition',
         { symbol: navigationSymbol, file: navigationFile, precise: true, maxResults: 10 },
@@ -333,13 +376,14 @@ try {
                 'HTTP tools/call can execute the Phase 1 navigation loop deterministically.',
                 'read_file provides bounded path/range retrieval for harnessed LLM context gathering.',
                 'Search, symbol, definition, reference, AST, graph, and check-recommendation tools compose into a code-navigation and validation-planning workflow.',
+                'The structural risk fixture distinguishes target-specific exports, writes, keyed registration, and imported test calls from low-confidence filename fallbacks.',
                 'propose_patch and run_checks support preview-first patch planning without mutating the working tree.',
                 'The CLI workflow command provides a machine-readable local fallback for bounded tool calls.',
             ],
             does_not_prove: [
                 'Production readiness.',
                 'Full MCP client compatibility in every host.',
-                'Rich semantic graph coverage for every repository.',
+                'Rich semantic graph coverage or framework-level registry/state semantics for every repository.',
             ],
         },
     };

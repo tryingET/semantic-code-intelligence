@@ -74,7 +74,14 @@ function representativeDeps(): SymbolWorkflowDeps {
         graphExpand: () =>
             workflowResult({
                 neighbors: {
-                    exports: [{ file: 'src/public-api.ts', symbol: 'Target', context: repeatedContext }],
+                    exports: [
+                        {
+                            file: 'src/public-api.ts',
+                            capture: 'export.func',
+                            text: 'Target',
+                            context: repeatedContext,
+                        },
+                    ],
                     callers: [{ file: 'tests/target.test.ts', caller: 'validatesTarget', context: repeatedContext }],
                     imports: [{ file: 'src/registry/plugin-registry.ts', context: repeatedContext }],
                     callees: [{ file: 'src/state/store.ts', context: repeatedContext }],
@@ -133,10 +140,14 @@ describe('SymbolWorkflowService', () => {
             editRisk: {
                 level: 'high',
                 signals: {
-                    publicApi: { detected: true },
-                    state: { detected: true, files: [], hiddenFiles: 1 },
-                    registry: { detected: true },
-                    tests: { detected: true },
+                    publicApi: { detected: true, status: 'detected', confidence: 'high' },
+                    state: {
+                        detected: false,
+                        status: 'unknown',
+                        namingFallback: { observed: true, hiddenFiles: 1 },
+                    },
+                    registry: { detected: false, status: 'unknown', namingFallback: { observed: true } },
+                    tests: { detected: false, status: 'unknown', namingFallback: { observed: true } },
                 },
             },
             details: 'mode: standard',
@@ -148,7 +159,13 @@ describe('SymbolWorkflowService', () => {
         expect(result.limitations).toContain(
             'Impact files are truncated; risk signals still summarize all ranked evidence.'
         );
-        expect(result.editRisk.signals.state).toEqual({ detected: true, files: [], hiddenFiles: 1 });
+        expect(result.editRisk.signals.state).toMatchObject({
+            detected: false,
+            status: 'unknown',
+            files: [],
+            hiddenFiles: 0,
+            namingFallback: { observed: true, files: [], hiddenFiles: 1, confidence: 'low' },
+        });
         expect(JSON.stringify(result.editRisk)).not.toContain('src/state/store.ts');
         expect(result).not.toHaveProperty('tips');
         expect(result).not.toHaveProperty('symbolMap');
@@ -202,10 +219,13 @@ describe('SymbolWorkflowService', () => {
             path: 'src/target.ts',
             reasons: ['definition', 'export', 'import'],
         });
-        expect(result.editRisk.signals.publicApi).toEqual({
+        expect(result.editRisk.signals.publicApi).toMatchObject({
             detected: true,
+            status: 'detected',
+            confidence: 'high',
             files: ['src/target.ts'],
             hiddenFiles: 0,
+            provenance: ['graph.exports'],
         });
     });
 
@@ -335,8 +355,13 @@ describe('SymbolWorkflowService', () => {
         expect(result.definitions.count).toBe(2);
         expect(result.impact.totalFiles).toBe(2);
         expect(result.impact.files.map((item: any) => item.path)).toContain('src/public-api.ts');
-        expect(result.editRisk.level).toBe('high');
-        expect(result.editRisk.signals.publicApi.detected).toBe(true);
+        expect(result.editRisk.level).toBe('unknown');
+        expect(result.editRisk.signals.publicApi).toMatchObject({
+            detected: false,
+            status: 'unknown',
+            confidence: 'unknown',
+            namingFallback: { observed: true, confidence: 'low' },
+        });
         expect(result.limitations).toContain(
             'Multiple definition candidates were found; impact includes every confirmed definition file.'
         );
