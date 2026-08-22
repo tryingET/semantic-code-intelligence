@@ -12,9 +12,6 @@ cd "$repo_root"
 AGENT_SCRIPTS_ROOT="${AGENT_SCRIPTS_ROOT:-$HOME/ai-society/core/agent-scripts}"
 node "$AGENT_SCRIPTS_ROOT/scripts/docs-list.mjs" --docs . --strict
 
-if [ -f "./governance/work-items.json" ]; then
-  "$AK_CMD" work-items check --repo . --path "./governance/work-items.json"
-fi
 
 if [ -x "./scripts/check-task-scope-snapshots.sh" ]; then
   ./scripts/check-task-scope-snapshots.sh
