@@ -28,6 +28,22 @@ Transports
 - Returns (LocateConfirmDefinitionResult): `{ ok, symbol, attempts:[{mode,count}], definitions:[...], decision }`
 - Note: HTTP returns parsed JSON under `result`.
 
+### Explore Symbol Impact
+- Purpose: confirm a definition before edit planning, rank bounded impact, and expose a lawful recovery call when confirmation fails.
+- Prefer compact first:
+  - `POST /api/v1/tools/call` with `{ "name":"explore_symbol_impact", "arguments": { "symbol":"TestClass", "file":"tests/fixtures/example.ts" } }`
+- Modes:
+  - `compact` returns the decision packet only.
+  - `standard` adds sparse `details.schemaVersion: 2` evidence with `observed` and `usable` counts; empty audit sections and duplicate counts are omitted.
+  - `debug` retains the full bounded audit sections, shape failures, subcall status, timings, and sanitized raw fragments.
+- Unconfirmed behavior:
+  - `ok:false` is a domain decision, not necessarily a transport failure.
+  - `evidence.graphImpact:true` means at least one graph item was normalized to a workspace-contained location.
+  - A backend-only impact claim with no usable item is degraded and indeterminate rather than actionable.
+  - `nextReads[0]` contains `action:"locate_confirm_definition"` and complete bounded `arguments`; when a file filter prevented confirmation, retry without `file`.
+- Seed-local path rule: only edge-appropriate tree-sitter import/export/callee records may inherit the already-contained graph seed file; any supplied source position must be a nonnegative safe integer pair. Empty, edge-mismatched, invalid-position, and explicit rejected-path records never inherit that fallback.
+- Failed, thrown, or unstructured subcalls contribute bounded debug diagnostics only; their payload data never becomes usable standard or compact evidence.
+
 ### Safe Rename (Snapshot + Optional Checks)
 - Purpose: plan rename, stage unified diff to snapshot, optionally run checks (no working‑tree writes).
 - HTTP:

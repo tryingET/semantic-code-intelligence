@@ -35,7 +35,7 @@ export const PREFERRED_WORKFLOW_TOOL_SPECS: ToolSpec[] = [
         name: 'explore_symbol_impact',
         title: 'Explore Symbol Impact',
         description:
-            'PREFERRED first call for unfamiliar symbol changes. compact returns only the decision packet; standard adds normalized bounded definitions, declarations, references, graph edges, provenance summaries, counts, omissions, and limitations; debug adds bounded/redacted subcall inputs/status, diagnostics, timings, shape failures, and raw fragments. Standard details are capped at 24 KiB, debug details at 36 KiB, and every complete packet at 48 KiB with deterministic truncation metadata. No unrestricted backend dumps. Do not manually chain search/definition/reference primitives unless this result is insufficient.',
+            'PREFERRED first call for unfamiliar symbol changes. compact returns only the decision packet and an exact locate action when definition confirmation fails; standard adds a sparse normalized evidence projection with observed-versus-usable definitions, declarations, references, graph edges, provenance, and omission summaries; debug adds the full bounded/redacted audit shape with subcall inputs/status, diagnostics, timings, shape failures, and raw fragments. Standard details are capped at 24 KiB, debug details at 36 KiB, and every complete packet at 48 KiB with deterministic truncation metadata. No unrestricted backend dumps. Do not manually chain search/definition/reference primitives unless this result is insufficient.',
         category: 'workflow',
         inputSchema: {
             type: 'object',
@@ -50,7 +50,7 @@ export const PREFERRED_WORKFLOW_TOOL_SPECS: ToolSpec[] = [
                     enum: ['compact', 'standard', 'debug'],
                     default: 'compact',
                     description:
-                        'compact: decision packet only (default); standard: normalized bounded evidence; debug: standard plus bounded/redacted diagnostics and raw fragments. Fixed detail budgets are 24 KiB standard and 36 KiB debug; the complete packet is capped at 48 KiB.',
+                        'compact: decision packet only (default); standard: normalized bounded evidence with sparse observed/usable accounting; debug: full standard evidence plus bounded/redacted diagnostics, shape failures, and raw fragments. Fixed detail budgets are 24 KiB standard and 36 KiB debug; the complete packet is capped at 48 KiB.',
                 },
                 maxFiles: { type: 'number', minimum: 1, maximum: 25, default: 8 },
                 maxNextReads: { type: 'number', minimum: 1, maximum: 10, default: 4 },

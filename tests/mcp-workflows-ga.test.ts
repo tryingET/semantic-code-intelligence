@@ -61,7 +61,12 @@ describe('MCP workflows GA shapes', () => {
         }
 
         expect(results.get('compact').details).toBe('mode: standard');
-        expect(results.get('standard').details.mode).toBe('standard');
+        expect(results.get('standard').details).toMatchObject({
+            schemaVersion: 2,
+            mode: 'standard',
+            evidence: { graph: { observedImpact: true, usableImpact: true } },
+        });
+        expect(results.get('standard').details).not.toHaveProperty('counts');
         expect(results.get('standard').details).not.toHaveProperty('diagnostics');
         expect(results.get('debug').details.mode).toBe('debug');
         expect(results.get('debug').details.diagnostics.subcalls).toHaveLength(3);

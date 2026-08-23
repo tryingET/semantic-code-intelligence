@@ -190,6 +190,8 @@ describe('Alpha MVP tool contract', () => {
         expect(specs.get('explore_symbol_impact')?.inputSchema?.properties?.maxNextReads?.maximum).toBe(10);
         expect(specs.get('explore_symbol_impact')?.inputSchema?.properties?.symbol?.maxLength).toBe(256);
         expect(specs.get('explore_symbol_impact')?.description).toContain('compact returns only the decision packet');
+        expect(specs.get('explore_symbol_impact')?.description).toContain('observed-versus-usable');
+        expect(specs.get('explore_symbol_impact')?.description).toContain('exact locate action');
         expect(specs.get('explore_symbol_impact')?.description).toContain('24 KiB');
         expect(specs.get('explore_symbol_impact')?.description).toContain('No unrestricted backend dumps');
         expect(specs.get('explore_symbol_impact')?.inputSchema?.properties?.mode?.description).toContain(
@@ -320,7 +322,15 @@ bindDescribe('Alpha MVP HTTP tools/call contract', () => {
         }
 
         expect(results.get('compact').details).toBe('mode: standard');
-        expect(results.get('standard').details).toMatchObject({ mode: 'standard' });
+        expect(results.get('standard').details).toMatchObject({
+            schemaVersion: 2,
+            mode: 'standard',
+            evidence: {
+                definitions: { observed: 1, usable: 1 },
+                graph: { observedImpact: true, usableImpact: true },
+            },
+        });
+        expect(results.get('standard').details).not.toHaveProperty('counts');
         expect(results.get('standard').details).not.toHaveProperty('diagnostics');
         expect(results.get('debug').details).toMatchObject({ mode: 'debug' });
         expect(results.get('debug').details.diagnostics.subcalls).toHaveLength(3);

@@ -9,15 +9,15 @@ import { SYMBOL_IMPACT_DISCLOSURE_BUDGETS } from '../src/core/workflows/symbol-w
 function payload(result: any) {
     return 'payload' in result ? result.payload : result;
 }
-
 function byteSize(value: unknown): number {
     return Buffer.byteLength(JSON.stringify(value), 'utf8');
 }
-
 function workflowResult(value: Record<string, unknown>) {
     return Promise.resolve({ payload: value, isError: false });
 }
-
+function seedGraph(neighbors: Record<string, unknown[]>) {
+    return { file: '/workspace/policy/policy.go', neighbors, impactSummary: { hasImpactEvidence: true } };
+}
 function location(path: string, extra: Record<string, unknown> = {}) {
     return {
         name: 'Target',
@@ -29,7 +29,6 @@ function location(path: string, extra: Record<string, unknown> = {}) {
         ...extra,
     };
 }
-
 function createDeps(overrides: Partial<SymbolWorkflowDeps> = {}): SymbolWorkflowDeps {
     return {
         workspaceRoot: () => '/workspace',
@@ -42,7 +41,6 @@ function createDeps(overrides: Partial<SymbolWorkflowDeps> = {}): SymbolWorkflow
         ...overrides,
     };
 }
-
 function representativeDeps(): SymbolWorkflowDeps {
     const repeatedContext = 'backend trace detail '.repeat(80);
     return createDeps({
@@ -79,12 +77,35 @@ function representativeDeps(): SymbolWorkflowDeps {
                             file: 'src/public-api.ts',
                             capture: 'export.func',
                             text: 'Target',
+                            start: { line: 4, column: 2 },
                             context: repeatedContext,
                         },
                     ],
-                    callers: [{ file: 'tests/target.test.ts', caller: 'validatesTarget', context: repeatedContext }],
-                    imports: [{ file: 'src/registry/plugin-registry.ts', context: repeatedContext }],
-                    callees: [{ file: 'src/state/store.ts', context: repeatedContext }],
+                    callers: [
+                        {
+                            file: 'tests/target.test.ts',
+                            caller: 'validatesTarget',
+                            start: { line: 4, column: 2 },
+                            context: repeatedContext,
+                        },
+                    ],
+                    imports: [
+                        {
+                            file: 'src/registry/plugin-registry.ts',
+                            capture: 'import.name',
+                            text: 'TargetDependency',
+                            start: { line: 4, column: 2 },
+                            context: repeatedContext,
+                        },
+                    ],
+                    callees: [
+                        {
+                            file: 'src/state/store.ts',
+                            name: 'updateTarget',
+                            start: { line: 4, column: 2 },
+                            context: repeatedContext,
+                        },
+                    ],
                 },
                 impactSummary: {
                     hasImpactEvidence: true,
@@ -120,7 +141,6 @@ describe('SymbolWorkflowService', () => {
         ]);
         expect(calls.map((call) => call.precise)).toEqual([false, true]);
     });
-
     test('returns a compact, deduplicated, semantically ranked impact packet', async () => {
         const result = payload(
             await new SymbolWorkflowService(representativeDeps()).exploreSymbol({
@@ -171,7 +191,6 @@ describe('SymbolWorkflowService', () => {
         expect(result).not.toHaveProperty('symbolMap');
         expect(result).not.toHaveProperty('neighbors');
     });
-
     test('seeds all graph impact edges from the confirmed definition for symbol-only calls', async () => {
         const graphCalls: any[] = [];
         const service = new SymbolWorkflowService(
@@ -197,7 +216,6 @@ describe('SymbolWorkflowService', () => {
             },
         ]);
     });
-
     test('attributes pathless seed-local import and export captures to the confirmed file', async () => {
         const service = new SymbolWorkflowService(
             createDeps({
@@ -205,8 +223,14 @@ describe('SymbolWorkflowService', () => {
                 graphExpand: () =>
                     workflowResult({
                         neighbors: {
-                            imports: [{ capture: 'import.source', text: './dependency.js' }],
-                            exports: [{ capture: 'export.func', text: 'Target' }],
+                            imports: [
+                                {
+                                    capture: 'import.source',
+                                    text: './dependency.js',
+                                    start: { line: 0, column: 0 },
+                                },
+                            ],
+                            exports: [{ capture: 'export.func', text: 'Target', start: { line: 1, column: 0 } }],
                         },
                     }),
             })
@@ -228,7 +252,6 @@ describe('SymbolWorkflowService', () => {
             provenance: ['graph.exports'],
         });
     });
-
     test('does not merge distinct paths merely because one is a suffix of the other', async () => {
         const service = new SymbolWorkflowService(
             createDeps({
@@ -246,7 +269,6 @@ describe('SymbolWorkflowService', () => {
         expect(result.impact.totalFiles).toBe(2);
         expect(result.impact.files.map((item: any) => item.path)).toEqual(['packages/a/src/index.ts', 'src/index.ts']);
     });
-
     test('deduplicates absolute URI and relative paths for the same workspace file', async () => {
         const service = new SymbolWorkflowService(
             createDeps({
@@ -265,7 +287,6 @@ describe('SymbolWorkflowService', () => {
         expect(result.impact.totalFiles).toBe(1);
         expect(result.impact.files[0].path).toBe('src/target.ts');
     });
-
     test('rejects definition candidates outside the trusted workspace', async () => {
         const graphCalls: any[] = [];
         const service = new SymbolWorkflowService(
@@ -283,11 +304,13 @@ describe('SymbolWorkflowService', () => {
 
         const result = payload(await service.exploreSymbol({ symbol: 'Target' }));
 
-        expect(result).toMatchObject({ ok: false, status: 'unconfirmed' });
+        expect(result).toMatchObject({ ok: false, status: 'indeterminate', degraded: true });
+        expect(result.limitations).toContain(
+            'Some definition or reference evidence was omitted because it lacked a supported workspace-contained location.'
+        );
         expect(JSON.stringify(result)).not.toContain('/outside/secret.ts');
         expect(graphCalls[0]).not.toHaveProperty('file');
     });
-
     test('omits secret-shaped compact source metadata without changing the compact schema', async () => {
         const credential = 'xoxb-compact-secret-value-1234567890';
         const service = new SymbolWorkflowService(
@@ -303,7 +326,6 @@ describe('SymbolWorkflowService', () => {
         expect(result.definition).not.toHaveProperty('source');
         expect(JSON.stringify(result)).not.toContain(credential);
     });
-
     test('does not reinterpret a rejected graph path as a pathless seed-local capture', async () => {
         const service = new SymbolWorkflowService(
             createDeps({
@@ -319,9 +341,12 @@ describe('SymbolWorkflowService', () => {
 
         expect(result.impact.totalFiles).toBe(1);
         expect(result.editRisk.signals.publicApi.detected).toBe(false);
+        expect(result).toMatchObject({ degraded: true, editRisk: { level: 'high' } });
+        expect(result.limitations).toContain(
+            'Some graph evidence was omitted because it lacked a supported workspace-contained location.'
+        );
         expect(JSON.stringify(result)).not.toContain('/outside/export.ts');
     });
-
     test('filters malformed candidates before deduplicating a valid definition at the same location', async () => {
         const service = new SymbolWorkflowService(
             createDeps({
@@ -339,7 +364,6 @@ describe('SymbolWorkflowService', () => {
 
         expect(result).toMatchObject({ ok: true, definition: { path: 'src/target.ts' } });
     });
-
     test('includes every confirmed definition file in impact and risk analysis', async () => {
         const service = new SymbolWorkflowService(
             createDeps({
@@ -366,7 +390,6 @@ describe('SymbolWorkflowService', () => {
             'Multiple definition candidates were found; impact includes every confirmed definition file.'
         );
     });
-
     test('bounds backend limitation strings in compact mode', async () => {
         const service = new SymbolWorkflowService(
             createDeps({
@@ -385,7 +408,6 @@ describe('SymbolWorkflowService', () => {
         expect(result.limitations[0].length).toBe(200);
         expect(result.limitations[0].endsWith('…')).toBe(true);
     });
-
     test('keeps the confirmed definition as the first read even when another file ranks higher', async () => {
         const references = Array.from({ length: 5 }, (_, line) =>
             location('src/heavy-consumer.ts', {
@@ -409,7 +431,6 @@ describe('SymbolWorkflowService', () => {
         });
         expect(JSON.stringify(result)).not.toContain('heavy-consumer.ts');
     });
-
     test('makes compact, standard, and debug progressively disclose bounded evidence', async () => {
         const service = new SymbolWorkflowService(representativeDeps());
         const compact = payload(await service.exploreSymbol({ symbol: 'Target' }));
@@ -418,29 +439,46 @@ describe('SymbolWorkflowService', () => {
 
         expect(compact.details).toBe('mode: standard');
         expect(standard.details).toMatchObject({
-            schemaVersion: 1,
+            schemaVersion: 2,
             mode: 'standard',
-            definitions: { count: 1, emitted: 1, truncated: false },
-            references: { count: 3, emitted: 3 },
-            graph: { hasImpactEvidence: true },
+            evidence: {
+                definitions: { observed: 1, usable: 1 },
+                references: { observed: 3, usable: 3 },
+                graph: {
+                    observedImpact: true,
+                    usableImpact: true,
+                    observedItems: 4,
+                    usableItems: 4,
+                },
+            },
             provenance: { definitionLookup: { backend: 'layer1+layer2', present: true } },
             disclosure: {
                 byteBudget: SYMBOL_IMPACT_DISCLOSURE_BUDGETS.standardBytes,
-                itemBudgetPerSection: SYMBOL_IMPACT_DISCLOSURE_BUDGETS.itemsPerSection,
+                truncated: false,
             },
         });
-        expect(standard.details.definitions.items[0]).toEqual({
+        expect(standard.details.evidence.definitions.items[0]).toEqual({
             path: 'src/target.ts',
             line: 5,
             character: 3,
             kind: 'function',
             confidence: 0.9,
             source: 'exact',
+            symbol: 'Target',
         });
+        expect(standard.details).not.toHaveProperty('counts');
+        expect(standard.details).not.toHaveProperty('definitions');
+        expect(standard.details).not.toHaveProperty('limitations');
         expect(standard.details).not.toHaveProperty('diagnostics');
+        expect(JSON.stringify(standard.details)).not.toContain('shapeFailures');
         expect(debug.details.mode).toBe('debug');
-        expect(debug.details.definitions).toEqual(standard.details.definitions);
-        expect(debug.details.references).toEqual(standard.details.references);
+        expect(debug.details.graph).toMatchObject({
+            hasImpactEvidence: true,
+            observedImpact: true,
+            usableImpact: true,
+        });
+        expect(debug.details.definitions.items).toEqual(standard.details.evidence.definitions.items);
+        expect(debug.details.references.items).toEqual(standard.details.evidence.references.items);
         expect(debug.details.diagnostics.subcalls.map((call: any) => call.name)).toEqual([
             'find_definition',
             'build_symbol_map',
@@ -483,7 +521,6 @@ describe('SymbolWorkflowService', () => {
         expect(standard.details.disclosure.emittedBytes).toBe(byteSize(standard.details));
         expect(debug.details.disclosure.emittedBytes).toBe(byteSize(debug.details));
     });
-
     test('hard-bounds hostile provenance keys and values in standard and debug packets', async () => {
         const hugeKey = `metadata_${'K'.repeat(100_000)}`;
         const credential = 'npm_super_secret_value_1234567890';
@@ -515,7 +552,6 @@ describe('SymbolWorkflowService', () => {
             expect(byteSize(result)).toBeLessThanOrEqual(SYMBOL_IMPACT_DISCLOSURE_BUDGETS.packetBytes);
         }
     });
-
     test('redacts cross-platform paths, connection credentials, PEM, environment values, stacks, and compact secrets', async () => {
         const awsSecret = 'AbCdEfGhIjKlMnOpQrStUvWxYz0123456789+/ab';
         const service = new SymbolWorkflowService(
@@ -586,7 +622,7 @@ describe('SymbolWorkflowService', () => {
         for (const mode of ['standard', 'debug']) {
             const result = payload(await service.exploreSymbol({ symbol: 'Target', mode }));
             expect(result.ok).toBe(false);
-            expect(result.status).toBe('unconfirmed');
+            expect(result.status).toBe('indeterminate');
             expect(byteSize(result)).toBeLessThanOrEqual(SYMBOL_IMPACT_DISCLOSURE_BUDGETS.packetBytes);
             expect(result.details.provenance.definitionLookup.fieldCount).toBeLessThanOrEqual(
                 SYMBOL_IMPACT_DISCLOSURE_BUDGETS.analyzedMetadataFields + 1
@@ -610,16 +646,188 @@ describe('SymbolWorkflowService', () => {
 
         expect(result).toMatchObject({
             ok: false,
-            status: 'unconfirmed',
-            evidence: { references: 1, graphImpact: true, partial: true },
+            status: 'indeterminate',
+            degraded: true,
+            evidence: { references: 1, graphImpact: false, partial: true },
+            nextReads: [
+                {
+                    action: 'locate_confirm_definition',
+                    arguments: { symbol: 'MissingSymbol', precise: true },
+                },
+            ],
         });
-        expect(result.message).toContain('insufficient');
+        expect(result.message).toContain('do not plan edits');
+        expect(result.limitations).toContain(
+            'Graph impact was reported, but no graph item was usable after bounded normalization.'
+        );
         expect(result.nextReads[0].reason).toContain('without the file filter');
         expect(result).not.toHaveProperty('impact');
         expect(result).not.toHaveProperty('details');
-        expect(JSON.stringify(result).length).toBeLessThan(700);
+        expect(JSON.stringify(result).length).toBeLessThan(900);
     });
+    test('normalizes seed-local Go graph captures into usable standard evidence', async () => {
+        const service = new SymbolWorkflowService(
+            createDeps({
+                graphExpand: () =>
+                    workflowResult(
+                        seedGraph({
+                            exports: [{ capture: 'export.name', text: 'SetApprover', start: { line: 12, column: 3 } }],
+                            imports: [{ capture: 'import.source', text: 'context', start: { line: 2, column: 8 } }],
+                            callees: [{ name: 'authorize', start: { line: 20, column: 4 } }],
+                            callers: [],
+                        })
+                    ),
+            })
+        );
+        const compact = payload(await service.exploreSymbol({ symbol: 'SetApprover', file: 'policy/policy.go' }));
+        const standard = payload(
+            await service.exploreSymbol({ symbol: 'SetApprover', file: 'policy/policy.go', mode: 'standard' })
+        );
+        expect(compact).toMatchObject({
+            ok: false,
+            status: 'unconfirmed',
+            degraded: false,
+            evidence: { references: 0, graphImpact: true, partial: true },
+        });
+        expect(compact.nextReads[0]).toMatchObject({
+            action: 'locate_confirm_definition',
+            arguments: { symbol: 'SetApprover', precise: true },
+        });
+        expect(standard.details).toMatchObject({
+            schemaVersion: 2,
+            mode: 'standard',
+            evidence: {
+                graph: { observedImpact: true, usableImpact: true, observedItems: 3, usableItems: 3 },
+            },
+        });
+        expect(standard.details.evidence.graph.edges.exports).toMatchObject({
+            observed: 1,
+            usable: 1,
+            items: [
+                {
+                    path: 'policy/policy.go',
+                    line: 13,
+                    character: 4,
+                    kind: 'export.name',
+                    symbol: 'SetApprover',
+                },
+            ],
+        });
+        expect(standard.details).not.toHaveProperty('omissions');
+        expect(JSON.stringify(standard)).not.toContain('/workspace');
+    });
+    test('rejects malformed seed-local graph records instead of laundering them through the seed path', async () => {
+        const service = new SymbolWorkflowService(
+            createDeps({
+                graphExpand: () =>
+                    workflowResult(
+                        seedGraph({
+                            exports: [
+                                {},
+                                { capture: 'export.name', text: 'Target', start: {} },
+                                { capture: 'export.name', text: 'Target', start: 'invalid' },
+                                { capture: 'export.name', text: 'Target', start: { line: -1, column: 0 } },
+                                { capture: 'import.name', text: 'Target', start: { line: 1, column: 0 } },
+                            ],
+                            imports: [{ capture: 'export.name', text: 'dependency', start: { line: 2, column: 0 } }],
+                            callees: [{ name: '', start: { line: 3, column: 0 } }],
+                        })
+                    ),
+            })
+        );
+        const compact = payload(await service.exploreSymbol({ symbol: 'Target', file: 'policy/policy.go' }));
+        const standard = payload(
+            await service.exploreSymbol({ symbol: 'Target', file: 'policy/policy.go', mode: 'standard' })
+        );
 
+        expect(compact).toMatchObject({
+            ok: false,
+            status: 'indeterminate',
+            degraded: true,
+            evidence: { references: 0, graphImpact: false, partial: false },
+        });
+        expect(compact.limitations).toContain(
+            'Graph impact was reported, but no graph item was usable after bounded normalization.'
+        );
+        expect(standard.details.evidence.graph).toMatchObject({
+            observedImpact: true,
+            usableImpact: false,
+            observedItems: 7,
+            usableItems: 0,
+        });
+        expect(standard.details.omissions).toEqual(
+            expect.arrayContaining([
+                { section: 'graph.exports', reason: 'invalid_shape', count: 5 },
+                { section: 'graph.imports', reason: 'invalid_shape', count: 1 },
+                { section: 'graph.callees', reason: 'invalid_shape', count: 1 },
+            ])
+        );
+        expect(JSON.stringify(standard)).not.toContain('/workspace');
+    });
+    test('never promotes valid-looking payload data from failed subcalls into usable evidence', async () => {
+        const service = new SymbolWorkflowService(
+            createDeps({
+                findDefinition: () => workflowResult({ definitions: [location('src/target.ts')] }),
+                buildSymbolMap: async () => ({
+                    payload: {
+                        declarations: [],
+                        references: [location('src/reference.ts', { kind: 'usage' })],
+                    },
+                    isError: true,
+                }),
+                graphExpand: async () => ({
+                    payload: seedGraph({
+                        exports: [
+                            {
+                                file: 'src/failed-public.ts',
+                                capture: 'export.name',
+                                text: 'Target',
+                                start: { line: 1, column: 0 },
+                            },
+                        ],
+                    }),
+                    isError: true,
+                }),
+            })
+        );
+        const compact = payload(await service.exploreSymbol({ symbol: 'Target', file: 'policy/policy.go' }));
+        const standard = payload(
+            await service.exploreSymbol({ symbol: 'Target', file: 'policy/policy.go', mode: 'standard' })
+        );
+        const debug = payload(
+            await service.exploreSymbol({ symbol: 'Target', file: 'policy/policy.go', mode: 'debug' })
+        );
+
+        expect(compact).toMatchObject({
+            ok: true,
+            status: 'confirmed',
+            degraded: true,
+            definition: { path: 'src/target.ts' },
+            impact: { totalFiles: 1 },
+            editRisk: { level: 'high', signals: { publicApi: { detected: false } } },
+        });
+        expect(compact.impact.files.map((item: any) => item.path)).toEqual(['src/target.ts']);
+        expect(compact.limitations).toEqual(['build_symbol_map: error_result', 'graph_expand: error_result']);
+        expect(standard.details).toMatchObject({
+            schemaVersion: 2,
+            evidence: { definitions: { observed: 1, usable: 1 } },
+        });
+        expect(standard.details.evidence).not.toHaveProperty('graph');
+        expect(JSON.stringify(standard)).not.toContain('src/reference.ts');
+        expect(JSON.stringify(standard)).not.toContain('src/failed-public.ts');
+        expect(debug.details.graph).toMatchObject({
+            hasImpactEvidence: false,
+            observedImpact: false,
+            usableImpact: false,
+            observedItems: 0,
+            usableItems: 0,
+        });
+        expect(debug.details.diagnostics.subcalls.map((call: any) => call.status)).toEqual([
+            'ok',
+            'error_result',
+            'error_result',
+        ]);
+    });
     test('keeps the compact unconfirmed shape while standard and debug explain bounded partial evidence', async () => {
         const service = new SymbolWorkflowService(
             createDeps({
@@ -638,13 +846,19 @@ describe('SymbolWorkflowService', () => {
         );
 
         expect(compact).not.toHaveProperty('details');
-        expect(byteSize(compact)).toBeLessThan(700);
+        expect(byteSize(compact)).toBeLessThan(900);
         expect(standard.details).toMatchObject({
+            schemaVersion: 2,
             mode: 'standard',
-            definitions: { count: 1, emitted: 0, shapeFailures: { invalid: 1 } },
-            references: { count: 1, emitted: 1 },
+            evidence: {
+                definitions: { observed: 1, usable: 0, omitted: 1 },
+                references: { observed: 1, usable: 1 },
+                graph: { observedImpact: true, usableImpact: false, observedItems: 0, usableItems: 0 },
+            },
+            omissions: [{ section: 'definitions', reason: 'invalid_shape', count: 1 }],
         });
         expect(standard.details).not.toHaveProperty('diagnostics');
+        expect(JSON.stringify(standard.details)).not.toContain('shapeFailures');
         expect(debug.details.mode).toBe('debug');
         expect(debug.details.diagnostics.subcalls[0].shapeValidationFailures).toContainEqual({
             code: 'invalid_item_shape',

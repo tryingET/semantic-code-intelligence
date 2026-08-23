@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { spawnSync } from 'node:child_process';
+import { SYMBOL_IMPACT_DISCLOSURE_BUDGETS } from '../src/core/workflows/symbol-workflow-disclosure.js';
 import { HTTPServer } from '../src/servers/http';
 
 type ToolCallEvidence = {
@@ -212,6 +213,119 @@ try {
             standardPacketBytes <= Number(standardImpact?.details?.disclosure?.packetByteBudget || 0) &&
             debugPacketBytes <= Number(debugImpact?.details?.disclosure?.packetByteBudget || 0),
         { standardDetailBytes, debugDetailBytes, standardPacketBytes, debugPacketBytes }
+    );
+    const goProbeArgs = {
+        symbol: 'MissingRender',
+        file: 'tests/fixtures/graph/go/sample.go',
+        precise: true,
+        depth: 1,
+        limit: 20,
+    };
+    const goCompactImpact = await callTool(
+        'explore_symbol_impact',
+        goProbeArgs,
+        'Verify an unconfirmed Go symbol remains decision-first while seed-local graph evidence is normalized.'
+    );
+    const goStandardImpact = await callTool(
+        'explore_symbol_impact',
+        { ...goProbeArgs, mode: 'standard' },
+        'Verify sparse observed/usable evidence for an unconfirmed Go symbol.'
+    );
+    const goDebugImpact = callCliWorkflow(
+        'explore_symbol_impact',
+        { ...goProbeArgs, mode: 'debug' },
+        'Verify the full debug audit for the same unconfirmed Go symbol in a fresh CLI process.'
+    );
+    const goPackets = {
+        compact: Buffer.byteLength(JSON.stringify(goCompactImpact), 'utf8'),
+        standard: Buffer.byteLength(JSON.stringify(goStandardImpact), 'utf8'),
+        debug: Buffer.byteLength(JSON.stringify(goDebugImpact), 'utf8'),
+    };
+    const goStandardGraph = goStandardImpact?.details?.evidence?.graph;
+    const goDebugGraph = goDebugImpact?.details?.graph;
+    const goActions = {
+        compact: goCompactImpact?.nextReads?.[0],
+        standard: goStandardImpact?.nextReads?.[0],
+        debug: goDebugImpact?.nextReads?.[0],
+    };
+    const goOmissionReasons = Array.isArray(goStandardImpact?.details?.omissions)
+        ? goStandardImpact.details.omissions.map((item: any) => item?.reason).filter(Boolean)
+        : [];
+    const goDebugOmissionReasons = Array.isArray(goDebugImpact?.details?.omissions)
+        ? goDebugImpact.details.omissions.map((item: any) => item?.reason).filter(Boolean)
+        : [];
+    const goPacketBudget = Number(
+        goStandardImpact?.details?.disclosure?.packetByteBudget || SYMBOL_IMPACT_DISCLOSURE_BUDGETS.packetBytes
+    );
+    const goStandardDetailBytes = Buffer.byteLength(JSON.stringify(goStandardImpact?.details), 'utf8');
+    const goDebugDetailBytes = Buffer.byteLength(JSON.stringify(goDebugImpact?.details), 'utf8');
+    const exactGoActions = Object.values(goActions).every(
+        (action: any) =>
+            action?.action === 'locate_confirm_definition' &&
+            action?.arguments?.symbol === goProbeArgs.symbol &&
+            action?.arguments?.precise === true &&
+            !Object.hasOwn(action.arguments, 'file')
+    );
+    recordSemanticCheck(
+        'explore_symbol_impact_unconfirmed_go_evidence_is_truthful_and_actionable',
+        goCompactImpact?.ok === false &&
+            goCompactImpact?.status === 'unconfirmed' &&
+            goCompactImpact?.degraded === false &&
+            goStandardImpact?.status === 'unconfirmed' &&
+            goStandardImpact?.degraded === false &&
+            goDebugImpact?.status === 'unconfirmed' &&
+            goDebugImpact?.degraded === false &&
+            goCompactImpact?.evidence?.graphImpact === true &&
+            exactGoActions &&
+            goStandardImpact?.details?.schemaVersion === 2 &&
+            goStandardGraph?.observedImpact === true &&
+            goStandardGraph?.usableImpact === true &&
+            Number(goStandardGraph?.usableItems || 0) > 0 &&
+            goDebugGraph?.observedImpact === true &&
+            goDebugGraph?.usableImpact === true &&
+            goPackets.compact <= goPacketBudget &&
+            goPackets.standard <= goPacketBudget &&
+            goPackets.debug <= goPacketBudget &&
+            Number(goStandardImpact?.details?.disclosure?.emittedBytes || 0) === goStandardDetailBytes &&
+            goStandardDetailBytes <= Number(goStandardImpact?.details?.disclosure?.byteBudget || 0) &&
+            Number(goDebugImpact?.details?.disclosure?.emittedBytes || 0) === goDebugDetailBytes &&
+            goDebugDetailBytes <= Number(goDebugImpact?.details?.disclosure?.byteBudget || 0) &&
+            ![...goOmissionReasons, ...goDebugOmissionReasons].some(
+                (reason) => reason === 'invalid_shape' || reason === 'outside_workspace'
+            ),
+        {
+            packets: goPackets,
+            standardGraph: {
+                observedImpact: goStandardGraph?.observedImpact,
+                usableImpact: goStandardGraph?.usableImpact,
+                observedItems: goStandardGraph?.observedItems,
+                usableItems: goStandardGraph?.usableItems,
+            },
+            debugGraph: {
+                observedImpact: goDebugGraph?.observedImpact,
+                usableImpact: goDebugGraph?.usableImpact,
+                observedItems: goDebugGraph?.observedItems,
+                usableItems: goDebugGraph?.usableItems,
+            },
+            omissionReasons: { standard: goOmissionReasons, debug: goDebugOmissionReasons },
+            budgets: {
+                packet: goPacketBudget,
+                standardDetail: {
+                    bytes: goStandardDetailBytes,
+                    budget: goStandardImpact?.details?.disclosure?.byteBudget,
+                },
+                debugDetail: {
+                    bytes: goDebugDetailBytes,
+                    budget: goDebugImpact?.details?.disclosure?.byteBudget,
+                },
+            },
+            degradation: {
+                compact: goCompactImpact?.degraded,
+                standard: goStandardImpact?.degraded,
+                debug: goDebugImpact?.degraded,
+            },
+            nextActions: goActions,
+        }
     );
     const structuralRiskImpact = await callTool(
         'explore_symbol_impact',

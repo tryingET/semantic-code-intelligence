@@ -1,5 +1,6 @@
 import type { SnapshotWorkflowResult } from './snapshot-patch-workflow.js';
 import {
+    analyzeSymbolImpactDisclosure,
     arrayOf,
     boundedNumber,
     buildSymbolImpactDetails,
@@ -154,19 +155,22 @@ export class SymbolWorkflowService {
         const neighborsResult = await invokeSymbolImpactSubcall('graph_expand', graphInput, () =>
             this.deps.graphExpand(graphInput)
         );
-        const neighborsOut = neighborsResult.value;
+        const neighborsOut = neighborsResult.issue ? {} : neighborsResult.value;
         const subcalls = [definitionResult, symbolMapResult, neighborsResult];
         let totalElapsedMs = performance.now() - workflowStarted;
         const issues = [definitionResult.issue, symbolMapResult.issue, neighborsResult.issue].filter(
             (issue): issue is string => !!issue
         );
         const impactSummary = isRecord(neighborsOut.impactSummary) ? neighborsOut.impactSummary : {};
-        const hasImpactEvidence = !neighborsResult.issue && impactSummary.hasImpactEvidence === true;
+        const disclosureAnalysis = analyzeSymbolImpactDisclosure({ workspaceRoot, subcalls });
+        const evidenceDegraded =
+            disclosureAnalysis.summary.shapeFailures > 0 || disclosureAnalysis.summary.graphReportedButUnusable;
+        const degraded = issues.length > 0 || evidenceDegraded;
         const graphNeighbors = isRecord(neighborsOut.neighbors) ? neighborsOut.neighbors : {};
         const graphIntakeTruncated = ['exports', 'callers', 'imports', 'callees'].some(
             (edge) => arrayOf(graphNeighbors[edge]).length > SYMBOL_IMPACT_DISCLOSURE_BUDGETS.analyzedItemsPerSection
         );
-        const status = definition ? 'confirmed' : issues.length > 0 ? 'indeterminate' : 'unconfirmed';
+        const status = definition ? 'confirmed' : degraded ? 'indeterminate' : 'unconfirmed';
         const backendLimitations = arrayOf(impactSummary.limitations);
         const limitationIntakeTruncated =
             backendLimitations.length > SYMBOL_IMPACT_DISCLOSURE_BUDGETS.analyzedLimitations;
@@ -175,6 +179,19 @@ export class SymbolWorkflowService {
                 ? ['Multiple definition candidates were found; impact includes every confirmed definition file.']
                 : []),
             ...issues,
+            ...(disclosureAnalysis.summary.graphReportedButUnusable
+                ? ['Graph impact was reported, but no graph item was usable after bounded normalization.']
+                : []),
+            ...(disclosureAnalysis.summary.graph.invalidItems + disclosureAnalysis.summary.graph.outsideWorkspaceItems >
+            0
+                ? ['Some graph evidence was omitted because it lacked a supported workspace-contained location.']
+                : []),
+            ...(disclosureAnalysis.summary.shapeFailures >
+            disclosureAnalysis.summary.graph.invalidItems + disclosureAnalysis.summary.graph.outsideWorkspaceItems
+                ? [
+                      'Some definition or reference evidence was omitted because it lacked a supported workspace-contained location.',
+                  ]
+                : []),
             ...(intakeTruncated || graphIntakeTruncated || limitationIntakeTruncated
                 ? ['Backend evidence exceeded an analysis budget and was truncated deterministically.']
                 : []),
@@ -185,26 +202,28 @@ export class SymbolWorkflowService {
         ]).slice(0, maxLimitations);
 
         if (!definition) {
-            const hasPartialEvidence = rawReferences.length > 0 || hasImpactEvidence;
+            const hasPartialEvidence =
+                disclosureAnalysis.summary.references.usable > 0 || disclosureAnalysis.summary.graph.usable;
             const packet: Record<string, any> = {
                 schemaVersion: 1,
                 workflow: 'explore_symbol_impact',
                 ok: false,
                 symbol: disclosedSymbol,
                 status,
-                degraded: issues.length > 0,
+                degraded,
                 message:
                     status === 'indeterminate'
-                        ? 'Definition not confirmed because one or more evidence sources failed; do not plan edits from this result.'
+                        ? 'Definition not confirmed because evidence was failed, rejected, or unusable; do not plan edits from this result.'
                         : 'Definition not confirmed; references or graph matches alone are insufficient to plan edits.',
                 evidence: {
-                    references: rawReferences.length,
-                    graphImpact: hasImpactEvidence,
+                    references: disclosureAnalysis.summary.references.usable,
+                    graphImpact: disclosureAnalysis.summary.graph.usable,
                     partial: hasPartialEvidence,
                 },
                 nextReads: [
                     {
                         action: 'locate_confirm_definition',
+                        arguments: { symbol: disclosedSymbol, precise: true },
                         reason: file
                             ? 'Retry without the file filter to confirm a workspace declaration.'
                             : 'Confirm spelling and request precise definition evidence.',
@@ -220,6 +239,7 @@ export class SymbolWorkflowService {
                     limitations,
                     totalElapsedMs,
                     ontologySeedElapsedMs,
+                    analysis: disclosureAnalysis,
                 });
             }
             return { payload: fitSymbolImpactPacket(packet), isError: false };
@@ -261,11 +281,13 @@ export class SymbolWorkflowService {
                 : []),
             ...(signals.state.detected ? ['Structural write evidence requires invariant review.'] : []),
             ...(signals.registry.detected ? ['Structural registration evidence may require coordinated updates.'] : []),
-            ...(signals.tests.detected ? ['Structurally identified impacted tests provide a focused validation target.'] : []),
-            ...(issues.length > 0 ? ['Impact evidence is degraded by failed subcalls.'] : []),
+            ...(signals.tests.detected
+                ? ['Structurally identified impacted tests provide a focused validation target.']
+                : []),
+            ...(degraded ? ['Impact evidence is degraded by failed or unusable evidence.'] : []),
         ];
         const elevatedRisk = signals.publicApi.detected || signals.state.detected || signals.registry.detected;
-        const risk = issues.length > 0 || elevatedRisk ? 'high' : ranked.length > 3 ? 'medium' : 'unknown';
+        const risk = degraded || elevatedRisk ? 'high' : ranked.length > 3 ? 'medium' : 'unknown';
         if (risk === 'unknown') {
             riskReasons.push('No supported structural evidence established a low semantic edit risk.');
         }
@@ -285,7 +307,7 @@ export class SymbolWorkflowService {
             ok: true,
             symbol: disclosedSymbol,
             status,
-            degraded: issues.length > 0,
+            degraded,
             definition,
             definitions: { count: confirmedLocations.length },
             impact: { files: publicFiles, totalFiles: ranked.length, truncated: ranked.length > visibleFiles.length },
@@ -312,6 +334,7 @@ export class SymbolWorkflowService {
                           limitations,
                           totalElapsedMs,
                           ontologySeedElapsedMs,
+                          analysis: disclosureAnalysis,
                       }),
         };
         return { payload: fitSymbolImpactPacket(packet), isError: false };

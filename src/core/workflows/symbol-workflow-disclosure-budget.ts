@@ -58,6 +58,7 @@ export function fitSymbolImpactPacket(packet: Record<string, any>): Record<strin
         packet.details = emergencyDetails(packet.details, 4_096);
         updateEmittedBytes(packet.details);
     }
+    if (mode === 'standard' && packet.details) packet.details = projectStandardDetails(packet.details);
     if (byteLength(safeStringify(packet)) > packetBudget) return failClosedPacket(packet, mode, omitted);
     return packet;
 }
@@ -107,6 +108,75 @@ export function fitDisclosureDetails(details: Record<string, any>, budgetOverrid
     return byteLength(safeStringify(details)) <= budget ? details : emergencyDetails(details, budget);
 }
 
+function projectStandardDetails(details: Record<string, any>): Record<string, any> {
+    const sections = allSections(details);
+    const evidence: Record<string, unknown> = {};
+    for (const name of ['definitions', 'declarations', 'references']) {
+        const projected = projectEvidenceSection(sections[name]);
+        if (projected) evidence[name] = projected;
+    }
+    const edges = Object.fromEntries(
+        ['exports', 'callers', 'imports', 'callees']
+            .map((edge) => [edge, projectEvidenceSection(sections[`graph.${edge}`])] as const)
+            .filter((entry) => entry[1] !== undefined)
+    );
+    const graphObservedItems = ['exports', 'callers', 'imports', 'callees'].reduce(
+        (sum, edge) => sum + Number(sections[`graph.${edge}`]?.count || 0),
+        0
+    );
+    const graphUsableItems = ['exports', 'callers', 'imports', 'callees'].reduce(
+        (sum, edge) => sum + Number(sections[`graph.${edge}`]?.emitted || 0),
+        0
+    );
+    const observedImpact = details.graph?.observedImpact === true || graphObservedItems > 0;
+    const usableImpact = details.graph?.usableImpact === true || graphUsableItems > 0;
+    if (observedImpact || graphObservedItems > 0 || Object.keys(edges).length > 0) {
+        evidence.graph = {
+            observedImpact,
+            usableImpact,
+            observedItems: graphObservedItems,
+            usableItems: graphUsableItems,
+            ...(Object.keys(edges).length > 0 ? { edges } : {}),
+        };
+    }
+
+    const provenance = Object.fromEntries(
+        Object.entries(recordOf(details.provenance)).filter(([, value]) => recordOf(value).present === true)
+    );
+    const omissions = arrayOf(details.omissions);
+    const sourceDisclosure = recordOf(details.disclosure);
+    const packetOmissions = recordOf(sourceDisclosure.packetOmissions);
+    const projected: Record<string, any> = {
+        schemaVersion: 2,
+        mode: 'standard',
+        evidence,
+        ...(Object.keys(provenance).length > 0 ? { provenance } : {}),
+        ...(omissions.length > 0 ? { omissions } : {}),
+        disclosure: {
+            packetByteBudget: Number(sourceDisclosure.packetByteBudget || SYMBOL_IMPACT_DISCLOSURE_BUDGETS.packetBytes),
+            byteBudget: Number(sourceDisclosure.byteBudget || SYMBOL_IMPACT_DISCLOSURE_BUDGETS.standardBytes),
+            emittedBytes: 0,
+            truncated: sourceDisclosure.truncated === true,
+            byteTruncated: sourceDisclosure.byteTruncated === true,
+            omittedItems: Number(sourceDisclosure.omittedItems || 0),
+            ...(sourceDisclosure.packetFallback === true ? { packetFallback: true } : {}),
+            ...(Object.values(packetOmissions).some((value) => Number(value) > 0) ? { packetOmissions } : {}),
+        },
+    };
+    updateEmittedBytes(projected);
+    return projected;
+}
+
+function projectEvidenceSection(section: EvidenceSection | undefined): Record<string, unknown> | undefined {
+    if (!section || (section.count === 0 && section.emitted === 0 && section.omitted === 0)) return undefined;
+    return {
+        observed: section.count,
+        usable: section.emitted,
+        ...(section.omitted > 0 ? { omitted: section.omitted } : {}),
+        ...(section.items.length > 0 ? { items: section.items } : {}),
+    };
+}
+
 function failClosedPacket(
     packet: Record<string, any>,
     mode: 'standard' | 'debug' | null,
@@ -126,6 +196,7 @@ function failClosedPacket(
         nextReads: [
             {
                 action: 'locate_confirm_definition',
+                arguments: { symbol, precise: true },
                 reason: 'Use a narrower file or result limit before planning edits.',
             },
         ],
@@ -137,9 +208,10 @@ function failClosedPacket(
         },
     };
     if (mode) {
-        fallback.details = emergencyDetails(recordOf(packet.details), 4_096);
-        fallback.details.disclosure.packetFallback = true;
-        updateEmittedBytes(fallback.details);
+        const emergency = emergencyDetails(recordOf(packet.details), 4_096);
+        emergency.disclosure.packetFallback = true;
+        updateEmittedBytes(emergency);
+        fallback.details = mode === 'standard' ? projectStandardDetails(emergency) : emergency;
     }
     if (byteLength(safeStringify(fallback)) <= SYMBOL_IMPACT_DISCLOSURE_BUDGETS.packetBytes) return fallback;
     return {
@@ -162,6 +234,8 @@ function emergencyDetails(details: Record<string, any>, budget: number): Record<
         references: emptySection(details.references?.count),
         graph: {
             hasImpactEvidence: details.graph?.hasImpactEvidence === true,
+            observedImpact: details.graph?.observedImpact === true,
+            usableImpact: details.graph?.usableImpact === true,
             edges: Object.fromEntries(
                 ['exports', 'callers', 'imports', 'callees'].map((edge) => [
                     edge,
