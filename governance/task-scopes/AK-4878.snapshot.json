@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-08-23T14:42:58.750934653+00:00",
+  "task_id": 4878,
+  "entity_version": 3,
+  "commit_sha": "d570ca4d37700ba96f3d75c89e3cfe07af8d94ef",
+  "scope": {
+    "allowed_paths": [
+      "bin/test-progress-batch.sh",
+      "governance/task-scopes/AK-4878.snapshot.json",
+      "justfile",
+      "scripts/run-normal-tests.sh",
+      "tests/error-handling.test.ts",
+      "tests/layer4-engine-validation.test.ts",
+      "tests/test-helpers.ts"
+    ],
+    "required_paths": [
+      "governance/task-scopes/AK-4878.snapshot.json"
+    ],
+    "forbidden_paths": []
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}

@@ -2,7 +2,7 @@
  * Comprehensive test suite for MCP server error handling and recovery
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, setSystemTime, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
 import { ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { ErrorHandler as CoreErrorHandler } from '../src/core/error-handler';
@@ -17,6 +17,17 @@ import {
     withMcpErrorHandling,
 } from '../src/mcp/error-handler';
 import { FileLogger, fileLogger } from '../src/mcp/file-logger';
+
+const CIRCUIT_BREAKER_RESET_TIMEOUT_MS = 1;
+const CIRCUIT_BREAKER_TEST_EPOCH_MS = Date.UTC(2026, 0, 1);
+
+function freezeCircuitBreakerClock(): void {
+    setSystemTime(new Date(CIRCUIT_BREAKER_TEST_EPOCH_MS));
+}
+
+function advancePastCircuitBreakerReset(): void {
+    setSystemTime(new Date(Date.now() + CIRCUIT_BREAKER_RESET_TIMEOUT_MS + 1));
+}
 
 describe('Error Handler', () => {
     let errorHandler: ErrorHandler;
@@ -172,60 +183,70 @@ describe('Error Handler', () => {
     });
 
     test('should honor circuit breaker reset timeout option', async () => {
-        const context = {
-            component: 'TestComponent',
-            operation: 'circuit_reset_timeout_test',
-            timestamp: Date.now(),
-        };
-        const circuitBreakerHandler = new ErrorHandler();
-        const perCallCircuitOptions = {
-            circuitBreakerThreshold: 1,
-            circuitBreakerResetTimeout: 1,
-            maxRetries: 0,
-        };
+        freezeCircuitBreakerClock();
+        try {
+            const context = {
+                component: 'TestComponent',
+                operation: 'circuit_reset_timeout_test',
+                timestamp: Date.now(),
+            };
+            const circuitBreakerHandler = new ErrorHandler();
+            const perCallCircuitOptions = {
+                circuitBreakerThreshold: 1,
+                circuitBreakerResetTimeout: CIRCUIT_BREAKER_RESET_TIMEOUT_MS,
+                maxRetries: 0,
+            };
 
-        await expect(
-            circuitBreakerHandler.withErrorHandling(
-                context,
-                async () => {
-                    throw new Error('Service failure');
-                },
-                perCallCircuitOptions
-            )
-        ).rejects.toThrow('Service failure');
+            await expect(
+                circuitBreakerHandler.withErrorHandling(
+                    context,
+                    async () => {
+                        throw new Error('Service failure');
+                    },
+                    perCallCircuitOptions
+                )
+            ).rejects.toThrow('Service failure');
 
-        await expect(
-            circuitBreakerHandler.withErrorHandling(context, async () => 'blocked', perCallCircuitOptions)
-        ).rejects.toThrow('Circuit breaker open');
+            await expect(
+                circuitBreakerHandler.withErrorHandling(context, async () => 'blocked', perCallCircuitOptions)
+            ).rejects.toThrow('Circuit breaker open');
 
-        await new Promise((resolve) => setTimeout(resolve, 5));
-        await expect(
-            circuitBreakerHandler.withErrorHandling(context, async () => 'recovered', perCallCircuitOptions)
-        ).resolves.toBe('recovered');
+            advancePastCircuitBreakerReset();
+            await expect(
+                circuitBreakerHandler.withErrorHandling(context, async () => 'recovered', perCallCircuitOptions)
+            ).resolves.toBe('recovered');
+        } finally {
+            setSystemTime();
+        }
     });
 
     test('should apply circuit breaker environment overrides to new handlers', async () => {
-        process.env.CIRCUIT_BREAKER_THRESHOLD = '1';
-        process.env.CIRCUIT_BREAKER_RESET_TIMEOUT = '1';
-        const context = {
-            component: 'TestComponent',
-            operation: 'circuit_env_timeout_test',
-            timestamp: Date.now(),
-        };
-        const circuitBreakerHandler = new ErrorHandler({ maxRetries: 0 });
+        freezeCircuitBreakerClock();
+        try {
+            process.env.CIRCUIT_BREAKER_THRESHOLD = '1';
+            process.env.CIRCUIT_BREAKER_RESET_TIMEOUT = String(CIRCUIT_BREAKER_RESET_TIMEOUT_MS);
+            const context = {
+                component: 'TestComponent',
+                operation: 'circuit_env_timeout_test',
+                timestamp: Date.now(),
+            };
+            const circuitBreakerHandler = new ErrorHandler({ maxRetries: 0 });
 
-        await expect(
-            circuitBreakerHandler.withErrorHandling(context, async () => {
-                throw new Error('Service failure');
-            })
-        ).rejects.toThrow('Service failure');
-        await expect(circuitBreakerHandler.withErrorHandling(context, async () => 'blocked')).rejects.toThrow(
-            'Circuit breaker open'
-        );
-        await new Promise((resolve) => setTimeout(resolve, 5));
-        await expect(circuitBreakerHandler.withErrorHandling(context, async () => 'recovered')).resolves.toBe(
-            'recovered'
-        );
+            await expect(
+                circuitBreakerHandler.withErrorHandling(context, async () => {
+                    throw new Error('Service failure');
+                })
+            ).rejects.toThrow('Service failure');
+            await expect(circuitBreakerHandler.withErrorHandling(context, async () => 'blocked')).rejects.toThrow(
+                'Circuit breaker open'
+            );
+            advancePastCircuitBreakerReset();
+            await expect(circuitBreakerHandler.withErrorHandling(context, async () => 'recovered')).resolves.toBe(
+                'recovered'
+            );
+        } finally {
+            setSystemTime();
+        }
     });
 
     test('should reject invalid circuit breaker environment overrides', () => {
@@ -291,27 +312,35 @@ describe('Core ErrorHandler', () => {
     };
 
     test('honors circuit breaker reset timeout option', async () => {
-        const handler = new CoreErrorHandler(eventBus);
-        const options = { circuitBreakerThreshold: 1, circuitBreakerResetTimeout: 1 };
+        freezeCircuitBreakerClock();
+        try {
+            const handler = new CoreErrorHandler(eventBus);
+            const options = {
+                circuitBreakerThreshold: 1,
+                circuitBreakerResetTimeout: CIRCUIT_BREAKER_RESET_TIMEOUT_MS,
+            };
 
-        await expect(
-            handler.executeWithProtection(
-                'test-layer',
-                async () => {
-                    throw new Error('core service failure');
-                },
-                options
-            )
-        ).rejects.toThrow('core service failure');
+            await expect(
+                handler.executeWithProtection(
+                    'test-layer',
+                    async () => {
+                        throw new Error('core service failure');
+                    },
+                    options
+                )
+            ).rejects.toThrow('core service failure');
 
-        await expect(handler.executeWithProtection('test-layer', async () => 'blocked', options)).rejects.toThrow(
-            'Circuit breaker is open'
-        );
+            await expect(handler.executeWithProtection('test-layer', async () => 'blocked', options)).rejects.toThrow(
+                'Circuit breaker is open'
+            );
 
-        await new Promise((resolve) => setTimeout(resolve, 5));
-        await expect(handler.executeWithProtection('test-layer', async () => 'recovered', options)).resolves.toBe(
-            'recovered'
-        );
+            advancePastCircuitBreakerReset();
+            await expect(handler.executeWithProtection('test-layer', async () => 'recovered', options)).resolves.toBe(
+                'recovered'
+            );
+        } finally {
+            setSystemTime();
+        }
     });
 });
 

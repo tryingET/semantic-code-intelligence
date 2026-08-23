@@ -2,14 +2,13 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { OntologyEngine } from '../src/ontology/ontology-engine';
 import { OntologyStorage } from '../src/ontology/storage';
 import type { Concept } from '../src/types/core';
-import { ensureTestDirectories, testPaths } from './test-helpers';
+import { testPaths } from './test-helpers';
 
 describe('Layer 4: Engine validation (rename/import/move)', () => {
-    const DB = testPaths.testDb('ontology-engine-validate');
+    const DB = testPaths.testDb();
     let engine: OntologyEngine;
 
     beforeAll(async () => {
-        ensureTestDirectories();
         engine = new OntologyEngine(new OntologyStorage(DB));
         await engine.ensureInitialized();
     });
