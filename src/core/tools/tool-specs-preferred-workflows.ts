@@ -104,7 +104,7 @@ export const PREFERRED_WORKFLOW_TOOL_SPECS: ToolSpec[] = [
         name: 'locate_confirm_definition',
         title: 'Locate & Confirm Definition',
         description:
-            'PREFERRED first call when a symbol definition is uncertain. Performs fast lookup and a precise retry when ambiguous; use bounded reads after it identifies candidates. Returns: { attempts: [fast, precise], definitions }.',
+            'PREFERRED first call when a symbol definition is uncertain. Performs fast lookup and a precise retry when ambiguous; use bounded reads after it identifies candidates. No definition is a completed non-error result. An outside-workspace file is rejected with bounded error.data.reason and remediation fields. Returns: { attempts: [fast, precise], definitions }.',
         category: 'workflow',
         inputSchema: {
             type: 'object',

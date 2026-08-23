@@ -8,6 +8,7 @@
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { isCoreError } from '../core/errors.js';
 import { mcpLogger } from './file-logger.js';
+import { isMcpToolResultSuccess } from './tool-result.js';
 
 export interface ErrorContext {
     component: string;
@@ -125,11 +126,12 @@ export class ErrorHandler {
                 const result = await this.withTimeout(operation(), timeoutMs);
                 const duration = Date.now() - startTime;
 
-                // Success - reset retry counter and close circuit
+                // Promise resolution closes transport/retry state. A resolved MCP tool result
+                // can still represent an application failure and must be logged as such.
                 this.retryAttempts.delete(operationKey);
                 this.resetCircuitBreaker(operationKey);
 
-                mcpLogger.logPerformance(context.operation, duration, true, {
+                mcpLogger.logPerformance(context.operation, duration, isMcpToolResultSuccess(result), {
                     attempt,
                     component: context.component,
                 });

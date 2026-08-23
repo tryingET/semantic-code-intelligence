@@ -1,5 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
+import { join } from 'node:path';
+import {
+    WORKSPACE_BOUNDARY_MESSAGE,
+    WORKSPACE_BOUNDARY_REASON,
+    WORKSPACE_BOUNDARY_REMEDIATION,
+} from '../src/core/errors';
 
 type Pending = {
     resolve: (value: any) => void;
@@ -69,6 +75,7 @@ describe('MCP stdio lifecycle', () => {
 describe('Alpha MVP MCP stdio protocol', () => {
     const bun = process.env.BUN_PATH || `${process.env.HOME}/.bun/bin/bun`;
     let proc: ChildProcessWithoutNullStreams;
+    let metricsPort = 0;
     let nextId = 1;
     let stdoutBuffer = '';
     let stderr = '';
@@ -94,14 +101,14 @@ describe('Alpha MVP MCP stdio protocol', () => {
     }
 
     beforeAll(async () => {
-        const port = 19500 + Math.floor(Math.random() * 1000);
+        metricsPort = 19500 + Math.floor(Math.random() * 1000);
         proc = spawn(bun, ['run', 'src/servers/mcp-stdio-entry.ts'], {
             env: {
                 ...process.env,
                 SILENT_MODE: 'true',
                 STDIO_MODE: 'true',
                 WORKSPACE_ROOT: process.cwd(),
-                MCP_STDIO_PROM_PORT: String(port),
+                MCP_STDIO_PROM_PORT: String(metricsPort),
             },
             stdio: ['pipe', 'pipe', 'pipe'],
         });
@@ -179,6 +186,63 @@ describe('Alpha MVP MCP stdio protocol', () => {
         }
         expect(stdoutPollution).toEqual([]);
     });
+
+    test('raw MCP definition matrix keeps boundary errors safe and failure metrics truthful', async () => {
+        for (const file of ['tests/fixtures/example.ts', join(process.cwd(), 'tests/fixtures/example.ts')]) {
+            const direct = await send('tools/call', {
+                name: 'find_definition',
+                arguments: { symbol: 'TestClass', file },
+            });
+            expect(direct.error).toBeUndefined();
+            expect(direct.result?.isError).toBe(false);
+            expect(parseToolContent(direct)).toMatchObject({ count: 1, definitions: [{ name: 'TestClass' }] });
+
+            const located = await send('tools/call', {
+                name: 'locate_confirm_definition',
+                arguments: { symbol: 'TestClass', file },
+            });
+            expect(located.error).toBeUndefined();
+            expect(located.result?.isError).toBe(false);
+            expect(parseToolContent(located)).toMatchObject({ ok: true, definitions: [{ name: 'TestClass' }] });
+        }
+
+        const missing = await send('tools/call', {
+            name: 'locate_confirm_definition',
+            arguments: { symbol: 'MissingForAk4862', file: 'tests/fixtures/example.ts' },
+        });
+        expect(missing.error).toBeUndefined();
+        expect(missing.result?.isError).toBe(false);
+        expect(parseToolContent(missing)).toMatchObject({ ok: false, definitions: [] });
+
+        const outsidePath = join(process.cwd(), '..', 'ak4862-outside.ts');
+        for (const tool of ['find_definition', 'locate_confirm_definition']) {
+            const rejected = await send('tools/call', {
+                name: tool,
+                arguments: { symbol: 'TestClass', file: outsidePath },
+            });
+            expect(rejected.error).toBeUndefined();
+            expect(rejected.result?.isError).toBe(true);
+            expect(rejected.result?.content?.[0]?.text).toBe(WORKSPACE_BOUNDARY_MESSAGE);
+            expect(rejected.result?.error?.message).toBe(WORKSPACE_BOUNDARY_MESSAGE);
+            expect(rejected.result?.error?.data).toEqual({
+                reason: WORKSPACE_BOUNDARY_REASON,
+                remediation: WORKSPACE_BOUNDARY_REMEDIATION,
+            });
+            const serialized = JSON.stringify(rejected);
+            expect(serialized).not.toContain(outsidePath);
+            expect(serialized).not.toContain(process.cwd());
+            expect(serialized).not.toContain('stack');
+            expect(serialized).not.toContain('cause');
+        }
+
+        const metrics = await fetch(`http://127.0.0.1:${metricsPort}/metrics`).then((response) => response.text());
+        expect(metrics).toContain('tool_calls_total{adapter="mcp_stdio",result="error",tool="find_definition"} 1');
+        expect(metrics).toContain(
+            'tool_calls_total{adapter="mcp_stdio",result="error",tool="locate_confirm_definition"} 1'
+        );
+        expect(metrics).toContain('inflight_requests{adapter="mcp_stdio"} 0');
+        expect(stdoutPollution).toEqual([]);
+    }, 45000);
 
     test('read/navigation and preview-first patch checks work over MCP stdio without mutating workspace', async () => {
         const before = await Bun.file(patchPlanningTarget).text();

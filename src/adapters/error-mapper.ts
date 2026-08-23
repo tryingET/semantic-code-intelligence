@@ -1,15 +1,24 @@
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
-import { CoreError, type CoreErrorCode, isCoreError } from '../core/errors.js';
+import {
+    CoreError,
+    type CoreErrorCode,
+    isCoreError,
+    publicCoreErrorData,
+    WORKSPACE_BOUNDARY_MESSAGE,
+} from '../core/errors.js';
 
 export function toMcpError(err: unknown): McpError {
     if (isCoreError(err)) {
+        const publicData = publicCoreErrorData(err);
+        const data = publicData ?? err.data;
+        const message = publicData ? WORKSPACE_BOUNDARY_MESSAGE : err.message;
         switch (err.code) {
             case 'UnknownTool':
-                return new McpError(ErrorCode.MethodNotFound, err.message, err.data);
+                return new McpError(ErrorCode.MethodNotFound, message, data);
             case 'InvalidParams':
-                return new McpError(ErrorCode.InvalidParams, err.message, err.data);
+                return new McpError(ErrorCode.InvalidParams, message, data);
             default:
-                return new McpError(ErrorCode.InternalError, err.message, err.data);
+                return new McpError(ErrorCode.InternalError, message, data);
         }
     }
     if (err instanceof McpError) return err;
@@ -105,9 +114,11 @@ export function handleAdapterError(
     error: unknown,
     adapter: AdapterProtocol
 ): string | McpAdapterErrorEnvelope | HttpAdapterErrorEnvelope | LspAdapterErrorEnvelope {
-    const message = getErrorMessage(error);
     const core = isCoreError(error) ? error : undefined;
+    const publicData = core ? publicCoreErrorData(core) : undefined;
+    const message = publicData ? WORKSPACE_BOUNDARY_MESSAGE : getErrorMessage(error);
     const includeDebugData = process.env.DEBUG === '1' || process.env.NODE_ENV === 'test';
+    const data = core ? (publicData ?? (includeDebugData ? core.data : undefined)) : undefined;
 
     if (adapter === 'cli') {
         return message;
@@ -115,15 +126,12 @@ export function handleAdapterError(
 
     if (adapter === 'lsp') {
         const code = core ? coreToJsonRpcCode(core.code) : -32603;
-        const data = includeDebugData ? core?.data : undefined;
         return { code, message, data };
     }
 
     if (adapter === 'http') {
         const status = core ? coreToHttpStatus(core.code) : 500;
-        const details = includeDebugData
-            ? { code: core?.code, message, data: core?.data }
-            : { code: core?.code, message };
+        const details = data === undefined ? { code: core?.code, message } : { code: core?.code, message, data };
         return { status, error: message, details };
     }
 
@@ -136,8 +144,8 @@ export function handleAdapterError(
         content: [{ type: 'text', text: message }],
     };
 
-    if (core?.data !== undefined && includeDebugData) {
-        envelope.error.data = core.data;
+    if (data !== undefined) {
+        envelope.error.data = data;
     }
 
     return envelope;

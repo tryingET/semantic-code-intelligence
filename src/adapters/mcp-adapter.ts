@@ -15,6 +15,7 @@ import { withMcpErrorHandling } from '../mcp/error-handler.js';
 import { listMcpTools } from '../mcp/tool-list.js';
 import {
     ensureMcpToolResponse,
+    isMcpToolResultSuccess,
     normalizeMcpToolCall,
     safeMcpStringify,
     sanitizeMcpLogArgs,
@@ -184,8 +185,9 @@ export class MCPAdapter {
                 }
 
                 const duration = Date.now() - startTime;
-                const safeStr = safeMcpStringify(result);
-                adapterLogger.logPerformance(`tool_${name}`, duration, true, {
+                const response = ensureMcpToolResponse(result);
+                const safeStr = safeMcpStringify(response);
+                adapterLogger.logPerformance(`tool_${name}`, duration, isMcpToolResultSuccess(response), {
                     resultSize: safeStr.length,
                 });
                 if (process.env.DEBUG && !process.env.SILENT_MODE) {
@@ -196,7 +198,7 @@ export class MCPAdapter {
                     } catch {}
                 }
 
-                return ensureMcpToolResponse(result);
+                return response;
             },
             undefined,
             errorHandlingOptions

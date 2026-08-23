@@ -26,7 +26,11 @@ Transports
 - HTTP:
   - `POST /api/v1/tools/call` with `{ "name":"locate_confirm_definition", "arguments": { "symbol":"TestClass", "file":"tests/fixtures/example.ts" } }`
 - Returns (LocateConfirmDefinitionResult): `{ ok, symbol, attempts:[{mode,count}], definitions:[...], decision }`
-- Note: HTTP returns parsed JSON under `result`.
+- Result semantics:
+  - A contained workspace-relative path, contained absolute path, or contained `file://` URI is accepted.
+  - No definition is a completed domain result: `isError:false`, `ok:false`, and `definitions:[]`.
+  - An outside-workspace file is an application failure with bounded `error.data`: `{ "reason":"outside_workspace", "remediation":"Use a path within the configured workspace, expressed as a workspace-relative path or a contained absolute path." }`. The rejected path and raw filesystem diagnostics are not returned.
+- Note: HTTP returns parsed JSON under `result`. MCP can return the same application failure in a successful JSON-RPC response with `isError:true`; MCP performance telemetry records that result as an application error rather than a workflow success.
 
 ### Explore Symbol Impact
 - Purpose: confirm a definition before edit planning, rank bounded impact, and expose a lawful recovery call when confirmation fails.

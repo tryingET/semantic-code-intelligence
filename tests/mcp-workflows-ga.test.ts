@@ -1,5 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { join } from 'node:path';
 import { MCPAdapter } from '../src/adapters/mcp-adapter.js';
+import {
+    WORKSPACE_BOUNDARY_MESSAGE,
+    WORKSPACE_BOUNDARY_REASON,
+    WORKSPACE_BOUNDARY_REMEDIATION,
+} from '../src/core/errors.js';
 import { LayerManager } from '../src/core/layer-manager.js';
 import { SharedServices } from '../src/core/services/index.js';
 import { CodeAnalyzer } from '../src/core/unified-analyzer.js';
@@ -41,6 +47,62 @@ describe('MCP workflows GA shapes', () => {
         expect(typeof obj.ok).toBe('boolean');
         expect(Array.isArray(obj.attempts)).toBe(true);
         expect(Array.isArray(obj.definitions)).toBe(true);
+    }, 30000);
+
+    test('definition calls expose bounded workspace errors without changing contained or no-definition outcomes', async () => {
+        const containedFiles = ['tests/fixtures/example.ts', join(process.cwd(), 'tests/fixtures/example.ts')];
+        for (const containedFile of containedFiles) {
+            const direct = await mcp.handleValidatedToolCall('find_definition', {
+                symbol: 'TestClass',
+                file: containedFile,
+            });
+            expect(direct.isError).toBe(false);
+            expect(await parse(direct)).toMatchObject({ count: 1, definitions: [{ name: 'TestClass' }] });
+
+            const located = await mcp.handleValidatedToolCall('locate_confirm_definition', {
+                symbol: 'TestClass',
+                file: containedFile,
+            });
+            expect(located.isError).toBe(false);
+            expect(await parse(located)).toMatchObject({ ok: true, definitions: [{ name: 'TestClass' }] });
+        }
+
+        const missingDirect = await mcp.handleValidatedToolCall('find_definition', {
+            symbol: 'MissingForAk4862',
+            file: 'tests/fixtures/example.ts',
+        });
+        expect(missingDirect.isError).toBe(false);
+        expect(await parse(missingDirect)).toMatchObject({ count: 0, definitions: [] });
+
+        const missingLocate = await mcp.handleValidatedToolCall('locate_confirm_definition', {
+            symbol: 'MissingForAk4862',
+            file: 'tests/fixtures/example.ts',
+        });
+        expect(missingLocate.isError).toBe(false);
+        expect(await parse(missingLocate)).toMatchObject({ ok: false, definitions: [] });
+
+        const outsidePath = join(process.cwd(), '..', 'ak4862-outside.ts');
+        for (const tool of ['find_definition', 'locate_confirm_definition']) {
+            const rejected = await mcp.handleValidatedToolCall(tool, {
+                symbol: 'TestClass',
+                file: outsidePath,
+            });
+            expect(rejected.isError).toBe(true);
+            expect(rejected.content?.[0]?.text).toBe(WORKSPACE_BOUNDARY_MESSAGE);
+            expect(rejected.error).toMatchObject({
+                code: 'InvalidParams',
+                message: WORKSPACE_BOUNDARY_MESSAGE,
+                data: {
+                    reason: WORKSPACE_BOUNDARY_REASON,
+                    remediation: WORKSPACE_BOUNDARY_REMEDIATION,
+                },
+            });
+            const serialized = JSON.stringify(rejected);
+            expect(serialized).not.toContain(outsidePath);
+            expect(serialized).not.toContain(process.cwd());
+            expect(serialized).not.toContain('stack');
+            expect(serialized).not.toContain('cause');
+        }
     }, 30000);
 
     test('explore_symbol_impact: compact, standard, and debug preserve MCP parity', async () => {

@@ -73,9 +73,9 @@ export class MCPServer {
             }
 
             const { name, arguments: args } = request.params;
+            const t0 = Date.now();
 
             try {
-                const t0 = Date.now();
                 recordToolStart('mcp_stdio');
                 const result = await this.mcpAdapter.handleValidatedToolCall(name, args || {});
                 try {
@@ -89,7 +89,7 @@ export class MCPServer {
                 return result;
             } catch (error) {
                 try {
-                    recordToolEnd('mcp_stdio', String(name || 'unknown'), 0, false);
+                    recordToolEnd('mcp_stdio', String(name || 'unknown'), Date.now() - t0, false);
                 } catch {}
                 console.error(`Tool call failed: ${name}`, error);
                 throw toMcpToolCallError(name, error);

@@ -2,7 +2,7 @@ import { constants } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { CoreError } from './errors.js';
+import { CoreError, workspaceBoundaryError } from './errors.js';
 
 const READ_NOFOLLOW_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0);
 const DIRECTORY_NOFOLLOW_FLAGS = constants.O_RDONLY | (constants.O_DIRECTORY ?? 0) | (constants.O_NOFOLLOW ?? 0);
@@ -89,9 +89,7 @@ export async function resolveWorkspacePath(
 
     const realCandidate = await fs.realpath(candidate).catch((error) => {
         if (lexicalRelativePath === null) {
-            throw new CoreError('InvalidParams', `${inputLabel} must stay within the workspace`, {
-                path: requestedPath,
-            });
+            throw workspaceBoundaryError(inputLabel);
         }
         throw new CoreError('InvalidParams', `${inputLabel} does not exist or cannot be resolved`, {
             path: requestedPath,
@@ -290,12 +288,12 @@ function assertLexicallyWithinWorkspace(
     workspaceRoot: string,
     candidate: string,
     inputLabel: string,
-    requestedPath: string,
+    _requestedPath: string,
     allowRoot = false
 ): string {
     const relativePath = path.relative(workspaceRoot, candidate);
     if (isOutsideWorkspaceRelative(relativePath, allowRoot)) {
-        throw new CoreError('InvalidParams', `${inputLabel} must stay within the workspace`, { path: requestedPath });
+        throw workspaceBoundaryError(inputLabel);
     }
     return relativePath;
 }
@@ -304,12 +302,12 @@ function assertRealPathWithinWorkspace(
     realWorkspaceRoot: string,
     realCandidate: string,
     inputLabel: string,
-    requestedPath: string,
+    _requestedPath: string,
     allowRoot = false
 ): void {
     const relativePath = path.relative(realWorkspaceRoot, realCandidate);
     if (isOutsideWorkspaceRelative(relativePath, allowRoot)) {
-        throw new CoreError('InvalidParams', `${inputLabel} must stay within the workspace`, { path: requestedPath });
+        throw workspaceBoundaryError(inputLabel);
     }
 }
 

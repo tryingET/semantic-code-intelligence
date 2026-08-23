@@ -1,6 +1,6 @@
 import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { CoreError } from '../errors.js';
+import { CoreError, workspaceBoundaryError } from '../errors.js';
 import { workspaceInputToPath } from '../workspace-input.js';
 import { isOutsideWorkspaceRelative, resolveWorkspacePath } from '../workspace-path.js';
 import { CodeAnalysisWorkflowService } from './code-analysis-workflow.js';
@@ -267,7 +267,7 @@ export class ToolWorkflowRouter {
         const candidate = path.resolve(workspaceRoot, requestedPath);
         const relativePath = path.relative(workspaceRoot, candidate);
         if (isOutsideWorkspaceRelative(relativePath)) {
-            throw new CoreError('InvalidParams', `${inputLabel} must stay within the workspace`, { path: value });
+            throw workspaceBoundaryError(inputLabel);
         }
         return {
             path: candidate,
