@@ -37,11 +37,13 @@ jobs:
       - run: bun run alpha:mvp:check
       - name: Local production-candidate packaged-runtime gate
         run: bun run production:candidate:check
-      - name: Upload generated Alpha and local production-candidate evidence
+      - name: Upload allowlisted sanitized validation evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: sci-validation-evidence
-          path: .test-results/*.json
+          name: sci-validation-evidence-${{ github.sha }}
+          path: |
+            .test-results/alpha-evidence-packet.json
+            .test-results/local-production-candidate.json
           if-no-files-found: ignore
           retention-days: 14

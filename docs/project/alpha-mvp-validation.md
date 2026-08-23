@@ -79,11 +79,21 @@ GitHub Actions workflow:
 .github/workflows/alpha-mvp.yml
 ```
 
-The workflow runs:
+The workflow retains repository-wide read-only permissions (`contents: read`) and has two non-publishing jobs:
 
-1. `bun install --frozen-lockfile`
-2. `bun run alpha:mvp:check`
-3. uploads `.test-results/alpha-mvp-dogfood.json` when present
+1. **Portable repository integrity** checks out the exact workflow commit, pins Bun `1.3.12`, and runs `./scripts/ci/portable.sh` without requiring live workspace authority.
+2. **Harnessed-LLM Alpha MVP validation** checks out the same commit, installs the frozen lockfile, runs `bun run alpha:mvp:check`, and then runs the installed CLI/MCP-stdio gate through `bun run production:candidate:check`.
+
+The validation job's `always()` upload step retains only these exact files when they exist:
+
+```text
+.test-results/alpha-evidence-packet.json
+.test-results/local-production-candidate.json
+```
+
+The artifact is named `sci-validation-evidence-<github.sha>` and retained for 14 days. The Alpha evidence packet is the redacted operator-facing aggregate rather than every producer JSON. The local candidate packet uses typed bounded failure summaries and does not promote child stdout/stderr, credentials, host paths, or raw producer diagnostics. Wildcards, unrelated `.test-results` JSON, the candidate tarball, artifact manifest, checksum bundle, source snapshots, and release assets are not uploaded.
+
+This upload is validation-evidence retention, not candidate distribution or release authority. The workflow does not tag, publish, create a GitHub release, upload a candidate/release asset, build or push an image, deploy, or acquire write permissions. For release-candidate proof, AK task `4899` must first receive explicit push/external-CI confirmation, and the successful workflow `headSha` must equal the final task-`4898` candidate commit. An ordinary branch or pull-request run does not establish that final-SHA release posture.
 
 ## Dogfood evidence shape
 

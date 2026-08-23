@@ -668,13 +668,31 @@ describe('build command surface', () => {
         expect(archiveGuide).toContain('Do not reactivate');
     });
 
-    test('canonical Alpha CI uses current package and portable integrity surfaces', () => {
+    test('canonical Alpha CI uses current gates and an exact sanitized evidence allowlist', () => {
         const workflow = readText('.github/workflows/alpha-mvp.yml');
+        const parsed = yaml.load(workflow) as any;
         const securityWorkflow = readText('.github/workflows/security.yml');
+        const alphaSteps = parsed.jobs['alpha-mvp-check'].steps as any[];
+        const upload = alphaSteps.find((step) => step.uses === 'actions/upload-artifact@v4');
+        const uploadPaths = String(upload?.with?.path ?? '')
+            .trim()
+            .split(/\s+/)
+            .filter(Boolean);
 
+        expect(parsed.permissions).toEqual({ contents: 'read' });
         expect(workflow).toContain("bun-version: '1.3.12'");
         expect(workflow).toContain('run: ./scripts/ci/portable.sh');
         expect(workflow).toContain('run: bun run alpha:mvp:check');
+        expect(workflow).toContain('run: bun run production:candidate:check');
+        expect(upload?.if).toBe('always()');
+        expect(upload?.with?.name).toBe('sci-validation-evidence-${{ github.sha }}');
+        expect(uploadPaths).toEqual([
+            '.test-results/alpha-evidence-packet.json',
+            '.test-results/local-production-candidate.json',
+        ]);
+        expect(workflow).not.toContain('.test-results/*.json');
+        expect(workflow).not.toContain('artifact-manifest.json');
+        expect(workflow).not.toContain('.tgz');
         expect(workflow).not.toContain('npm publish');
         expect(workflow).not.toContain('docker/build-push-action');
         expect(securityWorkflow).toContain('workflow_dispatch');

@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-08-23T20:37:51.059292687+00:00",
+  "task_id": 4897,
+  "entity_version": 3,
+  "commit_sha": "8fe822f2fc7d6079079b1802ee6f2c5b59c84d00",
+  "scope": {
+    "allowed_paths": [
+      ".github/workflows/alpha-mvp.yml",
+      "docs/project/alpha-mvp-validation.md",
+      "governance/task-scopes/**",
+      "tests/build-command-surface.test.ts"
+    ],
+    "required_paths": [
+      ".github/workflows/alpha-mvp.yml",
+      "docs/project/alpha-mvp-validation.md",
+      "tests/build-command-surface.test.ts"
+    ],
+    "forbidden_paths": []
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}
