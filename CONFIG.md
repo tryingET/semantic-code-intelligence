@@ -152,11 +152,29 @@ HTTP and MCP HTTP are local Alpha surfaces. Keep them loopback-bound. CORS is a 
 
 ### Local single-user production candidate
 
-ADR-0004 limits the production candidate to an installed runtime tarball used by one trusted local operator through CLI or MCP stdio:
+ADR-0004 limits the production candidate to an installed runtime tarball used by one trusted local operator through CLI or MCP stdio. The following gate is available only from a source checkout; it is not an installed-package command:
 
 ```bash
 bun run production:candidate:check
 ```
+
+The installed runtime exposes `semantic-code-intelligence`, `sci`, and `semantic-code-mcp` from the selected version's `node_modules/.bin`. See **Installed local single-user candidate** in `README.md` for checksum verification, physically contained versioned installation, PATH activation, MCP-stdio configuration, upgrade, rollback, and uninstall.
+
+The tarball does not vendor runtime dependencies. Bun may resolve them from the configured operator-approved registry or local cache during installation, and `--no-save` retains no dependency lock. Treat the installed dependency closure as non-hermetic and do not describe this candidate as an offline bundle.
+
+For installed CLI and MCP-stdio use:
+
+- `SEMANTIC_CODE_WORKSPACE=/absolute/path/to/trusted/repository` is the canonical workspace binding;
+- `WORKSPACE_ROOT` is a compatibility fallback, not the preferred new configuration;
+- run CLI commands with the trusted target repository as the working directory;
+- configure MCP clients with the absolute installed `semantic-code-mcp` wrapper path, never a source-checkout `dist/` path;
+- ensure Bun is available in the CLI/MCP process environment because installed wrappers use a Bun shebang;
+- keep protocol stdout clean; MCP stdio bootstrap sets silent/stdio mode itself;
+- use `MCP_LOG_DIR=<target>/.ontology/logs` when an explicit contained log location is needed.
+
+Default persistent state belongs to the configured target repository under `.ontology/`, including the default SQLite database and snapshot materialization. The versioned runtime install under `${XDG_DATA_HOME:-$HOME/.local/share}/semantic-code-intelligence` is separate from that target state. Upgrade, rollback, and uninstall may switch or remove version directories but must not silently migrate or delete target `.ontology` state.
+
+`SEMANTIC_CODE_DB_PATH` or `LAYER4_DB_PATH` may select a different SQLite file only when the resolved path remains inside the effective workspace root. Use an absolute trusted workspace binding when a client may launch from another directory.
 
 The candidate assumes a trusted repository. `run_checks` can execute constrained repository commands and is not a hostile-code sandbox. `NODE_ENV=production` changes runtime mode; it does not promote HTTP/MCP HTTP, provide authentication, or authorize network exposure.
 

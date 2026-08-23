@@ -1,8 +1,27 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import {
+    existsSync,
+    mkdirSync,
+    mkdtempSync,
+    readFileSync,
+    rmSync,
+    statSync,
+    symlinkSync,
+    writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 function read(path: string): string {
     return readFileSync(path, 'utf8');
+}
+
+function bashBlockContaining(markdown: string, marker: string): string {
+    for (const match of markdown.matchAll(/```bash\n([\s\S]*?)\n```/g)) {
+        if (match[1].includes(marker)) return match[1];
+    }
+    throw new Error(`Missing bash block containing ${marker}`);
 }
 
 describe('local single-user production candidate contract', () => {
@@ -35,6 +54,120 @@ describe('local single-user production candidate contract', () => {
         expect(pkg.scripts?.['production:candidate:check']).toContain('tests/local-production-candidate.test.ts');
         for (const script of ['production:artifact', 'production:dogfood', 'production:candidate:check']) {
             expect(pkg.sciPackageContract?.sourceOnlyScripts).toContain(script);
+        }
+    });
+
+    test('bundled docs cover installed lifecycle and preserve target runtime state', () => {
+        const pkg = JSON.parse(read('package.json')) as { files?: string[] };
+        const readme = read('README.md');
+        const config = read('CONFIG.md');
+        const contract = read('docs/project/local-single-user-production-readiness.md');
+
+        expect(pkg.files).toContain('README.md');
+        expect(pkg.files).toContain('CONFIG.md');
+        expect(readme).toContain('### Installed local single-user candidate');
+        expect(readme).toContain('EXPECTED_SHA256=');
+        expect(readme).toContain('SCI_VERSIONS/$SCI_VERSION');
+        expect(readme).toContain('node_modules/.bin/semantic-code-mcp');
+        expect(readme).toContain('#### Upgrade');
+        expect(readme).toContain('#### Rollback');
+        expect(readme).toContain('#### Uninstall');
+        expect(readme).toContain('test ! -L "$REMOVE_ROOT"');
+        expect(readme).toContain('does **not** authorize deletion of `.ontology`');
+        expect(config).toContain('The following gate is available only from a source checkout');
+        expect(config).toContain('SEMANTIC_CODE_WORKSPACE=/absolute/path/to/trusted/repository');
+        expect(config).toContain('must not silently migrate or delete target `.ontology` state');
+        expect(contract).toContain('The bundled `README.md` is the installed-runtime lifecycle authority');
+    });
+
+    test('documented lifecycle rejects pre-existing and symlink-escaped install paths', () => {
+        const installBlock = bashBlockContaining(read('README.md'), 'lifecycle-install-v1');
+        const dir = mkdtempSync(join(tmpdir(), 'sci-documented-install-safety-'));
+        const archive = join(dir, 'candidate.tgz');
+        const env = {
+            ...process.env,
+            SCI_VERSION: '2.1.0-rc.1',
+            SCI_ARCHIVE: archive,
+            BUN_CONFIG_REGISTRY: 'http://127.0.0.1:9',
+        };
+        writeFileSync(archive, 'not reached by safety cases');
+
+        try {
+            const escapedRoot = join(dir, 'escaped-root');
+            const outsideVersions = join(dir, 'outside-versions');
+            mkdirSync(escapedRoot);
+            mkdirSync(outsideVersions);
+            writeFileSync(join(outsideVersions, 'keep'), 'keep');
+            symlinkSync(outsideVersions, join(escapedRoot, 'versions'));
+            const escaped = spawnSync('bash', ['-c', installBlock], {
+                encoding: 'utf8',
+                env: { ...env, SCI_ROOT: escapedRoot },
+            });
+            expect(escaped.status).toBe(2);
+            expect(escaped.stderr).toContain('versions root must not be a symlink');
+            expect(readFileSync(join(outsideVersions, 'keep'), 'utf8')).toBe('keep');
+
+            const existingRoot = join(dir, 'existing-root');
+            const existingVersion = join(existingRoot, 'versions', '2.1.0-rc.1');
+            mkdirSync(existingVersion, { recursive: true });
+            writeFileSync(join(existingVersion, 'keep'), 'keep');
+            const existing = spawnSync('bash', ['-c', installBlock], {
+                encoding: 'utf8',
+                env: { ...env, SCI_ROOT: existingRoot },
+            });
+            expect(existing.status).toBe(2);
+            expect(existing.stderr).toContain('version directory already exists; refusing overwrite');
+            expect(readFileSync(join(existingVersion, 'keep'), 'utf8')).toBe('keep');
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('documented uninstall rejects escaped parents and preserves target runtime state', () => {
+        const uninstallBlock = bashBlockContaining(read('README.md'), 'lifecycle-uninstall-v1');
+        const dir = mkdtempSync(join(tmpdir(), 'sci-documented-uninstall-safety-'));
+        try {
+            const escapedRoot = join(dir, 'escaped-root');
+            const outsideVersions = join(dir, 'outside-versions');
+            const escapedVersion = join(outsideVersions, 'candidate');
+            mkdirSync(escapedRoot);
+            mkdirSync(escapedVersion, { recursive: true });
+            writeFileSync(join(escapedVersion, 'keep'), 'keep');
+            symlinkSync(outsideVersions, join(escapedRoot, 'versions'));
+            const escaped = spawnSync('bash', ['-c', uninstallBlock], {
+                encoding: 'utf8',
+                env: { ...process.env, SCI_ROOT: escapedRoot, REMOVE_VERSION: 'candidate' },
+            });
+            expect(escaped.status).toBe(2);
+            expect(escaped.stderr).toContain('versions root must not be a symlink');
+            expect(readFileSync(join(escapedVersion, 'keep'), 'utf8')).toBe('keep');
+
+            const root = join(dir, 'normal-root');
+            const version = join(root, 'versions', 'candidate');
+            const targetState = join(dir, 'trusted-target', '.ontology');
+            mkdirSync(version, { recursive: true });
+            mkdirSync(targetState, { recursive: true });
+            writeFileSync(join(version, 'runtime'), 'remove');
+            writeFileSync(join(targetState, 'keep.db'), 'keep');
+            symlinkSync(version, join(root, 'current'));
+            const removed = spawnSync('bash', ['-c', uninstallBlock], {
+                encoding: 'utf8',
+                env: { ...process.env, SCI_ROOT: root, REMOVE_VERSION: 'candidate' },
+            });
+            expect(removed.status, removed.stderr || removed.stdout).toBe(0);
+            expect(existsSync(version)).toBe(false);
+            expect(existsSync(join(root, 'current'))).toBe(false);
+            expect(readFileSync(join(targetState, 'keep.db'), 'utf8')).toBe('keep');
+
+            const traversal = spawnSync('bash', ['-c', uninstallBlock], {
+                encoding: 'utf8',
+                env: { ...process.env, SCI_ROOT: root, REMOVE_VERSION: '../trusted-target' },
+            });
+            expect(traversal.status).toBe(2);
+            expect(traversal.stderr).toContain('invalid version identifier');
+            expect(readFileSync(join(targetState, 'keep.db'), 'utf8')).toBe('keep');
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
         }
     });
 

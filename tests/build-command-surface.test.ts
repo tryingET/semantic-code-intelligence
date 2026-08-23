@@ -701,15 +701,44 @@ describe('build command surface', () => {
         expect(startHook).not.toContain('mcp-ontology-server');
     });
 
-    test('README quick start advertises only the source-checkout Alpha path', () => {
+    test('README keeps source-checkout quick start distinct from the provisioned local install', () => {
         const readme = readText('README.md');
+        const installed =
+            readme.split('### Installed local single-user candidate')[1]?.split('## Run local services')[0] ?? '';
 
         expect(readme).toContain('bun install --frozen-lockfile');
         expect(readme).toContain('bun run alpha:mvp:check');
         expect(readme).toContain('semantic-code-intelligence workflow read_file');
+        expect(installed).toContain(
+            'bun add --cwd "$SCI_VERSION_ROOT" --no-save --production --ignore-scripts "$SCI_ARCHIVE"'
+        );
+        expect(installed).toContain('current/node_modules/.bin/semantic-code-mcp');
+        expect(installed).not.toContain('bun run production:candidate:check');
+        expect(installed).not.toMatch(/^just\s/m);
+        expect(installed).not.toMatch(/"command":\s*"[^"]*dist\//);
         expect(readme).not.toContain('npm install -g semantic-code-intelligence');
         expect(readme).not.toContain('bunx semantic-code-intelligence');
         expect(readme).not.toContain('semantic-code-intelligence analyze');
+    });
+
+    test('release checklist is local-candidate preparation and contains no deployment commands', () => {
+        const release = readText('RELEASE.md');
+
+        expect(release).toContain('Preparation only; no distribution authority.');
+        expect(release).toContain('bun run production:candidate:check');
+        expect(release).toContain('semantic-code-intelligence-2.1.0-rc.1.tgz');
+        expect(release).toContain('a release-execution task does not exist');
+        for (const unsupportedCommand of [
+            'docker build',
+            'docker push',
+            'kubectl apply',
+            'kubectl rollout',
+            'npm publish',
+            'gh release create',
+            'git tag',
+        ]) {
+            expect(release).not.toContain(unsupportedCommand);
+        }
     });
 
     test('packaged README references and runtime bin wrappers are included in package files allowlist', () => {

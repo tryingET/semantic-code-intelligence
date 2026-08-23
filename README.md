@@ -112,21 +112,226 @@ Equivalent repository command:
 just alpha-mvp-check
 ```
 
-The public npm package is not currently an assumed distribution channel. Use the source checkout or an explicitly provisioned local/global CLI. For target-repository usage, see [docs/project/target-repo-cli-usage.md](docs/project/target-repo-cli-usage.md).
+The public npm package is not currently an assumed distribution channel. Use the source checkout or an explicitly provisioned local candidate. For target-repository usage, see [docs/project/target-repo-cli-usage.md](docs/project/target-repo-cli-usage.md).
 
 ## Local single-user production candidate
 
-Build and dogfood the exact local runtime artifact with:
+### Build and validate (source checkout only)
+
+From a tracked-clean source checkout, build and dogfood the exact local runtime artifact with:
 
 ```bash
 bun run production:candidate:check
 ```
 
-This creates an ignored versioned tarball and manifest, installs it into an isolated directory, and exercises the installed CLI and MCP stdio bins against a non-mutating fixture. The evidence packet is written to `.test-results/local-production-candidate.json`; `candidateReady: true` additionally requires a tracked-clean source commit.
+This source-only command creates an ignored versioned tarball and manifest, installs it into an isolated directory, and exercises the installed CLI and MCP stdio bins against a non-mutating fixture. The evidence packet is written to `.test-results/local-production-candidate.json`; `candidateReady: true` additionally requires a tracked-clean source commit. Repository scripts, `just` recipes, tests, and source files are not included in the installed tarball.
 
 The candidate trust boundary is one trusted local operator and one trusted repository. Repository checks are not sandboxed hostile-code execution. HTTP, MCP HTTP, LSP, Docker, Compose, Kubernetes, package publication, hosted operation, and multiple tenants remain unsupported production claims. See [the production-candidate contract](docs/project/local-single-user-production-readiness.md).
 
-## Run local services
+### Installed local single-user candidate
+
+The installed path does not require a source checkout. It does require Bun 1.2 or newer, `jq`, GNU coreutils (`sha256sum`, `readlink -f`, and `rm --one-file-system`), and an explicitly provisioned trusted local candidate set containing:
+
+- `semantic-code-intelligence-2.1.0-rc.1.tgz`;
+- `artifact-manifest.json` from the same candidate build;
+- the expected producer/authenticity information supplied by the accountable operator.
+
+The SCI archive itself is installed from a local file; SCI is not fetched from or published to a registry by this procedure. The archive does **not** vendor its runtime dependencies, however. `bun add` resolves them from the configured Bun registry or local cache, and `--no-save` retains no dependency lock. Installation is therefore not network-free or a hermetic dependency closure. Use only an operator-approved registry/cache and stop if dependency provenance or availability is unacceptable.
+
+Verify the archive before installing it:
+
+```bash
+set -euo pipefail
+export SCI_VERSION=2.1.0-rc.1
+export SCI_ARCHIVE=/trusted/path/semantic-code-intelligence-2.1.0-rc.1.tgz
+export SCI_MANIFEST=/trusted/path/artifact-manifest.json
+
+test -f "$SCI_ARCHIVE"
+test -f "$SCI_MANIFEST"
+EXPECTED_SHA256="$(jq -er '.artifact.sha256' "$SCI_MANIFEST")"
+ACTUAL_SHA256="$(sha256sum "$SCI_ARCHIVE" | awk '{print $1}')"
+test "$ACTUAL_SHA256" = "$EXPECTED_SHA256"
+```
+
+Install each candidate into a fresh version directory with package lifecycle scripts disabled:
+
+```bash
+# lifecycle-install-v1
+set -euo pipefail
+: "${SCI_VERSION:?set SCI_VERSION after checksum verification}"
+: "${SCI_ARCHIVE:?set SCI_ARCHIVE after checksum verification}"
+case "$SCI_VERSION" in ''|*/*|.|..) echo 'invalid version identifier' >&2; exit 2 ;; esac
+
+REQUESTED_SCI_ROOT="${SCI_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/semantic-code-intelligence}"
+case "$REQUESTED_SCI_ROOT" in /*) ;; *) echo 'SCI_ROOT must be absolute' >&2; exit 2 ;; esac
+if [ -L "$REQUESTED_SCI_ROOT" ]; then echo 'SCI_ROOT must not be a symlink' >&2; exit 2; fi
+install -d -m 700 "$REQUESTED_SCI_ROOT"
+export SCI_ROOT="$(cd "$REQUESTED_SCI_ROOT" && pwd -P)"
+if [ -L "$SCI_ROOT/versions" ]; then echo 'versions root must not be a symlink' >&2; exit 2; fi
+install -d -m 700 "$SCI_ROOT/versions"
+SCI_VERSIONS="$(cd "$SCI_ROOT/versions" && pwd -P)"
+test "$SCI_VERSIONS" = "$SCI_ROOT/versions"
+
+export SCI_VERSION_ROOT="$SCI_VERSIONS/$SCI_VERSION"
+if [ -e "$SCI_VERSION_ROOT" ] || [ -L "$SCI_VERSION_ROOT" ]; then
+  echo 'version directory already exists; refusing overwrite' >&2
+  exit 2
+fi
+install -d -m 700 "$SCI_VERSION_ROOT"
+test "$(cd "$SCI_VERSION_ROOT" && pwd -P)" = "$SCI_VERSION_ROOT"
+printf '{"name":"sci-local-install","private":true}\n' > "$SCI_VERSION_ROOT/package.json"
+bun add --cwd "$SCI_VERSION_ROOT" --no-save --production --ignore-scripts "$SCI_ARCHIVE"
+
+SCI_BIN="$SCI_VERSION_ROOT/node_modules/.bin"
+test "$("$SCI_BIN/semantic-code-intelligence" --version)" = "$SCI_VERSION"
+test "$("$SCI_BIN/sci" --version)" = "$SCI_VERSION"
+test -x "$SCI_BIN/semantic-code-mcp"
+```
+
+Activate the reviewed version through one local symlink, prepend its bin directory to `PATH`, and verify discovery. Add the `PATH` export to the trusted operator's shell profile only if persistent CLI activation is desired.
+
+```bash
+set -euo pipefail
+: "${SCI_ROOT:?run the checked installation block first}"
+: "${SCI_VERSION_ROOT:?run the checked installation block first}"
+if [ -e "$SCI_ROOT/current" ] && [ ! -L "$SCI_ROOT/current" ]; then
+  echo 'current activation path exists and is not a symlink' >&2
+  exit 2
+fi
+ln -sfn "$SCI_VERSION_ROOT" "$SCI_ROOT/current"
+test "$(readlink -f "$SCI_ROOT/current")" = "$SCI_VERSION_ROOT"
+export PATH="$SCI_ROOT/current/node_modules/.bin:$PATH"
+hash -r
+command -v semantic-code-intelligence
+command -v sci
+command -v semantic-code-mcp
+test "$(semantic-code-intelligence --version)" = "$SCI_VERSION"
+```
+
+Run CLI calls from the trusted target repository and bind the workspace explicitly:
+
+```bash
+export TARGET_REPO=/absolute/path/to/trusted/repository
+cd "$TARGET_REPO"
+SEMANTIC_CODE_WORKSPACE="$TARGET_REPO" \
+  semantic-code-intelligence workflow read_file \
+  --args '{"path":"README.md","range":{"startLine":1,"endLine":40}}' \
+  --json
+```
+
+For MCP stdio, configure the client with the absolute installed wrapper path; do not use a source `dist/` path. Replace both `/home/you` and the repository path with absolute local paths. Bun must be available in the MCP client's process environment because the installed wrapper uses a Bun shebang.
+
+```json
+{
+  "mcpServers": {
+    "semantic-code-intelligence": {
+      "command": "/home/you/.local/share/semantic-code-intelligence/current/node_modules/.bin/semantic-code-mcp",
+      "args": [],
+      "env": {
+        "SEMANTIC_CODE_WORKSPACE": "/absolute/path/to/trusted/repository",
+        "MCP_LOG_DIR": "/absolute/path/to/trusted/repository/.ontology/logs"
+      }
+    }
+  }
+}
+```
+
+#### Upgrade
+
+Verify the new archive and manifest first, then repeat the installation into a **new** `versions/<version>` directory. Exercise the new version's absolute CLI and MCP-stdio paths before switching `current`. Stop or disconnect MCP clients, switch the symlink, and restart them:
+
+Set `SCI_VERSION`, `SCI_ARCHIVE`, and `SCI_MANIFEST` to the new reviewed candidate, then repeat the checksum and `lifecycle-install-v1` blocks above. Before activation, validate the exact absolute candidate bin and fail closed if `current` is not a symlink:
+
+```bash
+set -euo pipefail
+: "${SCI_VERSION:?set the new reviewed version}"
+: "${SCI_VERSION_ROOT:?install the new reviewed version first}"
+NEW_SCI_BIN="$SCI_VERSION_ROOT/node_modules/.bin/semantic-code-intelligence"
+test -x "$NEW_SCI_BIN"
+test "$("$NEW_SCI_BIN" --version)" = "$SCI_VERSION"
+# Exercise this version's absolute CLI and MCP-stdio paths before switching.
+if [ -e "$SCI_ROOT/current" ] && [ ! -L "$SCI_ROOT/current" ]; then
+  echo 'current activation path exists and is not a symlink' >&2
+  exit 2
+fi
+ln -sfn "$SCI_VERSION_ROOT" "$SCI_ROOT/current"
+test "$(readlink -f "$SCI_ROOT/current")" = "$SCI_VERSION_ROOT"
+hash -r
+test "$(semantic-code-intelligence --version)" = "$SCI_VERSION"
+```
+
+Keep the previous reviewed version directory until the upgrade has been accepted. Never overwrite a version directory or reuse one version for different bytes. Upgrading the runtime does not migrate or delete target-repository `.ontology` state.
+
+#### Rollback
+
+Select a previously retained and reviewed version, switch only `current`, and restart MCP clients. Do not roll back by replacing bytes inside an existing version directory.
+
+Set `ROLLBACK_VERSION` to the retained version identifier, then run:
+
+```bash
+set -euo pipefail
+: "${SCI_ROOT:?set SCI_ROOT to the checked install root}"
+: "${ROLLBACK_VERSION:?set ROLLBACK_VERSION to a reviewed retained version}"
+case "$ROLLBACK_VERSION" in ''|*/*|.|..) echo 'invalid version identifier' >&2; exit 2 ;; esac
+if [ -L "$SCI_ROOT" ]; then echo 'SCI_ROOT must not be a symlink' >&2; exit 2; fi
+export SCI_ROOT="$(cd "$SCI_ROOT" && pwd -P)"
+if [ -L "$SCI_ROOT/versions" ]; then echo 'versions root must not be a symlink' >&2; exit 2; fi
+SCI_VERSIONS="$(cd "$SCI_ROOT/versions" && pwd -P)"
+test "$SCI_VERSIONS" = "$SCI_ROOT/versions"
+export ROLLBACK_ROOT="$SCI_VERSIONS/$ROLLBACK_VERSION"
+test -d "$ROLLBACK_ROOT"
+test ! -L "$ROLLBACK_ROOT"
+test "$(cd "$ROLLBACK_ROOT" && pwd -P)" = "$ROLLBACK_ROOT"
+ROLLBACK_BIN="$ROLLBACK_ROOT/node_modules/.bin/semantic-code-intelligence"
+test -x "$ROLLBACK_BIN"
+test "$("$ROLLBACK_BIN" --version)" = "$ROLLBACK_VERSION"
+if [ -e "$SCI_ROOT/current" ] && [ ! -L "$SCI_ROOT/current" ]; then
+  echo 'current activation path exists and is not a symlink' >&2
+  exit 2
+fi
+ln -sfn "$ROLLBACK_ROOT" "$SCI_ROOT/current"
+test "$(readlink -f "$SCI_ROOT/current")" = "$ROLLBACK_ROOT"
+hash -r
+test "$(semantic-code-intelligence --version)" = "$ROLLBACK_VERSION"
+```
+
+Rollback preserves each target repository's `.ontology` directory. If runtime-state compatibility is in doubt, stop and back up that directory under the target repository owner's policy rather than deleting it.
+
+#### Uninstall
+
+Remove the MCP client entry and any persistent `PATH` line first. Then remove only the selected versioned runtime. The containment check and non-symlink check below intentionally fail closed:
+
+Set `REMOVE_VERSION` to the exact installed version identifier, then run:
+
+```bash
+# lifecycle-uninstall-v1
+set -euo pipefail
+: "${SCI_ROOT:?set SCI_ROOT to the checked install root}"
+: "${REMOVE_VERSION:?set REMOVE_VERSION to the installed version to remove}"
+case "$REMOVE_VERSION" in ''|*/*|.|..) echo 'invalid version identifier' >&2; exit 2 ;; esac
+case "$SCI_ROOT" in /*) ;; *) echo 'SCI_ROOT must be absolute' >&2; exit 2 ;; esac
+if [ -L "$SCI_ROOT" ]; then echo 'SCI_ROOT must not be a symlink' >&2; exit 2; fi
+export SCI_ROOT="$(cd "$SCI_ROOT" && pwd -P)"
+if [ -L "$SCI_ROOT/versions" ]; then echo 'versions root must not be a symlink' >&2; exit 2; fi
+SCI_VERSIONS="$(cd "$SCI_ROOT/versions" && pwd -P)"
+test "$SCI_VERSIONS" = "$SCI_ROOT/versions"
+export REMOVE_ROOT="$SCI_VERSIONS/$REMOVE_VERSION"
+test -d "$REMOVE_ROOT"
+test ! -L "$REMOVE_ROOT"
+test "$(cd "$REMOVE_ROOT" && pwd -P)" = "$REMOVE_ROOT"
+if [ -e "$SCI_ROOT/current" ] && [ ! -L "$SCI_ROOT/current" ]; then
+  echo 'current activation path exists and is not a symlink' >&2
+  exit 2
+fi
+if [ -L "$SCI_ROOT/current" ] && [ "$(readlink -f "$SCI_ROOT/current")" = "$REMOVE_ROOT" ]; then
+  rm -- "$SCI_ROOT/current"
+fi
+rm -rf --one-file-system -- "$REMOVE_ROOT"
+```
+
+Uninstalling SCI does **not** authorize deletion of `.ontology`, source files, snapshots, logs, or databases inside any target repository. Data retirement requires a separate owner-approved backup and deletion action.
+
+## Run local services (source checkout Alpha only)
 
 ```bash
 just start
@@ -151,7 +356,7 @@ just status
 
 Runtime configuration and storage adapter settings are documented in [CONFIG.md](CONFIG.md).
 
-## MCP configuration
+## MCP configuration (source checkout Alpha)
 
 Build first, then point an MCP stdio client at the generated entrypoint:
 

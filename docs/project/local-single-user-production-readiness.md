@@ -86,6 +86,12 @@ The candidate is accepted only when the evidence packet reports both:
 
 This wave does not publish the artifact. An operator may install an explicitly reviewed local tarball with Bun from a trusted path. The dogfood installation is ephemeral and removed after validation; the tarball and JSON evidence remain under ignored `.test-results/` paths.
 
+The bundled `README.md` is the installed-runtime lifecycle authority. It must remain executable without a source checkout and cover checksum verification, fresh version-directory installation with lifecycle scripts disabled, bin/PATH discovery, CLI use, absolute-path MCP-stdio configuration, upgrade, rollback, and uninstall. The bundled `CONFIG.md` owns installed workspace and state configuration.
+
+Source-checkout commands (`bun run production:candidate:check`, repository scripts, `just`, tests, and builds) must be visibly separated from installed commands (`semantic-code-intelligence`, `sci`, and `semantic-code-mcp`). Upgrade, rollback, and uninstall may change only versioned runtime installation paths; target-repository `.ontology` state is retained unless the repository owner separately authorizes its backup and deletion.
+
+The runtime tarball does not vendor its dependency closure. Installation may resolve dependencies from an operator-approved registry or local cache, and the current `--no-save` flow retains no lock in the version directory. Candidate evidence must therefore say that installed dependency resolution is non-hermetic and that a local SCI archive is not an offline bundle.
+
 ## Operational limits
 
 - `run_checks` executes constrained commands from a trusted repository; it is not a sandbox.

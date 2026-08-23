@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-08-23T20:37:37.559260446+00:00",
+  "task_id": 4894,
+  "entity_version": 3,
+  "commit_sha": "eea9d33508ca4a6dda95572dc71060b6e315343c",
+  "scope": {
+    "allowed_paths": [
+      "CONFIG.md",
+      "README.md",
+      "RELEASE.md",
+      "docs/project/local-single-user-production-readiness.md",
+      "governance/task-scopes/**",
+      "tests/build-command-surface.test.ts",
+      "tests/local-production-candidate.test.ts"
+    ],
+    "required_paths": [
+      "CONFIG.md",
+      "README.md",
+      "RELEASE.md"
+    ],
+    "forbidden_paths": []
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}
