@@ -80,6 +80,9 @@ describe('local single-user production candidate contract', () => {
         expect(readme).toContain('EXPECTED_SHA256=');
         expect(readme).toContain('SCI_VERSIONS/$SCI_VERSION');
         expect(readme).toContain('node_modules/.bin/semantic-code-mcp');
+        expect(readme).toContain('SCI_MCP_COMMAND="$(readlink -f');
+        expect(readme).toContain("copy the command's exact absolute output");
+        expect(readme).not.toMatch(/\/home\/[^\s"`]+/);
         expect(readme).toContain('#### Upgrade');
         expect(readme).toContain('#### Rollback');
         expect(readme).toContain('#### Uninstall');
@@ -266,7 +269,7 @@ describe('local single-user production candidate contract', () => {
         const scripts = join(fixture, 'scripts');
         const fakeBin = join(fixture, 'bin');
         const secret = 'artifact-builder-secret-token';
-        const submittedPath = '/home/private/artifact/source';
+        const submittedPath = '/sensitive/artifact/source';
         mkdirSync(scripts, { recursive: true });
         mkdirSync(fakeBin, { recursive: true });
         copyFileSync(
@@ -310,7 +313,7 @@ describe('local single-user production candidate contract', () => {
         const fixture = mkdtempSync(join(tmpdir(), 'sci-candidate-failure-evidence-'));
         const scripts = join(fixture, 'scripts');
         const secret = 'token-super-secret-value';
-        const submittedPath = '/home/private/operator/repository';
+        const submittedPath = '/sensitive/operator/repository';
         mkdirSync(scripts, { recursive: true });
         copyFileSync(
             join(process.cwd(), 'scripts/dogfood-local-production-candidate.ts'),

@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-08-23T22:08:07.446249482+00:00",
+  "task_id": 4906,
+  "entity_version": 3,
+  "commit_sha": "650c51e675d4f98fb0554d8c1b7d30b530e088ef",
+  "scope": {
+    "allowed_paths": [
+      "README.md",
+      "governance/task-scopes/**",
+      "tests/local-production-candidate.test.ts"
+    ],
+    "required_paths": [
+      "README.md",
+      "tests/local-production-candidate.test.ts"
+    ],
+    "forbidden_paths": []
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}

@@ -219,13 +219,21 @@ SEMANTIC_CODE_WORKSPACE="$TARGET_REPO" \
   --json
 ```
 
-For MCP stdio, configure the client with the absolute installed wrapper path; do not use a source `dist/` path. Replace both `/home/you` and the repository path with absolute local paths. Bun must be available in the MCP client's process environment because the installed wrapper uses a Bun shebang.
+For MCP stdio, resolve the installed wrapper and copy the command's exact absolute output into the client configuration; do not use a source `dist/` path:
+
+```bash
+SCI_MCP_COMMAND="$(readlink -f "$SCI_ROOT/current/node_modules/.bin/semantic-code-mcp")"
+test -x "$SCI_MCP_COMMAND"
+printf '%s\n' "$SCI_MCP_COMMAND"
+```
+
+Replace the example `command` and repository paths below with actual absolute local paths. Bun must be available in the MCP client's process environment because the installed wrapper uses a Bun shebang.
 
 ```json
 {
   "mcpServers": {
     "semantic-code-intelligence": {
-      "command": "/home/you/.local/share/semantic-code-intelligence/current/node_modules/.bin/semantic-code-mcp",
+      "command": "/absolute/path/reported/by/readlink/semantic-code-mcp",
       "args": [],
       "env": {
         "SEMANTIC_CODE_WORKSPACE": "/absolute/path/to/trusted/repository",
