@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-08-23T21:05:41.855436733+00:00",
+  "task_id": 4903,
+  "entity_version": 3,
+  "commit_sha": "cb6184274e265109b173f4cf9e9a208127380a8a",
+  "scope": {
+    "allowed_paths": [
+      ".test-results/distribution-decision/**"
+    ],
+    "required_paths": [],
+    "forbidden_paths": []
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}

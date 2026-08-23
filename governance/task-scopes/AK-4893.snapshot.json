@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-08-23T20:37:33.016751130+00:00",
+  "task_id": 4893,
+  "entity_version": 2,
+  "commit_sha": "cb6184274e265109b173f4cf9e9a208127380a8a",
+  "scope": {
+    "allowed_paths": [
+      "docs/project/local-single-user-release-preparation.md",
+      "governance/task-scopes/**"
+    ],
+    "required_paths": [
+      "docs/project/local-single-user-release-preparation.md"
+    ],
+    "forbidden_paths": []
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}
