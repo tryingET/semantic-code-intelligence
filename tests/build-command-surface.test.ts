@@ -741,6 +741,31 @@ describe('build command surface', () => {
         }
     });
 
+    test('candidate changelog and release notes preserve baseline and claim boundaries', () => {
+        const pkg = JSON.parse(readText('package.json')) as { private?: boolean; version?: string; files?: string[] };
+        const changelog = readText('CHANGELOG.md');
+        const notes = readText('docs/project/releases/2.1.0-rc.1.md');
+        const cli = readText('src/servers/cli.ts');
+
+        expect(pkg.private).toBe(true);
+        expect(pkg.version).toBe('2.1.0-rc.1');
+        expect(changelog).toContain('## [2.1.0-rc.1] - Unreleased');
+        expect(changelog).toContain('no previous Git tag or GitHub release baseline');
+        expect(changelog).toContain('IW77 produced no terminal-valid adoption episodes');
+        expect(changelog).toContain('is packaged in the installed');
+        expect(changelog).toContain('Repository closeout receipt tooling remains source-checkout-only');
+        expect(notes).toContain('exact bytes are not frozen until AK task `4898` completes');
+        expect(notes).toContain('details.schemaVersion: 2');
+        expect(notes).toContain('Native Pi use additionally needs');
+        expect(notes).toContain('not an offline or hermetic bundle');
+        expect(notes).toContain('No tag, GitHub release, release-asset upload');
+        expect(pkg.files).toContain('dist/');
+        expect(cli).toContain(".command('structural-evidence-receipt')");
+        expect(notes).toContain('The installed CLI includes the explicit experimental command');
+        expect(notes).toContain('is not registered as an Alpha MCP/HTTP tool');
+        expect(notes).toContain('Repository closeout receipt tooling remains source-checkout-only');
+    });
+
     test('packaged README references and runtime bin wrappers are included in package files allowlist', () => {
         const packageJson = JSON.parse(readText('package.json')) as { files?: string[] };
         const readme = readText('README.md');

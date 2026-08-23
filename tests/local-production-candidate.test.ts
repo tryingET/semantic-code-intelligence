@@ -28,6 +28,7 @@ describe('local single-user production candidate contract', () => {
     test('declares unique runtime bin paths and a bounded artifact command surface', () => {
         const pkg = JSON.parse(read('package.json')) as {
             private?: boolean;
+            version?: string;
             bin?: Record<string, string>;
             files?: string[];
             scripts?: Record<string, string>;
@@ -36,6 +37,8 @@ describe('local single-user production candidate contract', () => {
         const binPaths = Object.values(pkg.bin ?? {});
 
         expect(pkg.private).toBe(true);
+        expect(pkg.version).toBe('2.1.0-rc.1');
+        expect(read('src/core/version.ts')).toContain("SCI_VERSION = '2.1.0-rc.1'");
         expect(pkg.bin).toEqual({
             sci: './bin/sci',
             'semantic-code-intelligence': './bin/semantic-code-intelligence',

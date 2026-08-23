@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-08-23T20:37:42.024250910+00:00",
+  "task_id": 4895,
+  "entity_version": 4,
+  "commit_sha": "87820aba8e62bdc7de1d889cc984ba7f96bdd6b3",
+  "scope": {
+    "allowed_paths": [
+      "CHANGELOG.md",
+      "README.md",
+      "bun.lock",
+      "docs/project/releases/2.1.0-rc.1.md",
+      "governance/task-scopes/**",
+      "package.json",
+      "src/core/version.ts",
+      "tests/build-command-surface.test.ts",
+      "tests/local-production-candidate.test.ts"
+    ],
+    "required_paths": [
+      "CHANGELOG.md",
+      "docs/project/releases/2.1.0-rc.1.md",
+      "package.json",
+      "src/core/version.ts"
+    ],
+    "forbidden_paths": []
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}
