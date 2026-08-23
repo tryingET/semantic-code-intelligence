@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-08-23T20:37:55.739130766+00:00",
+  "task_id": 4898,
+  "entity_version": 3,
+  "commit_sha": "8d263b2bc7f147dce5eb1ee3f1d6a17c7764f2dd",
+  "scope": {
+    "allowed_paths": [
+      "governance/task-scopes/**"
+    ],
+    "required_paths": [],
+    "forbidden_paths": []
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}
