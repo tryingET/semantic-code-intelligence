@@ -673,6 +673,7 @@ describe('build command surface', () => {
         const parsed = yaml.load(workflow) as any;
         const securityWorkflow = readText('.github/workflows/security.yml');
         const alphaSteps = parsed.jobs['alpha-mvp-check'].steps as any[];
+        const preflight = alphaSteps.find((step) => step.id === 'evidence-preflight');
         const upload = alphaSteps.find((step) => step.uses === 'actions/upload-artifact@v4');
         const uploadPaths = String(upload?.with?.path ?? '')
             .trim()
@@ -684,8 +685,15 @@ describe('build command surface', () => {
         expect(workflow).toContain('run: ./scripts/ci/portable.sh');
         expect(workflow).toContain('run: bun run alpha:mvp:check');
         expect(workflow).toContain('run: bun run production:candidate:check');
-        expect(upload?.if).toBe('always()');
+        expect(preflight?.if).toBe('always()');
+        expect(preflight?.run).toContain('realpath -e');
+        expect(preflight?.run).toContain('10485760');
+        expect(preflight?.run).toContain('semantic-code-intelligence.alpha_evidence_packet.v1');
+        expect(preflight?.run).toContain('semantic-code-intelligence.local_production_candidate.v1');
+        expect(preflight?.run).toContain('eligible=true');
+        expect(upload?.if).toContain("steps.evidence-preflight.outputs.eligible == 'true'");
         expect(upload?.with?.name).toBe('sci-validation-evidence-${{ github.sha }}');
+        expect(upload?.with?.['include-hidden-files']).toBe(true);
         expect(uploadPaths).toEqual([
             '.test-results/alpha-evidence-packet.json',
             '.test-results/local-production-candidate.json',

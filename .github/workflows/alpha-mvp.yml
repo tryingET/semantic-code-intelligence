@@ -37,8 +37,29 @@ jobs:
       - run: bun run alpha:mvp:check
       - name: Local production-candidate packaged-runtime gate
         run: bun run production:candidate:check
-      - name: Upload allowlisted sanitized validation evidence
+      - name: Preflight allowlisted validation evidence
+        id: evidence-preflight
         if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          validate_evidence() {
+            local path="$1" schema="$2"
+            [[ -e "$path" ]] || return 0
+            [[ -f "$path" && ! -L "$path" && ! -L .test-results ]] || return 1
+            local root resolved bytes
+            root="$(realpath -e .test-results)"
+            resolved="$(realpath -e "$path")"
+            case "$resolved" in "$root"/*) ;; *) return 1 ;; esac
+            bytes="$(wc -c < "$path")"
+            [[ "$bytes" =~ ^[0-9]+$ ]] && (( bytes > 0 && bytes <= 10485760 ))
+            jq -e --arg schema "$schema" '.schema == $schema and (.ok | type == "boolean")' "$path" >/dev/null
+          }
+          validate_evidence .test-results/alpha-evidence-packet.json semantic-code-intelligence.alpha_evidence_packet.v1
+          validate_evidence .test-results/local-production-candidate.json semantic-code-intelligence.local_production_candidate.v1
+          echo 'eligible=true' >> "$GITHUB_OUTPUT"
+      - name: Upload allowlisted sanitized validation evidence
+        if: ${{ always() && steps.evidence-preflight.outputs.eligible == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: sci-validation-evidence-${{ github.sha }}
@@ -46,4 +67,5 @@ jobs:
             .test-results/alpha-evidence-packet.json
             .test-results/local-production-candidate.json
           if-no-files-found: ignore
+          include-hidden-files: true
           retention-days: 14
