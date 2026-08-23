@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-08-23T08:18:24.382608343+00:00",
+  "task_id": 4862,
+  "entity_version": 3,
+  "commit_sha": "b4f3c96ed4fc77439390426393244362f14334b2",
+  "scope": {
+    "allowed_paths": [
+      "docs/WORKFLOWS.md",
+      "docs/project/**",
+      "governance/task-scopes/AK-4862.snapshot.json",
+      "src/adapters/error-mapper.ts",
+      "src/adapters/mcp-adapter.ts",
+      "src/core/errors.ts",
+      "src/core/tools/tool-specs-preferred-workflows.ts",
+      "src/core/workflows/navigation-workflow.ts",
+      "src/core/workflows/symbol-workflow.ts",
+      "src/core/workflows/tool-workflow-router.ts",
+      "src/core/workspace-input.ts",
+      "src/core/workspace-path.ts",
+      "src/mcp/error-handler.ts",
+      "src/mcp/tool-result.ts",
+      "src/servers/mcp.ts",
+      "tests/**"
+    ],
+    "required_paths": [
+      "governance/task-scopes/AK-4862.snapshot.json"
+    ],
+    "forbidden_paths": []
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}
