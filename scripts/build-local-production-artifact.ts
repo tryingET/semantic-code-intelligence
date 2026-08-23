@@ -9,20 +9,33 @@ import {
     mkdirSync,
     readFileSync,
     readdirSync,
+    realpathSync,
     renameSync,
-    rmSync,
     statSync,
-    writeFileSync,
 } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+import {
+    assertContainedRealDirectory,
+    assertNoSymlinkedAncestors,
+    candidateLocalDiagnostic,
+    CandidateStageError,
+    type CandidateFailureStage,
+    cleanupContainedDirectory,
+    ensurePhysicalResultsRoot,
+    resolveContainedRegularFile,
+    toCandidateFailureEvidence,
+    writeJsonAtomically,
+} from './local-production-candidate-safety.js';
+
+const repoRoot = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), '..'));
 const args = process.argv.slice(2);
 const jsonMode = args.includes('--json');
 const skipBuild = args.includes('--skip-build');
 const outputArg = args.indexOf('--output-dir');
 const outputRoot = resolve(repoRoot, outputArg >= 0 ? (args[outputArg + 1] ?? '') : '.test-results/local-production-artifact');
+let activeStage: CandidateFailureStage = 'setup';
 
 interface PayloadEntry {
     path: string;
@@ -60,7 +73,12 @@ function listFiles(root: string, current = root): string[] {
     return output;
 }
 
-function inspectArchive(archivePath: string, extractionRoot: string): { entries: PayloadEntry[]; payloadDigest: string } {
+function inspectArchive(
+    archivePath: string,
+    extractionRoot: string,
+    physicalResultsRoot: string
+): { entries: PayloadEntry[]; payloadDigest: string } {
+    resolveContainedRegularFile(physicalResultsRoot, archivePath, 'Packed candidate archive');
     const members = run('tar', ['-tzf', archivePath])
         .split(/\r?\n/)
         .filter(Boolean);
@@ -73,9 +91,15 @@ function inspectArchive(archivePath: string, extractionRoot: string): { entries:
     if (forbidden.length) fail(`Runtime package contains source-only members: ${forbidden.join(', ')}`);
     if (members.some((member) => !member.startsWith('package/'))) fail('Runtime package contains entries outside package/');
 
-    rmSync(extractionRoot, { recursive: true, force: true });
-    mkdirSync(extractionRoot, { recursive: true });
+    resolveContainedRegularFile(physicalResultsRoot, archivePath, 'Packed candidate archive');
+    assertNoSymlinkedAncestors(physicalResultsRoot, extractionRoot, 'Artifact extraction root');
+    cleanupContainedDirectory(physicalResultsRoot, extractionRoot, 'Artifact extraction root');
+    assertNoSymlinkedAncestors(physicalResultsRoot, extractionRoot, 'Artifact extraction root');
+    mkdirSync(extractionRoot, { recursive: true, mode: 0o700 });
+    assertContainedRealDirectory(physicalResultsRoot, extractionRoot, 'Artifact extraction root');
+    resolveContainedRegularFile(physicalResultsRoot, archivePath, 'Packed candidate archive');
     run('tar', ['-xzf', archivePath, '-C', extractionRoot]);
+    assertContainedRealDirectory(physicalResultsRoot, extractionRoot, 'Artifact extraction root');
     const packageRoot = join(extractionRoot, 'package');
     if (!existsSync(packageRoot) || !statSync(packageRoot).isDirectory()) fail('Runtime package did not extract a package directory');
 
@@ -110,35 +134,62 @@ function trackedSourceStatus(): { commit: string; trackedClean: boolean; tracked
     return { commit, trackedClean: trackedChanges.length === 0, trackedChanges };
 }
 
-function main(): void {
-    if (!outputRoot.startsWith(`${repoRoot}/`)) fail('Artifact output must stay inside the repository');
-    if (!skipBuild) run('bun', ['run', 'public-surface:check']);
+function createContainedDirectory(root: string, candidate: string, label: string): void {
+    assertNoSymlinkedAncestors(root, candidate, label);
+    mkdirSync(candidate, { recursive: true, mode: 0o700 });
+    assertContainedRealDirectory(root, candidate, label);
+}
 
+function main(): void {
+    activeStage = 'setup';
+    const physicalResultsRoot = ensurePhysicalResultsRoot(repoRoot);
+    assertNoSymlinkedAncestors(physicalResultsRoot, outputRoot, 'Artifact output');
+
+    if (!skipBuild) {
+        activeStage = 'artifact_build';
+        run('bun', ['run', 'public-surface:check']);
+    }
+
+    activeStage = 'setup';
+    assertNoSymlinkedAncestors(physicalResultsRoot, outputRoot, 'Artifact output');
+    cleanupContainedDirectory(physicalResultsRoot, outputRoot, 'Artifact output');
+    createContainedDirectory(physicalResultsRoot, outputRoot, 'Artifact output');
     chmodSync(join(repoRoot, 'bin/sci'), 0o755);
-    rmSync(outputRoot, { recursive: true, force: true });
-    mkdirSync(outputRoot, { recursive: true });
 
     const firstPack = join(outputRoot, '.pack-a');
     const secondPack = join(outputRoot, '.pack-b');
-    mkdirSync(firstPack);
-    mkdirSync(secondPack);
-    run('bun', ['pm', 'pack', '--ignore-scripts', '--destination', firstPack]);
-    run('bun', ['pm', 'pack', '--ignore-scripts', '--destination', secondPack]);
+    createContainedDirectory(physicalResultsRoot, firstPack, 'First pack root');
+    createContainedDirectory(physicalResultsRoot, secondPack, 'Second pack root');
 
+    activeStage = 'artifact_build';
+    assertContainedRealDirectory(physicalResultsRoot, outputRoot, 'Artifact output');
+    run('bun', ['pm', 'pack', '--ignore-scripts', '--destination', firstPack]);
+    assertContainedRealDirectory(physicalResultsRoot, firstPack, 'First pack root');
+    assertContainedRealDirectory(physicalResultsRoot, outputRoot, 'Artifact output');
+    run('bun', ['pm', 'pack', '--ignore-scripts', '--destination', secondPack]);
+    assertContainedRealDirectory(physicalResultsRoot, secondPack, 'Second pack root');
+
+    activeStage = 'artifact_validation';
     const firstArchive = readdirSync(firstPack).filter((name) => name.endsWith('.tgz'));
     const secondArchive = readdirSync(secondPack).filter((name) => name.endsWith('.tgz'));
     if (firstArchive.length !== 1 || secondArchive.length !== 1) fail('Expected exactly one archive from each pack run');
 
     const firstPath = join(firstPack, firstArchive[0]);
     const secondPath = join(secondPack, secondArchive[0]);
-    const first = inspectArchive(firstPath, join(outputRoot, '.extract-a'));
-    const second = inspectArchive(secondPath, join(outputRoot, '.extract-b'));
+    const first = inspectArchive(firstPath, join(outputRoot, '.extract-a'), physicalResultsRoot);
+    const second = inspectArchive(secondPath, join(outputRoot, '.extract-b'), physicalResultsRoot);
     if (first.payloadDigest !== second.payloadDigest || JSON.stringify(first.entries) !== JSON.stringify(second.entries)) {
         fail('Repeated pack runs produced different runtime payloads');
     }
 
     const artifactPath = join(outputRoot, firstArchive[0]);
+    resolveContainedRegularFile(physicalResultsRoot, firstPath, 'First packed candidate archive');
+    assertContainedRealDirectory(physicalResultsRoot, outputRoot, 'Artifact output');
+    assertNoSymlinkedAncestors(physicalResultsRoot, artifactPath, 'Final candidate archive');
     renameSync(firstPath, artifactPath);
+    resolveContainedRegularFile(physicalResultsRoot, artifactPath, 'Final candidate archive');
+
+    activeStage = 'workspace_integrity';
     const source = trackedSourceStatus();
     const manifest = {
         schema: 'semantic-code-intelligence.local_production_artifact.v1',
@@ -161,11 +212,16 @@ function main(): void {
         ],
     };
 
-    rmSync(firstPack, { recursive: true, force: true });
-    rmSync(secondPack, { recursive: true, force: true });
-    rmSync(join(outputRoot, '.extract-a'), { recursive: true, force: true });
-    rmSync(join(outputRoot, '.extract-b'), { recursive: true, force: true });
-    writeFileSync(join(outputRoot, 'artifact-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 });
+    activeStage = 'cleanup';
+    cleanupContainedDirectory(physicalResultsRoot, firstPack, 'First pack root');
+    cleanupContainedDirectory(physicalResultsRoot, secondPack, 'Second pack root');
+    cleanupContainedDirectory(physicalResultsRoot, join(outputRoot, '.extract-a'), 'First extraction root');
+    cleanupContainedDirectory(physicalResultsRoot, join(outputRoot, '.extract-b'), 'Second extraction root');
+
+    activeStage = 'evidence_write';
+    assertContainedRealDirectory(physicalResultsRoot, outputRoot, 'Artifact output');
+    resolveContainedRegularFile(physicalResultsRoot, artifactPath, 'Final candidate archive');
+    writeJsonAtomically(physicalResultsRoot, join(outputRoot, 'artifact-manifest.json'), manifest);
 
     if (jsonMode) process.stdout.write(`${JSON.stringify(manifest)}\n`);
     else {
@@ -179,7 +235,11 @@ function main(): void {
 try {
     main();
 } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    process.stderr.write(`local-production-artifact: ${message}\n`);
-    process.exit(1);
+    const finalError = new CandidateStageError(activeStage, error);
+    const failure = toCandidateFailureEvidence(finalError);
+    process.stderr.write(`local-production-artifact: ${failure.code}: ${failure.message}\n`);
+    if (process.env.SCI_LOCAL_PRODUCTION_DIAGNOSTICS === '1') {
+        process.stderr.write(`local-production-artifact diagnostic (not promoted): ${candidateLocalDiagnostic(finalError)}\n`);
+    }
+    process.exitCode = 1;
 }

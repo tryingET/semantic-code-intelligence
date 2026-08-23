@@ -1,18 +1,88 @@
 #!/usr/bin/env bun
 
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, rmSync, writeFileSync } from 'node:fs';
+import {
+    lstatSync,
+    mkdirSync,
+    readFileSync,
+    readdirSync,
+    readlinkSync,
+    realpathSync,
+    writeFileSync,
+} from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const evidencePath = join(repoRoot, '.test-results/local-production-candidate.json');
-const installRoot = join(repoRoot, `.test-results/.local-production-install-${process.pid}`);
+import {
+    asCandidateStageError,
+    assertContainedRealDirectory,
+    assertNoSymlinkedAncestors,
+    candidateLocalDiagnostic,
+    CandidateStageError,
+    type CandidateFailureStage,
+    cleanupContainedDirectory,
+    ensurePhysicalResultsRoot,
+    invalidateContainedFile,
+    isPhysicallyContained,
+    resolveContainedRegularFile,
+    shutdownMcpProcess,
+    toCandidateFailureEvidence,
+    writeJsonAtomically,
+} from './local-production-candidate-safety.js';
+
+const repoRoot = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), '..'));
+const resultsRoot = join(repoRoot, '.test-results');
+const evidencePath = join(resultsRoot, 'local-production-candidate.json');
+const installRoot = join(resultsRoot, `.local-production-install-${process.pid}`);
 const targetRoot = join(installRoot, 'target');
 const jsonMode = process.argv.includes('--json');
 const allowDirtySource = process.argv.includes('--allow-dirty-source');
 const keepInstall = process.env.SCI_KEEP_PRODUCTION_DOGFOOD_INSTALL === '1';
+const candidateRunId = randomUUID();
+
+function resetInstallRoot(): void {
+    const physicalResultsRoot = ensurePhysicalResultsRoot(repoRoot);
+    assertNoSymlinkedAncestors(physicalResultsRoot, installRoot, 'Local production install root');
+    cleanupContainedDirectory(physicalResultsRoot, installRoot, 'Local production install root');
+    assertNoSymlinkedAncestors(physicalResultsRoot, installRoot, 'Local production install root');
+    mkdirSync(join(targetRoot, 'src'), { recursive: true, mode: 0o700 });
+    if (realpathSync(installRoot) !== installRoot || !isPhysicallyContained(physicalResultsRoot, installRoot)) {
+        throw new Error('Local production install root escaped the physical results root');
+    }
+    assertInstallRootSafe();
+}
+
+function cleanupInstallRoot(): void {
+    const physicalResultsRoot = ensurePhysicalResultsRoot(repoRoot);
+    cleanupContainedDirectory(physicalResultsRoot, installRoot, 'Local production install root');
+}
+
+function assertInstallRootSafe(): void {
+    const physicalResultsRoot = ensurePhysicalResultsRoot(repoRoot);
+    assertContainedRealDirectory(physicalResultsRoot, installRoot, 'Local production install root');
+    assertContainedRealDirectory(physicalResultsRoot, targetRoot, 'Local production target root');
+    assertContainedRealDirectory(physicalResultsRoot, join(targetRoot, 'src'), 'Local production source fixture root');
+}
+
+function invalidatePriorEvidence(): void {
+    const physicalResultsRoot = ensurePhysicalResultsRoot(repoRoot);
+    invalidateContainedFile(physicalResultsRoot, evidencePath, 'Candidate evidence path');
+}
+
+function resolveContainedArtifact(path: string): string {
+    const physicalResultsRoot = ensurePhysicalResultsRoot(repoRoot);
+    return resolveContainedRegularFile(
+        physicalResultsRoot,
+        resolve(repoRoot, path),
+        'Artifact manifest candidate archive'
+    );
+}
+
+function writeEvidencePacket(packet: unknown): void {
+    const physicalResultsRoot = ensurePhysicalResultsRoot(repoRoot);
+    writeJsonAtomically(physicalResultsRoot, evidencePath, packet);
+}
 
 function sha256(data: string | Buffer): string {
     return createHash('sha256').update(data).digest('hex');
@@ -214,24 +284,7 @@ async function dogfoodMcp(mcpBin: string, env: NodeJS.ProcessEnv): Promise<any> 
     } finally {
         for (const waiter of pending.values()) clearTimeout(waiter.timer);
         pending.clear();
-        proc.stdin.end();
-        await new Promise<void>((resolveClose, rejectClose) => {
-            let termTimer: ReturnType<typeof setTimeout> | undefined;
-            let killTimer: ReturnType<typeof setTimeout> | undefined;
-            const finish = () => {
-                if (termTimer) clearTimeout(termTimer);
-                if (killTimer) clearTimeout(killTimer);
-                resolveClose();
-            };
-            proc.once('close', finish);
-            proc.once('error', rejectClose);
-            termTimer = setTimeout(() => {
-                proc.kill('SIGTERM');
-                killTimer = setTimeout(() => {
-                    if (proc.exitCode === null) proc.kill('SIGKILL');
-                }, 1000);
-            }, 5000);
-        });
+        await shutdownMcpProcess(proc);
         if (buffer.trim()) {
             try {
                 const trailing = JSON.parse(buffer);
@@ -244,134 +297,184 @@ async function dogfoodMcp(mcpBin: string, env: NodeJS.ProcessEnv): Promise<any> 
     }
 }
 
-async function main(): Promise<boolean> {
-    mkdirSync(dirname(evidencePath), { recursive: true });
-    rmSync(installRoot, { recursive: true, force: true });
-    mkdirSync(join(targetRoot, 'src'), { recursive: true });
-    writeFileSync(join(installRoot, 'package.json'), '{"name":"sci-local-production-install","private":true}\n');
-    writeFileSync(join(targetRoot, 'README.md'), '# packaged runtime dogfood target\n\nTrusted local fixture.\n');
-    writeFileSync(join(targetRoot, 'src/example.ts'), 'export const packagedRuntimeMarker = 42;\n');
+async function main(): Promise<any> {
+    let stage: CandidateFailureStage = 'setup';
+    try {
+        invalidatePriorEvidence();
+        resetInstallRoot();
+        assertInstallRootSafe();
+        writeFileSync(join(installRoot, 'package.json'), '{"name":"sci-local-production-install","private":true}\n');
+        assertInstallRootSafe();
+        writeFileSync(join(targetRoot, 'README.md'), '# packaged runtime dogfood target\n\nTrusted local fixture.\n');
+        assertInstallRootSafe();
+        writeFileSync(join(targetRoot, 'src/example.ts'), 'export const packagedRuntimeMarker = 42;\n');
+        assertInstallRootSafe();
 
-    const artifactBuild = run('bun', ['run', 'scripts/build-local-production-artifact.ts', '--json']);
-    const artifactManifest = parseJsonOutput(artifactBuild.stdout, 'artifact builder');
-    const artifactPath = resolve(repoRoot, artifactManifest.artifact.path);
+        stage = 'artifact_build';
+        const artifactBuild = run('bun', ['run', 'scripts/build-local-production-artifact.ts', '--json']);
+        assertInstallRootSafe();
+        stage = 'artifact_validation';
+        const artifactManifest = parseJsonOutput(artifactBuild.stdout, 'artifact builder');
+        const artifactPath = resolveContainedArtifact(String(artifactManifest?.artifact?.path ?? ''));
 
-    run('bun', ['add', '--cwd', installRoot, '--no-save', '--production', '--ignore-scripts', artifactPath]);
-    const cliBin = join(installRoot, 'node_modules/.bin/semantic-code-intelligence');
-    const shortCliBin = join(installRoot, 'node_modules/.bin/sci');
-    const mcpBin = join(installRoot, 'node_modules/.bin/semantic-code-mcp');
-    const env = {
-        ...process.env,
-        SEMANTIC_CODE_WORKSPACE: targetRoot,
-        WORKSPACE_ROOT: targetRoot,
-        SILENT_MODE: 'true',
-        STDIO_MODE: 'true',
-        MCP_LOG_DIR: join(targetRoot, '.ontology/logs'),
-    };
+        stage = 'installation';
+        assertInstallRootSafe();
+        run('bun', ['add', '--cwd', installRoot, '--no-save', '--production', '--ignore-scripts', artifactPath]);
+        assertInstallRootSafe();
+        const cliBin = join(installRoot, 'node_modules/.bin/semantic-code-intelligence');
+        const shortCliBin = join(installRoot, 'node_modules/.bin/sci');
+        const mcpBin = join(installRoot, 'node_modules/.bin/semantic-code-mcp');
+        const env = {
+            ...process.env,
+            SEMANTIC_CODE_WORKSPACE: targetRoot,
+            WORKSPACE_ROOT: targetRoot,
+            SILENT_MODE: 'true',
+            STDIO_MODE: 'true',
+            MCP_LOG_DIR: join(targetRoot, '.ontology/logs'),
+        };
 
-    const before = sourceDigest();
-    const version = run(cliBin, ['--version'], { cwd: targetRoot, env }).stdout;
-    const shortVersion = run(shortCliBin, ['--version'], { cwd: targetRoot, env }).stdout;
-    const read = parseCliToolOutput(
-        run(cliBin, ['workflow', 'read_file', '--args', '{"path":"README.md","range":{"startLine":1,"endLine":6}}', '--json'], {
-            cwd: targetRoot,
-            env,
-        }).stdout,
-        'installed CLI read_file'
-    );
-    if (!String(read.content ?? '').includes('packaged runtime dogfood target')) {
-        throw new Error('Installed CLI read_file returned the wrong target content');
-    }
-    const search = parseCliToolOutput(
-        run(
-            cliBin,
-            ['workflow', 'text_search', '--args', '{"query":"packagedRuntimeMarker","path":"src","maxResults":5}', '--json'],
-            { cwd: targetRoot, env }
-        ).stdout,
-        'installed CLI text_search'
-    );
-    if (!(Number(search.count) >= 1)) throw new Error('Installed CLI text_search did not find the target marker');
+        stage = 'cli_validation';
+        assertInstallRootSafe();
+        const before = sourceDigest();
+        const version = run(cliBin, ['--version'], { cwd: targetRoot, env }).stdout;
+        const shortVersion = run(shortCliBin, ['--version'], { cwd: targetRoot, env }).stdout;
+        const read = parseCliToolOutput(
+            run(
+                cliBin,
+                ['workflow', 'read_file', '--args', '{"path":"README.md","range":{"startLine":1,"endLine":6}}', '--json'],
+                { cwd: targetRoot, env }
+            ).stdout,
+            'installed CLI read_file'
+        );
+        if (!String(read.content ?? '').includes('packaged runtime dogfood target')) {
+            throw new Error('Installed CLI read_file returned the wrong target content');
+        }
+        const search = parseCliToolOutput(
+            run(
+                cliBin,
+                ['workflow', 'text_search', '--args', '{"query":"packagedRuntimeMarker","path":"src","maxResults":5}', '--json'],
+                { cwd: targetRoot, env }
+            ).stdout,
+            'installed CLI text_search'
+        );
+        if (!(Number(search.count) >= 1)) throw new Error('Installed CLI text_search did not find the target marker');
 
-    const mcp = await dogfoodMcp(mcpBin, env);
-    const after = sourceDigest();
-    if (before !== after) throw new Error('Packaged-runtime dogfood mutated source outside the declared .ontology runtime state');
-    const stateEntries = runtimeStateEntries();
+        stage = 'mcp_stdio';
+        assertInstallRootSafe();
+        const mcp = await dogfoodMcp(mcpBin, env);
+        assertInstallRootSafe();
+        stage = 'workspace_integrity';
+        const after = sourceDigest();
+        if (before !== after) {
+            throw new Error('Packaged-runtime dogfood mutated source outside the declared .ontology runtime state');
+        }
+        const stateEntries = runtimeStateEntries();
+        const candidateReady = Boolean(artifactManifest.source.trackedClean);
 
-    const candidateReady = Boolean(artifactManifest.source.trackedClean);
-    const evidence = {
-        schema: 'semantic-code-intelligence.local_production_candidate.v1',
-        ok: true,
-        candidateReady,
-        artifact: artifactManifest.artifact,
-        source: artifactManifest.source,
-        installation: { isolated: true, source: relative(repoRoot, artifactPath), lifecycleScriptsIgnored: true },
-        calls: {
-            cli: {
-                version,
-                shortAliasVersion: shortVersion,
-                readFile: { path: read.path, matchedTarget: true },
-                textSearch: { count: search.count, capped: search.capped ?? false },
+        return {
+            schema: 'semantic-code-intelligence.local_production_candidate.v1',
+            runId: candidateRunId,
+            ok: true,
+            candidateReady,
+            artifact: artifactManifest.artifact,
+            source: artifactManifest.source,
+            installation: { isolated: true, source: relative(repoRoot, artifactPath), lifecycleScriptsIgnored: true },
+            calls: {
+                cli: {
+                    version,
+                    shortAliasVersion: shortVersion,
+                    readFile: { path: read.path, matchedTarget: true },
+                    textSearch: { count: search.count, capped: search.capped ?? false },
+                },
+                mcpStdio: mcp,
             },
-            mcpStdio: mcp,
-        },
-        workspace: {
-            rootInventoried: true,
-            sourceUnchanged: true,
-            sourceDigest: after,
-            runtimeStateRoot: '.ontology',
-            runtimeStateContained: stateEntries.length > 0,
-            runtimeStateEntries: stateEntries,
-        },
-        proves: [
-            'The canonical runtime tarball installs into an isolated local directory.',
-            'Installed CLI and MCP stdio bins execute bounded calls against the configured target.',
-            'MCP stdio keeps protocol stdout JSON-clean.',
-            'Dogfood leaves the complete configured workspace source tree outside declared .ontology runtime state byte-identical.',
-            'Repeated archive creation produces the same per-file payload digest.',
-        ],
-        doesNotProve: [
-            'No package, image, or service was published or deployed.',
-            'HTTP, MCP HTTP, LSP, Docker, Compose, hosted, and multi-tenant production support remain outside this candidate.',
-            'Trusted repository checks are not sandboxed hostile-code execution.',
-            'No production availability or p95/p99 SLO is claimed.',
-            'Dependency resolution is not a hermetic vendored closure.',
-        ],
-    };
-    writeFileSync(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
-    if (jsonMode) process.stdout.write(`${JSON.stringify(evidence)}\n`);
-    else {
-        process.stdout.write(`local-production-dogfood: ok\n`);
-        process.stdout.write(`candidate-ready: ${candidateReady}\n`);
-        process.stdout.write(`evidence: ${relative(repoRoot, evidencePath)}\n`);
+            workspace: {
+                rootInventoried: true,
+                sourceUnchanged: true,
+                sourceDigest: after,
+                runtimeStateRoot: '.ontology',
+                runtimeStateContained: stateEntries.length > 0,
+                runtimeStateEntries: stateEntries,
+            },
+            proves: [
+                'The canonical runtime tarball installs into an isolated local directory.',
+                'Installed CLI and MCP stdio bins execute bounded calls against the configured target.',
+                'MCP stdio keeps protocol stdout JSON-clean.',
+                'Dogfood leaves the complete configured workspace source tree outside declared .ontology runtime state byte-identical.',
+                'Repeated archive creation produces the same per-file payload digest.',
+            ],
+            doesNotProve: [
+                'No package, image, or service was published or deployed.',
+                'HTTP, MCP HTTP, LSP, Docker, Compose, hosted, and multi-tenant production support remain outside this candidate.',
+                'Trusted repository checks are not sandboxed hostile-code execution.',
+                'No production availability or p95/p99 SLO is claimed.',
+                'Dependency resolution is not a hermetic vendored closure.',
+            ],
+        };
+    } catch (error) {
+        throw asCandidateStageError(stage, error);
     }
-    return candidateReady;
 }
 
-try {
-    const candidateReady = await main();
-    if (!candidateReady && !allowDirtySource) {
-        process.stderr.write('local-production-dogfood: packaged runtime passed, but candidate readiness requires a tracked-clean source commit\n');
+async function runEntrypoint(): Promise<void> {
+    try {
+        const evidence = await main();
+        if (!keepInstall) {
+            try {
+                cleanupInstallRoot();
+            } catch (error) {
+                throw new CandidateStageError('cleanup', error);
+            }
+        }
+        try {
+            writeEvidencePacket(evidence);
+        } catch (error) {
+            throw new CandidateStageError('evidence_write', error);
+        }
+
+        if (jsonMode) process.stdout.write(`${JSON.stringify(evidence)}\n`);
+        else {
+            process.stdout.write(`local-production-dogfood: ok\n`);
+            process.stdout.write(`candidate-ready: ${evidence.candidateReady}\n`);
+            process.stdout.write(`evidence: ${relative(repoRoot, evidencePath)}\n`);
+        }
+        if (!evidence.candidateReady && !allowDirtySource) {
+            process.stderr.write(
+                'local-production-dogfood: packaged runtime passed, but candidate readiness requires a tracked-clean source commit\n'
+            );
+            process.exitCode = 1;
+        }
+    } catch (error) {
+        let finalError = error;
+        if (!keepInstall) {
+            try {
+                cleanupInstallRoot();
+            } catch (cleanupError) {
+                finalError = new CandidateStageError('cleanup', cleanupError);
+            }
+        }
+
+        let failure = toCandidateFailureEvidence(finalError);
+        const packet = {
+            schema: 'semantic-code-intelligence.local_production_candidate.v1',
+            runId: candidateRunId,
+            ok: false,
+            candidateReady: false,
+            failure,
+        };
+        try {
+            writeEvidencePacket(packet);
+        } catch (writeError) {
+            finalError = new CandidateStageError('evidence_write', writeError);
+            failure = toCandidateFailureEvidence(finalError);
+        }
+
+        process.stderr.write(`local-production-dogfood: ${failure.code}: ${failure.message}\n`);
+        if (process.env.SCI_LOCAL_PRODUCTION_DIAGNOSTICS === '1') {
+            process.stderr.write(`local-production-dogfood diagnostic (not promoted): ${candidateLocalDiagnostic(finalError)}\n`);
+        }
         process.exitCode = 1;
     }
-} catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    mkdirSync(dirname(evidencePath), { recursive: true });
-    writeFileSync(
-        evidencePath,
-        `${JSON.stringify(
-            {
-                schema: 'semantic-code-intelligence.local_production_candidate.v1',
-                ok: false,
-                candidateReady: false,
-                error: message,
-            },
-            null,
-            2
-        )}\n`,
-        { mode: 0o600 }
-    );
-    process.stderr.write(`local-production-dogfood: ${message}\n`);
-    process.exit(1);
-} finally {
-    if (!keepInstall) rmSync(installRoot, { recursive: true, force: true });
 }
+
+if (import.meta.main) await runEntrypoint();

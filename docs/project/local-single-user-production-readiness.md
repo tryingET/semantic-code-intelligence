@@ -36,9 +36,12 @@ This command:
 2. creates two archives from the same built state;
 3. rejects duplicate or forbidden archive members;
 4. compares sorted per-file SHA-256 payload manifests;
-5. retains one tarball and writes an artifact manifest under `.test-results/local-production-artifact/`.
+5. rejects output roots outside the physical repository-owned `.test-results/` tree, including symlinked ancestors, before recursive deletion or write;
+6. retains one tarball and writes an artifact manifest under `.test-results/local-production-artifact/`.
 
 A matching payload digest proves repeatable archive contents for the current source, Bun version, and environment. It does not prove hermetic future dependency resolution.
+
+The builder revalidates real directories and regular files immediately before and after recursive cleanup, child pack/extract activity, archive rename, and manifest write. This is a trusted-local race boundary, not a hostile concurrent-filesystem sandbox: the operator and child processes must not replace validated path components during the gap between a check and its following filesystem operation. Direct builder failures use the same fixed typed default stderr posture as dogfood; raw producer diagnostics require explicit local opt-in.
 
 ## Dogfood
 
@@ -52,6 +55,7 @@ Dogfood installs the tarball into a fresh isolated directory and executes only i
 - bounded file read and text search against an isolated target;
 - MCP stdio initialization, tool discovery, and bounded file read;
 - JSON-RPC stdout cleanliness;
+- bounded MCP-stdio shutdown with close-race detection, SIGTERM/SIGKILL escalation, and a final deadline;
 - complete configured workspace-source inventory unchanged outside declared `.ontology` runtime state;
 - runtime-created files contained under a real, non-symlinked `.ontology` directory and reported separately;
 - archive checksum and payload repeatability;
@@ -62,6 +66,8 @@ The retained evidence path is:
 ```text
 .test-results/local-production-candidate.json
 ```
+
+Before each dogfood run, the prior canonical evidence file is invalidated through a physically checked path. Every success or failure packet carries a fresh `runId` and is written atomically under a physically verified real `.test-results/` directory, so a failed current write cannot leave an older successful packet at the canonical file path. A failure packet contains only a typed stage code, fixed bounded message, and `diagnosticsPromoted: false`; child stdout/stderr, submitted/local paths, credentials, stack details, and raw producer diagnostics are not written into the packet. Full raw diagnostics remain available only on the non-promoted local stderr surface when the operator explicitly sets `SCI_LOCAL_PRODUCTION_DIAGNOSTICS=1`.
 
 ## Full local candidate gate
 

@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-08-23T20:37:46.476984077+00:00",
+  "task_id": 4896,
+  "entity_version": 4,
+  "commit_sha": "aa5c23fa16d8589cb546997639fa1d576fdf8eff",
+  "scope": {
+    "allowed_paths": [
+      "docs/project/local-single-user-production-readiness.md",
+      "governance/task-scopes/**",
+      "scripts/build-local-production-artifact.ts",
+      "scripts/dogfood-local-production-candidate.ts",
+      "scripts/local-production-candidate-safety.ts",
+      "tests/local-production-candidate.test.ts"
+    ],
+    "required_paths": [
+      "scripts/build-local-production-artifact.ts",
+      "scripts/dogfood-local-production-candidate.ts",
+      "scripts/local-production-candidate-safety.ts",
+      "tests/local-production-candidate.test.ts"
+    ],
+    "forbidden_paths": []
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}

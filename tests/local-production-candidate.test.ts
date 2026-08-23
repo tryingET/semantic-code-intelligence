@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'bun:test';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { once } from 'node:events';
 import {
+    chmodSync,
+    copyFileSync,
     existsSync,
     mkdirSync,
     mkdtempSync,
@@ -12,6 +15,11 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import {
+    CandidateStageError,
+    shutdownMcpProcess,
+    toCandidateFailureEvidence,
+} from '../scripts/local-production-candidate-safety.js';
 
 function read(path: string): string {
     return readFileSync(path, 'utf8');
@@ -186,8 +194,231 @@ describe('local single-user production candidate contract', () => {
         expect(builder).not.toContain('docker push');
     });
 
+    test('artifact builder rejects outside and symlink-escaped output roots before deletion', () => {
+        mkdirSync('.test-results', { recursive: true });
+        const outside = mkdtempSync(join(tmpdir(), 'sci-artifact-output-escape-'));
+        const link = join('.test-results', `artifact-output-link-${process.pid}-${Date.now()}`);
+        const sentinel = join(outside, 'keep');
+        writeFileSync(sentinel, 'keep');
+        symlinkSync(outside, link, 'dir');
+
+        try {
+            const escaped = spawnSync(
+                'bun',
+                [
+                    'run',
+                    'scripts/build-local-production-artifact.ts',
+                    '--skip-build',
+                    '--output-dir',
+                    join(link, 'candidate'),
+                ],
+                { cwd: process.cwd(), encoding: 'utf8' }
+            );
+            expect(escaped.status).toBe(1);
+            expect(escaped.stderr).toContain('candidate_setup_failed');
+            expect(escaped.stderr).not.toContain(outside);
+            expect(escaped.stderr).not.toContain('symlinked ancestor');
+            expect(readFileSync(sentinel, 'utf8')).toBe('keep');
+
+            const diagnosed = spawnSync(
+                'bun',
+                [
+                    'run',
+                    'scripts/build-local-production-artifact.ts',
+                    '--skip-build',
+                    '--output-dir',
+                    join(link, 'candidate'),
+                ],
+                {
+                    cwd: process.cwd(),
+                    encoding: 'utf8',
+                    env: { ...process.env, SCI_LOCAL_PRODUCTION_DIAGNOSTICS: '1' },
+                }
+            );
+            expect(diagnosed.status).toBe(1);
+            expect(diagnosed.stderr).toContain('diagnostic (not promoted)');
+            expect(diagnosed.stderr).toContain('Artifact output must not traverse a symlinked ancestor');
+
+            const outsideRoot = spawnSync(
+                'bun',
+                [
+                    'run',
+                    'scripts/build-local-production-artifact.ts',
+                    '--skip-build',
+                    '--output-dir',
+                    join(outside, 'candidate'),
+                ],
+                { cwd: process.cwd(), encoding: 'utf8' }
+            );
+            expect(outsideRoot.status).toBe(1);
+            expect(outsideRoot.stderr).toContain('candidate_setup_failed');
+            expect(outsideRoot.stderr).not.toContain(outside);
+            expect(outsideRoot.stderr).not.toContain('must stay below');
+            expect(readFileSync(sentinel, 'utf8')).toBe('keep');
+        } finally {
+            rmSync(link, { recursive: true, force: true });
+            rmSync(outside, { recursive: true, force: true });
+        }
+    });
+
+    test('artifact builder default stderr excludes child-controlled diagnostics', () => {
+        const fixture = mkdtempSync(join(tmpdir(), 'sci-artifact-builder-failure-'));
+        const scripts = join(fixture, 'scripts');
+        const fakeBin = join(fixture, 'bin');
+        const secret = 'artifact-builder-secret-token';
+        const submittedPath = '/home/private/artifact/source';
+        mkdirSync(scripts, { recursive: true });
+        mkdirSync(fakeBin, { recursive: true });
+        copyFileSync(
+            join(process.cwd(), 'scripts/build-local-production-artifact.ts'),
+            join(scripts, 'build-local-production-artifact.ts')
+        );
+        copyFileSync(
+            join(process.cwd(), 'scripts/local-production-candidate-safety.ts'),
+            join(scripts, 'local-production-candidate-safety.ts')
+        );
+        const fakeBun = join(fakeBin, 'bun');
+        writeFileSync(
+            fakeBun,
+            `#!/usr/bin/env bash\nprintf '%s\\n' ${JSON.stringify(`${secret} ${submittedPath} stdout`)}\nprintf '%s\\n' ${JSON.stringify(`${secret} ${submittedPath} stderr`)} >&2\nexit 23\n`
+        );
+        chmodSync(fakeBun, 0o755);
+        writeFileSync(join(fakeBin, 'sci'), '#!/usr/bin/env bun\n');
+        chmodSync(join(fakeBin, 'sci'), 0o755);
+
+        try {
+            const failed = spawnSync(
+                process.execPath,
+                [join(scripts, 'build-local-production-artifact.ts'), '--skip-build'],
+                {
+                    cwd: fixture,
+                    encoding: 'utf8',
+                    env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH ?? ''}` },
+                }
+            );
+            expect(failed.status).toBe(1);
+            expect(failed.stderr).toContain('candidate_artifact_build_failed');
+            expect(failed.stderr).not.toContain(secret);
+            expect(failed.stderr).not.toContain(submittedPath);
+            expect(failed.stdout).not.toContain(secret);
+        } finally {
+            rmSync(fixture, { recursive: true, force: true });
+        }
+    });
+
+    test('candidate failure evidence is typed and excludes child-controlled diagnostics', () => {
+        const fixture = mkdtempSync(join(tmpdir(), 'sci-candidate-failure-evidence-'));
+        const scripts = join(fixture, 'scripts');
+        const secret = 'token-super-secret-value';
+        const submittedPath = '/home/private/operator/repository';
+        mkdirSync(scripts, { recursive: true });
+        copyFileSync(
+            join(process.cwd(), 'scripts/dogfood-local-production-candidate.ts'),
+            join(scripts, 'dogfood-local-production-candidate.ts')
+        );
+        copyFileSync(
+            join(process.cwd(), 'scripts/local-production-candidate-safety.ts'),
+            join(scripts, 'local-production-candidate-safety.ts')
+        );
+        writeFileSync(
+            join(scripts, 'build-local-production-artifact.ts'),
+            `process.stderr.write(${JSON.stringify(`${secret} ${submittedPath} producer stack detail\\n`)}); process.exit(23);\n`
+        );
+        mkdirSync(join(fixture, '.test-results'));
+        writeFileSync(
+            join(fixture, '.test-results/local-production-candidate.json'),
+            '{"schema":"semantic-code-intelligence.local_production_candidate.v1","runId":"stale-run","ok":true,"candidateReady":true}\n'
+        );
+
+        try {
+            const failed = spawnSync('bun', ['run', 'scripts/dogfood-local-production-candidate.ts', '--json'], {
+                cwd: fixture,
+                encoding: 'utf8',
+                env: { ...process.env, SCI_LOCAL_PRODUCTION_DIAGNOSTICS: undefined },
+            });
+            expect(failed.status).toBe(1);
+            expect(failed.stderr).toContain('candidate_artifact_build_failed');
+            expect(failed.stderr).not.toContain(secret);
+            expect(failed.stderr).not.toContain(submittedPath);
+
+            const packetText = readFileSync(join(fixture, '.test-results/local-production-candidate.json'), 'utf8');
+            const packet = JSON.parse(packetText);
+            expect(packet).toEqual({
+                schema: 'semantic-code-intelligence.local_production_candidate.v1',
+                runId: expect.any(String),
+                ok: false,
+                candidateReady: false,
+                failure: {
+                    code: 'candidate_artifact_build_failed',
+                    stage: 'artifact_build',
+                    message: 'Local candidate artifact build failed.',
+                    diagnosticsPromoted: false,
+                },
+            });
+            expect(packetText).not.toContain(secret);
+            expect(packetText).not.toContain(submittedPath);
+            expect(packetText).not.toContain(fixture);
+            expect(packet.runId).not.toBe('stale-run');
+
+            writeFileSync(
+                join(scripts, 'build-local-production-artifact.ts'),
+                `import { mkdirSync } from 'node:fs';\nmkdirSync('.test-results/local-production-candidate.json');\nprocess.stderr.write(${JSON.stringify(`${secret} ${submittedPath} write failure\\n`)});\nprocess.exit(23);\n`
+            );
+            const unwritable = spawnSync('bun', ['run', 'scripts/dogfood-local-production-candidate.ts', '--json'], {
+                cwd: fixture,
+                encoding: 'utf8',
+                env: { ...process.env, SCI_LOCAL_PRODUCTION_DIAGNOSTICS: undefined },
+            });
+            expect(unwritable.status).toBe(1);
+            expect(unwritable.stderr).toContain('candidate_evidence_write_failed');
+            expect(unwritable.stderr).not.toContain(secret);
+            expect(unwritable.stderr).not.toContain(submittedPath);
+            expect(statSync(join(fixture, '.test-results/local-production-candidate.json')).isDirectory()).toBe(true);
+
+            const projected = toCandidateFailureEvidence(
+                new CandidateStageError('mcp_stdio', new Error(`${secret} ${submittedPath}`))
+            );
+            expect(projected).toEqual({
+                code: 'candidate_mcp_stdio_failed',
+                stage: 'mcp_stdio',
+                message: 'Installed MCP stdio validation failed.',
+                diagnosticsPromoted: false,
+            });
+            expect(JSON.stringify(projected)).not.toContain(secret);
+            expect(JSON.stringify(projected)).not.toContain(submittedPath);
+        } finally {
+            rmSync(fixture, { recursive: true, force: true });
+        }
+    });
+
+    test('MCP shutdown is bounded when close precedes observation or SIGTERM is ignored', async () => {
+        const alreadyClosed = spawn(process.execPath, ['-e', 'process.exit(0)'], {
+            stdio: ['pipe', 'pipe', 'pipe'],
+        }) as ChildProcessWithoutNullStreams;
+        await once(alreadyClosed, 'close');
+        const closedStart = Date.now();
+        await shutdownMcpProcess(alreadyClosed, { termAfterMs: 5, killAfterMs: 10, finalAfterMs: 100 });
+        expect(Date.now() - closedStart).toBeLessThan(100);
+
+        const stubborn = spawn(
+            process.execPath,
+            ['-e', "process.on('SIGTERM', () => {}); process.stdin.resume(); setInterval(() => {}, 1000);"],
+            { stdio: ['pipe', 'pipe', 'pipe'] }
+        ) as ChildProcessWithoutNullStreams;
+        try {
+            await new Promise((resolveDelay) => setTimeout(resolveDelay, 50));
+            const stubbornStart = Date.now();
+            await shutdownMcpProcess(stubborn, { termAfterMs: 10, killAfterMs: 40, finalAfterMs: 500 });
+            expect(Date.now() - stubbornStart).toBeLessThan(1000);
+            expect(stubborn.exitCode !== null || stubborn.signalCode !== null).toBe(true);
+        } finally {
+            if (stubborn.exitCode === null && stubborn.signalCode === null) stubborn.kill('SIGKILL');
+        }
+    });
+
     test('dogfood executes installed CLI and MCP stdio bins without applying changes', () => {
         const dogfood = read('scripts/dogfood-local-production-candidate.ts');
+        const safety = read('scripts/local-production-candidate-safety.ts');
 
         expect(dogfood).toContain('node_modules/.bin/semantic-code-intelligence');
         expect(dogfood).toContain('node_modules/.bin/semantic-code-mcp');
@@ -201,7 +432,9 @@ describe('local single-user production candidate contract', () => {
         expect(dogfood).toContain('readlinkSync(absolute)');
         expect(dogfood).toContain('describeEntry(targetRoot, targetRoot)');
         expect(dogfood).toContain("runtimeStateRoot: '.ontology'");
-        expect(dogfood).toContain("proc.kill('SIGKILL')");
+        expect(dogfood).toContain('shutdownMcpProcess(proc)');
+        expect(safety).toContain("proc.kill('SIGKILL')");
+        expect(safety).toContain('MCP stdio shutdown exceeded its final deadline');
         expect(dogfood).toContain('workspace source tree');
         expect(dogfood).toContain('candidateReady');
         expect(dogfood).not.toContain('ALLOW_SNAPSHOT_APPLY');
