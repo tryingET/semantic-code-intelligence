@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-08-23T09:23:34.301437479+00:00",
+  "task_id": 4866,
+  "entity_version": 6,
+  "commit_sha": "5472fc877d4aaefb79a60e8d6d9fefe4cd04bb89",
+  "scope": {
+    "allowed_paths": [
+      "docs/WORKFLOWS.md",
+      "docs/project/alpha-mvp-contract.md",
+      "docs/project/alpha-mvp-validation.md",
+      "governance/task-scopes/AK-4866.snapshot.json",
+      "scripts/dogfood-alpha-mvp.ts",
+      "src/core/tools/tool-specs-preferred-workflows.ts",
+      "src/core/workflows/symbol-workflow-disclosure-budget.ts",
+      "src/core/workflows/symbol-workflow-disclosure-debug.ts",
+      "src/core/workflows/symbol-workflow-disclosure.ts",
+      "src/core/workflows/symbol-workflow.ts",
+      "tests/alpha-mvp-tool-contract.test.ts",
+      "tests/mcp-workflows-ga.test.ts",
+      "tests/symbol-workflow-service.test.ts"
+    ],
+    "required_paths": [
+      "governance/task-scopes/AK-4866.snapshot.json",
+      "src/core/workflows/symbol-workflow-disclosure.ts",
+      "src/core/workflows/symbol-workflow.ts",
+      "tests/symbol-workflow-service.test.ts"
+    ],
+    "forbidden_paths": [
+      "src/layers/__tests__/test-cache-PaVDfX/**"
+    ]
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}
