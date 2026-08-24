@@ -77,16 +77,16 @@ At a glance (local testing quick path): use `just test` for fast, sliced + batch
 Before raw search/read chains on unfamiliar code, call the smallest matching composite workflow:
 
 - unknown symbol or change impact → `explore_symbol_impact`
-- uncertain definition → `locate_confirm_definition`
-- symbol rename → `rename_safely`
+- uncertain definition → `locate_confirm_definition` only if explore did not return `definitionConfirmed`
+- symbol rename → `rename_safely` (never `apply_rename`)
 - syntax-shaped transformation → `structural_patch_checks`
-- prepared patch preview/check → `patch_checks_in_snapshot` or `safe_write` with `apply:false`
+- prepared patch preview/check → `patch_checks_in_snapshot` (Pi has one patch door; `safe_write` stays on MCP/CLI)
 
 Do not decompose a composite into primitive SCI calls unless its result is insufficient. Use bounded native `read`/`edit` after the workflow identifies the relevant files. Straightforward Markdown or exact textual edits may use native tools directly.
 
 When native SCI Pi tools are registered, prefer them. Otherwise use MCP from a long-lived client or the installed/global CLI from the target repo cwd. If SCI is unavailable or fails, state the fallback briefly before using native search/read tools. Never bake target repo paths into SCI source or docs.
 
-Apply remains separately authorized: keep preview workflows at `apply:false` unless the operator explicitly requests mutation and the server-side apply guard is enabled.
+Apply remains separately authorized: preview first. Apply only via `rename_safely` or snapshot apply when the operator explicitly requests mutation and the server-side apply guard is enabled. Never `apply_rename`.
 
 3) Validate
 - Build: `bun run build:all`.
@@ -241,7 +241,7 @@ curl -sS -X POST -H "content-type: application/json" -H "Mcp-Session-Id: $MCP_SE
 
 Keep two purposes distinct:
 
-- **Real-task usage:** composite first → one or two bounded reads → native exact edit or SCI patch construction → `safe_write apply:false` / `patch_checks_in_snapshot` evidence.
+- **Real-task usage:** composite first → one or two bounded reads → native exact edit or SCI patch construction → `patch_checks_in_snapshot` evidence. Apply only via `rename_safely` or snapshot apply when the operator asks; never `apply_rename`.
 - **Contract coverage:** primitive calls may be exercised individually to prove registration, parity, errors, and result shapes. Do not present this as the optimal agent workflow.
 
 For real-task evidence, record the composite calls, justified native fallbacks, primitive shell/search chains avoided, elapsed time, and whether preview left the workspace unchanged. Validate structured results, JSON-RPC errors, and latency budgets with small fixtures.

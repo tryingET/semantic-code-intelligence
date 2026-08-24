@@ -41,8 +41,9 @@ bounded discovery -> graph impact -> recommend checks -> preview/check -> valida
 | A host only supports MCP stdio | MCP stdio | Valid Alpha path when stdout protocol cleanliness matters. | Logging or diagnostics on stdout; use stderr for diagnostics. |
 | CI-like or deterministic cross-interface parity tests | HTTP `/api/v1/tools/call` | Simple request/response surface for repeatable tests without MCP client machinery. | Treating HTTP parity tests as a production API promise beyond alpha scope. |
 | Core adapter contract/unit coverage | Direct `MCPAdapter` tests | Exercises tool routing and result shapes without server/network noise. | Claiming direct-adapter-only coverage proves client interoperability. |
-| Previewing a patch in any interface | `patch_checks_in_snapshot` or `safe_write` preview | Produces snapshot artifacts, explicit checks, optional recommendations, and `validationPlan`. | Direct file writes before a reviewed diff/check path. |
-| Intentionally applying a patch | `safe_write` with `apply:true`, passing checks, and `ALLOW_SNAPSHOT_APPLY=1` | Preserves guarded apply and applied-state verification. | Any apply path that bypasses guards or does not expose rollback evidence. |
+| Previewing a patch in Pi | `patch_checks_in_snapshot` | One Pi patch door; preview only. `safe_write` is MCP/CLI, not a second Pi tool. | Direct file writes before a reviewed diff/check path; `apply_rename`. |
+| Previewing a patch on CLI/MCP | `patch_checks_in_snapshot` or `safe_write` preview | Produces snapshot artifacts, explicit checks, optional recommendations, and `validationPlan`. | Direct file writes before a reviewed diff/check path. |
+| Intentionally applying a patch | `rename_safely` / snapshot apply, or CLI/MCP `safe_write` with `apply:true`, passing checks, and `ALLOW_SNAPSHOT_APPLY=1` | Preserves guarded apply. Never `apply_rename`. | Any apply path that bypasses guards or does not expose rollback evidence. |
 
 ## Interface-specific guidance
 
@@ -123,11 +124,11 @@ They do not prove MCP client compatibility by themselves. Pair them with MCP HTT
 
 Regardless of interface:
 
-1. Start with the smallest matching composite: `explore_symbol_impact`, `locate_confirm_definition`, `rename_safely`, `structural_patch_checks`, `patch_checks_in_snapshot`, or `safe_write`.
+1. Start with the smallest matching composite: `explore_symbol_impact` first; `locate_confirm_definition` only if explore did not confirm; then `rename_safely`, `structural_patch_checks`, or `patch_checks_in_snapshot`. On CLI/MCP, `safe_write` remains the autonomous-safe write path. Never `apply_rename`.
 2. Use bounded native reads after the composite identifies relevant files; decompose into SCI primitives only when the composite evidence is insufficient.
    `explore_symbol_impact` only reports `ok:true` when definition or declaration evidence confirms the symbol. An `ok:false`, `isError:false` result with `symbolResolution.status: "unconfirmed"` is a completed bounded search, not a transport failure. A `status: "indeterminate"` or `degraded:true` result means a subcall failed or returned an unstructured result; do not infer symbol absence. Inspect `partial`, `symbolResolution.issues`, and the tailored `next_actions` before falling back.
 3. Use `recommend_checks` for advisory command selection when touched files or graph impact are known.
-4. Use `patch_checks_in_snapshot` or `safe_write` preview for a reviewed diff/check path.
+4. Use `patch_checks_in_snapshot` for a reviewed Pi diff/check path. On CLI/MCP, `safe_write` preview remains valid.
 5. Inspect `validationPlan` for selected commands, recommendation evidence, check result, snapshot artifacts, apply posture, and rollback links.
 6. Apply only through guarded paths when explicitly intended.
 
