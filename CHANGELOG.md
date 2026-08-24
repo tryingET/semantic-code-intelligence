@@ -4,7 +4,7 @@ This changelog records user-visible Semantic Code Intelligence candidate changes
 no previous Git tag or GitHub release baseline, so the first entry is a curated local-candidate
 baseline rather than a comparison against an invented release range.
 
-## [2.1.0-rc.2] - Unreleased
+## [2.1.0-rc.2] - 2026-08-24
 
 Artifact-format hygiene candidate. `2.1.0-rc.1` remains the frozen, published binding; this
 version exists so the artifact-format fixes below never rebind previously frozen bytes.
@@ -18,7 +18,7 @@ version exists so the artifact-format fixes below never rebind previously frozen
   extraction; wrapper mode is now part of each manifest entry and of the repeatable payload
   digest, so mode drift fails the candidate gate.
 
-## [2.1.0-rc.1] - Unreleased
+## [2.1.0-rc.1] - 2026-08-24
 
 First uniquely identified local single-user candidate under ADR-0004. Changes are curated from the
 initial local production-candidate implementation at commit `1aca36c8`; this is not a claim that

@@ -784,7 +784,7 @@ describe('build command surface', () => {
 
         expect(pkg.private).toBe(true);
         expect(pkg.version).toBe('2.1.0-rc.2');
-        expect(changelog).toContain('## [2.1.0-rc.2] - Unreleased');
+        expect(changelog).toContain('## [2.1.0-rc.2] - 2026-08-24');
         expect(changelog).toContain('globally lexicographic by package-relative path');
         expect(changelog).toContain('no previous Git tag or GitHub release baseline');
         expect(changelog).toContain('IW77 produced no terminal-valid adoption episodes');
