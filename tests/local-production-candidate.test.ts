@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { once } from 'node:events';
 import {
@@ -45,8 +46,8 @@ describe('local single-user production candidate contract', () => {
         const binPaths = Object.values(pkg.bin ?? {});
 
         expect(pkg.private).toBe(true);
-        expect(pkg.version).toBe('2.1.0-rc.1');
-        expect(read('src/core/version.ts')).toContain("SCI_VERSION = '2.1.0-rc.1'");
+        expect(pkg.version).toBe('2.1.0-rc.2');
+        expect(read('src/core/version.ts')).toContain("SCI_VERSION = '2.1.0-rc.2'");
         expect(pkg.bin).toEqual({
             sci: './bin/sci',
             'semantic-code-intelligence': './bin/semantic-code-intelligence',
@@ -197,6 +198,124 @@ describe('local single-user production candidate contract', () => {
         expect(builder).not.toContain('docker push');
     });
 
+    function buildPackFixture(wrapperMode: number): { fixture: string; fakeBin: string } {
+        const fixture = mkdtempSync(join(tmpdir(), 'sci-artifact-hygiene-'));
+        const scripts = join(fixture, 'scripts');
+        const fakeBin = join(fixture, 'fake-bin');
+        const packageRoot = join(fixture, 'template', 'package');
+        mkdirSync(join(packageRoot, 'bin'), { recursive: true });
+        mkdirSync(join(packageRoot, 'dist', 'core'), { recursive: true });
+        mkdirSync(join(packageRoot, 'dist', 'cli'), { recursive: true });
+        mkdirSync(join(packageRoot, 'dist', 'mcp'), { recursive: true });
+        mkdirSync(scripts, { recursive: true });
+        mkdirSync(fakeBin, { recursive: true });
+        copyFileSync(
+            join(process.cwd(), 'scripts/build-local-production-artifact.ts'),
+            join(scripts, 'build-local-production-artifact.ts')
+        );
+        copyFileSync(
+            join(process.cwd(), 'scripts/local-production-candidate-safety.ts'),
+            join(scripts, 'local-production-candidate-safety.ts')
+        );
+        for (const wrapper of ['sci', 'semantic-code-intelligence', 'semantic-code-mcp']) {
+            writeFileSync(join(packageRoot, 'bin', wrapper), '#!/usr/bin/env bun\n');
+            chmodSync(join(packageRoot, 'bin', wrapper), wrapperMode);
+        }
+        for (const member of [
+            'package.json',
+            'README.md',
+            'CONFIG.md',
+            'LICENSE',
+            'dist/core/index.js',
+            'dist/cli/cli.js',
+            'dist/mcp/mcp.js'
+        ]) {
+            writeFileSync(join(packageRoot, member), `fixture payload for ${member}\n`);
+        }
+        const templateTar = join(fixture, 'template.tgz');
+        const tar = spawnSync('tar', ['-czf', templateTar, '-C', join(fixture, 'template'), 'package']);
+        expect(tar.status).toBe(0);
+        const fakeBun = join(fakeBin, 'bun');
+        writeFileSync(
+            fakeBun,
+            `#!/usr/bin/env bash\nset -euo pipefail\ndest="${'$'}5"\ncp "${JSON.stringify(templateTar).slice(1, -1)}" "$dest/semantic-code-intelligence-2.1.0-rc.2.tgz"\n`
+        );
+        chmodSync(fakeBun, 0o755);
+        mkdirSync(join(fixture, 'bin'), { recursive: true });
+        for (const wrapper of ['sci', 'semantic-code-intelligence', 'semantic-code-mcp']) {
+            writeFileSync(join(fixture, 'bin', wrapper), '#!/usr/bin/env bun\n');
+            chmodSync(join(fixture, 'bin', wrapper), 0o755);
+        }
+        const gitInit = [
+            spawnSync('git', ['-C', fixture, 'init', '-q']),
+            spawnSync('git', ['-C', fixture, 'add', '-A', '--', ':!template', ':!fake-bin']),
+            spawnSync('git', ['-C', fixture, '-c', 'user.email=fixture@example.invalid', '-c', 'user.name=fixture', 'commit', '-q', '-m', 'fixture'])
+        ];
+        for (const step of gitInit) expect(step.status).toBe(0);
+        return { fixture, fakeBin };
+    }
+
+    test('artifact payload is globally ordered with 0755 wrappers bound into digest evidence', () => {
+        const { fixture, fakeBin } = buildPackFixture(0o755);
+        try {
+            const ok = spawnSync(
+                process.execPath,
+                [join(fixture, 'scripts', 'build-local-production-artifact.ts'), '--skip-build'],
+                {
+                    cwd: fixture,
+                    encoding: 'utf8',
+                    env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH ?? ''}` }
+                }
+            );
+            expect(ok.status).toBe(0);
+            const manifest = JSON.parse(readFileSync(join(fixture, '.test-results/local-production-artifact/artifact-manifest.json'), 'utf8'));
+            const entries: Array<{ path: string; mode: string; sha256: string; bytes: number }> = manifest.artifact.entries;
+            expect(manifest.artifact.repeatablePayload).toBe(true);
+            expect(entries.map((entry) => entry.path)).toEqual([...entries.map((entry) => entry.path)].sort());
+            expect(entries[0].path).toBe('CONFIG.md');
+            for (const wrapper of ['bin/sci', 'bin/semantic-code-intelligence', 'bin/semantic-code-mcp']) {
+                expect(entries.find((entry) => entry.path === wrapper)?.mode).toBe('0755');
+            }
+            const expectedDigest = createHash('sha256')
+                .update(entries.map((entry) => `${entry.path}\0${entry.bytes}\0${entry.sha256}\0${entry.mode}`).join('\n'))
+                .digest('hex');
+            expect(manifest.artifact.payloadDigest).toBe(expectedDigest);
+        } finally {
+            rmSync(fixture, { recursive: true, force: true });
+        }
+    });
+
+    test('artifact builder fails closed when archived wrappers are not mode 0755', () => {
+        const { fixture, fakeBin } = buildPackFixture(0o777);
+        try {
+            const failed = spawnSync(
+                process.execPath,
+                [join(fixture, 'scripts', 'build-local-production-artifact.ts'), '--skip-build'],
+                {
+                    cwd: fixture,
+                    encoding: 'utf8',
+                    env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH ?? ''}` }
+                }
+            );
+            expect(failed.status).toBe(1);
+            expect(failed.stderr).toContain('candidate_artifact_validation_failed');
+            expect(failed.stderr).not.toContain('Runtime wrappers');
+            const diagnostics = spawnSync(
+                process.execPath,
+                [join(fixture, 'scripts', 'build-local-production-artifact.ts'), '--skip-build'],
+                {
+                    cwd: fixture,
+                    encoding: 'utf8',
+                    env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH ?? ''}`, SCI_LOCAL_PRODUCTION_DIAGNOSTICS: '1' }
+                }
+            );
+            expect(diagnostics.status).toBe(1);
+            expect(diagnostics.stderr).toContain('Runtime wrappers must be mode 0755');
+        } finally {
+            rmSync(fixture, { recursive: true, force: true });
+        }
+    });
+
     test('artifact builder rejects outside and symlink-escaped output roots before deletion', () => {
         mkdirSync('.test-results', { recursive: true });
         const outside = mkdtempSync(join(tmpdir(), 'sci-artifact-output-escape-'));
@@ -288,6 +407,10 @@ describe('local single-user production candidate contract', () => {
         chmodSync(fakeBun, 0o755);
         writeFileSync(join(fakeBin, 'sci'), '#!/usr/bin/env bun\n');
         chmodSync(join(fakeBin, 'sci'), 0o755);
+        writeFileSync(join(fakeBin, 'semantic-code-intelligence'), '#!/usr/bin/env bun\n');
+        chmodSync(join(fakeBin, 'semantic-code-intelligence'), 0o755);
+        writeFileSync(join(fakeBin, 'semantic-code-mcp'), '#!/usr/bin/env bun\n');
+        chmodSync(join(fakeBin, 'semantic-code-mcp'), 0o755);
 
         try {
             const failed = spawnSync(

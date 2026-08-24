@@ -4,6 +4,20 @@ This changelog records user-visible Semantic Code Intelligence candidate changes
 no previous Git tag or GitHub release baseline, so the first entry is a curated local-candidate
 baseline rather than a comparison against an invented release range.
 
+## [2.1.0-rc.2] - Unreleased
+
+Artifact-format hygiene candidate. `2.1.0-rc.1` remains the frozen, published binding; this
+version exists so the artifact-format fixes below never rebind previously frozen bytes.
+
+### Changed
+
+- Runtime payload entries are now globally lexicographic by package-relative path before
+  digesting and evidence serialization; the deterministic per-directory traversal order of
+  earlier candidates is superseded by an explicit global ordering contract.
+- Packaged runtime wrappers are normalized to mode `0755` before packing and verified after
+  extraction; wrapper mode is now part of each manifest entry and of the repeatable payload
+  digest, so mode drift fails the candidate gate.
+
 ## [2.1.0-rc.1] - Unreleased
 
 First uniquely identified local single-user candidate under ADR-0004. Changes are curated from the

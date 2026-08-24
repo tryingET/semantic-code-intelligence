@@ -752,7 +752,7 @@ describe('build command surface', () => {
 
         expect(release).toContain('Preparation only; no distribution authority.');
         expect(release).toContain('bun run production:candidate:check');
-        expect(release).toContain('semantic-code-intelligence-2.1.0-rc.1.tgz');
+        expect(release).toContain('semantic-code-intelligence-2.1.0-rc.2.tgz');
         expect(release).toContain('a release-execution task does not exist');
         for (const unsupportedCommand of [
             'docker build',
@@ -770,18 +770,21 @@ describe('build command surface', () => {
     test('candidate changelog and release notes preserve baseline and claim boundaries', () => {
         const pkg = JSON.parse(readText('package.json')) as { private?: boolean; version?: string; files?: string[] };
         const changelog = readText('CHANGELOG.md');
-        const notes = readText('docs/project/releases/2.1.0-rc.1.md');
+        const notes = readText('docs/project/releases/2.1.0-rc.2.md');
         const cli = readText('src/servers/cli.ts');
 
         expect(pkg.private).toBe(true);
-        expect(pkg.version).toBe('2.1.0-rc.1');
-        expect(changelog).toContain('## [2.1.0-rc.1] - Unreleased');
+        expect(pkg.version).toBe('2.1.0-rc.2');
+        expect(changelog).toContain('## [2.1.0-rc.2] - Unreleased');
+        expect(changelog).toContain('globally lexicographic by package-relative path');
         expect(changelog).toContain('no previous Git tag or GitHub release baseline');
         expect(changelog).toContain('IW77 produced no terminal-valid adoption episodes');
         expect(changelog).toContain('is packaged in the installed');
         expect(changelog).toContain('Repository closeout receipt tooling remains source-checkout-only');
-        expect(notes).toContain('exact bytes are not frozen until AK task `4898` completes');
+        expect(notes).toContain('exact bytes are not frozen until a dedicated AK validation task completes');
         expect(notes).toContain('details.schemaVersion: 2');
+        expect(notes).toContain('globally lexicographic by package-relative path');
+        expect(notes).toContain('mode `0755`');
         expect(notes).toContain('Native Pi use additionally needs');
         expect(notes).toContain('not an offline or hermetic bundle');
         expect(notes).toContain('No tag, GitHub release, release-asset upload');

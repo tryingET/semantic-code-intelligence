@@ -41,7 +41,14 @@ interface PayloadEntry {
     path: string;
     bytes: number;
     sha256: string;
+    mode: string;
 }
+
+/** Payload ordering contract: entries are globally lexicographic by POSIX package-relative
+ * path before digesting or evidence serialization. Wrapper modes are normalized to 0755 before
+ * packing and bound into both the per-entry evidence and the payload digest. */
+const RUNTIME_WRAPPERS = ['bin/sci', 'bin/semantic-code-intelligence', 'bin/semantic-code-mcp'] as const;
+const EXPECTED_WRAPPER_MODE = '0755';
 
 function fail(message: string): never {
     throw new Error(message);
@@ -85,6 +92,33 @@ function inspectArchive(
     const duplicates = [...new Set(members.filter((member, index) => members.indexOf(member) !== index))];
     if (duplicates.length) fail(`Runtime package has duplicate archive members: ${duplicates.join(', ')}`);
 
+    const verbose = run('tar', ['-tvzf', archivePath]).split(/\r?\n/).filter(Boolean);
+    const headerMode = (permissions: string): string => {
+        if (!/^[-dlbcps][rwx-]{9}$/.test(permissions)) fail(`Runtime package has an unparsable member mode: ${permissions}`);
+        if (permissions[0] !== '-') fail(`Runtime package contains a non-regular archived entry: ${permissions}`);
+        const numeric = permissions
+            .slice(1)
+            .match(/.{3}/g)!
+            .map((triplet) =>
+                triplet
+                    .split('')
+                    .reduce((bits, flag) => (flag === '-' ? bits << 1 : (bits << 1) | 1), 0)
+            )
+            .join('');
+        return numeric.padStart(4, '0');
+    };
+    const archivedWrapperModes = verbose
+        .map((line) => { const fields = line.split(/\s+/); return { permissions: fields[0], member: fields[fields.length - 1] }; })
+        .filter(({ member }) => RUNTIME_WRAPPERS.some((wrapper) => member === `package/${wrapper}`))
+        .map(({ permissions, member }) => ({ wrapper: member.replace(/^package\//, ''), mode: headerMode(permissions) }));
+    if (archivedWrapperModes.length !== RUNTIME_WRAPPERS.length) {
+        fail('Runtime package is missing archived wrapper members for mode verification');
+    }
+    const badArchivedModes = archivedWrapperModes.filter((entry) => entry.mode !== EXPECTED_WRAPPER_MODE);
+    if (badArchivedModes.length) {
+        fail(`Runtime wrappers must be mode 0755 inside the archive: ${badArchivedModes.map((entry) => `${entry.wrapper}:${entry.mode}`).join(', ')}`);
+    }
+
     const forbidden = members.filter((member) =>
         /(^|\/)(src|scripts|tests|node_modules|\.test-results)(\/|$)/.test(member)
     );
@@ -103,10 +137,14 @@ function inspectArchive(
     const packageRoot = join(extractionRoot, 'package');
     if (!existsSync(packageRoot) || !statSync(packageRoot).isDirectory()) fail('Runtime package did not extract a package directory');
 
-    const entries = listFiles(packageRoot).map((absolute) => {
-        const data = readFileSync(absolute);
-        return { path: relative(packageRoot, absolute).replaceAll('\\', '/'), bytes: data.byteLength, sha256: sha256(data) };
-    });
+    const entries = listFiles(packageRoot)
+        .map((absolute) => {
+            const data = readFileSync(absolute);
+            const relativePath = relative(packageRoot, absolute).replaceAll('\\', '/');
+            const mode = (lstatSync(absolute).mode & 0o777).toString(8).padStart(4, '0');
+            return { path: relativePath, bytes: data.byteLength, sha256: sha256(data), mode };
+        })
+        .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
     const required = [
         'package.json',
         'README.md',
@@ -123,7 +161,16 @@ function inspectArchive(
     const missing = required.filter((path) => !entryPaths.has(path));
     if (missing.length) fail(`Runtime package is missing required entries: ${missing.join(', ')}`);
 
-    const payloadDigest = sha256(entries.map((entry) => `${entry.path}\0${entry.bytes}\0${entry.sha256}`).join('\n'));
+    const unsorted = entries.some((entry, index) => index > 0 && entries[index - 1].path >= entry.path);
+    if (unsorted) fail('Runtime payload entries are not globally lexicographic by path');
+    const badWrapperModes = entries
+        .filter((entry) => RUNTIME_WRAPPERS.includes(entry.path as (typeof RUNTIME_WRAPPERS)[number]) && entry.mode !== EXPECTED_WRAPPER_MODE)
+        .map((entry) => `${entry.path}:${entry.mode}`);
+    if (badWrapperModes.length) {
+        fail(`Extracted runtime wrappers must be mode 0755: ${badWrapperModes.join(', ')}`);
+    }
+
+    const payloadDigest = sha256(entries.map((entry) => `${entry.path}\0${entry.bytes}\0${entry.sha256}\0${entry.mode}`).join('\n'));
     return { entries, payloadDigest };
 }
 
@@ -154,7 +201,7 @@ function main(): void {
     assertNoSymlinkedAncestors(physicalResultsRoot, outputRoot, 'Artifact output');
     cleanupContainedDirectory(physicalResultsRoot, outputRoot, 'Artifact output');
     createContainedDirectory(physicalResultsRoot, outputRoot, 'Artifact output');
-    chmodSync(join(repoRoot, 'bin/sci'), 0o755);
+    for (const wrapper of RUNTIME_WRAPPERS) chmodSync(join(repoRoot, wrapper), 0o755);
 
     const firstPack = join(outputRoot, '.pack-a');
     const secondPack = join(outputRoot, '.pack-b');

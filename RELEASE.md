@@ -10,7 +10,7 @@ type: "procedure"
 
 Preparation only; no distribution authority.
 
-This procedure prepares the `2.1.0-rc.1` candidate defined by
+This procedure prepares the `2.1.0-rc.2` candidate defined by
 [the release-preparation contract](docs/project/local-single-user-release-preparation.md). It is
 limited by [ADR-0004](docs/adr/0004-local-single-user-production-candidate.md) to one trusted local
 operator, one trusted repository, and installed CLI/MCP-stdio use.
@@ -46,7 +46,7 @@ The final run must report both `ok: true` and `candidateReady: true`. The candid
 ignored local output only:
 
 ```text
-.test-results/local-production-artifact/semantic-code-intelligence-2.1.0-rc.1.tgz
+.test-results/local-production-artifact/semantic-code-intelligence-2.1.0-rc.2.tgz
 .test-results/local-production-artifact/artifact-manifest.json
 .test-results/local-production-candidate.json
 ```
@@ -58,7 +58,7 @@ The archive is not a distribution channel merely because it exists locally.
 Set paths to the newly built files, never to an older artifact with the same name:
 
 ```bash
-export SCI_VERSION=2.1.0-rc.1
+export SCI_VERSION=2.1.0-rc.2
 export SCI_ARCHIVE="$PWD/.test-results/local-production-artifact/semantic-code-intelligence-${SCI_VERSION}.tgz"
 export SCI_MANIFEST="$PWD/.test-results/local-production-artifact/artifact-manifest.json"
 export SCI_EVIDENCE="$PWD/.test-results/local-production-candidate.json"
@@ -103,8 +103,8 @@ MCP-stdio rehearsal. Manual instructions must not claim support beyond that exec
 
 ## 5. Freeze and record the candidate
 
-Task `4898` binds `2.1.0-rc.1` to one exact commit, archive SHA-256, and repeatable payload digest.
-Record through AK:
+A dedicated validation task (as `4898` did for `2.1.0-rc.1`) binds `2.1.0-rc.2` to one exact
+commit, archive SHA-256, and repeatable payload digest. Record through AK:
 
 - exact source commit and version;
 - archive SHA-256 and payload digest;
@@ -114,7 +114,7 @@ Record through AK:
 - explicit non-effects and unsupported claims.
 
 After that binding, any tracked change requires a new candidate version. Never replace bytes under
-`2.1.0-rc.1`, even if the candidate was never distributed.
+`2.1.0-rc.2`, even if the candidate was never distributed.
 
 ## 6. Stop before external effects
 
