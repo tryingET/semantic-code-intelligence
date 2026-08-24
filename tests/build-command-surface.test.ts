@@ -683,6 +683,11 @@ describe('build command surface', () => {
         expect(parsed.permissions).toEqual({ contents: 'read' });
         expect(workflow).toContain("bun-version: '1.3.12'");
         expect(workflow).toContain('run: ./scripts/ci/portable.sh');
+        expect(workflow).toContain('uses: extractions/setup-just@v4');
+        expect(workflow).toContain("just-version: '1.42.4'");
+        expect(workflow.indexOf('uses: extractions/setup-just@v4')).toBeLessThan(
+            workflow.indexOf('run: bun run alpha:mvp:check')
+        );
         expect(workflow).toContain('run: bun run alpha:mvp:check');
         expect(workflow).toContain('run: bun run production:candidate:check');
         expect(preflight?.if).toBe('always()');
