@@ -22,8 +22,33 @@ type CallEvidence = {
   stderrTail: string;
 };
 
+function resolveBun(): string {
+  if (process.env.BUN_PATH) return process.env.BUN_PATH;
+  if (typeof process.execPath === 'string' && /bun/i.test(process.execPath)) return process.execPath;
+  return 'bun';
+}
+
 function run(command: string, env: Record<string, string | undefined> = {}) {
   return spawnSync('bash', ['-lc', command], { encoding: 'utf8', env: { ...process.env, ...env } });
+}
+
+function runSnapshotRollback(snapshot: string) {
+  const bun = resolveBun();
+  const proc = spawnSync(
+    bun,
+    ['run', 'src/servers/cli.ts', 'workflow', 'apply_snapshot', '--args', JSON.stringify({ snapshot, reverse: true }), '--json'],
+    {
+      encoding: 'utf8',
+      env: { ...process.env, SILENT_MODE: 'true', STDIO_MODE: 'true', ALLOW_SNAPSHOT_APPLY: '1' },
+    }
+  );
+  return {
+    status: proc.status,
+    stdout: String(proc.stdout || ''),
+    stderr: String(proc.stderr || proc.error?.message || ''),
+    bun,
+    spawnError: proc.error ? String(proc.error.message || proc.error) : undefined,
+  };
 }
 
 function parseWorkflowStdout(stdout: string) {
@@ -107,10 +132,12 @@ const applied = callSafeWrite(
 calls.push(applied);
 const afterApply = await Bun.file(target).text();
 
-let rollbackResult: { status: number | null; stdout: string; stderr: string } | null = null;
-const rollbackCommand = applied.payload?.rollback?.command;
-if (typeof rollbackCommand === 'string' && rollbackCommand.trim()) {
-  const proc = run(rollbackCommand);
+let rollbackResult: { status: number | null; stdout: string; stderr: string; bun?: string; spawnError?: string } | null = null;
+const rollbackSnapshot = typeof applied.payload?.snapshot === 'string' ? applied.payload.snapshot : '';
+if (rollbackSnapshot) {
+  rollbackResult = runSnapshotRollback(rollbackSnapshot);
+} else if (typeof applied.payload?.rollback?.command === 'string' && applied.payload.rollback.command.trim()) {
+  const proc = run(applied.payload.rollback.command);
   rollbackResult = { status: proc.status, stdout: String(proc.stdout || ''), stderr: String(proc.stderr || '') };
 }
 const afterRollback = await Bun.file(target).text();
@@ -124,10 +151,12 @@ const dirtyBaseApply = callSafeWrite(
 );
 calls.push(dirtyBaseApply);
 const afterDirtyBaseApply = await Bun.file(target).text();
-let dirtyBaseRollbackResult: { status: number | null; stdout: string; stderr: string } | null = null;
-const dirtyBaseRollbackCommand = dirtyBaseApply.payload?.rollback?.command;
-if (typeof dirtyBaseRollbackCommand === 'string' && dirtyBaseRollbackCommand.trim()) {
-  const proc = run(dirtyBaseRollbackCommand);
+let dirtyBaseRollbackResult: { status: number | null; stdout: string; stderr: string; bun?: string; spawnError?: string } | null = null;
+const dirtyBaseRollbackSnapshot = typeof dirtyBaseApply.payload?.snapshot === 'string' ? dirtyBaseApply.payload.snapshot : '';
+if (dirtyBaseRollbackSnapshot) {
+  dirtyBaseRollbackResult = runSnapshotRollback(dirtyBaseRollbackSnapshot);
+} else if (typeof dirtyBaseApply.payload?.rollback?.command === 'string' && dirtyBaseApply.payload.rollback.command.trim()) {
+  const proc = run(dirtyBaseApply.payload.rollback.command);
   dirtyBaseRollbackResult = { status: proc.status, stdout: String(proc.stdout || ''), stderr: String(proc.stderr || '') };
 }
 const afterDirtyBaseRollback = await Bun.file(target).text();
@@ -213,4 +242,12 @@ writeFileSync(outputPath, `${JSON.stringify(evidence, null, 2)}\n`);
 const output = JSON.stringify(evidence, null, pretty ? 2 : 0);
 if (jsonMode) process.stdout.write(`${output}\n`);
 else console.log(output);
-if (!evidence.ok) process.exitCode = 1;
+if (!evidence.ok) {
+  const failedAssertions = Object.entries(evidence.assertions)
+    .filter(([, value]) => value !== true)
+    .map(([name]) => name);
+  console.error(
+    `dogfood-safe-write: not ok failedAssertions=${failedAssertions.join(',') || 'none'} rollbackStatus=${rollbackResult?.status ?? 'missing'} dirtyBaseRollbackStatus=${dirtyBaseRollbackResult?.status ?? 'missing'}`
+  );
+  process.exitCode = 1;
+}
