@@ -674,7 +674,7 @@ describe('build command surface', () => {
         const securityWorkflow = readText('.github/workflows/security.yml');
         const alphaSteps = parsed.jobs['alpha-mvp-check'].steps as any[];
         const preflight = alphaSteps.find((step) => step.id === 'evidence-preflight');
-        const upload = alphaSteps.find((step) => step.uses === 'actions/upload-artifact@v4');
+        const upload = alphaSteps.find((step) => step.uses === 'actions/upload-artifact@v5');
         const uploadPaths = String(upload?.with?.path ?? '')
             .trim()
             .split(/\s+/)
@@ -790,13 +790,13 @@ describe('build command surface', () => {
         expect(changelog).toContain('IW77 produced no terminal-valid adoption episodes');
         expect(changelog).toContain('is packaged in the installed');
         expect(changelog).toContain('Repository closeout receipt tooling remains source-checkout-only');
-        expect(notes).toContain('exact bytes are not frozen until a dedicated AK validation task completes');
+        expect(notes).toContain('Frozen local binding is commit `0296ceb85d8c499fe67ae8cf57854b931e462f15`');
         expect(notes).toContain('details.schemaVersion: 2');
         expect(notes).toContain('globally lexicographic by package-relative path');
         expect(notes).toContain('mode `0755`');
         expect(notes).toContain('Native Pi use additionally needs');
         expect(notes).toContain('not an offline or hermetic bundle');
-        expect(notes).toContain('No tag, GitHub release, release-asset upload');
+        expect(notes).toContain('do not authorize a tag, GitHub release, npm publication, or deployment');
         expect(pkg.files).toContain('dist/');
         expect(cli).toContain(".command('structural-evidence-receipt')");
         expect(notes).toContain('The installed CLI includes the explicit experimental command');
