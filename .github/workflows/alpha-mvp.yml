@@ -39,6 +39,8 @@ jobs:
           just-version: '1.42.4'
       - name: Install ripgrep
         run: sudo apt-get update && sudo apt-get install -y ripgrep
+      - name: Export bun path for dogfood CLI spawn
+        run: echo "BUN_PATH=$(command -v bun)" >> "$GITHUB_ENV"
       - run: bun run alpha:mvp:check
       - name: Local production-candidate packaged-runtime gate
         run: bun run production:candidate:check

@@ -82,9 +82,15 @@ function parseCliWorkflowOutput(stdout: string) {
     return { raw, payload };
 }
 
+function resolveBun(): string {
+    if (process.env.BUN_PATH) return process.env.BUN_PATH;
+    if (typeof process.execPath === 'string' && /bun/i.test(process.execPath)) return process.execPath;
+    return 'bun';
+}
+
 function callCliWorkflow(name: string, args: Record<string, unknown>, observation: string) {
     const started = Date.now();
-    const bun = process.env.BUN_PATH || `${process.env.HOME}/.bun/bin/bun`;
+    const bun = resolveBun();
     const proc = spawnSync(bun, ['run', 'src/servers/cli.ts', 'workflow', name, '--args', JSON.stringify(args), '--json'], {
         encoding: 'utf8',
         env: { ...process.env, SILENT_MODE: 'true', STDIO_MODE: 'true' },
@@ -96,7 +102,7 @@ function callCliWorkflow(name: string, args: Record<string, unknown>, observatio
     } catch {
         parsed = { stdout: String(proc.stdout || '').slice(0, 1000), stderr: String(proc.stderr || '').slice(0, 1000) };
     }
-    const success = proc.status === 0;
+    const success = proc.status === 0 && !proc.error;
     calls.push({
         name: `cli:${name}`,
         args,
@@ -104,7 +110,11 @@ function callCliWorkflow(name: string, args: Record<string, unknown>, observatio
         success,
         elapsedMs,
         observation,
-        sample: compactSample(parsed),
+        sample: compactSample({
+            bun,
+            spawnError: proc.error ? String(proc.error.message || proc.error) : undefined,
+            parsed,
+        }),
     });
     return (parsed as any)?.payload;
 }
@@ -506,7 +516,14 @@ try {
     if (jsonMode) process.stdout.write(`${output}\n`);
     else originalConsole.log(output);
 
-    if (!evidence.ok) process.exitCode = 1;
+    if (!evidence.ok) {
+        const failedCalls = calls.filter((call) => !call.success).map((call) => `${call.name}:status=${call.status}`);
+        const failedChecks = semanticChecks.filter((check) => !check.ok).map((check) => check.name);
+        originalConsole.error(
+            `dogfood-alpha-mvp: not ok failedCalls=${failedCalls.join(',') || 'none'} failedChecks=${failedChecks.join(',') || 'none'} workspaceUnchanged=${workspaceUnchanged} cliWorkspaceUnchanged=${cliWorkspaceUnchanged}`
+        );
+        process.exitCode = 1;
+    }
 } finally {
     await server.stop();
     if (jsonMode) {
