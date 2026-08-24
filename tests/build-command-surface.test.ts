@@ -688,6 +688,10 @@ describe('build command surface', () => {
         expect(workflow.indexOf('uses: extractions/setup-just@v4')).toBeLessThan(
             workflow.indexOf('run: bun run alpha:mvp:check')
         );
+        expect(workflow).toContain('sudo apt-get install -y ripgrep');
+        expect(workflow.indexOf('sudo apt-get install -y ripgrep')).toBeLessThan(
+            workflow.indexOf('run: bun run alpha:mvp:check')
+        );
         expect(workflow).toContain('run: bun run alpha:mvp:check');
         expect(workflow).toContain('run: bun run production:candidate:check');
         expect(preflight?.if).toBe('always()');

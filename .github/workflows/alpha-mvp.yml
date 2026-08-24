@@ -37,6 +37,8 @@ jobs:
       - uses: extractions/setup-just@v4
         with:
           just-version: '1.42.4'
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
       - run: bun run alpha:mvp:check
       - name: Local production-candidate packaged-runtime gate
         run: bun run production:candidate:check
