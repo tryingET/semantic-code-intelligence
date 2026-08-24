@@ -46,8 +46,8 @@ describe('local single-user production candidate contract', () => {
         const binPaths = Object.values(pkg.bin ?? {});
 
         expect(pkg.private).toBe(true);
-        expect(pkg.version).toBe('2.1.0-rc.2');
-        expect(read('src/core/version.ts')).toContain("SCI_VERSION = '2.1.0-rc.2'");
+        expect(pkg.version).toBe('2.1.0-rc.3');
+        expect(read('src/core/version.ts')).toContain("SCI_VERSION = '2.1.0-rc.3'");
         expect(pkg.bin).toEqual({
             sci: './bin/sci',
             'semantic-code-intelligence': './bin/semantic-code-intelligence',
@@ -238,7 +238,7 @@ describe('local single-user production candidate contract', () => {
         const fakeBun = join(fakeBin, 'bun');
         writeFileSync(
             fakeBun,
-            `#!/usr/bin/env bash\nset -euo pipefail\ndest="${'$'}5"\ncp "${JSON.stringify(templateTar).slice(1, -1)}" "$dest/semantic-code-intelligence-2.1.0-rc.2.tgz"\n`
+            `#!/usr/bin/env bash\nset -euo pipefail\ndest="${'$'}5"\ncp "${JSON.stringify(templateTar).slice(1, -1)}" "$dest/semantic-code-intelligence-2.1.0-rc.3.tgz"\n`
         );
         chmodSync(fakeBun, 0o755);
         mkdirSync(join(fixture, 'bin'), { recursive: true });

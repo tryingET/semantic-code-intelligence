@@ -1,6 +1,6 @@
 {
   "name": "semantic-code-intelligence",
-  "version": "2.1.0-rc.2",
+  "version": "2.1.0-rc.3",
   "description": "Alpha code-navigation, snapshot patching, and validation substrate for harnessed coding agents",
   "private": true,
   "type": "module",

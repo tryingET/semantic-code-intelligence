@@ -4,6 +4,14 @@ This changelog records user-visible Semantic Code Intelligence candidate changes
 no previous Git tag or GitHub release baseline, so the first entry is a curated local-candidate
 baseline rather than a comparison against an invented release range.
 
+## [2.1.0-rc.3] - Unreleased
+
+Install-doc hygiene candidate. Frozen `2.1.0-rc.1` and `2.1.0-rc.2` archives are unchanged.
+
+### Changed
+
+- Bundled README install examples use `${SCI_VERSION}` instead of a hard-coded archive name.
+
 ## [2.1.0-rc.2] - 2026-08-24
 
 Artifact-format hygiene candidate. `2.1.0-rc.1` remains the frozen, published binding; this

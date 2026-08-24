@@ -132,9 +132,11 @@ The candidate trust boundary is one trusted local operator and one trusted repos
 
 The installed path does not require a source checkout. It does require Bun 1.2 or newer, `jq`, GNU coreutils (`sha256sum`, `readlink -f`, and `rm --one-file-system`), and an explicitly provisioned trusted local candidate set containing:
 
-- `semantic-code-intelligence-2.1.0-rc.1.tgz`;
+- `semantic-code-intelligence-${SCI_VERSION}.tgz` for the reviewed version;
 - `artifact-manifest.json` from the same candidate build;
 - the expected producer/authenticity information supplied by the accountable operator.
+
+Published GitHub Release examples include `2.1.0-rc.1` and `2.1.0-rc.2`. Do not hard-code those names into a new install; set `SCI_VERSION` to the reviewed identifier.
 
 The SCI archive itself is installed from a local file; SCI is not fetched from or published to a registry by this procedure. The archive does **not** vendor its runtime dependencies, however. `bun add` resolves them from the configured Bun registry or local cache, and `--no-save` retains no dependency lock. Installation is therefore not network-free or a hermetic dependency closure. Use only an operator-approved registry/cache and stop if dependency provenance or availability is unacceptable.
 
@@ -142,8 +144,8 @@ Verify the archive before installing it:
 
 ```bash
 set -euo pipefail
-export SCI_VERSION=2.1.0-rc.1
-export SCI_ARCHIVE=/trusted/path/semantic-code-intelligence-2.1.0-rc.1.tgz
+export SCI_VERSION=2.1.0-rc.3   # reviewed identifier; do not reuse a frozen version for new bytes
+export SCI_ARCHIVE=/trusted/path/semantic-code-intelligence-${SCI_VERSION}.tgz
 export SCI_MANIFEST=/trusted/path/artifact-manifest.json
 
 test -f "$SCI_ARCHIVE"

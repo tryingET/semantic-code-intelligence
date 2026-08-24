@@ -8,16 +8,14 @@ system4d:
   container: "Distribution authority for the frozen 2.1.0-rc.1 candidate."
   compass: "An explicit accepted decision beats an implicit distribution habit."
   engine: "AK decision 130 bindings plus verified tag/release execution receipts."
-  fog: "Private single-recipient channel only; broader visibility requires a new decision and is not authorized here."
+  fog: "Original private-channel decision only. Current visibility/channel authority is ADR-0006."
 ---
 
 # ADR 0005 — SCI 2.1.0-rc.1 private self-distribution (AK decision 130)
 
-- Status: Accepted (2026-08-24)
-- Authority: AK decision 130 (`accepted`, Option A; `unblocked`). This tracked record promotes
-  the decision-time ADR for durable in-repo reference; AK remains the authority of record.
-- Supersedes: none. Extends ADR 0004 (local single-user production candidate), which continues
-  to define the support boundary.
+- Status: Accepted (2026-08-24). **Channel binding superseded** by [ADR 0006](0006-sci-public-repository-visibility.md): the repository and the existing `2.1.0-rc.1` Release are public. Support remains ADR 0004.
+- Authority: AK decision 130 for the original private-channel decision. Current channel authority is ADR 0006 / decision 133.
+- Supersedes: none. Extends ADR 0004. Do not treat the private-channel rows below as current visibility.
 
 ## Context
 
