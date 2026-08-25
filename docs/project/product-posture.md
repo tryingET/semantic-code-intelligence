@@ -46,9 +46,10 @@ The product should make a repository feel:
 
 Primary interfaces:
 
-1. MCP HTTP / stdio tools
-2. HTTP API for deterministic tool calls and tests
-3. CLI for local verification and fallback
+1. Native Pi composite tools, exposed by the separately versioned private `pi-semantic-code-intelligence` companion (five doors; `safe_write` stays on MCP/CLI)
+2. MCP HTTP / stdio tools
+3. HTTP API for deterministic tool calls and tests
+4. CLI for local verification and fallback
 
 Alpha-supported operations are specified in `docs/project/alpha-mvp-contract.md`:
 
@@ -77,27 +78,23 @@ Success means a harnessed LLM coding session can solve routine code-navigation a
 
 ### Current alpha evidence
 
-Phase 1 has moved from posture to a repeatable Alpha MVP validation bundle. The current bundle proves:
+Phase 1 is closed as an Alpha MVP substrate. This section defines what the evidence bundle must keep proving; it is not a log of past runs. The Alpha claim requires:
 
-- the documented Alpha MVP tool surface is registered and discoverable;
-- HTTP `/api/v1/tools/call` executes bounded file reading, navigation, and preview-first patch checks;
-- direct `MCPAdapter` coverage exercises the same core behavior without relying only on HTTP;
-- MCP HTTP JSON-RPC can list tools and call navigation plus patch-planning operations;
-- MCP stdio can initialize, advertise tools, execute representative read/navigation/patch-check calls, and keep stdout protocol-clean;
-- CLI fallback can execute machine-readable workflow calls for local verification;
-- ast-grep-backed structural search and preview-first structural patch checks are exposed through the same SCI workflow surface;
-- structural workflow parity now covers CLI, HTTP tools/call, direct MCPAdapter, and MCP HTTP JSON-RPC when ast-grep is available;
-- self-hosted CLI dogfood uses SCI's own CLI workflow surface against this repo for navigation and preview-first patch planning;
-- self-hosted structural dogfood records JSON evidence for ast-grep search, snapshot patch artifacts, tsgo-default checks, apply guard refusal, and unchanged working-tree posture;
-- dogfood evidence is emitted as JSON and verifies that preview-first patch planning does not mutate the working tree;
-- impact-aware check recommendation dogfood records JSON evidence that docs-only, TS source, test-file, and graph-impact inputs produce explicit advisory validation commands;
-- graph-impact dogfood characterizes TypeScript, Python module-level exports, Rust, Go, symbol-seed caller/callee, and unsupported-extension graph evidence with explicit backend provenance and syntactic/fallback limitations;
-- validation-plan evidence summarizes selected commands, recommendations, check results, snapshot artifacts, apply/rollback posture, and stable-field drift comparison with remediation hints;
-- IW50 closure review (`docs/project/phase-1-closure-review.md`) closes Phase 1 as an Alpha MVP substrate for the first user while preserving production-readiness gaps;
-- target-repo CLI usage is now proven as an installed/global command invoked from a non-SCI repository cwd through a harnessed `pi -p` session, without SCI knowing target repo paths;
-- migration hygiene continues to reject pre-rename identity drift, machine-local path coupling, and unsafe local artifacts.
+- the documented Alpha MVP tool surface stays registered and discoverable through every supported interface;
+- cross-interface parity holds for the same core behavior, including ast-grep-backed structural workflows when ast-grep is available;
+- preview-first mutation posture holds: patch and structural workflows stage snapshots and run checks without mutating the working tree unless an explicit guarded apply is authorized;
+- progress is emitted as bounded JSON evidence that downstream consumers and the evidence-review handoff can validate;
+- installed/global CLI usage stays target-repo-relative and free of machine-local paths;
+- migration hygiene keeps rejecting pre-rename identity drift, machine-local path coupling, and unsafe local artifacts.
 
-The current one-command validation paths are:
+Canonical evidence lives with its owners and is not duplicated here:
+
+- bundle gates and what each must prove: [`alpha-mvp-validation.md`](alpha-mvp-validation.md);
+- closure boundary and preserved gaps: [`phase-1-closure-review.md`](phase-1-closure-review.md);
+- per-run receipts and task lineage: the AK evidence ledger;
+- interface selection: [`interface-choice-guide.md`](interface-choice-guide.md).
+
+The one-command validation paths are:
 
 ```bash
 bun run alpha:mvp:check
@@ -116,7 +113,7 @@ Do not keep adding Phase 1 dogfood waves by default. Future work should be one o
 - targeted hardening tied to a named closure-review gap and the AK-backed backlog in `docs/project/alpha-maintenance-backlog.md`;
 - an explicit Phase 2 decision review for human workbench/IDE/dashboard scope.
 
-IW52 produced a Phase 2 planning draft, but its AK decision record (`46`) was superseded after the operator rejected unilateral DB decision advancement. Later accepted work completed one bounded Phase 2 vertical slice: SCI normalizes strict `semantic-code-intelligence.evidence_review.v1`, and the owning Pi repository validates and inertly renders it through `pi-evidence-review`. [ADR-0003](../adr/0003-authorize-bounded-evidence-review-consumer-handoff.md) records that narrow authorization and supersedes ADR-0002's temporary deferral. It does not activate a broad IDE/dashboard phase or revive decisions `46` or `47`.
+The bounded evidence-review slice is the only delivered Phase 2 vertical: SCI normalizes strict `semantic-code-intelligence.evidence_review.v1`, and the owning Pi repository validates and inertly renders it through `pi-evidence-review`. [ADR-0003](../adr/0003-authorize-bounded-evidence-review-consumer-handoff.md) records that narrow authorization. It does not activate a broad IDE/dashboard phase; superseded decision records stay superseded in AK.
 
 ### Local single-user production candidate
 
