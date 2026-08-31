@@ -2,7 +2,9 @@ import { constants } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { CoreError, workspaceBoundaryError } from './errors.js';
+import { CoreError, isCoreError, workspaceBoundaryError } from './errors.js';
+import { type WorkspaceBinding, assertPathInWorkspaceRepository } from './workspace-binding.js';
+import { workspaceReferenceError } from './workspace-ref.js';
 
 const READ_NOFOLLOW_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0);
 const DIRECTORY_NOFOLLOW_FLAGS = constants.O_RDONLY | (constants.O_DIRECTORY ?? 0) | (constants.O_NOFOLLOW ?? 0);
@@ -25,12 +27,14 @@ export type OpenWorkspaceDirectoryForReadResult = {
 export type OpenWorkspaceFileForReadOptions = {
     workspaceRoot?: string;
     inputLabel?: string;
+    binding?: WorkspaceBinding;
 };
 
 export type OpenWorkspaceDirectoryForReadOptions = {
     workspaceRoot?: string;
     inputLabel?: string;
     allowRoot?: boolean;
+    binding?: WorkspaceBinding;
 };
 
 export type ResolveWorkspacePathResult = {
@@ -44,6 +48,7 @@ export type ResolveWorkspacePathOptions = {
     workspaceRoot?: string;
     inputLabel?: string;
     allowRoot?: boolean;
+    binding?: WorkspaceBinding;
 };
 
 export type WorkspaceFileWalkEntry = {
@@ -55,6 +60,7 @@ export type WorkspaceFileWalkEntry = {
 export type WalkWorkspaceFilesForReadOptions = {
     rootPath?: string;
     workspaceRoot?: string;
+    binding?: WorkspaceBinding;
     maxFiles?: number;
     maxDepth?: number;
     extensionPattern?: RegExp;
@@ -82,12 +88,18 @@ export async function resolveWorkspacePath(
     }
 
     const realWorkspaceRoot = await fs.realpath(workspaceRoot).catch((error) => {
+        if (options.binding) throw workspaceReferenceError('workspace_binding_mismatch');
         throw new CoreError('InvalidParams', `Failed to resolve workspace root: ${errorMessage(error)}`, {
             path: requestedPath,
         });
     });
 
     const realCandidate = await fs.realpath(candidate).catch((error) => {
+        if (options.binding) {
+            throw workspaceReferenceError(
+                lexicalRelativePath === null ? 'workspace_ref_mismatch' : 'workspace_path_unresolved'
+            );
+        }
         if (lexicalRelativePath === null) {
             throw workspaceBoundaryError(inputLabel);
         }
@@ -97,6 +109,7 @@ export async function resolveWorkspacePath(
         });
     });
     assertRealPathWithinWorkspace(realWorkspaceRoot, realCandidate, inputLabel, requestedPath, allowRoot);
+    if (options.binding) await assertPathInWorkspaceRepository(options.binding, realCandidate);
     const relativePath = lexicalRelativePath ?? path.relative(realWorkspaceRoot, realCandidate);
 
     return {
@@ -121,11 +134,13 @@ export async function* walkWorkspaceFilesForRead(
         workspaceRoot,
         inputLabel: 'workspace traversal root',
         allowRoot: true,
+        binding: options.binding,
     });
     try {
         const openedFile = await openWorkspaceFileForRead(rootPath, {
             workspaceRoot,
             inputLabel: 'workspace traversal root file',
+            binding: options.binding,
         });
         try {
             const name = path.basename(openedFile.relativePath);
@@ -154,6 +169,7 @@ export async function* walkWorkspaceFilesForRead(
                 workspaceRoot: root.realWorkspaceRoot,
                 inputLabel: 'workspace traversal directory',
                 allowRoot: true,
+                binding: options.binding,
             });
             if (visited.has(openedDir.realPath)) continue;
             visited.add(openedDir.realPath);
@@ -193,6 +209,13 @@ export async function* walkWorkspaceFilesForRead(
                 continue;
             }
             if (!entry.isFile()) continue;
+            if (options.binding) {
+                try {
+                    await assertPathInWorkspaceRepository(options.binding, realCandidate);
+                } catch {
+                    continue;
+                }
+            }
             if (extensionPattern && !extensionPattern.test(entry.name)) continue;
             const stat = await fs.stat(realCandidate).catch(() => null);
             if (!stat?.isFile()) continue;
@@ -214,9 +237,11 @@ export async function openWorkspaceDirectoryForRead(
         workspaceRoot,
         inputLabel,
         allowRoot: options.allowRoot === true,
+        binding: options.binding,
     });
 
     const handle = await fs.open(resolved.realPath, DIRECTORY_NOFOLLOW_FLAGS).catch((error) => {
+        if (options.binding) throw workspaceReferenceError('workspace_path_unresolved');
         const message = isSymlinkOpenError(error)
             ? `${inputLabel} must not resolve to a symlink during open`
             : `Failed to open ${inputLabel}: ${errorMessage(error)}`;
@@ -227,6 +252,7 @@ export async function openWorkspaceDirectoryForRead(
         const fdPath = await openFileDescriptorPath(handle, inputLabel, requestedPath);
         const openedPath = await fs.realpath(fdPath);
         assertRealPathWithinWorkspace(resolved.realWorkspaceRoot, openedPath, inputLabel, requestedPath, true);
+        if (options.binding) await assertPathInWorkspaceRepository(options.binding, openedPath);
 
         const stat = await handle.stat();
         if (!stat.isDirectory()) {
@@ -244,6 +270,9 @@ export async function openWorkspaceDirectoryForRead(
         };
     } catch (error) {
         await handle.close().catch(() => undefined);
+        if (options.binding && !hasSafeWorkspaceReason(error)) {
+            throw workspaceReferenceError('workspace_path_unresolved');
+        }
         throw error;
     }
 }
@@ -254,12 +283,17 @@ export async function openWorkspaceFileForRead(
 ): Promise<OpenWorkspaceFileForReadResult> {
     const inputLabel = options.inputLabel || 'path';
     const workspaceRoot = path.resolve(options.workspaceRoot || process.cwd());
-    const resolved = await resolveWorkspacePath(requestedPath, { workspaceRoot, inputLabel });
+    const resolved = await resolveWorkspacePath(requestedPath, {
+        workspaceRoot,
+        inputLabel,
+        binding: options.binding,
+    });
     const relativePath = resolved.relativePath;
     const realWorkspaceRoot = resolved.realWorkspaceRoot;
     const realCandidate = resolved.realPath;
 
     const handle = await fs.open(realCandidate, READ_NOFOLLOW_FLAGS).catch((error) => {
+        if (options.binding) throw workspaceReferenceError('workspace_path_unresolved');
         const message = isSymlinkOpenError(error)
             ? `${inputLabel} must not resolve to a symlink during open`
             : `Failed to open ${inputLabel}: ${errorMessage(error)}`;
@@ -269,6 +303,7 @@ export async function openWorkspaceFileForRead(
     try {
         const openedPath = await realpathOpenFileDescriptor(handle, inputLabel, requestedPath);
         assertRealPathWithinWorkspace(realWorkspaceRoot, openedPath, inputLabel, requestedPath);
+        if (options.binding) await assertPathInWorkspaceRepository(options.binding, openedPath);
 
         const stat = await handle.stat();
         if (!stat.isFile()) {
@@ -280,6 +315,9 @@ export async function openWorkspaceFileForRead(
         return { handle, relativePath: normalizeRelativePath(relativePath), realPath: openedPath, realWorkspaceRoot };
     } catch (error) {
         await handle.close().catch(() => undefined);
+        if (options.binding && !hasSafeWorkspaceReason(error)) {
+            throw workspaceReferenceError('workspace_path_unresolved');
+        }
         throw error;
     }
 }
@@ -317,6 +355,14 @@ export function isOutsideWorkspaceRelative(relativePath: string, allowRoot = fal
         relativePath === '..' ||
         relativePath.startsWith(`..${path.sep}`) ||
         path.isAbsolute(relativePath)
+    );
+}
+
+function hasSafeWorkspaceReason(error: unknown): boolean {
+    return (
+        isCoreError(error) &&
+        typeof error.data?.reason === 'string' &&
+        (error.data.reason === 'outside_workspace' || error.data.reason.startsWith('workspace_'))
     );
 }
 

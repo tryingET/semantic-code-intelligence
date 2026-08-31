@@ -13,6 +13,10 @@ export { DefaultEventBus, LayerManager } from './layer-manager';
 export { SharedServices } from './services/index';
 // Core types
 export * from './types';
+export * from './workspace-binding';
+export * from './workspace-input';
+export * from './workspace-ref';
+export * from './workspace-state';
 // Main analyzer components
 export { CodeAnalyzer } from './unified-analyzer';
 export { AnalyzerFactory };

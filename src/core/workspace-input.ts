@@ -1,5 +1,7 @@
 import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import type { WorkspaceBinding } from './workspace-binding.js';
+import { type WorkspacePathRefV1, assertWorkspacePathRef } from './workspace-ref.js';
 
 const WORKSPACE_FILE_URI = 'file://workspace';
 
@@ -39,4 +41,21 @@ export function normalizeWorkspaceInputUri(
     fallback = WORKSPACE_FILE_URI
 ): string {
     return pathToFileURL(workspaceInputToPath(value, workspaceRoot, fallback)).href;
+}
+
+export function workspacePathRefToPath(
+    value: unknown,
+    binding: WorkspaceBinding,
+    options: { allowRoot?: boolean } = {}
+): string {
+    const reference = assertWorkspacePathRef(value, binding.workspace, options);
+    return path.resolve(binding.root.realRoot, reference.path);
+}
+
+export function workspacePathRefToUri(
+    value: WorkspacePathRefV1,
+    binding: WorkspaceBinding,
+    options: { allowRoot?: boolean } = {}
+): string {
+    return pathToFileURL(workspacePathRefToPath(value, binding, options)).href;
 }
