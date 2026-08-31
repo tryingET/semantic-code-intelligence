@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-08-31T15:16:02.580979149+00:00",
+  "task_id": 5252,
+  "entity_version": 2,
+  "commit_sha": null,
+  "scope": {
+    "allowed_paths": [
+      "governance/task-scopes/AK-*.snapshot.json",
+      "src/core/workflows/rename-workflow.ts",
+      "src/core/workflows/snapshot-patch-workflow.ts",
+      "src/core/workflows/structural-workflow.ts",
+      "tests/nexus-workspace-profile.test.ts"
+    ],
+    "required_paths": [
+      "tests/nexus-workspace-profile.test.ts"
+    ],
+    "forbidden_paths": []
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}
