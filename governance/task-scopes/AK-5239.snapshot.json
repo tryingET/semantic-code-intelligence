@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-08-31T07:40:46.588111063+00:00",
+  "task_id": 5239,
+  "entity_version": 4,
+  "commit_sha": null,
+  "scope": {
+    "allowed_paths": [
+      "governance/task-scopes/AK-*.snapshot.json",
+      "src/core/index.ts",
+      "src/core/overlay-store.ts",
+      "src/core/snapshot-ref.ts",
+      "src/core/snapshot-revision-store.ts",
+      "tests/overlay-store-apply.test.ts",
+      "tests/overlay-store-run-checks.test.ts",
+      "tests/snapshot-ref-race.test.ts"
+    ],
+    "required_paths": [
+      "src/core/snapshot-ref.ts",
+      "tests/snapshot-ref-race.test.ts"
+    ],
+    "forbidden_paths": []
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}
