@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-08-31T07:58:46.062944339+00:00",
+  "task_id": 5240,
+  "entity_version": 6,
+  "commit_sha": null,
+  "scope": {
+    "allowed_paths": [
+      "governance/task-scopes/AK-*.snapshot.json",
+      "src/core/overlay-store.ts",
+      "src/core/tools/tool-specs-alpha.ts",
+      "src/core/tools/tool-specs-preferred-workflows.ts",
+      "src/core/workflows/nexus-workspace-profile.ts",
+      "src/core/workflows/rename-workflow.ts",
+      "src/core/workflows/snapshot-patch-workflow.ts",
+      "src/core/workflows/structural-workflow.ts",
+      "src/core/workflows/symbol-workflow.ts",
+      "src/core/workflows/tool-workflow-router.ts",
+      "src/core/workspace-ref.ts",
+      "src/core/workspace-state.ts",
+      "tests/mcp-workflows-ga.test.ts",
+      "tests/nexus-workspace-profile.test.ts",
+      "tests/rename-workflow-service.test.ts",
+      "tests/symbol-workflow-service.test.ts"
+    ],
+    "required_paths": [
+      "tests/nexus-workspace-profile.test.ts"
+    ],
+    "forbidden_paths": []
+  },
+  "default_applies": false,
+  "export_tool": "ak task scope export",
+  "export_tool_version": "snapshot-v1"
+}
