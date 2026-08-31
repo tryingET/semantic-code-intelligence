@@ -1,5 +1,40 @@
 import type { ToolSpec } from './registry.js';
 
+export const WORKSPACE_REF_INPUT_SCHEMA = {
+    type: 'object',
+    properties: {
+        schema: { type: 'string', enum: ['semantic-code-intelligence.workspace_ref.v1'] },
+        workspaceId: { type: 'string', pattern: '^wsp_[0-9a-f]{32}$' },
+    },
+    required: ['schema', 'workspaceId'],
+    additionalProperties: false,
+};
+
+export const WORKSPACE_STATE_REF_INPUT_SCHEMA = {
+    type: 'object',
+    properties: {
+        schema: { type: 'string', enum: ['semantic-code-intelligence.workspace_state_ref.v1'] },
+        workspaceId: { type: 'string', pattern: '^wsp_[0-9a-f]{32}$' },
+        digest: { type: 'string', pattern: '^sha256:[0-9a-f]{64}$' },
+    },
+    required: ['schema', 'workspaceId', 'digest'],
+    additionalProperties: false,
+};
+
+export const SNAPSHOT_REF_INPUT_SCHEMA = {
+    type: 'object',
+    properties: {
+        schema: { type: 'string', enum: ['semantic-code-intelligence.snapshot_ref.v1'] },
+        workspaceId: { type: 'string', pattern: '^wsp_[0-9a-f]{32}$' },
+        snapshotId: { type: 'string' },
+        revision: { type: 'number', minimum: 0 },
+        baseDigest: { type: 'string', pattern: '^sha256:[0-9a-f]{64}$' },
+        overlayDigest: { type: 'string', pattern: '^sha256:[0-9a-f]{64}$' },
+    },
+    required: ['schema', 'workspaceId', 'snapshotId', 'revision', 'baseDigest', 'overlayDigest'],
+    additionalProperties: false,
+};
+
 export const PREFERRED_WORKFLOW_TOOL_SPECS: ToolSpec[] = [
     // WORKFLOWS (renamed, preferred)
     {
@@ -15,6 +50,8 @@ export const PREFERRED_WORKFLOW_TOOL_SPECS: ToolSpec[] = [
                 oldName: { type: 'string' },
                 newName: { type: 'string' },
                 file: { type: 'string' },
+                workspace: WORKSPACE_REF_INPUT_SCHEMA,
+                state: WORKSPACE_STATE_REF_INPUT_SCHEMA,
                 commands: {
                     type: 'array',
                     items: { type: 'string' },
@@ -42,6 +79,8 @@ export const PREFERRED_WORKFLOW_TOOL_SPECS: ToolSpec[] = [
             properties: {
                 symbol: { type: 'string', minLength: 1, maxLength: 256 },
                 file: { type: 'string' },
+                workspace: WORKSPACE_REF_INPUT_SCHEMA,
+                state: WORKSPACE_STATE_REF_INPUT_SCHEMA,
                 precise: { type: 'boolean', default: true },
                 depth: { type: 'number', minimum: 1, maximum: 5, default: 1 },
                 limit: { type: 'number', minimum: 1, maximum: 200, default: 50 },
@@ -71,6 +110,8 @@ export const PREFERRED_WORKFLOW_TOOL_SPECS: ToolSpec[] = [
             properties: {
                 patch: { type: 'string' },
                 snapshot: { type: 'string' },
+                snapshotRef: SNAPSHOT_REF_INPUT_SCHEMA,
+                workspace: WORKSPACE_REF_INPUT_SCHEMA,
                 commands: {
                     type: 'array',
                     items: { type: 'string' },
@@ -111,6 +152,8 @@ export const PREFERRED_WORKFLOW_TOOL_SPECS: ToolSpec[] = [
             properties: {
                 symbol: { type: 'string' },
                 file: { type: 'string' },
+                workspace: WORKSPACE_REF_INPUT_SCHEMA,
+                state: WORKSPACE_STATE_REF_INPUT_SCHEMA,
                 precise: { type: 'boolean', default: true },
                 maxResults: { type: 'number', default: 50 },
             },

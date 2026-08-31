@@ -1,10 +1,18 @@
 import type { ToolSpec } from './registry.js';
+import {
+    SNAPSHOT_REF_INPUT_SCHEMA,
+    WORKSPACE_REF_INPUT_SCHEMA,
+    WORKSPACE_STATE_REF_INPUT_SCHEMA,
+} from './tool-specs-preferred-workflows.js';
 
 export const ALPHA_TOOL_SPECS: ToolSpec[] = [
     {
         name: 'get_snapshot',
         description: 'Create or return a snapshot id for consistent reads/edits',
-        inputSchema: { type: 'object', properties: { preferExisting: { type: 'boolean' } } },
+        inputSchema: {
+            type: 'object',
+            properties: { preferExisting: { type: 'boolean' }, nexus: { type: 'boolean', default: false } },
+        },
     },
     {
         name: 'read_file',
@@ -163,7 +171,7 @@ export const ALPHA_TOOL_SPECS: ToolSpec[] = [
         name: 'structural_patch_checks',
         title: 'Structural Patch Checks (ast-grep + Snapshot)',
         description:
-            "PREFERRED one-call path for structural transformations. Generates an ast-grep rewrite diff, stages it in a snapshot, and runs checks. Keep apply:false unless mutation is explicitly requested; apply also requires ALLOW_SNAPSHOT_APPLY=1.",
+            'PREFERRED one-call path for structural transformations. Generates an ast-grep rewrite diff, stages it in a snapshot, and runs checks. Keep apply:false unless mutation is explicitly requested; apply also requires ALLOW_SNAPSHOT_APPLY=1.',
         category: 'workflow',
         execution: { longRunning: true, disableRetries: true },
         inputSchema: {
@@ -172,6 +180,9 @@ export const ALPHA_TOOL_SPECS: ToolSpec[] = [
                 language: { type: 'string', description: 'ast-grep language, e.g. typescript, javascript, python' },
                 pattern: { type: 'string', description: 'ast-grep pattern' },
                 rewrite: { type: 'string', description: 'ast-grep rewrite template' },
+                workspace: WORKSPACE_REF_INPUT_SCHEMA,
+                state: WORKSPACE_STATE_REF_INPUT_SCHEMA,
+                snapshotRef: SNAPSHOT_REF_INPUT_SCHEMA,
                 paths: {
                     type: 'array',
                     items: { type: 'string' },

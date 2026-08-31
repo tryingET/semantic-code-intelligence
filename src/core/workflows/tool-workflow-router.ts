@@ -7,6 +7,7 @@ import { CodeAnalysisWorkflowService } from './code-analysis-workflow.js';
 import { GraphExpandWorkflowService } from './graph-expand-workflow.js';
 import { LearningWorkflowService } from './learning-workflow.js';
 import { NavigationWorkflowService } from './navigation-workflow.js';
+import { NexusWorkspaceProfile } from './nexus-workspace-profile.js';
 import { RenameWorkflowService } from './rename-workflow.js';
 import {
     recommendChecksPayload,
@@ -35,11 +36,13 @@ export class ToolWorkflowRouter {
     private symbolWorkflows: SymbolWorkflowService;
     private codeAnalysisWorkflows: CodeAnalysisWorkflowService;
     private learningWorkflows: LearningWorkflowService;
+    private nexusProfile: NexusWorkspaceProfile;
 
     constructor(
         private readonly coreAnalyzer: WorkflowCoreAnalyzer,
         private readonly config: ToolWorkflowRouterConfig = {}
     ) {
+        this.nexusProfile = new NexusWorkspaceProfile(() => this.getWorkspaceRoot());
         this.snapshotWorkflows = new SnapshotPatchWorkflowService({ workspaceRoot: () => this.getWorkspaceRoot() });
         this.structuralWorkflows = new StructuralWorkflowService({ workspaceRoot: () => this.getWorkspaceRoot() });
         this.graphWorkflows = new GraphExpandWorkflowService({
@@ -113,16 +116,22 @@ export class ToolWorkflowRouter {
                 return this.snapshotWorkflows.safeWrite(args);
             case 'workflow_explore_symbol':
             case 'explore_symbol_impact':
-                return this.symbolWorkflows.exploreSymbol(args);
+                return this.nexusProfile.runNavigation(args, () => this.symbolWorkflows.exploreSymbol(args));
             case 'workflow_quick_patch_checks':
-            case 'patch_checks_in_snapshot':
-                return this.snapshotWorkflows.patchChecksInSnapshot(args);
+            case 'patch_checks_in_snapshot': {
+                const binding = await this.nexusProfile.bindingFor(args);
+                return binding
+                    ? this.snapshotWorkflows.patchChecksInSnapshotNexus(args, binding)
+                    : this.snapshotWorkflows.patchChecksInSnapshot(args);
+            }
             case 'workflow_safe_rename':
             case 'rename_safely':
-                return this.renameWorkflows.safeRename(args);
+                return this.nexusProfile.runNavigation(args, async () =>
+                    this.renameWorkflows.safeRename(args, await this.nexusProfile.bindingFor(args))
+                );
             case 'workflow_locate_confirm_definition':
             case 'locate_confirm_definition':
-                return this.symbolWorkflows.locateConfirmDefinition(args);
+                return this.nexusProfile.runNavigation(args, () => this.symbolWorkflows.locateConfirmDefinition(args));
             case 'diagnostics':
                 return this.diagnostics();
             case 'knowledge_insights':
@@ -132,7 +141,9 @@ export class ToolWorkflowRouter {
             case 'pattern_stats':
                 return this.learningWorkflows.patternStats();
             case 'get_snapshot':
-                return this.snapshotWorkflows.getSnapshot(args);
+                return args?.nexus === true
+                    ? this.snapshotWorkflows.getNexusSnapshot(args, await this.nexusProfile.currentBinding())
+                    : this.snapshotWorkflows.getSnapshot(args);
             case 'read_file':
                 return this.workspaceQueries.readFile(args);
             case 'list_files':
@@ -150,7 +161,9 @@ export class ToolWorkflowRouter {
             case 'structural_search':
                 return this.structuralWorkflows.structuralSearch(args);
             case 'structural_patch_checks':
-                return this.structuralWorkflows.structuralPatchChecks(args);
+                return this.nexusProfile.runNavigation(args, async () =>
+                    this.structuralWorkflows.structuralPatchChecks(args, await this.nexusProfile.bindingFor(args))
+                );
             case 'ast_query':
                 return this.workspaceQueries.astQuery(args);
             case 'graph_expand':

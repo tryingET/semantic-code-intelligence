@@ -118,6 +118,17 @@ export function assertWorkspaceRef(value: unknown, expected: WorkspaceRefV1): Wo
     return value;
 }
 
+export function assertWorkspaceStateRef(value: unknown, expected: WorkspaceStateRefV1): WorkspaceStateRefV1 {
+    if (
+        !isWorkspaceStateRefV1(value) ||
+        value.workspaceId !== expected.workspaceId ||
+        value.digest !== expected.digest
+    ) {
+        throw workspaceReferenceError('workspace_state_changed');
+    }
+    return value;
+}
+
 export function createWorkspacePathRef(
     workspace: WorkspaceRefV1,
     value: string,
@@ -193,9 +204,7 @@ export function normalizeWorkspaceRelativePath(value: string, options: { allowRo
 function plainRecord(value: unknown): Record<string, unknown> | undefined {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
     const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null
-        ? (value as Record<string, unknown>)
-        : undefined;
+    return prototype === Object.prototype || prototype === null ? (value as Record<string, unknown>) : undefined;
 }
 
 function hasExactKeys(record: Record<string, unknown>, expected: readonly string[]): boolean {

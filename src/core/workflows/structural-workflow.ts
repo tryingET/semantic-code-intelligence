@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { CoreError } from '../errors.js';
 import { overlayStore } from '../overlay-store.js';
+import type { SnapshotRefV1 } from '../snapshot-ref.js';
+import type { WorkspaceBinding } from '../workspace-binding.js';
 import { workspaceInputToPath } from '../workspace-input.js';
 import { openWorkspaceFileForRead, resolveWorkspacePath } from '../workspace-path.js';
 import { type SnapshotWorkflowResult, snapshotArtifactLinks } from './snapshot-patch-workflow.js';
@@ -304,7 +306,10 @@ export class StructuralWorkflowService {
         }
     }
 
-    async structuralPatchChecks(args: Record<string, any>): Promise<SnapshotWorkflowResult> {
+    async structuralPatchChecks(
+        args: Record<string, any>,
+        binding: WorkspaceBinding | null = null
+    ): Promise<SnapshotWorkflowResult> {
         const language = String(args?.language || '').trim();
         const pattern = String(args?.pattern || '').trim();
         const rewrite = String(args?.rewrite ?? '');
@@ -319,6 +324,13 @@ export class StructuralWorkflowService {
             };
         }
         const paths = await normalizeStructuralPaths(args?.paths, this.workspaceRoot);
+        const snap = overlayStore.createSnapshot(false, {
+            workspaceRoot: this.workspaceRoot,
+            ...(binding ? { workspace: binding.workspace } : {}),
+        });
+        const initialSnapshotRef: SnapshotRefV1 | undefined = binding
+            ? overlayStore.getSnapshotRef(snap.id, { workspaceRoot: this.workspaceRoot })
+            : undefined;
         const maxResults = Math.max(1, Math.min(2000, Number(args?.maxResults || 200)));
         const commands = Array.isArray(args?.commands) ? (args.commands as string[]) : ['bun run typecheck'];
         const timeoutSec = typeof args?.timeoutSec === 'number' ? args.timeoutSec : 240;
@@ -349,7 +361,8 @@ export class StructuralWorkflowService {
                     matches: allMatches.length,
                     capped: allMatches.length > matches.length,
                     patch: { files: [], replacementCount: 0, diffBytes: 0, summary: [] },
-                    snapshot: null,
+                    snapshot: binding ? snap.id : null,
+                    ...(binding ? { workspace: binding.workspace, snapshotRef: initialSnapshotRef } : {}),
                     snapshotArtifacts: null,
                     checks: null,
                     applied: false,
@@ -360,25 +373,47 @@ export class StructuralWorkflowService {
             };
         }
 
-        const snap = overlayStore.createSnapshot(false, { workspaceRoot: this.workspaceRoot });
-        const stage = overlayStore.stagePatch(snap.id, built.diff);
+        const stage: { accepted: boolean; message?: string; snapshotRef?: SnapshotRefV1 } =
+            binding && initialSnapshotRef
+                ? await overlayStore.stagePatchExact(initialSnapshotRef, built.diff, undefined, {
+                      workspaceRoot: this.workspaceRoot,
+                  })
+                : overlayStore.stagePatch(snap.id, built.diff);
         if (!stage.accepted) {
             return {
-                payload: { ok: false, matches: allMatches.length, snapshot: snap.id, stage, applied: false },
+                payload: {
+                    ok: false,
+                    matches: allMatches.length,
+                    snapshot: snap.id,
+                    ...(binding ? { workspace: binding.workspace, snapshotRef: initialSnapshotRef } : {}),
+                    stage,
+                    applied: false,
+                },
                 isError: true,
             };
         }
-        const checks = await overlayStore.runChecks(snap.id, commands, timeoutSec, {
-            workspaceRoot: this.workspaceRoot,
-        });
+        const checks =
+            binding && stage.snapshotRef
+                ? await overlayStore.runChecksExact(stage.snapshotRef, commands, timeoutSec, {
+                      workspaceRoot: this.workspaceRoot,
+                  })
+                : await overlayStore.runChecks(snap.id, commands, timeoutSec, {
+                      workspaceRoot: this.workspaceRoot,
+                  });
         let applied = false;
         let applyResult: any = null;
         if (args?.apply === true) {
             if (process.env.ALLOW_SNAPSHOT_APPLY === '1' && checks.ok) {
-                applyResult = await overlayStore.applyToWorkingTree(snap.id, {
-                    check: false,
-                    workspaceRoot: this.workspaceRoot,
-                });
+                applyResult =
+                    binding && (checks as any).snapshotRef
+                        ? await overlayStore.applyToWorkingTreeExact((checks as any).snapshotRef, {
+                              check: false,
+                              workspaceRoot: this.workspaceRoot,
+                          })
+                        : await overlayStore.applyToWorkingTree(snap.id, {
+                              check: false,
+                              workspaceRoot: this.workspaceRoot,
+                          });
                 applied = !!applyResult?.ok;
             } else {
                 applyResult = {
@@ -411,6 +446,13 @@ export class StructuralWorkflowService {
                 },
                 snapshot: snap.id,
                 snapshotArtifacts,
+                ...(binding
+                    ? {
+                          workspace: binding.workspace,
+                          snapshotRef: (checks as any).snapshotRef,
+                          checkReceipt: (checks as any).checkReceipt,
+                      }
+                    : {}),
                 links: Object.values(snapshotArtifacts),
                 stage,
                 checks: {

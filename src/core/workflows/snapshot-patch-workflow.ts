@@ -1,4 +1,6 @@
 import { overlayStore } from '../overlay-store.js';
+import type { SnapshotRefV1 } from '../snapshot-ref.js';
+import type { WorkspaceBinding } from '../workspace-binding.js';
 import { verifyAppliedSnapshotDiff as verifyAppliedSnapshotDiffForWorkspace } from './applied-snapshot-verification.js';
 import { applyAfterChecks as applyAfterChecksWorkflow } from './apply-after-checks-workflow.js';
 import { convertApplyPatchToUnified as convertApplyPatchToUnifiedForWorkspace } from './apply-patch-converter.js';
@@ -38,6 +40,21 @@ export class SnapshotPatchWorkflowService {
             workspaceRoot: this.workspaceRoot,
         });
         return { payload: { snapshot: snap.id }, isError: false };
+    }
+
+    async getNexusSnapshot(args: Record<string, any>, binding: WorkspaceBinding): Promise<SnapshotWorkflowResult> {
+        const snap = overlayStore.createSnapshot(!!args?.preferExisting, {
+            workspaceRoot: this.workspaceRoot,
+            workspace: binding.workspace,
+        });
+        return {
+            payload: {
+                snapshot: snap.id,
+                snapshotRef: overlayStore.getSnapshotRef(snap.id, { workspaceRoot: this.workspaceRoot }),
+                workspace: binding.workspace,
+            },
+            isError: false,
+        };
     }
 
     async extractSnapshotArtifacts(args: Record<string, any>): Promise<SnapshotWorkflowResult> {
@@ -206,6 +223,72 @@ export class SnapshotPatchWorkflowService {
             const msg = e instanceof Error ? e.message : String(e);
             return { text: `apply_snapshot failed: ${msg}`, isError: true };
         }
+    }
+
+    async patchChecksInSnapshotNexus(
+        args: Record<string, any>,
+        binding: WorkspaceBinding
+    ): Promise<SnapshotWorkflowResult> {
+        const patch = String(args?.patch || '');
+        if (!patch) return { text: 'patch required', isError: true };
+        const commands = Array.isArray(args?.commands) ? (args.commands as string[]) : ['bun run typecheck'];
+        const timeoutSec = typeof args?.timeoutSec === 'number' ? args.timeoutSec : 240;
+        let reference: SnapshotRefV1;
+        if (args?.snapshotRef) {
+            reference = args.snapshotRef as SnapshotRefV1;
+            overlayStore.getSnapshotRevision(reference, { workspaceRoot: this.workspaceRoot });
+        } else {
+            const created = await this.getNexusSnapshot({ preferExisting: false }, binding);
+            reference = asPayload(created)?.snapshotRef as SnapshotRefV1;
+        }
+        const stage = await overlayStore.stagePatchExact(reference, patch, undefined, {
+            workspaceRoot: this.workspaceRoot,
+        });
+        if (!stage.accepted || !stage.snapshotRef) {
+            return {
+                payload: {
+                    workflow: 'patch_checks_in_snapshot',
+                    ok: false,
+                    reason: stageFailureReason(stage),
+                    workspace: binding.workspace,
+                    snapshot: reference.snapshotId,
+                    snapshotRef: reference,
+                    stage,
+                    checks: null,
+                    next_actions: ['Fix patch staging errors; checks were not run'],
+                },
+                isError: false,
+            };
+        }
+        const onlyTouchedEnv = (process.env.FAST_STDIO_CHECKS || '').toLowerCase() === 'touched';
+        const onlyTouched = typeof args?.onlyTouched === 'boolean' ? !!args.onlyTouched : onlyTouchedEnv;
+        const checks = await overlayStore.runChecksExact(stage.snapshotRef, commands, timeoutSec, {
+            onlyTouched,
+            workspaceRoot: this.workspaceRoot,
+        });
+        const snapshotArtifacts = snapshotArtifactLinks(stage.snapshotRef.snapshotId);
+        return {
+            payload: {
+                workflow: 'patch_checks_in_snapshot',
+                ok: checks.ok,
+                workspace: binding.workspace,
+                snapshot: stage.snapshotRef.snapshotId,
+                snapshotRef: stage.snapshotRef,
+                snapshotArtifacts,
+                stage,
+                checks: {
+                    ok: checks.ok,
+                    elapsedMs: checks.elapsedMs,
+                    commands: checks.commands,
+                    output: checks.output.slice(-4000),
+                    receipt: checks.checkReceipt,
+                },
+                next_actions: checks.ok
+                    ? ['Review the exact snapshot revision before any guarded apply']
+                    : ['Review failing checks; adjust and re-run from the returned snapshot reference'],
+            },
+            isError: false,
+        };
     }
 
     async patchChecksInSnapshot(args: Record<string, any>): Promise<SnapshotWorkflowResult> {

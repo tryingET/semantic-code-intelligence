@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, wri
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { overlayStore } from '../src/core/overlay-store.js';
+import { loadOrCreateWorkspaceBinding } from '../src/core/workspace-binding.js';
 import { applyTextEdits, RenameWorkflowService } from '../src/core/workflows/rename-workflow.js';
 
 const roots: string[] = [];
@@ -90,6 +91,39 @@ describe('RenameWorkflowService', () => {
 
         await service.planRename({ oldName: 'oldName', newName: 'newName' });
         expect(seen[0].uri).toBe(`file://${workspaceRoot}`);
+    });
+
+    test('safe rename emits exact NEXUS snapshot lineage on successful preview', async () => {
+        const workspaceRoot = tempWorkspace();
+        const target = join(workspaceRoot, 'target.ts');
+        writeFileSync(target, 'export const oldName = 1;\n', 'utf8');
+        const binding = await loadOrCreateWorkspaceBinding(workspaceRoot);
+        const service = new RenameWorkflowService({
+            workspaceRoot: () => workspaceRoot,
+            planRename: async () => ({
+                changes: {
+                    [`file://${target}`]: [
+                        {
+                            range: { start: { line: 0, character: 13 }, end: { line: 0, character: 20 } },
+                            newText: 'newName',
+                        },
+                    ],
+                },
+            }),
+        });
+
+        const result = payload(
+            await service.safeRename({ oldName: 'oldName', newName: 'newName', runChecks: false }, binding)
+        );
+        expect(result).toMatchObject({
+            workflow: 'rename_safely',
+            ok: true,
+            workspace: binding.workspace,
+            snapshotRef: { workspaceId: binding.workspace.workspaceId, revision: 1 },
+        });
+        expect(overlayStore.getSnapshotRevision(result.snapshotRef, { workspaceRoot }).overlayDiff).toContain(
+            '+export const newName = 1;'
+        );
     });
 
     test('safe rename creates a fresh workflow snapshot instead of mutating a reusable base snapshot', async () => {

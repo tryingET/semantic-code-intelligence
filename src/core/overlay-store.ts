@@ -613,7 +613,7 @@ export class OverlayStore {
             hash.update('\0');
             return result.status === 0 ? result.stdout.toString('utf8') : '';
         };
-        const snapshotArtifactPathspec = ':(exclude).ontology/snapshots';
+        const snapshotArtifactPathspec = ':(exclude).ontology';
         addGit(['rev-parse', 'HEAD'], 'head');
         addGit(
             ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--', '.', snapshotArtifactPathspec],

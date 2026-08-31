@@ -5,6 +5,8 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CoreError } from '../errors.js';
 import { overlayStore } from '../overlay-store.js';
+import type { SnapshotRefV1 } from '../snapshot-ref.js';
+import type { WorkspaceBinding } from '../workspace-binding.js';
 import { openWorkspaceFileForRead, resolveWorkspacePath } from '../workspace-path.js';
 import { normalizeWorkspaceUri, uriToWorkspacePath } from './request-semantics.js';
 import type { SnapshotWorkflowResult } from './snapshot-patch-workflow.js';
@@ -92,7 +94,10 @@ export class RenameWorkflowService {
         };
     }
 
-    async safeRename(args: Record<string, any>): Promise<SnapshotWorkflowResult> {
+    async safeRename(
+        args: Record<string, any>,
+        binding: WorkspaceBinding | null = null
+    ): Promise<SnapshotWorkflowResult> {
         const oldName = String(args?.oldName || '').trim();
         const newName = String(args?.newName || '').trim();
         if (!oldName || !newName) {
@@ -107,6 +112,14 @@ export class RenameWorkflowService {
         const commands = Array.isArray(args?.commands) ? (args.commands as string[]) : ['bun run typecheck'];
         const timeoutSec = typeof args?.timeoutSec === 'number' ? args.timeoutSec : 240;
         const runChecksFlag: boolean = args?.runChecks !== false;
+        const root = this.deps.workspaceRoot();
+        const snap = overlayStore.createSnapshot(false, {
+            workspaceRoot: root,
+            ...(binding ? { workspace: binding.workspace } : {}),
+        });
+        const initialSnapshotRef: SnapshotRefV1 | undefined = binding
+            ? overlayStore.getSnapshotRef(snap.id, { workspaceRoot: root })
+            : undefined;
 
         let plan: any;
         try {
@@ -114,13 +127,12 @@ export class RenameWorkflowService {
                 ? await this.deps.planRename({ oldName, newName, file })
                 : await this.computePlanRename({ oldName, newName, file });
         } catch (error) {
-            const root = this.deps.workspaceRoot();
-            const snap = overlayStore.createSnapshot(false, { workspaceRoot: root });
             return {
                 payload: {
                     workflow: 'rename_safely',
                     ok: false,
                     snapshot: snap.id,
+                    ...(binding ? { workspace: binding.workspace, snapshotRef: initialSnapshotRef } : {}),
                     reason: 'plan_failed',
                     message: error instanceof Error ? error.message : String(error),
                     next_actions: ['Confirm the symbol can be AST-validated before retrying'],
@@ -131,14 +143,13 @@ export class RenameWorkflowService {
         const changes = plan?.changes || {};
         const files = Object.keys(changes);
 
-        const root = this.deps.workspaceRoot();
         if (!files.length) {
-            const snap = overlayStore.createSnapshot(false, { workspaceRoot: root });
             return {
                 payload: {
                     workflow: 'rename_safely',
                     ok: false,
                     snapshot: snap.id,
+                    ...(binding ? { workspace: binding.workspace, snapshotRef: initialSnapshotRef } : {}),
                     reason: 'no_changes',
                     message: 'Rename produced no changes',
                     next_actions: ['Confirm the symbol can be AST-validated before retrying'],
@@ -148,7 +159,6 @@ export class RenameWorkflowService {
         }
         const invalidPlanPaths: string[] = [];
         const unreadablePlanPaths: string[] = [];
-        const snap = overlayStore.createSnapshot(false, { workspaceRoot: root });
         const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'sci-rename-diff-'));
 
         try {
@@ -162,6 +172,7 @@ export class RenameWorkflowService {
                     opened = await openWorkspaceFileForRead(filePathFromUriLike(uri), {
                         workspaceRoot: root,
                         inputLabel: 'rename plan path',
+                        ...(binding ? { binding } : {}),
                     });
                 } catch (error: any) {
                     if (
@@ -240,10 +251,20 @@ export class RenameWorkflowService {
             }
 
             const unifiedDiff = diffParts.join('\n');
-            const stage = overlayStore.stagePatch(snap.id, unifiedDiff);
+            const stage: { accepted: boolean; message?: string; snapshotRef?: SnapshotRefV1 } =
+                binding && initialSnapshotRef
+                    ? await overlayStore.stagePatchExact(initialSnapshotRef, unifiedDiff, undefined, {
+                          workspaceRoot: root,
+                      })
+                    : overlayStore.stagePatch(snap.id, unifiedDiff);
             if (!stage.accepted) {
                 return {
-                    payload: { ok: false, reason: 'stage_failed', message: stage.message || 'Failed to stage diff' },
+                    payload: {
+                        ok: false,
+                        reason: 'stage_failed',
+                        message: stage.message || 'Failed to stage diff',
+                        ...(binding ? { workspace: binding.workspace, snapshotRef: initialSnapshotRef } : {}),
+                    },
                     isError: true,
                 };
             }
@@ -255,6 +276,7 @@ export class RenameWorkflowService {
                         workflow: 'rename_safely',
                         ok: true,
                         snapshot: snap.id,
+                        ...(binding ? { workspace: binding.workspace, snapshotRef: stage.snapshotRef } : {}),
                         filesAffected: files.length,
                         totalEdits,
                         next_actions: [
@@ -268,16 +290,29 @@ export class RenameWorkflowService {
 
             const onlyTouchedEnv = (process.env.FAST_STDIO_CHECKS || '').toLowerCase() === 'touched';
             const onlyTouched = typeof args?.onlyTouched === 'boolean' ? !!args.onlyTouched : onlyTouchedEnv;
-            const checks = await overlayStore.runChecks(snap.id, commands, timeoutSec, {
-                onlyTouched,
-                workspaceRoot: root,
-            });
+            const checks =
+                binding && stage.snapshotRef
+                    ? await overlayStore.runChecksExact(stage.snapshotRef, commands, timeoutSec, {
+                          onlyTouched,
+                          workspaceRoot: root,
+                      })
+                    : await overlayStore.runChecks(snap.id, commands, timeoutSec, {
+                          onlyTouched,
+                          workspaceRoot: root,
+                      });
             const ok = !!checks.ok;
             return {
                 payload: {
                     workflow: 'rename_safely',
                     ok,
                     snapshot: snap.id,
+                    ...(binding
+                        ? {
+                              workspace: binding.workspace,
+                              snapshotRef: (checks as any).snapshotRef,
+                              checkReceipt: (checks as any).checkReceipt,
+                          }
+                        : {}),
                     filesAffected: files.length,
                     totalEdits,
                     elapsedMs: checks.elapsedMs,

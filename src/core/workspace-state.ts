@@ -2,11 +2,7 @@ import { createHash, type Hash } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import {
-    type WorkspaceBinding,
-    assertPathInWorkspaceRepository,
-    verifyWorkspaceBinding,
-} from './workspace-binding.js';
+import { type WorkspaceBinding, assertPathInWorkspaceRepository, verifyWorkspaceBinding } from './workspace-binding.js';
 import { isCoreError } from './errors.js';
 import { openWorkspaceFileForRead } from './workspace-path.js';
 import {
@@ -25,13 +21,15 @@ const EXCLUDED_RUNTIME_SEGMENTS = new Set(['.git', '.ontology', 'node_modules', 
 
 export async function captureWorkspaceState(
     binding: WorkspaceBinding,
-    options: { additionalPaths?: string[] } = {}
+    options: { additionalPaths?: string[]; verifyStable?: boolean } = {}
 ): Promise<WorkspaceStateRefV1> {
     try {
         const additionalPaths = (options.additionalPaths || []).map((value) => normalizeWorkspaceRelativePath(value));
         const first = await collectWorkspaceStateDigest(binding, additionalPaths);
-        const second = await collectWorkspaceStateDigest(binding, additionalPaths);
-        if (first !== second) throw workspaceReferenceError('workspace_state_changed');
+        if (options.verifyStable !== false) {
+            const second = await collectWorkspaceStateDigest(binding, additionalPaths);
+            if (first !== second) throw workspaceReferenceError('workspace_state_changed');
+        }
         return createWorkspaceStateRef(binding.workspace, first);
     } catch (error) {
         if (hasWorkspaceReason(error)) throw error;
@@ -56,13 +54,21 @@ async function collectWorkspaceStateDigest(binding: WorkspaceBinding, additional
 
     const hash = createHash('sha256');
     hash.update(`workspace:${binding.workspace.workspaceId}\0`);
-    const runtimeExclusion = ':(exclude).ontology';
+    const sourcePathspec = [
+        '.',
+        ':(exclude).ontology',
+        ':(exclude)node_modules',
+        ':(exclude)dist',
+        ':(exclude)coverage',
+        ':(exclude)build',
+        ':(exclude)out',
+    ];
     addGit(hash, root, ['rev-parse', 'HEAD'], 'head');
-    addGit(hash, root, ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--', '.', runtimeExclusion], 'status');
-    addGit(hash, root, ['diff', '--no-ext-diff', '--binary', '--', '.', runtimeExclusion], 'diff');
-    addGit(hash, root, ['diff', '--no-ext-diff', '--cached', '--binary', '--', '.', runtimeExclusion], 'cached-diff');
+    addGit(hash, root, ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--', ...sourcePathspec], 'status');
+    addGit(hash, root, ['diff', '--no-ext-diff', '--binary', '--', ...sourcePathspec], 'diff');
+    addGit(hash, root, ['diff', '--no-ext-diff', '--cached', '--binary', '--', ...sourcePathspec], 'cached-diff');
 
-    const ordinary = git(root, ['ls-files', '--others', '--exclude-standard', '-z', '--', '.', runtimeExclusion]);
+    const ordinary = git(root, ['ls-files', '--others', '--exclude-standard', '-z', '--', ...sourcePathspec]);
     const ignored = git(root, [
         'ls-files',
         '--others',
@@ -70,8 +76,7 @@ async function collectWorkspaceStateDigest(binding: WorkspaceBinding, additional
         '--exclude-standard',
         '-z',
         '--',
-        '.',
-        runtimeExclusion,
+        ...sourcePathspec,
     ]);
     const discovered = uniqueRelativePaths(ordinary, ignored);
     for (const relative of additionalPaths) discovered.push(relative);
