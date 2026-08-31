@@ -127,6 +127,27 @@ describe('Pi Composite NEXUS v1 producer profile', () => {
         });
     }, 30_000);
 
+    test('redacts malformed patch-stage diagnostics in the NEXUS profile', async () => {
+        const malformed = [
+            'diff --git a/tests/fixtures/example.ts b/tests/fixtures/example.ts',
+            '--- a/tests/fixtures/example.ts',
+            '+++ b/tests/fixtures/example.ts',
+            '@@ -5,1 +5,1 @@',
+            '-does-not-match',
+            '+replacement',
+        ].join('\n');
+        const result = parse(
+            await mcp.handleValidatedToolCall('patch_checks_in_snapshot', {
+                patch: malformed,
+                commands: ['true'],
+                workspace,
+            })
+        );
+        expect(result).toMatchObject({ ok: false, reason: 'patch_stage_failed' });
+        expect(result.stage).toEqual({ accepted: false, reason: 'patch_stage_failed' });
+        expect(JSON.stringify(result)).not.toMatch(/sci-patch-check|\/home\//);
+    });
+
     test('returns exact preview lineage for rename and structural doors without working-tree writes', async () => {
         const renamed = parse(
             await mcp.handleValidatedToolCall('rename_safely', {

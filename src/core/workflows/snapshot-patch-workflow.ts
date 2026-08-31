@@ -245,15 +245,17 @@ export class SnapshotPatchWorkflowService {
             workspaceRoot: this.workspaceRoot,
         });
         if (!stage.accepted || !stage.snapshotRef) {
+            const reason = stageFailureReason(stage);
             return {
                 payload: {
                     workflow: 'patch_checks_in_snapshot',
                     ok: false,
-                    reason: stageFailureReason(stage),
+                    reason,
+                    message: 'Patch could not be staged in the bound workspace',
                     workspace: binding.workspace,
                     snapshot: reference.snapshotId,
                     snapshotRef: reference,
-                    stage,
+                    stage: { accepted: false, reason },
                     checks: null,
                     next_actions: ['Fix patch staging errors; checks were not run'],
                 },

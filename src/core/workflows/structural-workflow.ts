@@ -386,7 +386,7 @@ export class StructuralWorkflowService {
                     matches: allMatches.length,
                     snapshot: snap.id,
                     ...(binding ? { workspace: binding.workspace, snapshotRef: initialSnapshotRef } : {}),
-                    stage,
+                    stage: binding ? { accepted: false, reason: 'patch_stage_failed' } : stage,
                     applied: false,
                 },
                 isError: true,

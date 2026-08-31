@@ -262,7 +262,9 @@ export class RenameWorkflowService {
                     payload: {
                         ok: false,
                         reason: 'stage_failed',
-                        message: stage.message || 'Failed to stage diff',
+                        message: binding
+                            ? 'Rename diff could not be staged in the bound workspace'
+                            : stage.message || 'Failed to stage diff',
                         ...(binding ? { workspace: binding.workspace, snapshotRef: initialSnapshotRef } : {}),
                     },
                     isError: true,
