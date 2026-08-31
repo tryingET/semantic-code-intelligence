@@ -5,7 +5,20 @@ import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
 import { CoreError } from './errors.js';
+import {
+    assertSnapshotRef,
+    checkReceiptMatchesSnapshot,
+    createSnapshotCheckReceipt,
+    createSnapshotRef,
+    isSnapshotCheckReceiptV1,
+    type SnapshotCheckReceiptV1,
+    type SnapshotRefV1,
+    sameSnapshotRef,
+    snapshotReferenceError,
+} from './snapshot-ref.js';
+import { persistSnapshotRevision, readSnapshotRevision } from './snapshot-revision-store.js';
 import { isOutsideWorkspaceRelative } from './workspace-path.js';
+import { isWorkspaceId, type WorkspaceId, type WorkspaceRefV1 } from './workspace-ref.js';
 
 export type CheckCommandReceipt = {
     command: string;
@@ -28,6 +41,12 @@ type Snapshot = {
     diffs: string[];
     baseFingerprint?: string;
     workspaceRoot?: string;
+    workspaceId?: WorkspaceId;
+    revision?: number;
+    baseDigest?: string;
+    overlayDigest?: string;
+    lastChecks?: SnapshotCheckReceiptV1;
+    legacyUnbound?: boolean;
     touchedFiles?: Set<string>;
     lastApply?: {
         ok: boolean;
@@ -634,6 +653,12 @@ export class OverlayStore {
             diffs: snap.diffs,
             baseFingerprint: snap.baseFingerprint || null,
             workspaceRoot: snap.workspaceRoot || null,
+            workspaceId: snap.workspaceId || null,
+            revision: snap.revision ?? null,
+            baseDigest: snap.baseDigest || null,
+            overlayDigest: snap.overlayDigest || null,
+            lastChecks: snap.lastChecks || null,
+            legacyUnbound: snap.legacyUnbound === true,
             touchedFiles: snap.touchedFiles ? Array.from(snap.touchedFiles) : [],
             lastApply: snap.lastApply || null,
             forwardApplyReceipt: snap.forwardApplyReceipt || null,
@@ -658,6 +683,19 @@ export class OverlayStore {
                   ? this.resolveWorkspaceBase(fallbackWorkspaceRoot)
                   : undefined;
         const snap: Snapshot = { id, createdAt, diffs, baseFingerprint, workspaceRoot };
+        const workspaceId = isWorkspaceId(raw?.workspaceId) ? raw.workspaceId : undefined;
+        const revision = Number(raw?.revision);
+        if (workspaceId && Number.isSafeInteger(revision) && revision >= 0 && baseFingerprint) {
+            const reference = createSnapshotRef({ workspaceId, snapshotId: id, revision, baseFingerprint, diffs });
+            if (raw?.baseDigest !== reference.baseDigest || raw?.overlayDigest !== reference.overlayDigest) return null;
+            snap.workspaceId = workspaceId;
+            snap.revision = revision;
+            snap.baseDigest = reference.baseDigest;
+            snap.overlayDigest = reference.overlayDigest;
+            if (isSnapshotCheckReceiptV1(raw?.lastChecks)) snap.lastChecks = raw.lastChecks;
+        } else {
+            snap.legacyUnbound = true;
+        }
         if (touched.length) snap.touchedFiles = new Set(touched);
         if (raw?.lastApply && typeof raw.lastApply === 'object') snap.lastApply = raw.lastApply;
         if (raw?.forwardApplyReceipt && typeof raw.forwardApplyReceipt === 'object') {
@@ -675,6 +713,19 @@ export class OverlayStore {
 
     private persistSnapshotSync(snap: Snapshot): void {
         try {
+            if (snap.workspaceId !== undefined && snap.revision !== undefined) {
+                const directory = this.assertSafeSnapshotDirectory(snap.id, snap.workspaceRoot);
+                fs.mkdirSync(directory, { recursive: true });
+                const safeDirectory = this.assertSafeSnapshotDirectory(snap.id, snap.workspaceRoot, {
+                    mustExist: true,
+                });
+                persistSnapshotRevision({
+                    snapshotDirectory: safeDirectory,
+                    snapshotRef: this.snapshotRefFor(snap),
+                    touchedFiles: Array.from(snap.touchedFiles || []),
+                    diffs: snap.diffs,
+                });
+            }
             this.writeSnapshotMetadataSync(snap);
         } catch (error) {
             throw new Error(`Failed to persist snapshot metadata: ${errorMessage(error)}`);
@@ -897,7 +948,7 @@ export class OverlayStore {
         return null;
     }
 
-    createSnapshot(preferExisting = true, opts: { workspaceRoot?: string } = {}): Snapshot {
+    createSnapshot(preferExisting = true, opts: { workspaceRoot?: string; workspace?: WorkspaceRefV1 } = {}): Snapshot {
         const workspaceRoot = opts.workspaceRoot ? this.resolveWorkspaceBase(opts.workspaceRoot) : undefined;
         const baseFingerprint = this.workspaceBaseFingerprint(workspaceRoot);
         // Optionally reuse the most recent clean snapshot only when it still matches the current workspace base.
@@ -906,10 +957,32 @@ export class OverlayStore {
                 this.findReusableBaseSnapshotInMemory(workspaceRoot, baseFingerprint) ||
                 this.loadReusableBaseSnapshotFromIndex(workspaceRoot, baseFingerprint) ||
                 this.loadRecentReusableBaseSnapshotFromDisk(workspaceRoot, baseFingerprint);
-            if (reusable) return reusable;
+            if (
+                reusable &&
+                (opts.workspace
+                    ? reusable.workspaceId === opts.workspace.workspaceId
+                    : reusable.workspaceId === undefined)
+            ) {
+                return reusable;
+            }
         }
         const id = randomUUID();
         const snap: Snapshot = { id, createdAt: Date.now(), diffs: [], baseFingerprint, workspaceRoot };
+        if (opts.workspace) {
+            const reference = createSnapshotRef({
+                workspaceId: opts.workspace.workspaceId,
+                snapshotId: id,
+                revision: 0,
+                baseFingerprint,
+                diffs: [],
+            });
+            snap.workspaceId = reference.workspaceId;
+            snap.revision = reference.revision;
+            snap.baseDigest = reference.baseDigest;
+            snap.overlayDigest = reference.overlayDigest;
+        } else {
+            snap.legacyUnbound = true;
+        }
         this.snapshots.set(id, snap);
         try {
             this.persistSnapshotSync(snap);
@@ -937,6 +1010,53 @@ export class OverlayStore {
             throw new CoreError('InvalidParams', 'Unknown snapshot id');
         }
         return found;
+    }
+
+    getSnapshotRef(snapshotId: string, opts: { workspaceRoot?: string } = {}): SnapshotRefV1 {
+        return this.snapshotRefFor(this.ensureSnapshot(snapshotId, opts));
+    }
+
+    getSnapshotRevision(
+        reference: SnapshotRefV1,
+        opts: { workspaceRoot?: string } = {}
+    ): ReturnType<typeof readSnapshotRevision> {
+        const snap = this.ensureSnapshot(reference.snapshotId, opts);
+        if (!snap.workspaceId || snap.workspaceId !== reference.workspaceId) {
+            throw snapshotReferenceError('stale_snapshot_ref');
+        }
+        const directory = this.assertSafeSnapshotDirectory(snap.id, snap.workspaceRoot, { mustExist: true });
+        const revision = readSnapshotRevision(directory, reference.revision);
+        if (!sameSnapshotRef(revision.snapshotRef, reference)) throw snapshotReferenceError('stale_snapshot_ref');
+        return revision;
+    }
+
+    private snapshotRefFor(snap: Snapshot): SnapshotRefV1 {
+        if (!snap.workspaceId || snap.revision === undefined || !snap.baseFingerprint) {
+            throw snapshotReferenceError('legacy_unbound_snapshot');
+        }
+        const reference = createSnapshotRef({
+            workspaceId: snap.workspaceId,
+            snapshotId: snap.id,
+            revision: snap.revision,
+            baseFingerprint: snap.baseFingerprint,
+            diffs: snap.diffs,
+        });
+        if (
+            (snap.baseDigest && snap.baseDigest !== reference.baseDigest) ||
+            (snap.overlayDigest && snap.overlayDigest !== reference.overlayDigest)
+        ) {
+            throw snapshotReferenceError('stale_snapshot_ref');
+        }
+        return reference;
+    }
+
+    private reloadSnapshotForExactRef(reference: SnapshotRefV1, workspaceRoot?: string): Snapshot {
+        this.snapshots.delete(reference.snapshotId);
+        const snap = this.loadSnapshotFromDisk(reference.snapshotId, workspaceRoot);
+        if (!snap) throw snapshotReferenceError('stale_snapshot_ref');
+        const current = this.snapshotRefFor(snap);
+        assertSnapshotRef(reference, current);
+        return snap;
     }
 
     list(opts: { workspaceRoot?: string } = {}): Snapshot[] {
@@ -1365,6 +1485,31 @@ export class OverlayStore {
     }
 
     stagePatch(snapshotId: string, diff: string, maxSizeBytes = 512 * 1024): { accepted: boolean; message?: string } {
+        const snap = this.ensureSnapshot(snapshotId);
+        if (snap.workspaceId) {
+            return { accepted: false, message: 'snapshot_ref_required: use exact workspace-bound staging' };
+        }
+        return this.stagePatchIntoSnapshot(snap, diff, maxSizeBytes, false);
+    }
+
+    async stagePatchExact(
+        reference: SnapshotRefV1,
+        diff: string,
+        maxSizeBytes = 512 * 1024,
+        opts: { workspaceRoot?: string } = {}
+    ): Promise<{ accepted: boolean; message?: string; snapshotRef?: SnapshotRefV1 }> {
+        return this.withSnapshotUsageLease(reference.snapshotId, opts.workspaceRoot, async () => {
+            const snap = this.reloadSnapshotForExactRef(reference, opts.workspaceRoot);
+            return this.stagePatchIntoSnapshot(snap, diff, maxSizeBytes, true);
+        });
+    }
+
+    private stagePatchIntoSnapshot(
+        snap: Snapshot,
+        diff: string,
+        maxSizeBytes: number,
+        advanceRevision: boolean
+    ): { accepted: boolean; message?: string; snapshotRef?: SnapshotRefV1 } {
         if (!diff || typeof diff !== 'string') return { accepted: false, message: 'Empty diff' };
         if (Buffer.byteLength(diff, 'utf8') > maxSizeBytes) {
             return { accepted: false, message: `Patch too large (> ${maxSizeBytes} bytes)` };
@@ -1376,43 +1521,71 @@ export class OverlayStore {
         } catch (error) {
             return { accepted: false, message: error instanceof Error ? error.message : String(error) };
         }
-        if (!touched.length) {
-            return { accepted: false, message: 'invalid_patch: no workspace files found in diff' };
-        }
+        if (!touched.length) return { accepted: false, message: 'invalid_patch: no workspace files found in diff' };
         if (!/^@@\s/m.test(normalizedDiff) && !this.hasFileDeletionWithoutHunks(normalizedDiff)) {
             return { accepted: false, message: 'invalid_patch: no patch hunks found in diff' };
         }
         const unsafeMode = this.rejectUnsafePatchFileModes(normalizedDiff);
         if (unsafeMode) return { accepted: false, message: unsafeMode };
-        const snap = this.ensureSnapshot(snapshotId);
         const freshness = this.validateSnapshotBaseFresh(snap);
         if (!freshness.ok) return { accepted: false, message: freshness.message };
         if (snap.diffs.includes(normalizedDiff)) {
-            return { accepted: true, message: 'Patch already staged in snapshot' };
+            return {
+                accepted: true,
+                message: 'Patch already staged in snapshot',
+                snapshotRef: advanceRevision ? this.snapshotRefFor(snap) : undefined,
+            };
         }
-        const currentBytes = Buffer.byteLength(snap.diffs.join('\n'), 'utf8');
-        const separatorBytes = snap.diffs.length ? 1 : 0;
-        const nextBytes = currentBytes + separatorBytes + Buffer.byteLength(normalizedDiff, 'utf8');
-        const maxSnapshotBytes = this.maxSnapshotDiffBytes();
-        if (nextBytes > maxSnapshotBytes) {
-            return { accepted: false, message: `Snapshot diff too large (> ${maxSnapshotBytes} bytes)` };
+        const nextBytes =
+            Buffer.byteLength(snap.diffs.join('\n'), 'utf8') +
+            (snap.diffs.length ? 1 : 0) +
+            Buffer.byteLength(normalizedDiff, 'utf8');
+        if (nextBytes > this.maxSnapshotDiffBytes()) {
+            return { accepted: false, message: `Snapshot diff too large (> ${this.maxSnapshotDiffBytes()} bytes)` };
         }
         const validation = this.validatePatchAppliesAgainstSnapshot(normalizedDiff, snap);
         if (!validation.ok) return { accepted: false, message: validation.message };
-        const previousTouched = snap.touchedFiles ? new Set(snap.touchedFiles) : undefined;
+
+        const previous = {
+            touchedFiles: snap.touchedFiles ? new Set(snap.touchedFiles) : undefined,
+            revision: snap.revision,
+            baseDigest: snap.baseDigest,
+            overlayDigest: snap.overlayDigest,
+            lastChecks: snap.lastChecks,
+        };
         snap.diffs.push(normalizedDiff);
-        if (touched.length) {
-            if (!snap.touchedFiles) snap.touchedFiles = new Set<string>();
-            for (const f of touched) snap.touchedFiles.add(f);
+        if (!snap.touchedFiles) snap.touchedFiles = new Set<string>();
+        for (const file of touched) snap.touchedFiles.add(file);
+        if (advanceRevision) {
+            if (!snap.workspaceId || snap.revision === undefined || !snap.baseFingerprint) {
+                snap.diffs.pop();
+                snap.touchedFiles = previous.touchedFiles;
+                return { accepted: false, message: 'legacy_unbound_snapshot' };
+            }
+            snap.revision += 1;
+            const nextRef = createSnapshotRef({
+                workspaceId: snap.workspaceId,
+                snapshotId: snap.id,
+                revision: snap.revision,
+                baseFingerprint: snap.baseFingerprint,
+                diffs: snap.diffs,
+            });
+            snap.baseDigest = nextRef.baseDigest;
+            snap.overlayDigest = nextRef.overlayDigest;
+            snap.lastChecks = undefined;
         }
         try {
             this.persistSnapshotSync(snap);
         } catch (error) {
             snap.diffs.pop();
-            snap.touchedFiles = previousTouched;
+            snap.touchedFiles = previous.touchedFiles;
+            snap.revision = previous.revision;
+            snap.baseDigest = previous.baseDigest;
+            snap.overlayDigest = previous.overlayDigest;
+            snap.lastChecks = previous.lastChecks;
             return { accepted: false, message: errorMessage(error) };
         }
-        return { accepted: true };
+        return { accepted: true, snapshotRef: advanceRevision ? this.snapshotRefFor(snap) : undefined };
     }
 
     private validateSnapshotBaseFresh(snap: Snapshot): { ok: boolean; message?: string } {
@@ -2159,9 +2332,30 @@ export class OverlayStore {
         opts: { onlyTouched?: boolean; workspaceRoot?: string } = {}
     ): Promise<CheckRunResult> {
         this.assertValidId(snapshotId);
+        if (this.ensureSnapshot(snapshotId, { workspaceRoot: opts.workspaceRoot }).workspaceId) {
+            throw snapshotReferenceError('snapshot_ref_required');
+        }
         return this.withSnapshotUsageLease(snapshotId, opts.workspaceRoot, () =>
             this.runChecksWithLease(snapshotId, commands, timeoutSec, opts)
         );
+    }
+
+    async runChecksExact(
+        reference: SnapshotRefV1,
+        commands: string[],
+        timeoutSec = 120,
+        opts: { onlyTouched?: boolean; workspaceRoot?: string } = {}
+    ): Promise<CheckRunResult & { snapshotRef: SnapshotRefV1; checkReceipt: SnapshotCheckReceiptV1 }> {
+        return this.withSnapshotUsageLease(reference.snapshotId, opts.workspaceRoot, async () => {
+            const snap = this.reloadSnapshotForExactRef(reference, opts.workspaceRoot);
+            const result = await this.runChecksWithLease(reference.snapshotId, commands, timeoutSec, opts);
+            const current = this.snapshotRefFor(snap);
+            assertSnapshotRef(reference, current);
+            const receipt = createSnapshotCheckReceipt(current, commands, result.ok);
+            snap.lastChecks = receipt;
+            this.persistSnapshotSync(snap);
+            return { ...result, snapshotRef: current, checkReceipt: receipt };
+        });
     }
 
     private async runChecksWithLease(
@@ -2697,9 +2891,37 @@ export class OverlayStore {
         options: { check?: boolean; reverse?: boolean; workspaceRoot?: string } = {}
     ): Promise<{ ok: boolean; output: string; elapsedMs: number }> {
         this.assertValidId(snapshotId);
+        if (this.ensureSnapshot(snapshotId, { workspaceRoot: options.workspaceRoot }).workspaceId) {
+            throw snapshotReferenceError('snapshot_ref_required');
+        }
         return this.withSnapshotUsageLease(snapshotId, options.workspaceRoot, () =>
             this.applyToWorkingTreeWithLease(snapshotId, options)
         );
+    }
+
+    async applyToWorkingTreeExact(
+        reference: SnapshotRefV1,
+        options: {
+            check?: boolean;
+            reverse?: boolean;
+            workspaceRoot?: string;
+            requireChecks?: boolean;
+        } = {}
+    ): Promise<{ ok: boolean; output: string; elapsedMs: number; snapshotRef: SnapshotRefV1 }> {
+        return this.withSnapshotUsageLease(reference.snapshotId, options.workspaceRoot, async () => {
+            const snap = this.reloadSnapshotForExactRef(reference, options.workspaceRoot);
+            const current = this.snapshotRefFor(snap);
+            if (options.requireChecks !== false && !checkReceiptMatchesSnapshot(snap.lastChecks, current)) {
+                return {
+                    ok: false,
+                    output: 'Exact snapshot apply requires passing checks for this revision',
+                    elapsedMs: 0,
+                    snapshotRef: current,
+                };
+            }
+            const result = await this.applyToWorkingTreeWithLease(reference.snapshotId, options);
+            return { ...result, snapshotRef: this.snapshotRefFor(snap) };
+        });
     }
 
     private async applyToWorkingTreeWithLease(
@@ -2713,9 +2935,7 @@ export class OverlayStore {
         const start = Date.now();
         const snap = this.ensureSnapshot(snapshotId, { workspaceRoot: requestedWorkspaceRoot });
         const workspaceRoot = this.resolveWorkspaceBase(snap.workspaceRoot);
-        const dir =
-            (await this.ensureMaterializedUnlocked(snapshotId, true)) ||
-            workspaceRoot;
+        const dir = (await this.ensureMaterializedUnlocked(snapshotId, true)) || workspaceRoot;
         let output = '';
         const outputWithReceiptStatus = (
             currentOutput: string,

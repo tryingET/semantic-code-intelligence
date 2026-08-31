@@ -13,6 +13,7 @@ export { DefaultEventBus, LayerManager } from './layer-manager';
 export { SharedServices } from './services/index';
 // Core types
 export * from './types';
+export * from './snapshot-ref';
 export * from './workspace-binding';
 export * from './workspace-input';
 export * from './workspace-ref';
