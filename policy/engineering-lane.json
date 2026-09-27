@@ -2,10 +2,10 @@
   "engineering_core": {
     "tool": "engineering-core",
     "repository": "https://github.com/tryingET/core_engineering-core",
-    "ref": "workspace-local-unpinned",
-    "catalog_command": "uv tool -n run --from \"$HOME/ai-society/core/engineering-core\" engineering-core catalog --pretty --prefer-repo",
-    "list_disciplines_command": "uv tool -n run --from \"$HOME/ai-society/core/engineering-core\" engineering-core list-disciplines",
-    "list_templates_command": "uv tool -n run --from \"$HOME/ai-society/core/engineering-core\" engineering-core list-templates",
+    "ref": "v0.12.2",
+    "catalog_command": "uv tool -n run --from \"git+https://github.com/tryingET/core_engineering-core.git@27ff32a529b6da6b27051e97fdb1d95a0a9be4ae\" engineering-core catalog --pretty --prefer-repo",
+    "list_disciplines_command": "uv tool -n run --from \"git+https://github.com/tryingET/core_engineering-core.git@27ff32a529b6da6b27051e97fdb1d95a0a9be4ae\" engineering-core list-disciplines",
+    "list_templates_command": "uv tool -n run --from \"git+https://github.com/tryingET/core_engineering-core.git@27ff32a529b6da6b27051e97fdb1d95a0a9be4ae\" engineering-core list-templates",
     "disciplines": [
       "validation",
       "testing",
@@ -22,11 +22,11 @@
     "lanes": [
       {
         "lane": "ts",
-        "command": "uv tool -n run --from \"$HOME/ai-society/core/engineering-core\" engineering-core show ts --prefer-repo"
+        "command": "uv tool -n run --from \"git+https://github.com/tryingET/core_engineering-core.git@27ff32a529b6da6b27051e97fdb1d95a0a9be4ae\" engineering-core show ts --prefer-repo"
       },
       {
         "lane": "ts-frontend",
-        "command": "uv tool -n run --from \"$HOME/ai-society/core/engineering-core\" engineering-core show ts-frontend --prefer-repo"
+        "command": "uv tool -n run --from \"git+https://github.com/tryingET/core_engineering-core.git@27ff32a529b6da6b27051e97fdb1d95a0a9be4ae\" engineering-core show ts-frontend --prefer-repo"
       }
     ],
     "loop_validation": {
@@ -56,10 +56,10 @@
       }
     },
     "release_pin": {
-      "kind": "workspace-local",
-      "ref": "workspace-local-unpinned",
-      "resolved_commit": null,
-      "source": "workspace-local-unpinned"
+      "kind": "git-commit",
+      "ref": "v0.12.2",
+      "resolved_commit": "27ff32a529b6da6b27051e97fdb1d95a0a9be4ae",
+      "source": "git+https://github.com/tryingET/core_engineering-core.git@27ff32a529b6da6b27051e97fdb1d95a0a9be4ae"
     }
   }
 }
