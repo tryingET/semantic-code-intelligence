@@ -1,82 +1,30 @@
 ---
-summary: "Monorepo Work Items for the Semantic Code Intelligence repo."
+summary: "Governance for semantic-code-intelligence: the Agent Kernel DB is the sole work authority; the work-items projection is retired."
 read_when:
-  - "You need README information for Semantic Code Intelligence."
-  - "You are changing governance/README.md or related behavior."
+  - "You are looking for deferred or active work for semantic-code-intelligence."
+  - "You are tempted to reintroduce a checked-in governance/work-items.json projection."
 type: "reference"
 ---
 
-# Monorepo Work Items
+# Governance — semantic-code-intelligence
 
-`governance/work-items.json` is the checked-in deterministic projection/mirror for this monorepo's Agent Kernel work-items state.
+Deferred and active work for this repo lives in the **Agent Kernel DB** (`ak task ...`).
+The AK DB is the sole work authority; no checked-in work-items projection exists or should be reintroduced.
 
-## Authority model
-
-| Surface | Role | Authority |
-|---|---|---|
-| Agent Kernel work-items state | Live operational backlog for this monorepo | **Authoritative** |
-| `governance/work-items.json` | Checked-in projection for review, diffs, and compatibility | Mirror only |
-| `governance/work-items.cue` | Projection shape validation | Contract for the mirror |
-
-Do not treat manual JSON edits as the live source of truth.
-If you are migrating a legacy JSON-first monorepo, import once, then continue from AK and re-export the projection.
-
-## Routine workflow
-
-Use plain installed `ak` as the canonical operator path. Export after task-state changes and before closeout:
-
-```bash
-ak work-items export --repo . --path governance/work-items.json
-ak work-items check --repo . --path governance/work-items.json
-```
-
-The import path is migration-only. Do not run it during routine work:
-
-```bash
-ak work-items import --repo . --path governance/work-items.json
-```
+The retired `governance/work-items.cue` schema had no checked-in `work-items.json` instance and carried no work items; nothing was lost at retirement.
 
 ## Optional explicit task-scope snapshots
 
-When a monorepo AK task needs explicit scope:
+When an AK task for this repo needs explicit scope:
 
-- author/update it in AK via `ak task scope show|set|update ...`
+- author/update the scope in AK via `ak task scope show|set|update ...`
 - keep repo-side copies under `governance/task-scopes/AK-<TASK-ID>.snapshot.json` as frozen exports
 - refresh a checked-in snapshot with `mkdir -p governance/task-scopes && ak task scope export <TASK-ID> > governance/task-scopes/AK-<TASK-ID>.snapshot.json`
 - reconcile checked-in snapshots against live AK with `./scripts/check-task-scope-snapshots.sh` before closeout
 - use `./scripts/check-task-scope-snapshots.sh --offline` on generic CI runners to validate only the frozen export contract; offline success does not prove live AK reconciliation
-- keep package/app consumers pointed at the monorepo-root snapshot instead of inventing per-member task-scope files
-
-## Brownfield migration boundary
-
-If this monorepo is retiring hand-authored `governance/task-scopes/AK-*.json` files:
-
-- author/update the scope in AK first, then export `AK-<TASK-ID>.snapshot.json`
-- keep the legacy `AK-*.json` file only as temporary compatibility fallback while local/CI still depend on it
-- remove legacy manifest authoring from workflow docs and handoffs as soon as `./scripts/check-task-scope-snapshots.sh` passes
-- if the task still uses repo-default scope, do not invent a snapshot or a replacement legacy manifest
-
-Optional schema-only validation:
-
-```bash
-cue vet governance/work-items.json governance/work-items.cue
-```
-
-## Task lifecycle
-
-Agent Kernel owns the executable task states and legal transitions. Do not duplicate a lifecycle enum in this projection guide; inspect the installed `ak task` machine/help surfaces when automation needs the current contract.
-
-## Program vs project/monorepo
-
-| Type | Location | Scope | Authority |
-|------|----------|-------|-----------|
-| **Program** | governance-kernel/governance/programs/ | Cross-company | L0 scheduler / FCOS |
-| **Program** | company-templates/governance/programs/ | Company | Planning only |
-| **Monorepo** | repo/governance/work-items.json (this file) | This repo | AK authoritative; JSON is the projection |
 
 ## Non-negotiable
 
 - Do not leave deferred work as ad-hoc TODO comments or scattered markdown notes.
-- Do not repair operational drift by hand-editing `governance/work-items.json` and pretending the JSON is authoritative.
+- Do not reintroduce a checked-in `governance/work-items.json` projection; the AK DB is authoritative.
 - Do not hand-author `governance/task-scopes/AK-*.snapshot.json` as if it were the live task-scope source of truth.
-- For legacy/manual JSON slices, import to AK and then export the projection back out.
