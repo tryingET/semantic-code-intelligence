@@ -1,14 +1,14 @@
+import { spawnSync } from 'node:child_process';
 import { createHash, type Hash } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { spawnSync } from 'node:child_process';
-import { type WorkspaceBinding, assertPathInWorkspaceRepository, verifyWorkspaceBinding } from './workspace-binding.js';
 import { isCoreError } from './errors.js';
+import { assertPathInWorkspaceRepository, verifyWorkspaceBinding, type WorkspaceBinding } from './workspace-binding.js';
 import { openWorkspaceFileForRead } from './workspace-path.js';
 import {
-    type WorkspaceStateRefV1,
     createWorkspaceStateRef,
     normalizeWorkspaceRelativePath,
+    type WorkspaceStateRefV1,
     workspaceReferenceError,
 } from './workspace-ref.js';
 
@@ -18,6 +18,10 @@ const MAX_GIT_OUTPUT_BYTES = 64 * 1024 * 1024;
 const GIT_TIMEOUT_MS = 30_000;
 const FILE_CHUNK_BYTES = 256 * 1024;
 const EXCLUDED_RUNTIME_SEGMENTS = new Set(['.git', '.ontology', 'node_modules', 'dist', 'coverage', 'build', 'out']);
+// Root-local build/dependency runtimes are excluded only when Git also ignores
+// them. Tracked and ordinary untracked source remains part of the receipt, and
+// an explicitly requested file is still added below and descriptor-checked.
+const IGNORED_RUNTIME_ROOTS = ['.build/', '.pio/'];
 
 export async function captureWorkspaceState(
     binding: WorkspaceBinding,
@@ -115,11 +119,17 @@ async function collectWorkspaceStateDigest(binding: WorkspaceBinding, additional
             continue;
         }
 
+        // Git can report an ignored nested repository as one directory leaf.
+        // It is stable but not a readable source file; do not enter it or call
+        // that containment refusal evidence of concurrent workspace mutation.
+        if (!lexicalBefore.isFile()) throw workspaceReferenceError('workspace_state_unavailable');
+
         const opened = await openWorkspaceFileForRead(relative, {
             workspaceRoot: root,
             inputLabel: 'workspace state file',
             binding,
-        }).catch(() => {
+        }).catch((error) => {
+            if (hasWorkspaceReason(error)) throw error;
             throw workspaceReferenceError('workspace_state_changed');
         });
         try {
@@ -167,13 +177,19 @@ function git(root: string, args: string[]): Buffer {
     return result.stdout;
 }
 
-function uniqueRelativePaths(...outputs: Buffer[]): string[] {
+function uniqueRelativePaths(ordinary: Buffer, ignored: Buffer): string[] {
     const paths = new Set<string>();
-    for (const output of outputs) {
+    for (const [index, output] of [ordinary, ignored].entries()) {
         for (const value of output.toString('utf8').split('\0')) {
             if (!value) continue;
             const normalized = value.replace(/\\/gu, '/');
+            // Git emits '/' on every platform; a literal POSIX backslash is a
+            // filename byte, not a hierarchy separator. Do not reinterpret it.
+            if (normalized !== value) throw workspaceReferenceError('workspace_state_unavailable');
             if (normalized.split('/').some((segment) => EXCLUDED_RUNTIME_SEGMENTS.has(segment))) continue;
+            // Git emits '/' separators. Check its original spelling so a POSIX
+            // filename containing a literal backslash cannot masquerade as a root.
+            if (index === 1 && IGNORED_RUNTIME_ROOTS.some((root) => value.startsWith(root))) continue;
             paths.add(normalized);
         }
     }
