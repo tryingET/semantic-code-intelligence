@@ -8,6 +8,20 @@ type: "reference"
 
 # Product posture
 
+## Status: retired from agent sessions (2026-11-01)
+
+The operator decided on 2026-11-01, on decision cards, to retire SCI from agent sessions in
+stages. A paired pilot (AK7925) confirmed the decision. See
+[the retirement decision record](retirement-from-agent-sessions-decision.md).
+
+- The Pi companion is no longer installed in the operator's Pi (stage 1, AK7928). New sessions
+  do not call SCI or write `.ontology/`.
+- The repository is frozen: no new product work. Maintenance is limited to what the retirement
+  needs, such as data retirement. The sections below describe the posture before retirement and
+  are kept as history.
+- Existing `.ontology/` directories in other repositories stay in place until an owner-approved
+  backup and quarantine.
+
 ## Position
 
 Semantic Code Intelligence is a phased product, library, and internal substrate. It should serve all three over time, but not all at once.
