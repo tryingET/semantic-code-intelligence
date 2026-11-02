@@ -70,7 +70,7 @@ The direction survives, and errors look worse, not better:
 | September | 374, 20.3%, 62.8% | 176, 27.8%, 60.8% |
 | October | 383, 25.1%, 63.4% | 350, 25.1%, 64.3% |
 | E1 workspace errors | 439 | **135** |
-| E3 handshake errors | 146 | 148 (nearly all distinct; two arrived after extraction) |
+| E3 handshake errors | 146 | 148 (nearly all distinct; includes calls made after the author's extraction) |
 | E4 opaque errors | 237 | 152 |
 | Tokens into context (`len/4`) | 3.6M | **0.94M** generated (forks re-send the rest) |
 | Calls after a session's 100th | 82% | 68.5% |
@@ -104,8 +104,8 @@ selective. Against paths, SCI's structural precision moved −0.14, −0.075 and
 and **+0.70 in pi-extensions**, where it was perfect in all 10 cases. The four-repository macro is
 **+0.105 in SCI's favour**. The record calls this "the one ineligible control repo", but
 pi-extensions was ineligible for the *source-list* arm, on metadata coverage. That criterion has no
-bearing on SCI. The record also omits that fusion, which orders by SCI first, was the best arm
-(+0.115 precision). Finally, the preregistration says the SCI grammar then emitted only `match`
+bearing on SCI. The record also omits that fusion, which orders by SCI first, was the best arm in
+the eligible repos (+0.115 precision). Finally, the preregistration says the SCI grammar then emitted only `match`
 evidence, so this arm tested match counts, not semantic capability. The study says little either way
 about what SCI can do. It should not support "High" confidence as independent evidence.
 
@@ -219,8 +219,9 @@ the limit much: dropping writes, scratch scripts, tool homes and dependencies st
 
 Two qualifiers. These are file operations, not work, so "can serve at most about half of real code
 work" should read "of code file operations". And worktrees are the largest share (47% of outside
-operations), so a session launched in the worktree would have reached them. Only about 26% is truly
-another repository. The containment limit is real, but part of it is about where sessions start.
+operations), so a session launched in the worktree would have reached them. Counting only truly
+other repositories, the outside share is about 26%. The containment limit is real, but part of it
+is about where sessions start.
 
 ## 7. Pilot
 
@@ -230,8 +231,8 @@ commands of two tasks. Amendments 1–3 precede the first arm. Tests ran success
 the amended tasks. Grading packets contain no arm-revealing text. Run order has a small effect
 (0.94, 1.05, 1.02).
 
-**Blinded re-grade.** My 18 grades match all 18 verdicts (X, Y, Z: f95129e5 is the hash of my grades,
-taken before the key was opened). The 0–2 scale hides two real differences, and neither favours SCI:
+**Blinded re-grade.** My 18 grades match all 18 verdicts. I hashed them before opening the key
+(sha256 prefix `f95129e5`). The 0–2 scale hides two real differences, and neither favours SCI:
 
 - **pult:** N is better. S and R delete a dedupe, so a lesson held in both records reads twice.
 - **dep-redteam:** S ≥ N > R, on error ordering and wording.
