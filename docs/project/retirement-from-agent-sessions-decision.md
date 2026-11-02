@@ -12,8 +12,9 @@ review: "single author with several lenses; inspected in retirement-decision-ind
 
 ## 1. Verdict
 
-**Recommendation: retire SCI from agent sessions in reversible stages (option E-staged), and adopt
-the governance rule in §9 (option F) separately.** Code-context needs go to their natural owners:
+**Recommendation: retire SCI from agent sessions in reversible stages (option E-staged).** The
+operator set the governance rule in §9 (option F) aside: "Not now". Code-context needs go to their
+natural owners:
 native `read`/`rg`/`grep` for names and references, the language's own compiler or type checker
 for precise semantics, git worktrees plus repo validation for safe change, and context-packer +
 Ripwire (explicit, behind its existing paired-pilot gate) for concept-level retrieval.
@@ -30,9 +31,9 @@ Ripwire (explicit, behind its existing paired-pilot gate) for concept-level retr
   - At its best period (late July, about 45% of 105 distinct calls resolved), the value sample
     still found no decisive call.
   - The paired pilot (§14, AK7925) offered SCI with fresh bindings and the session at the target
-    root. Correctness was identical with and without SCI (8/12 each), and SCI cost a median 18%
-    more tokens, within run-to-run noise. Its preregistered rule did not overturn retirement. The
-    pilot is thin: 10 SCI calls, 5 confirmed, and no task stressed navigation.
+    root. The rubric score was 8/12 with and without SCI, and SCI cost a median 18% more tokens,
+    within run-to-run variability. Its preregistered rule did not overturn retirement. The pilot is
+    thin: 10 SCI calls, 5 confirmed, and every arm edited the same source files.
   - The pilot tested fresh bindings and a target-root session. It did not test a compiler-backed
     repair, several workspaces per session, out-of-tree state or hard navigation tasks.
   - The July ablation (§3.6) is mixed and conditional on seeded queries, so it adds little either
@@ -56,7 +57,7 @@ demonstrably fail, such as large cross-language renames. Neither exists today.
 | Value sample | 30 resolved calls, round-robin by cwd; rubric in `value-sample-judgements.md` | 0 decisive | new |
 | rg counterfactual | `rg -l -w <symbol>` in the same cwd today, vs SCI's reported files | rg covered all SCI files in the 4 comparable rows | new |
 | Token cost | `resultLen/4` of SCI results | §3.5 | new |
-| Prior SCI ablation | archived context-packer v2 study, independently reviewed | SCI ranking worse than lexical paths in 3/4 repos | **new to this analysis** |
+| Prior SCI ablation | archived context-packer v2 study, independently reviewed | mixed: worse than lexical paths in 3 repos, +0.700 in the fourth (§3.6) | **new to this analysis** |
 | `.ontology` census | `find ~/ai-society -maxdepth 5 -name .ontology` + `git check-ignore` | 61 dirs, 193 MiB, 32 ignored, 28 unignored, 1 tracked; 49 written since 2026-10-01 | dep-viz now ignored |
 | AK attention | `ak task list --all`, title match | 181 SCI-repo tasks (173 done) + 46 elsewhere; 19 open SCI-related | new |
 | Code size | `git ls-files` line counts | SCI 68,938 src + 47,960 test lines, 434 commits since 2026-05-16 | tests new |
@@ -206,7 +207,7 @@ Weekly series on distinct calls. R = resolved, U = unresolved; error classes as 
 | 07-27 | 214 | 36 | 39 | 19 | 33 | 0 | 0 | first heavy cross-repo use; containment rule (in SCI since 2026-05) starts to bite |
 | 08-03 | 336 | 36 | 43 | 35 | 32 | 0 | 0 | — |
 | 08-10 | 173 | 28 | 64 | 6 | 8 | 0 | 0 | — |
-| 08-17 | 84 | 35 | 51 | 2 | 0 | 0 | 10 | progressive/compact modes; "omit absolute workspace" (08-16) |
+| 08-17 | 82 | 34 | 51 | 2 | 0 | 0 | 10 | progressive/compact modes; "omit absolute workspace" (08-16) |
 | 08-24 | 113 | 29 | 63 | 6 | 0 | 0 | 3 | companion "harden boundary recovery projection" (08-23): **E4 opaque errors begin**; 2.1.0-rc.1–3, five doors |
 | 08-31 | 79 | 30 | 25 | 7 | 0 | 0 | 28 | **NEXUS v1 adopted** in SCI (08-31) and companion (09-01/09-02) |
 | 09-07 | 92 | 36 | 13 | 12 | 0 | 0 | 35 | — |
@@ -236,7 +237,8 @@ Weekly series on distinct calls. R = resolved, U = unresolved; error classes as 
   - Bindings minted on 10-02 record 57.
   - The device was 54 on 2026-11-01, and 36 after that day's two reboots. Devices cluster by boot:
     50, 54, 57, 37, 54 again, 36.
-  - All 52 bindings on disk differ from today's `stat` in device fields only; paths and inodes match.
+  - All 52 bindings checked on 2026-11-02, before they were archived, differed from that day's
+    `stat` in device fields only; paths and inodes matched.
   - In eras with journal-dated boundaries (from 2026-09-30), on the 52 raw binding files kept in the
     archive: all 128 E3 errors on a retained binding had a different device, and all 88 non-error
     results whose binding predates the call had the same device.
@@ -411,7 +413,7 @@ concept retrieval (Ripwire `auto`) helps. That question already has an owner and
    - Remove `pi-semantic-code-intelligence` from `~/.pi/agent/settings.json` packages. This is
      operator-local Pi settings, not chezmoi-managed.
    - Keep the SCI repo, the installed runtime and all data.
-   - Rollback: re-add the line.
+   - Rollback: re-add the line. (No longer one line: see §15.)
    - Toolbox-discovery's `sci` entry then has nothing registered to activate, because it only
      activates registered tools.
 2. **Hygiene for the existing state.**
@@ -438,7 +440,7 @@ holds whatever the SCI verdict is. For SCI, the retirement discharges it:
 - no new writes, since stage 1 removed the Pi package;
 - a machine-level ignore for the legacy `.ontology/` state (stage 2a);
 - the meta repo no longer tracks the db (stage 2b);
-- an owner-approved backup and quarantine later, with no deletion.
+- an archive with a proven restore, then deletion on the operator's exception (§15).
 
 ## 9. L3 — Portfolio rule ("higher things")
 
@@ -499,7 +501,7 @@ provider, service or MCP server) must have:
 - **Small stale text:** the toolbox-discovery catalog still lists SCI as a context-packer provider
   (`toolbox-catalog.ts:55`), although context-packer removed SCI on 2026-09-07. Owner:
   pi-extensions.
-- **Not touched:**
+- **Not touched by this analysis:**
   - dep-surgeon, and the tasks AK7681, AK3409, AK7597 and AK7217;
   - the dep-surgeon `.ontology/`;
   - every repo's `.ontology` data;
@@ -637,7 +639,8 @@ model and thinking level are fixed. At most three runs in parallel.
   In pult, S and R delete a dedupe, so a lesson held in both records reads twice; all three arms
   omit the planning-export hint; all three suppress colleague rows more broadly than the reference;
   and one automatic failure is only a selector mismatch.
-- All arms edited the same source files per task, so no miss was a navigation miss.
+- All arms edited the same source files per task, so no arm gained or lost by navigation. Whether
+  the shared misses were navigation or requirement misses cannot be told apart (see Limits).
 
 **Cost, median ratio vs native over the six tasks:**
 
@@ -668,8 +671,12 @@ or automatic, remains unmeasured. Its only use to context-packer's owner is a ro
 - n = 6, with one run per cell. A bootstrap of the S/N median gives 0.78–1.30, which includes a 20%
   reduction, so the pilot did not exclude one. The rule was met because S showed none.
 - Low dose: 10 SCI calls in 6 runs, of which 5 confirmed, 3 unconfirmed and 2 errors.
-- No task stressed navigation: all 18 runs edited the same source files per task, and two tasks have
-  byte-identical source changes across arms.
+- Navigation did not separate the arms: all 18 runs edited the same source files per task, and two
+  tasks have byte-identical source changes across arms.
+- In three tasks the reference also changed source files no arm edited: dep-redteam
+  (`replacement_contract.py`, two schemas), workstation (three files) and pult (`fenster.ts`, a
+  comment). SCI did not surface them in S either. Whether the issue text or the search caused those
+  misses cannot be told from this data.
 - Tasks were small: 1–8 minutes each.
 - The grader family equals the analyst's.
 - Four of six tasks fail their reference tests, for the mixed reasons above.
@@ -694,6 +701,7 @@ first round's corrections. All are corrected above:
 | "Medium-high" that no repaired SCI would pay | not established; no demonstrated benefit justifies funding repair |
 | Reference tests over-specified on wording | mixed: test coupling, omitted behaviour and real defects |
 | 147 of 148 explained, no counterexample | journal-dated eras only, and a reconstruction |
+| No miss was a navigation miss | not established: three tasks have reference files no arm edited |
 
 **Stage 4 changed on 2026-11-02.** The operator chose archive-then-delete instead of quarantine, as a
 stated exception to the 2026-09-30 never-delete decision (evidence 19617). 59 of the 60 remaining
@@ -701,6 +709,11 @@ stated exception to the 2026-09-30 never-delete decision (evidence 19617). 59 of
 `~/.local/share/ai-society-retired/`, the restore was proven, and the directories were deleted.
 dep-surgeon's stays until its owner session releases it. All 52 bindings were already dead (§3.8), so
 this costs the Stage 1 rollback nothing: a re-enabled SCI mints fresh bindings.
+
+**Rollback changed on 2026-11-02.** AK7953 removed `SCI_MCP_COMMAND` and, on the operator's card, the
+packaged runtime. The Pi companion falls back to `semantic-code-mcp` on `PATH`, which no longer exists.
+So Stage 1 rollback now needs the settings line plus that export, pointing at a built source checkout,
+or a reinstall.
 
 The commit message of `16933d50` keeps the old wording; this section supersedes it. Figures not
 restated (attention counts, code size, footprint) were not re-inspected.
