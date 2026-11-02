@@ -671,5 +671,12 @@ the verdict stands and that these statements were wrong or overstated. They are 
 | Explicit Ripwire gets zero uptake | not measured: `context_pack` was not active in R |
 | "Medium-high" that no repaired SCI would pay | "Medium" |
 
+**Stage 4 changed on 2026-11-02.** The operator chose archive-then-delete instead of quarantine, as a
+stated exception to the 2026-09-30 never-delete decision (evidence 19617). 59 of the 60 remaining
+`.ontology` directories (7,459 files) went into one checksummed archive under
+`~/.local/share/ai-society-retired/`, the restore was proven, and the directories were deleted.
+dep-surgeon's stays until its owner session releases it. All 52 bindings were already dead (§3.8), so
+this costs the Stage 1 rollback nothing: a re-enabled SCI mints fresh bindings.
+
 The commit message of `16933d50` keeps the old wording; this section supersedes it. Figures not
 restated (attention counts, code size, footprint) were not re-inspected.

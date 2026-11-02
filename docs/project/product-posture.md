@@ -19,8 +19,8 @@ stages. A paired pilot (AK7925) did not overturn the decision. See
 - The repository is frozen: no new product work. Maintenance is limited to what the retirement
   needs, such as data retirement. The sections below describe the posture before retirement and
   are kept as history.
-- Existing `.ontology/` directories in other repositories stay in place until an owner-approved
-  backup and quarantine.
+- Existing `.ontology/` directories were archived and deleted on 2026-11-02 (AK7947), except
+  dep-surgeon's, which stays until its owner session releases it.
 
 ## Position
 
