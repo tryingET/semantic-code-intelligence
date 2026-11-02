@@ -72,21 +72,10 @@ At a glance (local testing quick path): use `just test` for fast, sliced + batch
 - Add or adjust tests narrowly around the fix (when applicable).
 - Keep public types stable unless a breaking change is approved.
 
-### SCI Composite-First Editing Policy
+### SCI retired from agent sessions
 
-Before raw search/read chains on unfamiliar code, call the smallest matching composite workflow:
-
-- unknown symbol or change impact → `explore_symbol_impact`
-- uncertain definition → `locate_confirm_definition` only if explore did not return `definitionConfirmed`
-- symbol rename → `rename_safely` (never `apply_rename`)
-- syntax-shaped transformation → `structural_patch_checks`
-- prepared patch preview/check → `patch_checks_in_snapshot` (Pi has one patch door; `safe_write` stays on MCP/CLI)
-
-Do not decompose a composite into primitive SCI calls unless its result is insufficient. Use bounded native `read`/`edit` after the workflow identifies the relevant files. Straightforward Markdown or exact textual edits may use native tools directly.
-
-When native SCI Pi tools are registered, prefer them. Otherwise use MCP from a long-lived client or the installed/global CLI from the target repo cwd. If SCI is unavailable or fails, state the fallback briefly before using native search/read tools. Never bake target repo paths into SCI source or docs.
-
-Apply remains separately authorized: preview first. Apply only via `rename_safely` or snapshot apply when the operator explicitly requests mutation and the server-side apply guard is enabled. Never `apply_rename`.
+The composite-first editing policy is withdrawn: Pi no longer loads SCI (decision 190). Use native
+tools; see `docs/project/retirement-from-agent-sessions-decision.md`.
 
 3) Validate
 - Build: `bun run build:all`.
