@@ -4,8 +4,8 @@ read_when:
   - "You are deciding whether to use, repair, reinstall or extend SCI, or reviewing why it was retired."
   - "You need the measured value of SCI composites in real harnessed sessions, or the root cause of the NEXUS handshake failures."
 type: "decision"
-status: "operator decided E-staged retirement on 2026-11-01; paired pilot AK7925 confirmed it; AK decision pending review"
-review: "single author with several lenses; the July context-packer ablation and the pilot's blinded grading are the only independent inputs"
+status: "operator decided E-staged retirement on 2026-11-01; paired pilot AK7925 did not overturn it; corrected after the AK7954 inspection (revise_rfc), re-inspection pending"
+review: "single author with several lenses; inspected in retirement-decision-independent-review.md (AK7954, same LLM family); section 15 lists what changed"
 ---
 
 # Should Semantic Code Intelligence exist?
@@ -21,17 +21,18 @@ Ripwire (explicit, behind its existing paired-pilot gate) for concept-level retr
 **Confidence.**
 
 - **High** that SCI, as deployed, does not pay for itself. The evidence is population data on
-  3,958 real calls, a value sample, a measured counterfactual, and an independent July ablation
-  with the same direction.
-- **Medium-high** that no repaired SCI would pay for itself.
+  1,510 distinct real calls, a value sample and a measured counterfactual.
+- **Medium** that no repaired SCI would pay for itself.
   - The six-week outage has one verified, fixable cause: device-number pinning (§3.8).
-  - The other limits are structural. Even a healthy SCI cannot reach the 46% of code operations
-    that fall outside the session cwd (§3.9).
-  - At its best period (late July, 57–63% resolved), the value sample still found no decisive
-    call.
-  - The paired pilot (§14, AK7925) tested SCI at its best, with fresh bindings and the session at
-    the target root. Correctness was identical with and without SCI (8/12 each), and SCI cost a
-    median 18% more tokens, within run-to-run noise. Its preregistered rule confirms retirement.
+  - The other limits are structural. Even a healthy SCI cannot reach the 46% of code file
+    operations that fall outside the session cwd (§3.9).
+  - At its best period (late July, about 45% of 105 distinct calls resolved), the value sample
+    still found no decisive call.
+  - The paired pilot (§14, AK7925) offered SCI with fresh bindings and the session at the target
+    root. Correctness was identical with and without SCI (8/12 each), and SCI cost a median 18%
+    more tokens, within run-to-run noise. Its preregistered rule did not overturn retirement. The
+    pilot is thin: 10 SCI calls, 5 confirmed, and no task stressed navigation.
+  - The July ablation (§3.6) is mixed and tested match counts, so it adds little either way.
 
 **What would change it:** a paired pilot on real tasks, same model and budget, in which a repaired
 SCI resolves at least 80% of symbols and cuts median context-acquisition tokens by 20% or more at
@@ -42,14 +43,14 @@ demonstrably fail, such as large cross-language renames. Neither exists today.
 
 | Measurement | Method | Result | Delta vs handoff |
 |---|---|---|---|
-| Pi sessions since 2026-07-27 | `find ~/.pi/agent/sessions -newermt 2026-07-27` | 9,427 sessions; 817 with SCI; tool-call totals as handoff | none |
-| Every SCI call | `extract_sci_calls.py` → `sci-calls.jsonl` | 3,958 calls (explore 3,057, locate 901) | none |
-| Real resolution | parse `ok`/`status` inside non-error results (`analyze_sci_calls.py`, hand-checked 8 raw texts) | 34.0% resolved | **new**: the 29.8% error rate hid 38% "unconfirmed" non-errors |
+| Pi sessions since 2026-07-27 | `find ~/.pi/agent/sessions -newermt 2026-07-27` | 9,427 session files; 637 hold an SCI call; 650,163 distinct tool calls in about 1.13M records | corrected |
+| Every SCI call | `extract_sci_calls.py` → `sci-calls.jsonl`; dedup by tool-call id | 1,510 distinct calls (explore 1,220, locate 290) in 3,958 records | corrected: forks copy history |
+| Real resolution | parse `ok`/`status` inside non-error results, hand-checked | 31.2% resolved (records: 34.0%) | **new**: the error rate hid 35% "unconfirmed" non-errors |
 | Failure classes | regex over error text | §3.2 | new |
 | Language split | extension of the `file` argument | §3.3 | new |
-| False negatives | for unresolved calls whose file still exists, does the file define the symbol today? | 278 of 765 (36%) do | new |
+| False negatives | for unresolved calls whose file still exists, does the file define the symbol today? | 157 of 376 distinct (42%) do | new |
 | Value sample | 30 resolved calls, round-robin by cwd; rubric in `value-sample-judgements.md` | 0 decisive | new |
-| rg counterfactual | `rg -l -w <symbol>` in the same cwd today, vs SCI's reported files | rg covered all SCI files where comparable | new |
+| rg counterfactual | `rg -l -w <symbol>` in the same cwd today, vs SCI's reported files | rg covered all SCI files in the 4 comparable rows | new |
 | Token cost | `resultLen/4` of SCI results | §3.5 | new |
 | Prior SCI ablation | archived context-packer v2 study, independently reviewed | SCI ranking worse than lexical paths in 3/4 repos | **new to this analysis** |
 | `.ontology` census | `find ~/ai-society -maxdepth 5 -name .ontology` + `git check-ignore` | 61 dirs, 193 MiB, 32 ignored, 28 unignored, 1 tracked; 49 written since 2026-10-01 | dep-viz now ignored |
@@ -60,8 +61,9 @@ demonstrably fail, such as large cross-language renames. Neither exists today.
 
 **Caveats.**
 
-- Session files include subagent and fork-peer sessions. Several sampled calls are correlated
-  copies of one session; the counts below are calls, not independent tasks.
+- Session files include subagent and fork-peer sessions, and forks copy their parent's history.
+  62% of the 3,958 records are such copies. The counts below are distinct tool-call ids, not
+  records and not independent tasks.
 - `rg` was run on today's trees, and some code has moved since the calls were made.
 - Every usefulness judgement was made by one author from the recorded next actions alone.
 
@@ -71,44 +73,45 @@ demonstrably fail, such as large cross-language renames. Neither exists today.
 
 | Month | SCI calls | Resolved | Unresolved (no error) | Error | SCI calls per 1k Pi tool calls |
 |---|---:|---:|---:|---:|---:|
-| 2026-07 (from 27th) | 876 | 56.7% | 36.1% | 7.2% | 11.6 |
-| 2026-08 | 2,324 | 29.1% | 47.0% | 23.9% | 6.6 |
-| 2026-09 | 374 | 20.3% | 16.8% | 62.8% | 3.8 |
-| 2026-10 | 383 | 25.1% | 11.5% | 63.4% | 5.8 |
-| **All** | **3,958** | **34.0%** | **38.3%** | **27.7%** | — |
+| 2026-07 (late) | 105 | 44.8% | 37.1% | 18.1% | 2.1 |
+| 2026-08 | 866 | 33.1% | 49.5% | 17.3% | 3.0 |
+| 2026-09 | 176 | 27.8% | 11.4% | 60.8% | 1.5 |
+| 2026-10 | 350 | 25.1% | 10.6% | 64.3% | 1.9 |
+| **All** (with 13 in November) | **1,510** | **31.2%** | **34.8%** | **34.0%** | — |
 
-- Of the unresolved results, 464 still carried some references; 1,051 carried nothing.
-- In total, **54% of SCI calls returned nothing usable** (2,148: errors plus empty results).
-- 220 of 633 SCI-using sessions (35%) never got a single successful SCI answer.
-- Quality is falling: since September, about two in three calls fail outright.
+- Of the unresolved results, 124 still carried some references; 402 carried nothing.
+- In total, **61% of SCI calls returned nothing usable** (915: errors plus empty results).
+- 271 of the 455 sessions that originated a call (60%) never got a resolved answer. In 220 session
+  files every call errored.
+- Quality is falling: since September, about three in five calls fail outright.
 
-### 3.2 Failure classes (1,097 errors)
+### 3.2 Failure classes (513 distinct errors)
 
 | Class | Calls | Cause | Owner of the cause |
 |---|---:|---|---|
-| E1 workspace binding ("must stay within the workspace", `repo_relative_path_required`, identity changed) | 439 | session cwd ≠ the repo whose file is asked about; SCI binds one workspace per Pi session | design mismatch with multi-repo sessions |
-| E2 path not found | 271 | agent passed a wrong or moved path | caller error, partly SCI path resolution |
-| E4 opaque ("diagnostics … withheld") | 237 | error reason suppressed; AK5438 has been pending since September | SCI/companion |
-| E3 NEXUS handshake "invalid reference contract" | 146 | not contract skew: the binding pins the btrfs device number, which changes across reboots (§3.8), and the companion masks the reason; daily from **2026-09-19 to 2026-11-01**, unfixed (AK7874 observed it) | SCI identity design + companion error handling |
+| E1 workspace binding ("must stay within the workspace", `repo_relative_path_required`, identity changed) | 135 | session cwd ≠ the repo whose file is asked about; SCI binds one workspace per Pi session | design mismatch with multi-repo sessions |
+| E2 path not found | 74 | agent passed a wrong or moved path | caller error, partly SCI path resolution |
+| E4 opaque ("diagnostics … withheld") | 152 | error reason suppressed; AK5438 has been pending since September | SCI/companion |
+| E3 NEXUS handshake "invalid reference contract" | 148 | not contract skew: the binding pins the btrfs device number, which changes across reboots (§3.8), and the companion masks the reason; on 29 of the 44 days from **2026-09-19 to 2026-11-01**, unfixed (AK7874 observed it) | SCI identity design + companion error handling |
 | E5 MCP indeterminate | 4 | MCP failure | SCI |
 
-On top of these errors, 1,515 calls returned `ok:false` / `unconfirmed` without being flagged as
-errors. An agent counting `isError` sees about 70% success; the real resolution rate is 34%.
+On top of these errors, 526 calls returned `ok:false` / `unconfirmed` without being flagged as
+errors. An agent counting `isError` sees about 66% success; the real resolution rate is 31%.
 
 ### 3.3 Resolution by language (the `file` argument's extension)
 
 | Lang | Calls | Resolved |
 |---|---:|---:|
-| Python | 1,933 | 37.2% |
-| TypeScript | 848 | 42.0% |
-| Rust | 276 | 7.6% |
-| Go | 171 | 26.9% |
-| C++ (.cpp) | 81 | 4.9% |
-| Dotted symbols (`Class.method`) | 48 | 0% |
+| Python | 441 | 28.6% |
+| TypeScript | 449 | 46.3% |
+| Rust | 155 | 9.7% |
+| Go | 110 | 24.5% |
+| C++ (.cpp) | 41 | 4.9% |
+| Dotted symbols (`Class.method`) | 27 | 0% |
 
-For unresolved calls whose file still exists, 36% of those files define the symbol today, mostly
-in Python, Rust and Go. These are probable false negatives. Even in TypeScript, SCI's own
-language, fewer than half of the calls resolve.
+For unresolved calls whose file still exists, 42% of those files define the symbol today. These
+are probable false negatives. Even in TypeScript, SCI's own language, fewer than half of the calls
+resolve.
 
 ### 3.4 Value sample (30 resolved calls, rubric fixed before judging)
 
@@ -116,22 +119,29 @@ language, fewer than half of the calls resolve.
   or re-searched (U1).
 - After collapsing correlated fork copies: 26 independent cases, with U3 0, U2 13 and U1 13.
 - By the rule of three, the decisive rate among resolved calls is at most about 11.5% (95%),
-  which is at most about 4% of all SCI calls.
-- 94% of SCI calls pass a `file` argument: the agent already knows where the symbol lives, so
-  definition lookup is mostly confirmation.
-- 82% of SCI calls occur after a session's 100th tool call, and only 42 are among its first five.
+  which is at most about 4% of all SCI calls. U3 requires that no single native call gives the
+  same, which is close to unreachable for a lookup tool, so read this as "rarely irreplaceable".
+- 94% of SCI calls pass a `file` argument. That file is not always the definition: across all 471
+  distinct resolved calls, the agent next touched a SCI-reported file it had not named 96 times.
+  In 74 of those the file was already known to the session; in 22 (1.5% of all calls) SCI's pointer
+  was new. So definition lookup is mostly confirmation.
+- For those 22, a definition-shaped `rg` on today's tree returned at most 3 files in 21 of 21
+  comparable cases and contained SCI's file in 14. Plain `rg -w` returned a median of 8 files, up
+  to 149, so "one `rg`" holds only with a definition-shaped pattern.
+- 69% of SCI calls occur after a session's 100th tool call, and only 34 are among its first five.
   The "PREFERRED first call" guidance does not describe how SCI is actually used.
-- Where today's `rg -l -w` could be compared, it covered every file SCI reported.
+- In the 4 rows where today's `rg -l -w` could be compared, it covered every file SCI reported.
 
 ### 3.5 Counterfactual and total cost of ownership
 
 - **Native equivalent of a U2 call:** one `read` (file known) or one `rg -n -w` (file unknown).
   That costs tens of milliseconds and a few hundred bytes. An SCI result costs ~930 ms (explore)
-  and a median 5.4 kB, or 3.2 kB when unresolved.
-- **Context tokens:** SCI results put about 3.6M tokens into context: 2.06M from resolved, 1.49M
-  from unresolved and 0.04M from errors. Each later turn re-reads them (cached, but not free).
-- **Fallback:** after an error, 87% of calls go to a native `read` or shell search within three
-  calls (952/1,097). The native path is the real path either way.
+  and a median 3.2 kB, or 2.2 kB when unresolved.
+- **Context tokens:** SCI generated about 0.94M tokens of results: 0.53M resolved, 0.40M unresolved
+  and 0.02M errors. Forks re-send them (3.6M counting copies), and each later turn re-reads them
+  (cached, but not free).
+- **Fallback:** after an error, 84% of calls go to a native `read` or shell search within three
+  calls (421 of 502). The native path is the real path either way.
 - **Unused surface:** the preview, patch and rename half of the 20-tool contract went almost
   unused. In three months: `rename_safely` 0, `preview_patch_checks` 10, `safe_write` 9.
 - **Code:** 68.9k source plus 48.0k test lines (SCI), 4.4k (Pi companion); 434 SCI commits in 5.5
@@ -153,49 +163,59 @@ language, fewer than half of the calls resolve.
 
 Context-packer's preregistered four-arm source-selection ablation (AK4173,
 `pi-extensions/docs/archive/pi-context-packer/pre-ripwire/experiments/source-selection/2026-07-25-v2`)
-used real SCI structural-evidence receipts as one arm. Across the three eligible repositories, SCI's
-structural ranking was **worse than a lexical path score**:
+used real SCI structural-evidence receipts as one arm. **The result is mixed.** SCI's structural
+ranking was worse than a lexical path score in three repositories and much better in the fourth:
 
-| Metric (vs paths) | Result |
-|---|---|
-| Precision delta | −0.093 |
-| Unnecessary selections | +0.4 per case |
-| Omissions | +0.4 per case |
-| Four-repo "gain" | driven by the one ineligible control repo |
-| Cost | 69 s traced across 40 cases |
+| Repository | Precision vs paths |
+|---|---:|
+| agent-scripts | −0.140 |
+| engineering-core | −0.075 |
+| dspx | −0.065 |
+| pi-extensions | **+0.700** (perfect in all 10 cases) |
+| Three-repo macro | −0.093 |
+| Four-repo macro | +0.105 |
 
-Context-packer then removed SCI (`f5c44dded`, 2026-09-07) and built Ripwire behind a paired-pilot
-gate. **Option D (merge SCI into context-packer) has already been tried and reversed.** The finding
-never reached SCI's own direction: SCI kept building (53 commits since August).
+- The study excluded pi-extensions from the *source-list* population on metadata coverage. That
+  criterion is about the source-list arm, not SCI, so it does not settle the SCI question.
+- Fusion, which orders by SCI first, was the best arm in the eligible repos (+0.115 precision), only
+  slightly above source-list alone (+0.107).
+- The preregistration states that SCI's grammar then emitted only `match` evidence, so this arm
+  tested match counts, not semantic capability.
+- Cost: 69 s traced across 40 cases.
+
+So the study says little either way about SCI's semantic value, and it should not raise confidence
+in the verdict. Context-packer then removed SCI (`f5c44dded`, 2026-09-07) and built Ripwire behind a
+paired-pilot gate. **Option D (merge SCI into context-packer) has already been tried and reversed.**
+The finding never reached SCI's own direction: SCI kept building (53 commits since August).
 
 ### 3.7 What changed when (operator request, 2026-11-01)
 
-Weekly series (`weekly-timeline.tsv`). R = resolved, U = unresolved; error classes as §3.2.
+Weekly series on distinct calls. R = resolved, U = unresolved; error classes as §3.2.
 
 | Week of | Calls | R% | U% | E1 | E2 | E3 | E4 | Change that week |
 |---|---:|---:|---:|---:|---:|---:|---:|---|
-| 07-20 | 231 | 63 | 36 | 0 | 1 | 0 | 0 | companion package recovered, read composites in toolbox (07-25) |
-| 07-27 | 1,356 | 43 | 33 | 180 | 145 | 0 | 0 | first heavy cross-repo use; containment rule (in SCI since 2026-05) starts to bite |
-| 08-03 | 851 | 27 | 49 | 94 | 109 | 0 | 0 | — |
-| 08-10 | 349 | 25 | 68 | 10 | 16 | 0 | 0 | — |
+| 07-20 | 15 | 67 | 27 | 0 | 1 | 0 | 0 | companion package recovered, read composites in toolbox (07-25) |
+| 07-27 | 214 | 36 | 39 | 19 | 33 | 0 | 0 | first heavy cross-repo use; containment rule (in SCI since 2026-05) starts to bite |
+| 08-03 | 336 | 36 | 43 | 35 | 32 | 0 | 0 | — |
+| 08-10 | 173 | 28 | 64 | 6 | 8 | 0 | 0 | — |
 | 08-17 | 84 | 35 | 51 | 2 | 0 | 0 | 10 | progressive/compact modes; "omit absolute workspace" (08-16) |
-| 08-24 | 197 | 29 | 64 | 10 | 0 | 0 | 3 | companion "harden boundary recovery projection" (08-23): **E4 opaque errors begin**; 2.1.0-rc.1–3, five doors |
-| 08-31 | 255 | 27 | 25 | 29 | 0 | 0 | 93 | **NEXUS v1 adopted** in SCI (08-31) and companion (09-01/09-02) |
-| 09-07 | 201 | 23 | 22 | 67 | 0 | 0 | 42 | — |
+| 08-24 | 113 | 29 | 63 | 6 | 0 | 0 | 3 | companion "harden boundary recovery projection" (08-23): **E4 opaque errors begin**; 2.1.0-rc.1–3, five doors |
+| 08-31 | 79 | 30 | 25 | 7 | 0 | 0 | 28 | **NEXUS v1 adopted** in SCI (08-31) and companion (09-01/09-02) |
+| 09-07 | 92 | 36 | 13 | 12 | 0 | 0 | 35 | — |
 | 09-14 | 26 | 15 | 4 | 3 | 0 | 14 | 4 | **E3 begins 09-19** (likely a reboot; the journal only reaches back to 09-29) |
-| 09-21 | 14 | 14 | 36 | 2 | 0 | 3 | 2 | — |
-| 09-28 | 193 | 34 | 12 | 13 | 0 | 39 | 53 | reboots 09-29 (twice) |
-| 10-05 | 73 | 23 | 18 | 13 | 0 | 21 | 9 | — |
+| 09-21 | 10 | 20 | 10 | 2 | 0 | 3 | 2 | — |
+| 09-28 | 173 | 35 | 9 | 13 | 0 | 39 | 44 | reboots 09-29 (twice) |
+| 10-05 | 72 | 24 | 18 | 12 | 0 | 21 | 9 | — |
 | 10-12 | 22 | 5 | 5 | 3 | 0 | 16 | 1 | reboot 10-12 |
-| 10-19 | 88 | 15 | 8 | 13 | 0 | 39 | 16 | SCI repair commits for AK7573/7582 (10-24); dist rebuilt from a dirty tree |
-| 10-26 | 18 | **0** | 0 | 0 | 0 | 14 | 4 | reboot 10-30 |
+| 10-19 | 74 | 12 | 9 | 13 | 0 | 34 | 11 | SCI repair commits for AK7573/7582 (10-24); dist rebuilt from a dirty tree |
+| 10-26 | 29 | **0** | 3 | 2 | 0 | 21 | 5 | reboot 10-30 |
 
 **How long it has been broken:**
 
 - Error reasons have been withheld since 08-23. That is 70 days; AK5438 and AK5439 have been
   pending since 09-05.
-- The NEXUS failure has been daily since 09-19, which is 43 days.
-- In the last week, 0 of 18 calls resolved.
+- The NEXUS failure occurred on 29 of the 44 days from 09-19.
+- From 10-26 to the end of use, 0 of 29 distinct calls resolved.
 
 ### 3.8 Root cause of the six-week NEXUS outage (verified)
 
@@ -206,9 +226,13 @@ Weekly series (`weekly-timeline.tsv`). R = resolved, U = unresolved; error class
 - **The evidence.**
   - Bindings minted on 09-05/06 in pi-extensions, workstation and agent-kernel record device 50.
   - Bindings minted on 10-02 record 57.
-  - The device today is 54.
-  - The NEXUS failures cluster in exactly the old, heavily used repos: pi-extensions 46,
-    workstation 33, agent-kernel 14.
+  - The device was 54 on 2026-11-01, and 36 after that day's two reboots. Devices cluster by boot:
+    50, 54, 57, 37, 54 again, 36.
+  - All 52 bindings on disk differ from today's `stat` in device fields only; paths and inodes match.
+  - Of 148 distinct E3 errors, 147 sit on a drifted binding, and the other is a deleted worktree.
+    All 91 NEXUS successes on an existing binding had the matching device. No counterexample.
+  - The NEXUS failures cluster in exactly the old, heavily used repos: pi-extensions 47,
+    workstation 33, agent-kernel 17.
   - The successes after 09-19 came from repos first bound after a reboot: mittelschule-stadeln,
     tpl-template-repo, test-capabilities.
 - **Reproduced in an owned scratch repo** (`device-drift-repro/`):
@@ -220,13 +244,15 @@ Weekly series (`weekly-timeline.tsv`). R = resolved, U = unresolved; error class
   | Restored | device 54 | OK |
 
   The plain CLI `explore_symbol_impact` still worked on the drifted binding. The engine runs;
-  the NEXUS identity gate blocks Pi.
+  the NEXUS identity gate blocks Pi. The AK7954 inspection then reproduced this on a binding that
+  drifted through real reboots: stored 54, real 36, same inode, `workspace_binding_mismatch`.
+  Correcting only the device made the same call succeed.
 - **Why nobody saw it.** The Pi companion does not show the producer's reason. Its strict
   `parseNexusHandshake` sees an error payload without `workspace`/`snapshotRef` and reports "SCI
   NEXUS handshake returned an invalid reference contract".
 - **The consequence.**
   - After every reboot, SCI is dead in every repo bound before that reboot, until someone deletes
-    or re-mints the binding.
+    or re-mints the binding, or a later boot happens to draw the same device number.
   - SCI deliberately refuses to re-mint identity (AK5446).
   - The prior root-cause analysis listed this as "verify before relying"; it is now verified.
 
@@ -247,9 +273,11 @@ Weekly series (`weekly-timeline.tsv`). R = resolved, U = unresolved; error class
     | `/data` | 8% |
     | Elsewhere | 8% |
 
-- **The consequence.** Even when healthy, SCI can serve at most about half of real code work. The
-  society's own isolation discipline (worktrees and scratch outside the repo) is the largest
-  reason.
+- **The consequence.** Even when healthy, SCI can serve at most about half of code file operations.
+  The society's own isolation discipline (worktrees and scratch outside the repo) is the largest
+  reason. Re-measured on distinct operations the share is 47–50%; dropping scratch, tool and
+  dependency paths still leaves 45%. Worktrees are the largest part, and a session launched in the
+  worktree could reach them. Counting only truly other repositories, the share is about 26%.
 - **The only fixes conflict with what SCI is.**
   - **Several workspaces per session**, or absolute paths. This conflicts with SCI's
     containment security model.
@@ -261,11 +289,10 @@ Weekly series (`weekly-timeline.tsv`). R = resolved, U = unresolved; error class
 
 Measured, SCI is not helpful enough to justify its cost:
 
-- It resolves a third of requests, and its success rate is falling.
+- It resolves under a third of requests, and its success rate is falling.
 - Its correct answers duplicate one native call.
 - Its larger capabilities (preview, patch, rename) are unused.
 - It creates a fleet-wide hygiene problem.
-- The same direction was found independently in July.
 
 **Missing evidence:** no paired task-outcome trial (with SCI vs without) exists, so the claim "SCI
 makes tasks worse or slower" is not measured. The claim measured is "SCI's answers rarely change
@@ -304,7 +331,7 @@ concept retrieval (Ripwire `auto`) helps. That question already has an owner and
    case:* large refactors in big codebases. *Sees:* grep's silent misses on renames.
 3. **Evidence-based adoption (Fisher/Deming; the context-packer gates).** No adoption without a
    preregistered comparison against the baseline on real tasks; activity is not benefit. *Sees:*
-   SCI's 3,958 calls are partly instructed ("PREFERRED first call"), so usage is not demand.
+   SCI's 1,510 calls are partly instructed ("PREFERRED first call"), so usage is not demand.
 4. **Lean / sunk cost (Ohno; Kahneman).** Inventory and work in progress are waste, and past
    investment is no reason to continue. *Sees:* 181 tasks of "hardening" are inventory with no
    delivered benefit, and every repair adds surface that drifts (E3 skew, E1 binding).
@@ -316,7 +343,7 @@ concept retrieval (Ripwire `auto`) helps. That question already has an owner and
 
 - **Semantic tooling vs Unix and the bitter lesson.** The clash is real for precise refactors. It
   resolves by *where precision comes from*: the compiler already supplies it, without a new
-  substrate, and SCI's heuristic precision (34% resolution, 0% for dotted symbols) is below the
+  substrate, and SCI's heuristic precision (31% resolution, 0% for dotted symbols) is below the
   bar School 2 itself sets. School 2 is right about the need and wrong about this tool.
 - **Evidence-based vs lean.** Evidence-based says "run IW77 with a control arm before deciding";
   lean says "stop the waste now". Resolution: the population data already answers the go/no-go at
@@ -455,7 +482,7 @@ provider, service or MCP server) must have:
   - no operator-attention hours (tasks are a proxy).
 - **Single-author judgements:** the U1/U2/U3 labels; the option analysis; the many-of-the-greats
   and the 5 whys. The July ablation is the only independently reviewed evidence used.
-- **Correlated samples:** fork-peer sessions duplicate calls; the counts are calls, not tasks.
+- **Correlated samples:** fork-peer sessions copy calls; the counts are distinct calls, not tasks.
 - **Small stale text:** the toolbox-discovery catalog still lists SCI as a context-packer provider
   (`toolbox-catalog.ts:55`), although context-packer removed SCI on 2026-09-07. Owner:
   pi-extensions.
@@ -478,7 +505,14 @@ referenced from AK7925 evidence 18651 and 18684. Raw session-derived data is not
 - `ak-sci-tasks.tsv`
 - `toolcall-counts.txt`
 
-## 13. Pilot design (draft preregistration; nothing run, operator approval pending)
+## 13. Pilot design (draft preregistration, kept as drafted)
+
+**As run.** The frozen rule is in evidence 18651, not this draft: it adds "at most 2 per language
+family, fill by recency" and takes the issue text from the AK title when the AK id has one commit,
+otherwise from the commit subject. Three of the four candidates below were replaced. The six tasks
+reproduce only if TS and JS count as one family and the fill may exceed the cap (three Python
+tasks). In pult a more recent qualifying commit, `1d29e3621d`, was not used, and no reason is
+recorded. All of this precedes any outcome, so it is not a source of bias.
 
 **Question.** On real recent tasks, with the same model and budget, does adding SCI (at its best)
 or Ripwire (context-packer) to native Pi tools change task success, context-acquisition tokens or
@@ -598,23 +632,44 @@ model and thinking level are fixed. At most three runs in parallel.
 
 - **SCI (S):** 10 calls in 6 runs, 2 of them errors. Both errors were the opaque "diagnostics
   withheld" class, even with fresh bindings at the target root.
-- **Ripwire (R):** 0 `context_pack` calls in 6 runs. R therefore acted as a placebo arm. Its
-  ±20% spread is run-to-run noise, and S's +18% sits inside it.
+- **Ripwire (R):** `context_pack` was never active. It is reached only through `toolbox`, which
+  the driver excluded in every arm, so N and R had identical active tools and first-turn tokens
+  match. R is therefore a replicate of N, not a Ripwire arm. Its spread is run-to-run noise (R/N
+  median 1.20, range 0.98–1.36), and S's +18% sits inside it.
 
 **Preregistered rule outcome.** S shows no success gain and no ≥20% context-token reduction against
 N, so **the retire verdict stands**.
 
-**Ripwire.**
-
-- Explicit-only availability gives zero spontaneous uptake.
-- Measuring Ripwire's value needs an automatic-selection arm, which is context-packer's own gated
-  pilot.
-- This is evidence for that owner, not a promotion.
+**Ripwire.** This pilot measured nothing about Ripwire: the tool was not offered. Uptake, explicit
+or automatic, remains unmeasured. Its only use to context-packer's owner is the noise estimate.
 
 **Limits.**
 
-- n = 6, with one run per cell.
+- n = 6, with one run per cell. A bootstrap of the S/N median gives 0.78–1.30, which includes a 20%
+  reduction, so the pilot did not exclude one. The rule was met because S showed none.
+- Low dose: 10 SCI calls in 6 runs, of which 5 confirmed, 3 unconfirmed and 2 errors.
+- No task stressed navigation: all 18 runs edited the same source files per task, and two tasks have
+  byte-identical source changes across arms.
 - Tasks were small: 1–8 minutes each.
 - The grader family equals the analyst's.
 - Four of six reference tests were over-specified.
 - These are fix-sized tasks; a large cross-repo refactor class was not sampled.
+- On the 0–2 scale correctness is identical. Finer differences do not favour SCI: in pult, N keeps a
+  dedupe that S and R delete; in dep-redteam, S ≥ N > R on error ordering.
+
+## 15. Corrections after independent inspection
+
+The AK7954 inspection (`retirement-decision-independent-review.md`, outcome `revise_rfc`) found that
+the verdict stands and that these statements were wrong or overstated. They are corrected above:
+
+| Was | Now |
+|---|---|
+| 3,958 real calls | 1,510 distinct calls; §3.1–3.7 restated |
+| Best period 57–63% resolved | about 45% of 105 distinct calls |
+| July ablation in the same direction | mixed, testing match counts |
+| The pilot confirmed retirement | it did not overturn retirement |
+| Explicit Ripwire gets zero uptake | not measured: `context_pack` was not active in R |
+| "Medium-high" that no repaired SCI would pay | "Medium" |
+
+The commit message of `16933d50` keeps the old wording; this section supersedes it. Figures not
+restated (attention counts, code size, footprint) were not re-inspected.

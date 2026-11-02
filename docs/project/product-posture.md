@@ -11,7 +11,7 @@ type: "reference"
 ## Status: retired from agent sessions (2026-11-01)
 
 The operator decided on 2026-11-01, on decision cards, to retire SCI from agent sessions in
-stages. A paired pilot (AK7925) confirmed the decision. See
+stages. A paired pilot (AK7925) did not overturn the decision. See
 [the retirement decision record](retirement-from-agent-sessions-decision.md).
 
 - The Pi companion is no longer installed in the operator's Pi (stage 1, AK7928). New sessions
