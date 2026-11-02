@@ -4,7 +4,7 @@ read_when:
   - "You are deciding whether to use, repair, reinstall or extend SCI, or reviewing why it was retired."
   - "You need the measured value of SCI composites in real harnessed sessions, or the root cause of the NEXUS handshake failures."
 type: "decision"
-status: "operator decided E-staged retirement on 2026-11-01; paired pilot AK7925 did not overturn it; corrected after two inspections (both revise_rfc); inspection of this version pending"
+status: "accepted on 2026-11-02 as ADR-0008 (AK decision 190), after three inspections; the operator decided E-staged retirement on 2026-11-01"
 review: "single author with several lenses; inspected in retirement-decision-independent-review.md (same LLM family) and retirement-reinspection-gpt-6-1-sol.md (GPT family); section 15 lists what changed"
 ---
 
