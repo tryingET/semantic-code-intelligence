@@ -4,8 +4,8 @@ read_when:
   - "You are deciding whether to use, repair, reinstall or extend SCI, or reviewing why it was retired."
   - "You need the measured value of SCI composites in real harnessed sessions, or the root cause of the NEXUS handshake failures."
 type: "decision"
-status: "operator decided E-staged retirement on 2026-11-01; paired pilot AK7925 did not overturn it; corrected after the AK7954 inspection (revise_rfc), re-inspection pending"
-review: "single author with several lenses; inspected in retirement-decision-independent-review.md (AK7954, same LLM family); section 15 lists what changed"
+status: "operator decided E-staged retirement on 2026-11-01; paired pilot AK7925 did not overturn it; corrected after two inspections (both revise_rfc); inspection of this version pending"
+review: "single author with several lenses; inspected in retirement-decision-independent-review.md (same LLM family) and retirement-reinspection-gpt-6-1-sol.md (GPT family); section 15 lists what changed"
 ---
 
 # Should Semantic Code Intelligence exist?
@@ -22,17 +22,21 @@ Ripwire (explicit, behind its existing paired-pilot gate) for concept-level retr
 
 - **High** that SCI, as deployed, does not pay for itself. The evidence is population data on
   1,510 distinct real calls, a value sample and a measured counterfactual.
-- **Medium** that no repaired SCI would pay for itself.
+- **Not established** whether a repaired or redesigned SCI would pay for itself. No demonstrated
+  benefit justifies funding repair on this evidence. What is known:
   - The six-week outage has one verified, fixable cause: device-number pinning (§3.8).
-  - The other limits are structural. Even a healthy SCI cannot reach the 46% of code file
-    operations that fall outside the session cwd (§3.9).
+  - The other limits belong to this integration. Even healthy, SCI as deployed cannot reach the
+    46% of code file operations that fall outside the session cwd (§3.9).
   - At its best period (late July, about 45% of 105 distinct calls resolved), the value sample
     still found no decisive call.
   - The paired pilot (§14, AK7925) offered SCI with fresh bindings and the session at the target
     root. Correctness was identical with and without SCI (8/12 each), and SCI cost a median 18%
     more tokens, within run-to-run noise. Its preregistered rule did not overturn retirement. The
     pilot is thin: 10 SCI calls, 5 confirmed, and no task stressed navigation.
-  - The July ablation (§3.6) is mixed and tested match counts, so it adds little either way.
+  - The pilot tested fresh bindings and a target-root session. It did not test a compiler-backed
+    repair, several workspaces per session, out-of-tree state or hard navigation tasks.
+  - The July ablation (§3.6) is mixed and conditional on seeded queries, so it adds little either
+    way.
 
 **What would change it:** a paired pilot on real tasks, same model and budget, in which a repaired
 SCI resolves at least 80% of symbols and cuts median context-acquisition tokens by 20% or more at
@@ -43,8 +47,8 @@ demonstrably fail, such as large cross-language renames. Neither exists today.
 
 | Measurement | Method | Result | Delta vs handoff |
 |---|---|---|---|
-| Pi sessions since 2026-07-27 | `find ~/.pi/agent/sessions -newermt 2026-07-27` | 9,427 session files; 637 hold an SCI call; 650,163 distinct tool calls in about 1.13M records | corrected |
-| Every SCI call | `extract_sci_calls.py` → `sci-calls.jsonl`; dedup by tool-call id | 1,510 distinct calls (explore 1,220, locate 290) in 3,958 records | corrected: forks copy history |
+| Pi sessions by file mtime since 2026-07-27 | `find ~/.pi/agent/sessions -newermt 2026-07-27` | 9,427 session files; 637 hold an SCI call; about 650,000 distinct tool calls in about 1.13M records; SCI timestamps begin 07-21, because selection uses file mtime | corrected |
+| Every SCI call | `extract_sci_calls.py` → `sci-calls.jsonl`; dedup by tool-call id | 1,510 distinct calls (explore 1,220, locate 290) in 3,970 records, re-read 2026-11-02; the frozen 2026-11-01 extraction has 1,498 distinct in 3,958 records | corrected: forks copy history |
 | Real resolution | parse `ok`/`status` inside non-error results, hand-checked | 31.2% resolved (records: 34.0%) | **new**: the error rate hid 35% "unconfirmed" non-errors |
 | Failure classes | regex over error text | §3.2 | new |
 | Language split | extension of the `file` argument | §3.3 | new |
@@ -62,8 +66,9 @@ demonstrably fail, such as large cross-language renames. Neither exists today.
 **Caveats.**
 
 - Session files include subagent and fork-peer sessions, and forks copy their parent's history.
-  62% of the 3,958 records are such copies. The counts below are distinct tool-call ids, not
-  records and not independent tasks.
+  2,460 records are such copies in both snapshots (62%). The counts below are distinct tool-call
+  ids from the 2026-11-02 re-read, not records and not independent tasks. They add 12 later calls to
+  the frozen extraction, each a single record. The source files are not immutable snapshots.
 - `rg` was run on today's trees, and some code has moved since the calls were made.
 - Every usefulness judgement was made by one author from the recorded next actions alone.
 
@@ -179,12 +184,15 @@ ranking was worse than a lexical path score in three repositories and much bette
   criterion is about the source-list arm, not SCI, so it does not settle the SCI question.
 - Fusion, which orders by SCI first, was the best arm in the eligible repos (+0.115 precision), only
   slightly above source-list alone (+0.107).
-- The preregistration states that SCI's grammar then emitted only `match` evidence, so this arm
-  tested match counts, not semantic capability.
+- The producer did seeded AST structural matching, and the consumer ranked on `match` counts and
+  paths.
+- In pi-extensions each case had `maxItems` 1 and one truth, and every structural query supplied an
+  exact function signature and a package path. The paths arm got only the maintenance question. So
+  +0.700 is a conditional top-one result, and how an agent would get those seeds is not priced.
 - Cost: 69 s traced across 40 cases.
 
-So the study says little either way about SCI's semantic value, and it should not raise confidence
-in the verdict. Context-packer then removed SCI (`f5c44dded`, 2026-09-07) and built Ripwire behind a
+So the study says little either way about SCI's value, and it should not raise confidence in the
+verdict. Context-packer then removed SCI (`f5c44dded`, 2026-09-07) and built Ripwire behind a
 paired-pilot gate. **Option D (merge SCI into context-packer) has already been tried and reversed.**
 The finding never reached SCI's own direction: SCI kept building (53 commits since August).
 
@@ -229,8 +237,12 @@ Weekly series on distinct calls. R = resolved, U = unresolved; error classes as 
   - The device was 54 on 2026-11-01, and 36 after that day's two reboots. Devices cluster by boot:
     50, 54, 57, 37, 54 again, 36.
   - All 52 bindings on disk differ from today's `stat` in device fields only; paths and inodes match.
-  - Of 148 distinct E3 errors, 147 sit on a drifted binding, and the other is a deleted worktree.
-    All 91 NEXUS successes on an existing binding had the matching device. No counterexample.
+  - In eras with journal-dated boundaries (from 2026-09-30), on the 52 raw binding files kept in the
+    archive: all 128 E3 errors on a retained binding had a different device, and all 88 non-error
+    results whose binding predates the call had the same device.
+  - That is a strong retrospective reconstruction, not 128 causal reproductions. Device labels come
+    from bindings minted inside each era, not from a measurement at each call. The 19 earlier E3
+    errors rest on a boundary partly chosen from the failures themselves.
   - The NEXUS failures cluster in exactly the old, heavily used repos: pi-extensions 47,
     workstation 33, agent-kernel 17.
   - The successes after 09-19 came from repos first bound after a reboot: mittelschule-stadeln,
@@ -273,30 +285,31 @@ Weekly series on distinct calls. R = resolved, U = unresolved; error classes as 
     | `/data` | 8% |
     | Elsewhere | 8% |
 
-- **The consequence.** Even when healthy, SCI can serve at most about half of code file operations.
+- **The consequence.** Even when healthy, SCI as deployed can serve at most about half of code file
+  operations.
   The society's own isolation discipline (worktrees and scratch outside the repo) is the largest
   reason. Re-measured on distinct operations the share is 47–50%; dropping scratch, tool and
   dependency paths still leaves 45%. Worktrees are the largest part, and a session launched in the
   worktree could reach them. Counting only truly other repositories, the share is about 26%.
-- **The only fixes conflict with what SCI is.**
-  - **Several workspaces per session**, or absolute paths. This conflicts with SCI's
-    containment security model.
+- **The known fixes each carry a cost, and none is tested.**
+  - **Several explicitly selected workspaces per session.** This needs a redesign of SCI's
+    containment model, though separately checked roots need not mean unrestricted file access.
   - **A launch at every target root.** This conflicts with how agents actually work mid-task.
-- **This is a design incompatibility, not a bug.** It is the limiting factor for any repaired
-  SCI.
+- **This is a property of the current integration.** It limits SCI as deployed. It is not a ceiling
+  on a future design, and these are file operations, not a distribution of navigation needs.
 
 ### 3.10 L0 answer
 
 Measured, SCI is not helpful enough to justify its cost:
 
 - It resolves under a third of requests, and its success rate is falling.
-- Its correct answers duplicate one native call.
+- Most of its correct answers duplicate what one native call gives.
 - Its larger capabilities (preview, patch, rename) are unused.
 - It creates a fleet-wide hygiene problem.
 
-**Missing evidence:** no paired task-outcome trial (with SCI vs without) exists, so the claim "SCI
-makes tasks worse or slower" is not measured. The claim measured is "SCI's answers rarely change
-what the agent does, and usually fail".
+**Evidence limit:** the one paired trial (§14) is small, low-dose and did not stress navigation, so
+the claim "SCI makes tasks worse or slower" is not established. The claim measured is "SCI's answers
+rarely change what the agent does, and usually fail".
 
 ## 4. L1 — What does a frontier coding session need beyond read/grep, and who should own it?
 
@@ -477,7 +490,7 @@ provider, service or MCP server) must have:
 ## 11. Open items, missing evidence, single-author claims
 
 - **Missing evidence:**
-  - no paired task-outcome trial for SCI;
+  - only one small paired task-outcome trial for SCI (§14);
   - no per-task token accounting (tool-result bytes are a proxy);
   - no operator-attention hours (tasks are a proxy).
 - **Single-author judgements:** the U1/U2/U3 labels; the option analysis; the many-of-the-greats
@@ -512,7 +525,8 @@ family, fill by recency" and takes the issue text from the AK title when the AK 
 otherwise from the commit subject. Three of the four candidates below were replaced. The six tasks
 reproduce only if TS and JS count as one family and the fill may exceed the cap (three Python
 tasks). In pult a more recent qualifying commit, `1d29e3621d`, was not used, and no reason is
-recorded. All of this precedes any outcome, so it is not a source of bias.
+recorded. All of this precedes any outcome, so selection could not use observed arm results. It
+does not make the tasks representative.
 
 **Question.** On real recent tasks, with the same model and budget, does adding SCI (at its best)
 or Ripwire (context-packer) to native Pi tools change task success, context-acquisition tokens or
@@ -581,7 +595,8 @@ model and thinking level are fixed. At most three runs in parallel.
 **Limits.**
 
 - n = 6 is indicative only: one run per cell, and model variance is not controlled.
-- The grader is the same model family as the agents.
+- The grader is the same model family as the agents. (Draft. As run, the agents were GPT and the
+  graders Claude; see §14.)
 - The tasks come from repos the agents themselves wrote.
 
 **Cost (estimate, not measured).**
@@ -605,7 +620,7 @@ model and thinking level are fixed. At most three runs in parallel.
 
 **Correctness (blinded grader, 0–2 per task):**
 
-| Task | Native (N) | +SCI best case (S) | +Ripwire available (R) |
+| Task | Native (N) | +SCI offered (S) | Replicate of N (R) |
 |---|---:|---:|---:|
 | agent-kernel (Rust) | 2 | 2 | 2 |
 | dep-diet (JS) | 2 | 2 | 2 |
@@ -615,11 +630,14 @@ model and thinking level are fixed. At most three runs in parallel.
 | workstation (Py) | 1 | 1 | 1 |
 | **Total (of 12)** | **8** | **8** | **8** |
 
-- The automatic grade agrees: agent-kernel and dep-diet pass in all arms, and the other four fail
-  in all arms.
-- The graders judged those four reference tests over-specified on wording.
-- The score-1 cases were requirement-reasoning misses that all three arms shared, in several tasks
-  with byte-identical source changes. None was a navigation miss.
+- 8/12 is a reported rubric score, not evidence of equal behaviour.
+- The recorded automatic grade shows agent-kernel and dep-diet passing in all arms and the other four
+  failing in all arms. The tests were not re-run in the inspections.
+- Those four failures mix test coupling, behaviour the issue text did not carry, and real defects.
+  In pult, S and R delete a dedupe, so a lesson held in both records reads twice; all three arms
+  omit the planning-export hint; all three suppress colleague rows more broadly than the reference;
+  and one automatic failure is only a selector mismatch.
+- All arms edited the same source files per task, so no miss was a navigation miss.
 
 **Cost, median ratio vs native over the six tasks:**
 
@@ -634,14 +652,16 @@ model and thinking level are fixed. At most three runs in parallel.
   withheld" class, even with fresh bindings at the target root.
 - **Ripwire (R):** `context_pack` was never active. It is reached only through `toolbox`, which
   the driver excluded in every arm, so N and R had identical active tools and first-turn tokens
-  match. R is therefore a replicate of N, not a Ripwire arm. Its spread is run-to-run noise (R/N
-  median 1.20, range 0.98–1.36), and S's +18% sits inside it.
+  match. The literal historical tool set is an inference from the pilot-time code and those tokens,
+  as no active-schema receipt exists. R is therefore a replicate of N, not a Ripwire arm. Its spread
+  (R/N median 1.20, range 0.98–1.36) is descriptive run-to-run variability, since contexts, ordering
+  and load were not controlled identically. S's +18% sits inside it.
 
 **Preregistered rule outcome.** S shows no success gain and no ≥20% context-token reduction against
 N, so **the retire verdict stands**.
 
 **Ripwire.** This pilot measured nothing about Ripwire: the tool was not offered. Uptake, explicit
-or automatic, remains unmeasured. Its only use to context-packer's owner is the noise estimate.
+or automatic, remains unmeasured. Its only use to context-packer's owner is a rough spread figure.
 
 **Limits.**
 
@@ -652,24 +672,28 @@ or automatic, remains unmeasured. Its only use to context-packer's owner is the 
   byte-identical source changes across arms.
 - Tasks were small: 1–8 minutes each.
 - The grader family equals the analyst's.
-- Four of six reference tests were over-specified.
+- Four of six tasks fail their reference tests, for the mixed reasons above.
 - These are fix-sized tasks; a large cross-repo refactor class was not sampled.
 - On the 0–2 scale correctness is identical. Finer differences do not favour SCI: in pult, N keeps a
   dedupe that S and R delete; in dep-redteam, S ≥ N > R on error ordering.
 
 ## 15. Corrections after independent inspection
 
-The AK7954 inspection (`retirement-decision-independent-review.md`, outcome `revise_rfc`) found that
-the verdict stands and that these statements were wrong or overstated. They are corrected above:
+Two inspections, both `revise_rfc`, found that retiring SCI as deployed stands and that these
+statements were wrong or overstated: `retirement-decision-independent-review.md` (AK7954, Claude
+family) and `retirement-reinspection-gpt-6-1-sol.md` (GPT family). The second also found errors in the
+first round's corrections. All are corrected above:
 
 | Was | Now |
 |---|---|
-| 3,958 real calls | 1,510 distinct calls; §3.1–3.7 restated |
+| 3,958 real calls | 1,510 distinct in 3,970 records, or 1,498 in the frozen 3,958; §3.1–3.7 restated |
 | Best period 57–63% resolved | about 45% of 105 distinct calls |
-| July ablation in the same direction | mixed, testing match counts |
+| July ablation in the same direction | mixed, and conditional on seeded queries |
 | The pilot confirmed retirement | it did not overturn retirement |
 | Explicit Ripwire gets zero uptake | not measured: `context_pack` was not active in R |
-| "Medium-high" that no repaired SCI would pay | "Medium" |
+| "Medium-high" that no repaired SCI would pay | not established; no demonstrated benefit justifies funding repair |
+| Reference tests over-specified on wording | mixed: test coupling, omitted behaviour and real defects |
+| 147 of 148 explained, no counterexample | journal-dated eras only, and a reconstruction |
 
 **Stage 4 changed on 2026-11-02.** The operator chose archive-then-delete instead of quarantine, as a
 stated exception to the 2026-09-30 never-delete decision (evidence 19617). 59 of the 60 remaining
